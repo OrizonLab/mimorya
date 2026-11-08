@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use mimorya_db::repositories::personal_activity::ExportedDeliverable;
 use mimorya_db::repositories::personal_content::{
     ExportedConversation, ExportedMemory, ExportedMessage, ExportedMission, ExportedSummary,
-    ExportedTask, ExportedTrigger,
+    ExportedTask, ExportedThread, ExportedTrigger,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -15,6 +15,7 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use super::iso_opt;
+use super::links::ExportThread;
 use crate::http::iso;
 
 #[derive(Debug, Serialize, TS)]
@@ -28,6 +29,8 @@ pub struct ExportConversation {
     pub archived_at: Option<String>,
     /// What the assistant reads in place of the first messages (ADR-145).
     pub summary: Option<String>,
+    /// The messaging thread it is held in (ADR-127, ADR-135, ADR-140).
+    pub messaging: Option<ExportThread>,
     pub messages: Vec<ExportMessage>,
 }
 
@@ -94,21 +97,34 @@ pub struct ExportDeliverable {
     pub created_at: String,
 }
 
-/// The person's conversations, each with its summary and its messages;
-/// `messages` come conversation by conversation, in the order written.
-pub fn conversation_exports(
-    conversations: Vec<ExportedConversation>,
-    summaries: Vec<ExportedSummary>,
-    messages: Vec<ExportedMessage>,
-) -> Vec<ExportConversation> {
-    let mut summaries: HashMap<Uuid, String> = summaries
+/// The person's conversations as read: `messages` come conversation by
+/// conversation, in the order written.
+pub struct ConversationRows {
+    pub conversations: Vec<ExportedConversation>,
+    pub summaries: Vec<ExportedSummary>,
+    pub threads: Vec<ExportedThread>,
+    pub messages: Vec<ExportedMessage>,
+}
+
+/// The person's conversations, each with its summary, its messaging thread
+/// and its messages.
+pub fn conversation_exports(rows: ConversationRows) -> Vec<ExportConversation> {
+    let mut summaries: HashMap<Uuid, String> = rows
+        .summaries
         .into_iter()
         .map(|summary| (summary.conversation_id, summary.content))
         .collect();
-    let mut exported: Vec<ExportConversation> = conversations
+    let mut threads: HashMap<Uuid, ExportedThread> = rows
+        .threads
+        .into_iter()
+        .map(|thread| (thread.conversation_id, thread))
+        .collect();
+    let mut exported: Vec<ExportConversation> = rows
+        .conversations
         .into_iter()
         .map(|conversation| ExportConversation {
             summary: summaries.remove(&conversation.id),
+            messaging: threads.remove(&conversation.id).map(ExportThread::from),
             id: conversation.id,
             title: conversation.title,
             visibility: conversation.visibility,
@@ -123,7 +139,7 @@ pub fn conversation_exports(
         .enumerate()
         .map(|(place, conversation)| (conversation.id, place))
         .collect();
-    for message in messages {
+    for message in rows.messages {
         if let Some(&place) = places.get(&message.conversation_id) {
             exported[place].messages.push(ExportMessage {
                 role: message.role,

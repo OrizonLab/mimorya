@@ -67,8 +67,8 @@ pub async fn company_parts(tenant_id: Uuid, mark: &str, bot: u64) -> CompanyPart
     }
 }
 
-/// What `person` has, marked `mark`: a conversation (its two messages and
-/// its summary) seen by `unit` when given, a personal memory, a task, a
+/// What `person` has, marked `mark`: a conversation (its two messages, its
+/// summary and its Telegram thread) seen by `unit` when given, a personal memory, a task, a
 /// trigger, a mission, a run with its tool call, validation, deliverable
 /// and consumption (`tokens` in, half as many out), a session, a linked
 /// account, a server authorization, a Telegram identity (`telegram`), a
@@ -110,8 +110,41 @@ pub async fn belongings(
             .unwrap();
     }
     links(&owner, parts, person, mark, telegram).await;
+    // The conversation is held in the person’s chat with the bot.
+    sqlx::query(
+        "insert into gateway_threads (tenant_id, gateway_id, user_id, conversation_id, kind, \
+         external_id, channel_id, thread_ts, created_at, active_at) \
+         values ($1, $2, $3, $4, 'telegram', $5, $5, '1', now(), now())",
+    )
+    .bind(tenant_id)
+    .bind(parts.gateway)
+    .bind(person)
+    .bind(conversation)
+    .bind(telegram.to_string())
+    .execute(&owner)
+    .await
+    .unwrap();
     owner.close().await;
     Owned { conversation, run }
+}
+
+/// An invitation awaiting `person`, sent by `inviter`; its token's hash is
+/// the SHA-256 of `mark`, in hexadecimal.
+pub async fn invited(tenant_id: Uuid, person: Uuid, inviter: Option<Uuid>, mark: &str) {
+    let owner = owner().await;
+    sqlx::query(
+        "insert into user_invitations (tenant_id, user_id, token_hash, created_by_user_id, \
+         expires_at) values ($1, $2, encode(sha256(convert_to($4, 'UTF8')), 'hex'), $3, \
+         now() + interval '7 days')",
+    )
+    .bind(tenant_id)
+    .bind(person)
+    .bind(inviter)
+    .bind(mark)
+    .execute(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
 }
 
 async fn conversation(

@@ -838,15 +838,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   met en pause), à mot de passe provisoire ou privé de l'agent, ni pour une entreprise
   suspendue. Ce qu'est devenue la dernière occurrence lui est dit, et chacune est tracée
   dans le journal, comme le démarrage de son run : par la plateforme, à son nom.
-- **Droits** : chacun télécharge ses propres données en JSON (`GET /api/account/export`,
-  ADR-187) : son compte, ses unités et rôles, ses sessions encore gardées, ses connexions
-  par un fournisseur d'identité et son identifiant SCIM, ses conversations, leurs
-  messages et leur résumé, ses mémoires personnelles, ses tâches, déclencheurs, missions
-  et livrables, les runs faits pour lui et leurs appels d'outils, les validations qui
-  lui ont été demandées et ses décisions sur celles des autres (la sienne seule), sa
-  consommation par mois, ses absences, ce qu'il a relié ou autorisé ; jamais un secret
-  ni les données d'un autre ; l'export, lu sur un même instantané, est tracé par ses
-  nombres seuls avant d'être envoyé. L'écran qui l'offre suit. L'effacement d'un compte et la suppression
+- **Droits** : chacun télécharge ses propres données en JSON depuis « Mon compte »
+  (`GET /api/account/export`, ADR-187, ADR-188) : son compte, ses unités (celles qu'il
+  dirige aussi) et rôles, ses sessions encore gardées, ses connexions par un fournisseur
+  d'identité, son identifiant SCIM et l'invitation qui l'attend, ses conversations, leurs
+  messages, leur résumé et leur fil de messagerie, ses mémoires personnelles, ses tâches,
+  déclencheurs, missions et livrables, les runs faits pour lui et leurs appels d'outils,
+  les validations qui lui ont été demandées et ses décisions sur celles des autres (la
+  sienne seule), sa consommation par mois, ses absences, ce qu'il a relié ou autorisé ;
+  jamais un secret ni les données d'un autre ; l'export, lu sur un même instantané, est
+  tracé par ses nombres seuls avant d'être envoyé, et un envoi qui n'avance plus pendant
+  une minute est arrêté. L'effacement d'un compte et la suppression
   complète d'une entreprise sont à venir : un compte se désactive, ses mémoires
   personnelles partent 30 jours après (ADR-185), ses conversations 24 mois après leur
   dernière activité (ADR-186), le journal conservant la trace sans le contenu. Un document

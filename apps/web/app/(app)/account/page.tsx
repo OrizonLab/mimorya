@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  DataExport,
   GatewayIdentities,
   LinkedAccounts,
   NotificationForm,
@@ -30,6 +31,7 @@ export default function AccountPage() {
         <ServerAuthorizations />
         <GatewayIdentities />
         <NotificationForm />
+        <DataExport />
       </div>
     </div>
   );

@@ -1,13 +1,16 @@
 //! What the person linked or authorized, in their export (ADR-187): the
 //! accounts, messaging identities and MCP servers, each by its name and
-//! who it says the person is; never a token.
+//! who it says the person is, and the messaging thread a conversation is
+//! held in; never a token.
 
+use mimorya_db::repositories::personal_content::ExportedThread;
 use mimorya_db::repositories::personal_data::{
     ExportedAuthorization, ExportedIdentity, ExportedLink,
 };
 use serde::Serialize;
 use ts_rs::TS;
 
+use super::iso_opt;
 use crate::http::iso;
 
 #[derive(Debug, Serialize, TS)]
@@ -32,6 +35,22 @@ pub struct ExportIdentity {
     pub display_name: Option<String>,
     pub address: Option<String>,
     pub created_at: String,
+}
+
+/// Where a conversation is held in a messaging service: the person there,
+/// the channel and the thread.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportThread {
+    /// `slack`, `telegram` or `teams`.
+    pub kind: String,
+    pub gateway: String,
+    pub external_id: String,
+    pub channel: String,
+    pub thread: String,
+    pub created_at: String,
+    pub active_at: String,
+    pub closed_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -73,6 +92,21 @@ impl From<ExportedAuthorization> for ExportAuthorization {
             connector: authorization.connector,
             scopes: authorization.scopes,
             authorized_at: iso(&authorization.authorized_at),
+        }
+    }
+}
+
+impl From<ExportedThread> for ExportThread {
+    fn from(thread: ExportedThread) -> Self {
+        Self {
+            kind: thread.kind,
+            gateway: thread.gateway,
+            external_id: thread.external_id,
+            channel: thread.channel_id,
+            thread: thread.thread_ts,
+            created_at: iso(&thread.created_at),
+            active_at: iso(&thread.active_at),
+            closed_at: iso_opt(thread.closed_at),
         }
     }
 }

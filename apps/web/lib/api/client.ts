@@ -65,16 +65,54 @@ async function send<T>(
     },
     ...(sent ? { body: sent.payload } : {}),
   });
-  if (!res.ok) {
-    // The API's error body, or anything else (a proxy's page, an empty body).
-    const payload = (await res.json().catch(() => null)) as Partial<ErrorBody> | null;
-    throw new ApiError(
-      res.status,
-      payload?.error?.code ?? 'error',
-      payload?.error?.message ?? `Erreur ${res.status}`,
-    );
-  }
+  if (!res.ok) throw await failure(res);
   return (await res.json()) as T;
+}
+
+/** What a refused answer says: the API's error body, or anything else (a proxy's page, an empty body). */
+async function failure(res: Response): Promise<ApiError> {
+  const payload = (await res.json().catch(() => null)) as Partial<ErrorBody> | null;
+  return new ApiError(
+    res.status,
+    payload?.error?.code ?? 'error',
+    payload?.error?.message ?? `Erreur ${res.status}`,
+  );
+}
+
+/** A file the API gives, and the name it gives it. */
+export interface DownloadedFile {
+  name: string;
+  blob: Blob;
+}
+
+/** The name an answer's `Content-Disposition` gives its file, or `fallback`. */
+function fileName(res: Response, fallback: string): string {
+  const named = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '');
+  return named?.[1] ?? fallback;
+}
+
+/**
+ * The file at `path`. Its answer waits as long as a read's; the file, once
+ * it comes, takes the time it takes, the server ending a sending that no
+ * longer moves (ADR-188).
+ */
+async function download(path: string, fallback: string): Promise<DownloadedFile> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      credentials: 'same-origin',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) throw new ApiError(0, 'timeout', NO_ANSWER);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) throw await failure(res);
+  return { name: fileName(res, fallback), blob: await res.blob() };
 }
 
 export const api = {
@@ -87,4 +125,6 @@ export const api = {
   upload: <T>(path: string, file: Blob) => request<T>('POST', path, file),
   /** Puts `file` in place of the one at `path` (ADR-150), described as `upload`'s. */
   replace: <T>(path: string, file: Blob) => request<T>('PUT', path, file),
+  /** The file at `path`, named as the API names it, else `fallback`. */
+  download: (path: string, fallback: string) => download(path, fallback),
 };

@@ -65,7 +65,9 @@ pub use notifications::NotificationSettings;
 pub use person_authorizations::{
     PersonAuthorizationState, PersonAuthorizationView, PersonAuthorizations,
 };
-pub use personal_export::{ExportAccount, PersonalExport, conversation_exports, run_exports};
+pub use personal_export::{
+    AccountRows, ConversationRows, ExportAccount, PersonalExport, conversation_exports, run_exports,
+};
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage,
     ConnectorsUnavailable, RunFinished, RunQueued, RunResumed, RunStarted, RunStreamEvent,

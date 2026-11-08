@@ -1,5 +1,6 @@
 export { AuthFrame } from './auth-frame';
 export { CompanySignIn } from './company-sign-in';
+export { DataExport } from './data-export';
 export { PasswordForm } from './password-form';
 export { FirstPasswordScreen } from './first-password-screen';
 export { GatewayIdentities } from './gateway-identities';

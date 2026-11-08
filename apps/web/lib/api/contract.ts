@@ -917,7 +917,11 @@ export type ExportAccount = { id: string, email: string, displayName: string, jo
 /**
  * What access policies read of the person (ADR-023).
  */
-attributes: Record<string, unknown>, locale: string, createdAt: string, lastLoginAt: string | null, units: Array<ExportUnit>, roles: Array<ExportRole>, };
+attributes: Record<string, unknown>, locale: string, createdAt: string, lastLoginAt: string | null, units: Array<ExportUnit>,
+/**
+ * The units the person leads, by name.
+ */
+leads: Array<string>, roles: Array<ExportRole>, };
 
 export type ExportApproval = { runId: string, tool: string, actionSummary: string, payload: unknown, status: string, createdAt: string, decidedAt: string | null, decisionComment: string | null, };
 
@@ -927,7 +931,11 @@ export type ExportConversation = { id: string, title: string, visibility: string
 /**
  * What the assistant reads in place of the first messages (ADR-145).
  */
-summary: string | null, messages: Array<ExportMessage>, };
+summary: string | null,
+/**
+ * The messaging thread it is held in (ADR-127, ADR-135, ADR-140).
+ */
+messaging: ExportThread | null, messages: Array<ExportMessage>, };
 
 export type ExportDecision = { tool: string, status: string, decidedAt: string | null, decisionComment: string | null, };
 
@@ -942,6 +950,11 @@ kind: string, gateway: string,
  * The person's identifier in the messaging service.
  */
 externalId: string, displayName: string | null, address: string | null, createdAt: string, };
+
+/**
+ * The invitation still awaiting the person: who sent it, by name.
+ */
+export type ExportInvitation = { invitedBy: string | null, createdAt: string, expiresAt: string, };
 
 export type ExportLink = { connector: string,
 /**
@@ -991,6 +1004,16 @@ export type ExportTask = { title: string, instruction: string,
  * 1 = Monday.
  */
 weekdays: Array<number>, timeOfDay: string, timeZone: string, createdAt: string, };
+
+/**
+ * Where a conversation is held in a messaging service: the person there,
+ * the channel and the thread.
+ */
+export type ExportThread = {
+/**
+ * `slack`, `telegram` or `teams`.
+ */
+kind: string, gateway: string, externalId: string, channel: string, thread: string, createdAt: string, activeAt: string, closedAt: string | null, };
 
 export type ExportToolCall = { tool: string,
 /**
@@ -2312,7 +2335,11 @@ export type PersonalExport = { exportedAt: string, account: ExportAccount, notif
  * The sessions opened in the person's name, still kept (30 days past
  * their end, ADR-185).
  */
-sessions: Array<ExportSession>, signIns: Array<ExportSignIn>, provisioning: Array<ExportProvisioning>, conversations: Array<ExportConversation>, memories: Array<ExportMemory>, scheduledTasks: Array<ExportTask>, triggers: Array<ExportTrigger>, missions: Array<ExportMission>, deliverables: Array<ExportDeliverable>,
+sessions: Array<ExportSession>, signIns: Array<ExportSignIn>, provisioning: Array<ExportProvisioning>,
+/**
+ * The invitation still awaiting the person, if any (ADR-027).
+ */
+invitation: ExportInvitation | null, conversations: Array<ExportConversation>, memories: Array<ExportMemory>, scheduledTasks: Array<ExportTask>, triggers: Array<ExportTrigger>, missions: Array<ExportMission>, deliverables: Array<ExportDeliverable>,
 /**
  * The runs made on the person's behalf, each with the tools it called.
  */

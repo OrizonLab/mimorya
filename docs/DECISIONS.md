@@ -12602,7 +12602,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     et l'identifiant de la requête, et ses nombres seuls (conversations, messages,
     mémoires, runs), jamais un contenu. Sans cette trace, rien n'est envoyé.
 - **Conséquences** :
-  - l'écran qui offre ce téléchargement dans « Mon compte » suit (lot 55b) ;
+  - l'écran qui offre ce téléchargement dans « Mon compte » est venu au lot 55b
+    (ADR-188), avec un délai qui arrête un envoi qui n'avance plus ;
   - restent à venir, dits tels dans `SECURITY.md` §9 et la feuille de route :
     l'effacement d'un compte (qui devra garder le journal d'audit vérifiable, ADR-178,
     comme ADR-186 l'a fait pour les runs) et la suppression complète d'une entreprise.
@@ -12635,3 +12636,61 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       ni jeton, ni empreinte, ni secret scellé, ni clé qui en nomme un ;
     - `services/audit_chain/places.rs` : le limiteur commun, par la vérification du
       journal.
+
+## ADR-188 — Téléchargement de ses données depuis « Mon compte », envoi borné (lot 55b)
+
+- **Statut** : accepté (2026-11-08).
+- **Contexte** : ADR-187 rend l'export de ses propres données par l'API ; il manquait
+  l'écran qui l'offre. L'audit de la PR #227 a relevé qu'un envoi qui n'avance plus (un
+  téléchargement mis en pause, un client qui ne lit plus en gardant la connexion) garde sa
+  place sans limite : la personne reçoit 409 à chaque essai, et deux envois ainsi tenus
+  privent le processus de tout export (503). Il a relevé aussi trois données personnelles
+  que l'export ne disait ni exporter ni exclure.
+- **Décision** :
+  - **« Mon compte »** porte une section « Mes données » et son bouton « Télécharger mes
+    données ». Le navigateur lit le fichier (`api.download`) : sa réponse est attendue
+    comme une lecture (30 s, ADR-044), le fichier ensuite le temps qu'il faut. Il
+    l'enregistre sous le nom que donne l'API (`lib/save-file.ts`). Un refus (409, 503)
+    est dit en français, et rien n'est enregistré. La section dit ce que le fichier
+    contient et ce qu'il ne contient jamais. Elle dit aussi que le téléchargement est
+    inscrit au journal de l'entreprise, et que l'effacement du compte n'est pas encore
+    proposé ;
+  - **un envoi qui n'avance plus est arrêté** : si aucun bloc n'est pris pendant
+    60 secondes (`STALL`, `services/personal_export/file.rs`), le fichier est lâché, sa
+    place rendue et son envoi terminé en erreur. Une tâche veille sur chaque envoi ; un
+    corps abandonné rend sa place aussitôt, sans l'attendre. La mémoire retenue alors se
+    borne à ce que le serveur HTTP avait déjà pris (un bloc de 64 Kio) ;
+  - **la taille du fichier est donnée** (`Content-Length`) : le navigateur suit la
+    progression, et un envoi coupé ne passe pas pour un fichier complet ;
+  - **l'export dit aussi** :
+    - les unités que la personne dirige (`account.leads`) ;
+    - le fil de messagerie de chacune de ses conversations (Slack, Telegram ou Teams :
+      service, identifiant de la personne, canal, fil, dates) ;
+    - l'invitation qui l'attend : qui l'a envoyée, quand, jusqu'à quand.
+
+    Il ne donne jamais l'adresse du service Teams (celle de Microsoft, non de la
+    personne), ni l'empreinte du jeton de l'invitation.
+- **Conséquences** :
+  - restent à venir, dits tels dans `SECURITY.md` §9 et la feuille de route :
+    - l'effacement d'un compte, qui devra garder le journal d'audit vérifiable
+      (ADR-178) ;
+    - la suppression complète d'une entreprise ;
+  - tests :
+    - `services/personal_export/file/tests.rs` : la place est tenue tant que le fichier
+      n'est pas lu, et rendue à son dernier bloc ou quand il est abandonné. Un envoi dont
+      un bloc est pris juste avant le délai continue. Celui dont aucun bloc n'est pris
+      pendant le délai rend sa place, puis finit en erreur. Ce test bloque si
+      l'arrêt est retiré ;
+    - `crates/api/tests/personal_export.rs` : la taille annoncée est celle du fichier ;
+    - `crates/api/tests/personal_export_isolation.rs` : Marc a exactement :
+      - l'unité qu'il dirige ;
+      - le fil Telegram de sa conversation ;
+      - son invitation, envoyée par Paul.
+
+      Il n'a ni l'invitation de Paul ni l'empreinte de la sienne ;
+
+    - `apps/web/e2e/data-export.spec.ts` : Marc télécharge ses données depuis « Mon
+      compte », sous le nom du jour. Le fichier contient son compte et son unité, jamais
+      une empreinte de mot de passe. Le journal de l'entreprise, lu par Paul, en garde la
+      trace aux nombres du fichier. Un refus est dit en français, et rien n'est
+      enregistré.

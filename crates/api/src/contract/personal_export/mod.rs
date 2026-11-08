@@ -12,11 +12,11 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use ts_rs::TS;
 
-pub use account::ExportAccount;
+pub use account::{AccountRows, ExportAccount};
 pub use activity::run_exports;
-pub use content::conversation_exports;
+pub use content::{ConversationRows, conversation_exports};
 
-use account::{ExportAbsence, ExportProvisioning, ExportSession, ExportSignIn};
+use account::{ExportAbsence, ExportInvitation, ExportProvisioning, ExportSession, ExportSignIn};
 use activity::{ExportApproval, ExportDecision, ExportRun, ExportUsage};
 use content::{
     ExportConversation, ExportDeliverable, ExportMemory, ExportMission, ExportTask, ExportTrigger,
@@ -38,6 +38,8 @@ pub struct PersonalExport {
     pub sessions: Vec<ExportSession>,
     pub sign_ins: Vec<ExportSignIn>,
     pub provisioning: Vec<ExportProvisioning>,
+    /// The invitation still awaiting the person, if any (ADR-027).
+    pub invitation: Option<ExportInvitation>,
     pub conversations: Vec<ExportConversation>,
     pub memories: Vec<ExportMemory>,
     pub scheduled_tasks: Vec<ExportTask>,

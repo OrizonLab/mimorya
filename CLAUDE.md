@@ -207,7 +207,7 @@ Repères à l'intérieur des crates :
   compétences, rejet des propositions de l'agent (`skill_proposals.rs`, ADR-100), cas d'évaluation
   (`skill_eval_cases.rs`, ADR-103) et évaluation demandée (`skill_evaluations.rs`,
   ADR-104), sous verrou par entreprise ; application Microsoft 365 déclarée,
-  `microsoft365.rs`, ADR-116, et client Google Workspace, `google_workspace.rs`, ADR-121, déclarés par `link_applications.rs`), `api/src/services/account.rs` (son propre compte), `api/src/services/personal_export/` (export par chacun de ses propres données, lues sur un même instantané (`reading.rs`) par `db/src/repositories/personal_data.rs`, `personal_content.rs`, `personal_access.rs` (sessions, connexions, SCIM) et `personal_activity.rs` (runs, appels d'outils, validations, décisions, livrables, consommation), envoyées par un corps qui tient sa place jusqu'au bout (`file.rs`), contrat `contract/personal_export/`, ADR-187), `api/src/services/places.rs` (places d'un travail lourd, quelques-unes par processus, une par entreprise ou par personne, ADR-180, ADR-187),
+  `microsoft365.rs`, ADR-116, et client Google Workspace, `google_workspace.rs`, ADR-121, déclarés par `link_applications.rs`), `api/src/services/account.rs` (son propre compte), `api/src/services/personal_export/` (export par chacun de ses propres données, lues sur un même instantané (`reading.rs`) par `db/src/repositories/personal_data.rs`, `personal_content.rs`, `personal_access.rs` (sessions, connexions, SCIM) et `personal_activity.rs` (runs, appels d'outils, validations, décisions, livrables, consommation), envoyées par un corps qui tient sa place jusqu'au bout, un envoi qui n'avance plus arrêté (`file.rs`, ADR-188), contrat `contract/personal_export/`, ADR-187), `api/src/services/places.rs` (places d'un travail lourd, quelques-unes par processus, une par entreprise ou par personne, ADR-180, ADR-187),
   `api/src/services/account_links/` (comptes que chacun relie : application du
   connecteur, Microsoft 365 ou Google Workspace (`application.rs`, ADR-121), départ vers
   le fournisseur, tentative scellée, retour vérifié, jeton scellé, liste et retrait,
@@ -365,7 +365,8 @@ Repères à l'intérieur des crates :
   Telegram relié avec l'accord donné dans Telegram, ADR-134, et le compte Teams relié
   par le lien du bot, ADR-139, et les serveurs MCP que chacun autorise pour soi
   (`server-authorizations.tsx`), ADR-174, ceux qui vérifient le compte de chacun et le
-  refus d'un autre compte, ADR-175 —,
+  refus d'un autre compte, ADR-175, et le téléchargement de ses données (`data-export.tsx`,
+  enregistré par `lib/save-file.ts`), ADR-188 —,
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,

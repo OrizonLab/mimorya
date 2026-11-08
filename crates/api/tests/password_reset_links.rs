@@ -10,13 +10,16 @@ use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
 use serde_json::json;
 use support::accounts::OWN_PASSWORD;
+use support::queue::API;
 use support::resets::{RESET_PASSWORD, ask_reset, complete_reset, inspect_reset, new_reset_token};
 use support::{PASSWORD, TestApi, email};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn a_newer_link_replaces_the_former_one_and_links_expire() {
-    let api = TestApi::start_with_mailer().await;
+    // An `api` process: no maintenance pass of its own purges the expired
+    // link before the test does.
+    let api = TestApi::start_with_mailer_and(API).await;
     let address = email(user::NADIA);
     let first = new_reset_token(&api, &address).await;
     let second = new_reset_token(&api, &address).await;

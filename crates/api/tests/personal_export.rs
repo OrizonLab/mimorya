@@ -104,6 +104,11 @@ async fn a_person_exports_their_own_data_and_nobody_else_s() {
         disposition.starts_with("attachment; filename=\"mimorya-mes-donnees-20"),
         "{disposition}"
     );
+    // Its size said ahead, for the browser to show the download's progress.
+    assert_eq!(
+        exported.headers["content-length"].to_str().unwrap(),
+        exported.body.len().to_string()
+    );
     let export = exported.json();
 
     // His account, his units.
