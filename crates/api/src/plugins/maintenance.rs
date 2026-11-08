@@ -19,7 +19,8 @@
 //! audit log's new entries are sealed in their company's chain, in one
 //! process at a time, when the server has a master key, unless the chain
 //! moved behind the seals this process set or found at its start
-//! (ADR-178); runs without
+//! (ADR-178); once an hour, retention is applied, one process at a time
+//! (`retention.rs`, ADR-185); runs without
 //! progress for a while belong to a stuck process and are marked as
 //! failed, their `run_finished` event recorded and broadcast to the clients
 //! following them. That sweep waits until the process has run as long as a
@@ -48,6 +49,7 @@ use mimorya_db::repositories::skill_evaluations::purge_finished_evaluations;
 use tokio::task::JoinHandle;
 
 use crate::app::AppState;
+use crate::plugins::retention::Retention;
 use crate::services::audit_chain::AuditSealing;
 use crate::services::event_bus::RunEventBus;
 use crate::services::missions::tell_ended_missions;
@@ -77,6 +79,8 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
         let (db, bus) = (&services.db, &services.bus);
         // Each company's last seal, remembered and logged from the start.
         let mut audit_sealing = AuditSealing::of(&services.config);
+        // Retention applied once an hour, from the start (ADR-185).
+        let mut retention = Retention::default();
         // Ticks at startup, then every `SWEEP_INTERVAL` from it: the uptimes
         // the sweeps wait for fall on ticks.
         let started = tokio::time::Instant::now();
@@ -109,6 +113,7 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             if let Some(sealing) = &mut audit_sealing {
                 sealing.pass(db).await;
             }
+            retention.pass(db).await;
             if sweeps_stale_runs(started.elapsed()) {
                 match sweep_stale_runs(db, bus, STALE_AFTER).await {
                     Ok(0) => {}

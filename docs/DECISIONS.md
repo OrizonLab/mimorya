@@ -12355,3 +12355,64 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
   - tests : `apps/web/e2e/scim-tokens.spec.ts` (relecture de l'annuaire retenue :
     l'annuaire verrouillé, pas l'avis ; relecture échouée : l'avis et son secret
     restent). Ce test échoue sur l'ancienne disposition.
+
+## ADR-185 — Rétention appliquée : sessions, mémoires épisodiques et mémoires des comptes partis (lot 54a)
+
+- **Statut** : accepté (2026-11-08).
+- **Contexte** : `DATA_MODEL.md` §5 annonçait des durées de rétention que rien
+  n'appliquait, et `SECURITY.md` une « rétention paramétrable » qui n'existait pas :
+  - les sessions finies (révoquées ou expirées) restaient, avec l'adresse et le
+    navigateur de qui s'était connecté ;
+  - les mémoires épisodiques restaient sans limite ;
+  - les mémoires personnelles d'un compte désactivé restaient aussi, et rien ne datait
+    sa désactivation.
+- **Décision** :
+  - **la base date elle-même la désactivation d'un compte** (`users.disabled_at`,
+    migration 0082) :
+    - un déclencheur la pose quand le compte devient désactivé, qu'il le soit par
+      l'administration, par SCIM ou par l'exploitant, et la garde s'il l'est de
+      nouveau ;
+    - il l'efface quand le compte est réactivé ;
+    - à chaque mise à jour, c'est le déclencheur qui la fixe : une instruction ne la
+      change pas ;
+    - les comptes déjà désactivés comptent à partir de la migration ;
+  - **une passe horaire** (`plugins/retention.rs`), lancée par la maintenance dès le
+    démarrage, dans un processus à la fois (verrou `retention`, ADR-086), supprime :
+    - les sessions finies depuis plus de 30 jours, par révocation, par inactivité ou à
+      leur terme absolu (`system_purge_ended_sessions`) ;
+    - les mémoires épisodiques enregistrées il y a plus d'un an, et toute mémoire
+      passée son propre terme (`expires_at`) ;
+    - les mémoires personnelles d'un compte désactivé depuis plus de 30 jours
+      (`system_purge_retained_memories`) ;
+  - **les durées sont celles de la base** : les fonctions ne prennent aucun paramètre.
+    L'application ne peut donc pas purger plus tôt (comme ADR-152 pour les limites de
+    débit) ;
+  - **chaque entreprise qui perd des mémoires le trouve dans son journal d'audit**,
+    écrit par la plateforme dans la même instruction que la suppression, si bien que
+    l'une ne va jamais sans l'autre :
+    - action `memory.purged` ;
+    - nombres seuls : `aged` (épisodes et termes passés) et `departed` (comptes
+      partis) ;
+    - jamais le contenu ni les titres.
+
+    Les sessions ne sont pas tracées : ce sont des données techniques, comme les
+    autres purges de la maintenance.
+- **Conséquences** :
+  - un compte réactivé avant les 30 jours retrouve sa mémoire personnelle ; après, elle
+    est perdue ;
+  - restent à venir :
+    - le paramétrage des durées par entreprise ;
+    - la purge des messages et des événements de run, plus délicate parce que le
+      rôle applicatif ne supprime ni conversation ni run, que le journal d'audit les
+      référence et que leur résumé les couvre ;
+  - suite de l'audit de la PR #223 : la carte « Provisionnement SCIM » est séparée de
+    ce qui la précède par une marge ;
+  - tests :
+    - `crates/api/tests/retention.rs` : désactivation datée par l'administration et à
+      la création, inchangée par une instruction, oubliée à la réactivation ; sessions
+      finies depuis 31 jours supprimées, depuis 29 jours gardées, la session en cours
+      intacte ; mémoires supprimées et gardées selon leur âge, leur terme et le départ
+      de leur titulaire, une autre entreprise comptée à part ; une seule entrée
+      d'audit par entreprise, sans contenu ; aucune passe quand un autre processus en
+      tient une ;
+    - `crates/db/tests/definer_functions.rs` : les deux nouvelles fonctions.

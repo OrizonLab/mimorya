@@ -65,7 +65,11 @@ export function UsersTab() {
           </Loaded>
         )}
       </Loaded>
-      {directory.data?.canManage.users && <ScimTokens />}
+      {directory.data?.canManage.users && (
+        <div className="mt-4">
+          <ScimTokens />
+        </div>
+      )}
     </>
   );
 }
