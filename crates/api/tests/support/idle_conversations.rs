@@ -10,7 +10,8 @@ use uuid::Uuid;
 use super::retention::owner;
 
 /// A conversation of `person` in the company `tenant_id`, titled `title`:
-/// a question and its answer, its last activity `months` ago.
+/// a question and, a second later, its answer; its last activity `months`
+/// ago.
 pub async fn conversation(tenant_id: Uuid, person: Uuid, title: &str, months: i32) -> Uuid {
     let owner = owner().await;
     let id = sqlx::query_scalar(
@@ -26,8 +27,9 @@ pub async fn conversation(tenant_id: Uuid, person: Uuid, title: &str, months: i3
     .await
     .unwrap();
     sqlx::query(
-        "insert into messages (tenant_id, conversation_id, role, author_user_id, content) \
-         values ($1, $2, 'user', $3, 'question'), ($1, $2, 'assistant', null, 'réponse')",
+        "insert into messages (tenant_id, conversation_id, role, author_user_id, content, \
+         created_at) values ($1, $2, 'user', $3, 'question', now()), \
+         ($1, $2, 'assistant', null, 'réponse', now() + interval '1 second')",
     )
     .bind(tenant_id)
     .bind(id)

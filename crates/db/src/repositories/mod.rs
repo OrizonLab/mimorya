@@ -53,6 +53,8 @@ pub mod notification_settings;
 pub mod org;
 pub mod org_units;
 pub mod password_resets;
+pub mod personal_content;
+pub mod personal_data;
 pub mod policy_proposal_notices;
 pub mod policy_proposals;
 pub mod rate_limits;

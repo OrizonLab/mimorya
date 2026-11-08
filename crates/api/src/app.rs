@@ -43,6 +43,7 @@ use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_fac
 use crate::services::gateways::{GatewayService, GatewaySettings};
 use crate::services::invalidations::{Invalidations, share_invalidations};
 use crate::services::llm::{LlmServiceOptions, default_factory};
+use crate::services::personal_export::Exports;
 use crate::services::runs::{ApprovalNotifier, ConversationSummaries, LessonCapture, RunExecutor};
 use crate::services::skill_evaluations::EvaluationSlots;
 use crate::services::sso::{SsoService, SystemDns};
@@ -81,6 +82,9 @@ pub struct Services {
     /// The verifications of their audit chain administrators ask for that
     /// this process runs at once (ADR-179).
     pub audit_checks: ChainChecks,
+    /// The exports of their own data people ask for that this process
+    /// makes at once (ADR-187).
+    pub exports: Exports,
     /// Sends the invitation and reset e-mails; `None` when no relay is
     /// configured.
     pub mailer: Option<Arc<dyn Mailer>>,
@@ -262,6 +266,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         gateways,
         evaluation_slots: EvaluationSlots::default(),
         audit_checks: ChainChecks::default(),
+        exports: Exports::default(),
         mailer,
         config,
         db: db.clone(),

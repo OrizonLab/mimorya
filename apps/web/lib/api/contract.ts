@@ -904,6 +904,67 @@ maxCostCeilingMicros: number, };
 
 export type EvaluationStatus = "queued" | "running" | "completed" | "failed";
 
+export type ExportAbsence = { startsAt: string, endsAt: string,
+/**
+ * Who stood in, by name.
+ */
+delegate: string, };
+
+/**
+ * The person's account, units and roles.
+ */
+export type ExportAccount = { id: string, email: string, displayName: string, jobTitle: string | null, status: string, clearance: string,
+/**
+ * What access policies read of the person (ADR-023).
+ */
+attributes: Record<string, unknown>, locale: string, createdAt: string, lastLoginAt: string | null, units: Array<ExportUnit>, roles: Array<ExportRole>, };
+
+export type ExportAuthorization = { connector: string, scopes: string, authorizedAt: string, };
+
+export type ExportConversation = { id: string, title: string, visibility: string, createdAt: string, updatedAt: string, archivedAt: string | null, messages: Array<ExportMessage>, };
+
+export type ExportIdentity = {
+/**
+ * `slack`, `telegram` or `teams`.
+ */
+kind: string, gateway: string,
+/**
+ * The person's identifier in the messaging service.
+ */
+externalId: string, displayName: string | null, address: string | null, createdAt: string, };
+
+export type ExportLink = { connector: string,
+/**
+ * Who the provider says the account is.
+ */
+subject: string, address: string, scopes: string, createdAt: string, };
+
+export type ExportMemory = { kind: string, title: string, content: string, status: string, createdAt: string, expiresAt: string | null, };
+
+export type ExportMessage = {
+/**
+ * `user` or `assistant`.
+ */
+role: string, content: string, createdAt: string, };
+
+export type ExportMission = { title: string, description: string, status: string, createdAt: string, finishedAt: string | null, result: string | null, };
+
+export type ExportRole = { name: string,
+/**
+ * `tenant` or `org_unit`.
+ */
+scope: string, unit: string | null, includeDescendants: boolean, expiresAt: string | null, };
+
+export type ExportTask = { title: string, instruction: string,
+/**
+ * 1 = Monday.
+ */
+weekdays: Array<number>, timeOfDay: string, timeZone: string, createdAt: string, };
+
+export type ExportTrigger = { title: string, instruction: string, enabled: boolean, createdAt: string, };
+
+export type ExportUnit = { name: string, primary: boolean, };
+
 /**
  * An entry as exported: its place and seal in the company's chain, then
  * what it records. It names what changed, never a secret or a message's
@@ -2192,6 +2253,11 @@ verifiesIdentity: boolean, authorization: PersonAuthorizationState | null, };
  * `GET /account/connector-authorizations`.
  */
 export type PersonAuthorizations = { servers: Array<PersonAuthorizationView>, };
+
+/**
+ * `GET /account/export`: everything exported, as of `exportedAt`.
+ */
+export type PersonalExport = { exportedAt: string, account: ExportAccount, notifications: NotificationSettings, conversations: Array<ExportConversation>, memories: Array<ExportMemory>, scheduledTasks: Array<ExportTask>, triggers: Array<ExportTrigger>, missions: Array<ExportMission>, absences: Array<ExportAbsence>, linkedAccounts: Array<ExportLink>, messagingIdentities: Array<ExportIdentity>, serverAuthorizations: Array<ExportAuthorization>, };
 
 /**
  * The provider the platform offers every company.

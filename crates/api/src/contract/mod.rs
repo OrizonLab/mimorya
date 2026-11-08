@@ -20,6 +20,8 @@ mod memory;
 mod missions;
 mod notifications;
 mod person_authorizations;
+mod personal_export;
+mod personal_export_rows;
 mod run_stream;
 mod runs;
 mod scheduled_tasks;
@@ -64,6 +66,8 @@ pub use notifications::NotificationSettings;
 pub use person_authorizations::{
     PersonAuthorizationState, PersonAuthorizationView, PersonAuthorizations,
 };
+pub use personal_export::{ExportAccount, PersonalExport};
+pub use personal_export_rows::conversation_exports;
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage,
     ConnectorsUnavailable, RunFinished, RunQueued, RunResumed, RunStarted, RunStreamEvent,
@@ -101,6 +105,7 @@ pub fn typescript() -> String {
     declarations.add::<SsoLink>();
     declarations.add::<SsoStart>();
     declarations.add::<Done>();
+    declarations.add::<PersonalExport>();
     declarations.add::<AccountLinks>();
     declarations.add::<AccountLinkStart>();
     declarations.add::<PersonAuthorizations>();

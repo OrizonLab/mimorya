@@ -838,8 +838,14 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   met en pause), à mot de passe provisoire ou privé de l'agent, ni pour une entreprise
   suspendue. Ce qu'est devenue la dernière occurrence lui est dit, et chacune est tracée
   dans le journal, comme le démarrage de son run : par la plateforme, à son nom.
-- **Droits** : export (JSON) et suppression des données d'un utilisateur ; suppression
-  complète d'une entreprise ; journal conservant la trace sans le contenu. Un document
+- **Droits** : chacun télécharge ses propres données en JSON (`GET /api/account/export`,
+  ADR-187) : son compte, ses unités et rôles, ses conversations et leurs messages, ses
+  mémoires personnelles, ses tâches, déclencheurs, missions et absences, ce qu'il a relié
+  ou autorisé ; jamais un secret ni les données d'un autre ; l'export est tracé par ses
+  nombres seuls. L'écran qui l'offre suit. L'effacement d'un compte et la suppression
+  complète d'une entreprise sont à venir : un compte se désactive, ses mémoires
+  personnelles partent 30 jours après (ADR-185), ses conversations 24 mois après leur
+  dernière activité (ADR-186), le journal conservant la trace sans le contenu. Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a
   déposé, se télécharge tel quel par qui le lit, et sa suppression par qui peut écrire
   son espace emporte son fichier, ses passages et leurs vecteurs. Remplacé par une

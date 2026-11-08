@@ -12551,3 +12551,56 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       propriétaire, ni changée pour le faire ; un run supprimé laisse ses entrées
       telles qu'écrites (ce test échoue sans le déclencheur) ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction.
+
+## ADR-187 — Export par chacun de ses propres données (lot 55a)
+
+- **Statut** : accepté (2026-11-08).
+- **Contexte** : `SECURITY.md` §9 annonçait un export (JSON) et une suppression des
+  données d'un utilisateur, ainsi que la suppression complète d'une entreprise ; rien de
+  tout cela n'existait. Le droit d'accès et le droit à la portabilité veulent que chacun
+  obtienne les données que la plateforme garde sur lui et ce qu'il y a écrit.
+- **Décision** :
+  - **`GET /api/account/export`** rend, à la personne connectée, un fichier JSON
+    (`mimorya-mes-donnees-AAAA-MM-JJ.json`, en pièce jointe) de ses propres données dans
+    son entreprise, lues dans une seule transaction de celle-ci et pour elle seule :
+    - son compte (adresse, nom, fonction, statut, habilitation, attributs lus par les
+      politiques, langue, dates), ses unités et ses rôles ;
+    - les e-mails qu'elle choisit de recevoir ;
+    - ses conversations et tous leurs messages, dans l'ordre où ils ont été écrits ;
+    - ses mémoires personnelles ;
+    - ses tâches planifiées, ses déclencheurs et ses missions ;
+    - ses absences et qui la remplace ;
+    - les comptes, messageries et serveurs MCP qu'elle a reliés ou autorisés ;
+  - **jamais un secret** : ni mot de passe, ni jeton, ni secret scellé ; d'un
+    déclencheur, ni le jeton ni son empreinte ;
+  - **jamais les données d'un autre** : ni la conversation d'un collègue partagée avec
+    son unité, ni la mémoire d'un collègue, de l'unité ou de l'entreprise, ni rien d'une
+    autre entreprise. La route ne prend aucun paramètre : on n'exporte que soi ;
+  - **un processus fait deux exports à la fois, un seul pour une personne** : un export
+    lit tous les messages de quelqu'un, et le serveur le garde en mémoire le temps de
+    l'écrire. Une seconde demande de la même personne est refusée (409) tant que la
+    première court, une demande quand toutes les places sont prises aussi (503).
+    Le limiteur de la vérification du journal d'audit (ADR-180) est devenu commun
+    (`services/places.rs`) ;
+  - **l'export est tracé** dans le journal d'audit de l'entreprise (`account.exported`)
+    avec ses nombres seuls (conversations, messages, mémoires), jamais un contenu.
+- **Conséquences** :
+  - l'écran qui offre ce téléchargement dans « Mon compte » suit (lot 55b) ;
+  - restent à venir, dits tels dans `SECURITY.md` §9 et la feuille de route :
+    l'effacement d'un compte (qui devra garder le journal d'audit vérifiable, ADR-178,
+    comme ADR-186 l'a fait pour les runs) et la suppression complète d'une entreprise.
+    En attendant, un compte se désactive : ses mémoires personnelles partent 30 jours
+    après (ADR-185), ses conversations 24 mois après leur dernière activité (ADR-186) ;
+  - le journal d'audit qui concerne la personne n'est pas exporté : il appartient à
+    l'entreprise, qui le lit et l'exporte (ADR-181) ;
+  - tests :
+    - `crates/api/tests/personal_export.rs` : Marc reçoit son compte, ses unités, sa
+      conversation et ses messages dans l'ordre, sa mémoire, sa tâche, son déclencheur,
+      sa mission et son absence avec qui le remplace ; ni la conversation ni la mémoire
+      de Paul, ni la mémoire de l'entreprise, ni la conversation d'une autre entreprise ;
+      ni le jeton du déclencheur ni une empreinte de mot de passe ; une seule entrée
+      d'audit, aux nombres de l'export (ce test échoue si les mémoires ne sont plus lues
+      pour la seule personne) ; un second export de Marc refusé tant que le premier
+      court, celui de Paul servi, puis refusé quand toutes les places sont prises ;
+    - `services/audit_chain/places.rs` : le limiteur commun, par la vérification du
+      journal.
