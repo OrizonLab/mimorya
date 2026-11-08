@@ -12295,3 +12295,47 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       aucun compte par SCIM ;
   - suites de l'audit de la PR #220 : les inventaires de routes de `first_login.rs`
     sont rangés dans `crates/api/tests/support/routes.rs`.
+
+## ADR-184 — Jetons SCIM dans l'onglet « Utilisateurs » (lot 53c)
+
+- **Statut** : accepté (2026-11-08) · complète ADR-183 et ADR-182.
+- **Contexte** : ADR-183 laissait les jetons SCIM se gérer par l'API seule, comme
+  ADR-181 l'avait fait pour les jetons d'export avant ADR-182. Il restait aussi trois
+  constats non bloquants de l'audit du lot 53b :
+  - le README parlait de comptes « supprimés » par SCIM ;
+  - aucun test ne donnait à un autre compte, par un changement, l'`externalId` d'un
+    compte retiré ;
+  - un commentaire sur les révocations lancées dans des tâches à part avait disparu.
+- **Décision** :
+  - **une section « Provisionnement SCIM » dans l'onglet « Utilisateurs »**
+    (`components/admin/users/scim-tokens.tsx`), montrée à qui gère les comptes de
+    toute l'entreprise (`canManage.users`, la permission que l'API exige d'un jeton
+    SCIM) :
+    - elle donne l'adresse SCIM que l'API donne (`scimUrl`, de l'origine de
+      l'application), à saisir dans le fournisseur (« URL du locataire » d'Entra ID,
+      « Base URL » d'Okta) ;
+    - elle dit ce que fait le fournisseur : il crée des comptes de base sans mot de
+      passe, ne change jamais une adresse et ne supprime aucun compte ;
+    - le secret d'un jeton nouveau est montré cette seule fois, avec l'adresse et un
+      exemple de lecture ;
+  - **une section commune aux jetons qu'un autre système détient de l'entreprise**
+    (`components/admin/bearer-tokens/bearer-tokens.tsx`), dont les jetons d'export
+    (ADR-182) et les jetons SCIM ne diffèrent que par leurs mots, ce qu'ils disent
+    d'abord de leur usage et leur avis de secret. La liste relue après chaque
+    tentative, le focus rendu au titre et la limite donnée par l'API sont ceux
+    d'ADR-182, écrits une fois ;
+  - qui ne fait que lire l'annuaire (`user:read`) voit les comptes, sans la création
+    d'un compte ni les jetons ; l'API lui refuse la liste des jetons (403) ;
+  - **suites de l'audit du lot 53b** :
+    - le README dit qu'un compte retiré est désactivé et sort de la vue de SCIM, mais
+      n'est jamais supprimé, ses données restant sur la plateforme ;
+    - `scim_changes.rs` donne l'`externalId` d'un compte retiré à un autre compte par
+      `PATCH` et par `PUT` : refusés (409), l'identifiant de l'autre compte gardé ;
+    - le commentaire des tâches de révocation est rétabli dans `revoke_all_by`.
+- **Conséquences** :
+  - une entreprise branche son fournisseur d'identité sans passer par l'API ;
+  - un nouveau type de jeton aura sa section en donnant ses mots et son avis ;
+  - tests : `apps/web/e2e/scim-tokens.spec.ts` (jeton créé, secret montré une fois,
+    comptes lus avec lui à l'adresse montrée, focus, retrait, puis 401 ; qui lit
+    seulement l'annuaire ne voit pas la section). Le comportement de la section
+    commune sur les refus reste testé par `audit-export.spec.ts`.

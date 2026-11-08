@@ -13,7 +13,7 @@ const NOT_COPIED =
 
 /**
  * A secret shown this once, the API keeping only its digest (a hook's token,
- * ADR-110; an audit export token, ADR-182): what `children` say of its use
+ * ADR-110; an audit export token, ADR-182; a SCIM token, ADR-184): what `children` say of its use
  * first, the secret in a read-only field, `warning`, a copy button whose
  * outcome a status region always there says, alone, afresh at each attempt
  * even when it is the same, an `example`, and `onClose`. It takes the focus

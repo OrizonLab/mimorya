@@ -6,9 +6,15 @@ import { useApiData, type Organization, type Directory } from '@/lib/api';
 import { useMe } from '@/lib/me-context';
 import { AccountNoticeCard } from './account-notice';
 import { NewUserForm } from './new-user-form';
+import { ScimTokens } from './scim-tokens';
 import type { AccountNotice } from './types';
 import { UserRow } from './user-row';
 
+/**
+ * The « Utilisateurs » tab: the company's accounts, and for who manages
+ * them company-wide, the making of an account and the tokens of the
+ * identity provider that provisions them through SCIM (ADR-183).
+ */
 export function UsersTab() {
   const me = useMe();
   const directory = useApiData<Directory>('/admin/users');
@@ -50,6 +56,7 @@ export function UsersTab() {
                   />
                 ))}
               </DataTable>
+              {data.canManage.users && <ScimTokens />}
             </>
           )}
         </Loaded>

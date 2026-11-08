@@ -136,9 +136,11 @@ gardées (ADR-179), et le fait lire par son SIEM avec un jeton d'export, page ap
 (`GET /api/audit/export`, sans `seal` au départ, puis `?after=<place>&seal=<sceau de cette
 place>`, `Authorization: Bearer mae_…` ; une place que la chaîne restaurée ne porte plus
 est refusée, ADR-181), ses jetons gérés depuis le même onglet (ADR-182). Le fournisseur d'identité de l'entreprise (Entra ID, Okta…) peut créer, lire, changer,
-désactiver et supprimer ses comptes par SCIM 2.0 à `<adresse de l'application>/api/scim/v2`, avec un jeton SCIM
-(`Authorization: Bearer msc_…`) fait par un administrateur des comptes
-(`POST /api/admin/scim/tokens`, ADR-183). Le
+désactiver et retirer ses comptes par SCIM 2.0 à `<adresse de l'application>/api/scim/v2`
+(un compte retiré est désactivé et sort de la vue de SCIM, mais n'est jamais supprimé :
+ses données restent sur la plateforme), avec un jeton SCIM
+(`Authorization: Bearer msc_…`) fait par un administrateur des comptes depuis l'onglet
+« Utilisateurs » (ADR-183). Le
 lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal
 sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
 l'administration. Lancez ces commandes dans un terminal (par exemple

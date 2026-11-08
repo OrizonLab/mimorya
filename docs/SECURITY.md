@@ -328,7 +328,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - Provisionnement SCIM (ADR-183) : le fournisseur d'identité de l'entreprise crée et lit
   ses comptes avec un jeton SCIM (`Authorization: Bearer`, `msc_` et 256 bits, gardé en
   empreinte SHA-256, montré une fois, jamais journalisé ni audité), fait par qui gère les
-  comptes de toute l'entreprise (`user:manage`), cinq au plus. Un jeton absent, inconnu,
+  comptes de toute l'entreprise (`user:manage`, section « Provisionnement SCIM » de
+  l'onglet « Utilisateurs », ADR-184), cinq au plus. Un jeton absent, inconnu,
   retiré ou d'une entreprise suspendue répond de même (401) ; une session n'en tient pas
   lieu. Il ne lit et ne crée que des comptes de son entreprise, sous la RLS (seule
   l'entreprise du jeton se cherche hors d'elle, `auth_scim_token`). Un compte créé n'a
