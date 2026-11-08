@@ -32,7 +32,7 @@ async fn the_identity_provider_creates_and_reads_accounts_with_its_token() {
     assert_eq!(config.status, StatusCode::OK, "{}", config.text());
     assert_eq!(config.headers[CONTENT_TYPE], SCIM_JSON);
     let config = config.json();
-    assert_eq!(config["patch"]["supported"], false);
+    assert_eq!(config["patch"]["supported"], true);
     assert_eq!(
         config["filter"],
         json!({ "supported": true, "maxResults": 200 })

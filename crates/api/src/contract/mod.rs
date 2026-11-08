@@ -82,7 +82,7 @@ pub use scim::{
     MAX_RESULTS as SCIM_MAX_RESULTS, ScimErrorBody, ScimServiceProviderConfig, ScimUser,
     ScimUserList, scim_url,
 };
-pub use scim_body::read_user_fields as scim_user_fields;
+pub use scim_body::{read_operations as scim_operations, read_user_fields as scim_user_fields};
 pub use session::{
     AssistantStatus, AuthOptions, Credentials, Me, MeTenant, MeUser, OrgUnitRef, PasswordUpdate,
 };

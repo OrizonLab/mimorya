@@ -38,7 +38,9 @@ struct Revoking {
     secrets: SecretStore,
     network: NetworkPolicy,
     tenant_id: Uuid,
-    user_id: Uuid,
+    /// Who let them go; none: the platform, for the company's identity
+    /// provider (ADR-183).
+    user_id: Option<Uuid>,
     revocation: Revocation,
 }
 
@@ -57,7 +59,17 @@ pub async fn revoke_all(
     revocations: Vec<Revocation>,
 ) {
     let (tenant_id, user_id) = letting_go(access);
-    // Tasks of their own: the request may be abandoned, not the revocation.
+    revoke_all_by(admin, tenant_id, Some(user_id), revocations).await;
+}
+
+/// `revoke_all`, of the company `tenant_id`, audited as let go by `by`, or
+/// by the platform.
+pub async fn revoke_all_by(
+    admin: &ConnectorAdmin<'_>,
+    tenant_id: Uuid,
+    by: Option<Uuid>,
+    revocations: Vec<Revocation>,
+) {
     let tasks: Vec<_> = revocations
         .into_iter()
         .map(|revocation| {
@@ -66,7 +78,7 @@ pub async fn revoke_all(
                 secrets: admin.secrets.clone(),
                 network: admin.connectors.network(),
                 tenant_id,
-                user_id,
+                user_id: by,
                 revocation,
             };
             tokio::spawn(revoking.run())
@@ -85,9 +97,13 @@ impl Revoking {
     async fn run(self) {
         let id = self.revocation.connector_id;
         let entry = |action: &'static str, outcome: &'static str| {
-            AuditEntry::new(self.tenant_id, "user", action, outcome)
-                .by_user(self.user_id)
-                .resource("connector", id)
+            let entry = match self.user_id {
+                Some(user_id) => {
+                    AuditEntry::new(self.tenant_id, "user", action, outcome).by_user(user_id)
+                }
+                None => AuditEntry::new(self.tenant_id, "system", action, outcome),
+            };
+            entry.resource("connector", id)
         };
         // The company's audited as soon as it is sent, whatever the
         // people's then take.

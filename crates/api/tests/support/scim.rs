@@ -76,6 +76,32 @@ pub async fn last_used(client: &Client<'_>, id: &str) -> Value {
     token.expect("token listed")["lastUsedAt"].clone()
 }
 
+/// `method` at `/scim/v2{path}` with `token`, sending `body` as SCIM does.
+pub async fn send(
+    api: &TestApi,
+    token: Option<&str>,
+    method: Method,
+    path: &str,
+    body: &Value,
+) -> TestResponse {
+    scim_as(
+        api,
+        token,
+        method,
+        path,
+        Some((SCIM_JSON, body.to_string())),
+    )
+    .await
+}
+
+/// A patch of `operations`, as Entra ID sends it.
+pub fn patch_of(operations: Value) -> Value {
+    json!({
+        "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+        "Operations": operations
+    })
+}
+
 /// An account as Entra ID sends it, at `user_name`.
 pub fn entra_user(user_name: &str, external_id: &str) -> Value {
     json!({

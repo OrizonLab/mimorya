@@ -31,7 +31,7 @@ use crate::services::AccessContext;
 use crate::services::connectors::client_secret_name;
 
 pub use persons::{take_person, take_persons_of_user};
-pub use sending::{revoke, revoke_all};
+pub use sending::{revoke, revoke_all_by};
 
 /// Authorizations of one connector taken away, with what revoking their
 /// tokens needs.

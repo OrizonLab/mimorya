@@ -25,8 +25,9 @@ pub use finish::finish_authorization;
 pub use person::{PersonServer, list_person_servers, remove_person_authorization};
 pub use person_finish::{PERSON_AUTHORIZED, attempt_holder, finish_person_authorization};
 pub use returned::{AuthorizationFailure, OAuthReturn};
+pub(crate) use revocation::Revocation;
 pub(super) use revocation::{
-    revocable_under, revoke, revoke_all, take_authorization, take_authorizations,
+    revocable_under, revoke, revoke_all_by, take_authorization, take_authorizations,
     take_persons_of_user,
 };
 pub use start::{AuthorizationStart, start_authorization, start_person_authorization};

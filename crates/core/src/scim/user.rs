@@ -45,7 +45,23 @@ pub struct NewScimUser {
 /// The account `fields` describe, or why it cannot be created, said in
 /// French for the provider's logs.
 pub fn read_new_user(fields: ScimUserFields) -> Result<NewScimUser, String> {
-    if [
+    refuse_nul(&fields)?;
+    let email = email_of(fields.user_name.as_deref())?;
+    let display_name = name_given(&fields)
+        .unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_string());
+    check_name(&display_name)?;
+    Ok(NewScimUser {
+        title: title_of(fields.title.as_deref())?,
+        external_id: external_id_of(fields.external_id)?,
+        active: fields.active.unwrap_or(true),
+        email,
+        display_name,
+    })
+}
+
+/// Refused when an attribute holds a nul character, which no text keeps.
+pub(super) fn refuse_nul(fields: &ScimUserFields) -> Result<(), String> {
+    let nul = [
         &fields.user_name,
         &fields.display_name,
         &fields.formatted_name,
@@ -56,26 +72,48 @@ pub fn read_new_user(fields: ScimUserFields) -> Result<NewScimUser, String> {
     ]
     .into_iter()
     .flatten()
-    .any(|value| value.contains('\0'))
-    {
-        return Err("Un attribut contient un caractère nul".into());
+    .any(|value| value.contains('\0'));
+    if nul {
+        return Err(NUL.into());
     }
-    let email = filled(fields.user_name.as_deref())
+    Ok(())
+}
+
+/// Why a text holding a nul character is refused.
+pub(super) const NUL: &str = "Un attribut contient un caractère nul";
+
+/// The account's address, `userName`: an e-mail address, lowercase.
+pub(super) fn email_of(user_name: Option<&str>) -> Result<String, String> {
+    filled(user_name)
         .map(str::to_lowercase)
         .filter(|email| email.chars().count() as u64 <= EMAIL_MAX_LEN && email.validate_email())
-        .ok_or("userName : l’adresse e-mail du compte, obligatoire")?;
-    let display_name = name_of(&fields, &email);
-    if let Some(problem) = display_name_problem(&display_name, WHOM) {
-        return Err(problem);
+        .ok_or_else(|| "userName : l’adresse e-mail du compte, obligatoire".into())
+}
+
+/// Why `name` cannot be the account's, if it cannot.
+pub(super) fn check_name(name: &str) -> Result<(), String> {
+    match display_name_problem(name, WHOM) {
+        Some(problem) => Err(problem),
+        None => Ok(()),
     }
-    let title = filled(fields.title.as_deref()).map(str::to_string);
+}
+
+/// The job title `title` gives: none when empty, refused when too long.
+pub(super) fn title_of(title: Option<&str>) -> Result<Option<String>, String> {
+    let title = filled(title).map(str::to_string);
     if title
         .as_deref()
         .is_some_and(|title| title.chars().count() > TITLE_MAX_CHARS)
     {
         return Err(format!("title : {TITLE_MAX_CHARS} caractères au plus"));
     }
-    let external_id = fields.external_id.filter(|id| !id.trim().is_empty());
+    Ok(title)
+}
+
+/// The provider's identifier `external_id` gives, kept exactly: none when
+/// empty, refused when too long.
+pub(super) fn external_id_of(external_id: Option<String>) -> Result<Option<String>, String> {
+    let external_id = external_id.filter(|id| !id.trim().is_empty());
     if external_id
         .as_deref()
         .is_some_and(|id| id.chars().count() > EXTERNAL_ID_MAX_CHARS)
@@ -84,23 +122,17 @@ pub fn read_new_user(fields: ScimUserFields) -> Result<NewScimUser, String> {
             "externalId : {EXTERNAL_ID_MAX_CHARS} caractères au plus"
         ));
     }
-    Ok(NewScimUser {
-        email,
-        display_name,
-        title,
-        external_id,
-        active: fields.active.unwrap_or(true),
-    })
+    Ok(external_id)
 }
 
 /// `value` trimmed, unless it is empty.
-fn filled(value: Option<&str>) -> Option<&str> {
+pub(super) fn filled(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }
 
-/// The account's name: the first the provider gives, else its address's
-/// local part.
-fn name_of(fields: &ScimUserFields, email: &str) -> String {
+/// The first name the provider gives the account: `displayName`, else
+/// `name.formatted`, else the given and family names; none if it gives none.
+pub(super) fn name_given(fields: &ScimUserFields) -> Option<String> {
     let parts = [fields.given_name.as_deref(), fields.family_name.as_deref()]
         .into_iter()
         .filter_map(filled)
@@ -110,7 +142,6 @@ fn name_of(fields: &ScimUserFields, email: &str) -> String {
         .or_else(|| filled(fields.formatted_name.as_deref()))
         .or_else(|| filled(Some(&parts)))
         .map(str::to_string)
-        .unwrap_or_else(|| email.split('@').next().unwrap_or(email).to_string())
 }
 
 #[cfg(test)]

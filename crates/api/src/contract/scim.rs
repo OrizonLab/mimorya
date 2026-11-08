@@ -166,13 +166,14 @@ pub struct ScimConfigMeta {
 }
 
 impl ScimServiceProviderConfig {
-    /// What this server supports, reached at `base`: filters on `userName`
-    /// and `externalId`, nothing of patch, bulk, sort, ETags or passwords.
+    /// What this server supports, reached at `base`: patches, filters on
+    /// `userName` and `externalId`, nothing of bulk, sort, ETags or
+    /// passwords.
     pub fn at(base: &str) -> Self {
         let no = || ScimSupported { supported: false };
         Self {
             schemas: vec![CONFIG_SCHEMA.into()],
-            patch: no(),
+            patch: ScimSupported { supported: true },
             bulk: ScimBulk {
                 supported: false,
                 max_operations: 0,

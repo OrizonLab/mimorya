@@ -55,6 +55,7 @@ pub mod relay;
 pub mod relay_faults;
 pub mod resets;
 pub mod rest;
+pub mod routes;
 pub mod runs;
 pub mod saml_provider;
 pub mod scheduled;

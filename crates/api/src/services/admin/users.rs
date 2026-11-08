@@ -1,8 +1,8 @@
 //! Accounts: creation (invited, ADR-027), profile, attributes (read by access
 //! policies) and status changes, password reset to a temporary password. A
-//! disabled account loses its sessions, its pending invitation, the
-//! accounts it linked at its company's providers (ADR-116) and its own
-//! authorizations of MCP servers, revoked once committed (ADR-174), at once.
+//! disabled account loses at once what `account_access` takes; enabled
+//! again, one the identity provider removed through SCIM is its to manage
+//! again (ADR-183).
 
 use std::collections::BTreeSet;
 
@@ -10,13 +10,11 @@ use mimorya_core::DomainError;
 use mimorya_core::authz::{AssignmentScope, OrgTree, Sensitivity};
 use mimorya_core::collaborator_attributes::normalize_attributes;
 use mimorya_core::identity_providers::email_domain;
-use mimorya_db::repositories::account_links::delete_account_links_of;
 use mimorya_db::repositories::audit::append_audit;
-use mimorya_db::repositories::gateway_identities::delete_gateway_identities_of;
-use mimorya_db::repositories::invitations::delete_invitation_of;
 use mimorya_db::repositories::role_assignments::{
     NewRoleAssignment, create_role_assignment, find_role_id,
 };
+use mimorya_db::repositories::scim_users::clear_scim_removal;
 use mimorya_db::repositories::users::{
     NewUser, UserPatch, create_user as insert_user, get_user, revoke_user_sessions,
     set_primary_unit, set_temporary_password_hash, update_user as patch_user,
@@ -26,7 +24,7 @@ use mimorya_db::{Database, TenantTx, is_unique_violation};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
-use super::connector_authorization::{revoke_all, take_persons_of_user};
+use super::account_access::{let_go, take_access};
 use super::connectors::ConnectorAdmin;
 use super::{audit_entry, begin_change, current_tree, refuse_self};
 use crate::auth::credentials::{generate_temporary_password, hash_password_async};
@@ -207,16 +205,12 @@ pub async fn update_user(
         set_primary_unit(&mut tx, tenant_id, user_id, unit).await?;
     }
     let mut revocations = Vec::new();
-    if changes.active == Some(false) {
-        revoke_user_sessions(&mut tx, user_id, None).await?;
-        delete_invitation_of(&mut tx, user_id).await?;
-        // What they granted at a provider is no longer anyone's to use (ADR-116).
-        delete_account_links_of(&mut tx, user_id).await?;
-        // Nor may their identity on a gateway speak for them (ADR-125).
-        delete_gateway_identities_of(&mut tx, user_id).await?;
-        // Nor may what they authorized MCP servers to do for them be used
-        // (ADR-174): taken now, revoked once committed.
-        revocations = take_persons_of_user(&mut tx, admin, tenant_id, user_id).await?;
+    match changes.active {
+        Some(false) => revocations = take_access(&mut tx, admin, tenant_id, user_id).await?,
+        // Enabled again, an account the identity provider removed is its
+        // again to manage (ADR-183).
+        Some(true) => clear_scim_removal(&mut tx, user_id).await?,
+        None => {}
     }
     let action = match changes.active {
         Some(true) => "user.enabled",
@@ -234,13 +228,8 @@ pub async fn update_user(
     )
     .await?;
     tx.commit().await?;
-    if !revocations.is_empty() {
-        for revocation in &revocations {
-            let connector = revocation.connector_id;
-            admin.connectors.forget_person(connector, user_id).await;
-        }
-        revoke_all(admin, access, revocations).await;
-    }
+    let by = Some(access.subject.user_id);
+    let_go(admin, tenant_id, by, user_id, revocations).await;
     Ok(())
 }
 

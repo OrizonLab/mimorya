@@ -1,6 +1,8 @@
 //! How SCIM refuses (ADR-183): as SCIM writes it, creating nothing. Without
-//! a token, any request is refused as such, whatever else is wrong with it;
-//! with one, a refused request still notes its use.
+//! a token, any request under the prefix is refused as such, whatever else
+//! is wrong with it, a method or a path it does not serve included; with
+//! one, a refused request still notes its use, and a method or a path not
+//! served is refused as SCIM refuses (405, 404).
 
 mod support;
 
@@ -161,6 +163,23 @@ async fn without_a_token_any_request_is_refused_as_such() {
         (Method::POST, "/Users", Some((SCIM_JSON, "{".to_string()))),
         (Method::POST, "/Users", Some(("text/plain", body.clone()))),
         (Method::POST, "/Users", Some((SCIM_JSON, body.clone()))),
+        // Whatever the path or the method, served or not.
+        (
+            Method::PUT,
+            "/Users/inconnu",
+            Some((SCIM_JSON, body.clone())),
+        ),
+        (
+            Method::PATCH,
+            "/Users/inconnu",
+            Some((SCIM_JSON, "{".to_string())),
+        ),
+        (Method::DELETE, "/Users/inconnu", None),
+        (Method::DELETE, "/Users", None),
+        (Method::PATCH, "/ServiceProviderConfig", None),
+        (Method::GET, "/Users/%FF", None),
+        (Method::GET, "/Groups", None),
+        (Method::POST, "/Bulk", Some((SCIM_JSON, "{}".to_string()))),
     ] {
         for token in [None, Some("msc_inconnu")] {
             let refused = scim_as(&api, token, method.clone(), path, body.clone()).await;
@@ -205,6 +224,24 @@ async fn a_refused_request_still_notes_the_token_s_use() {
             "/Users".to_string(),
             Some((SCIM_JSON, unnamed.clone())),
         ),
+        (
+            Method::PATCH,
+            format!("/Users/{}", Uuid::new_v4()),
+            Some((SCIM_JSON, json!({ "Operations": [] }).to_string())),
+        ),
+        (
+            Method::PUT,
+            format!("/Users/{}", user::PAUL),
+            Some((
+                SCIM_JSON,
+                json!({ "userName": "autre@neo-maintenance.example" }).to_string(),
+            )),
+        ),
+        (Method::DELETE, format!("/Users/{}", Uuid::new_v4()), None),
+        // A method or a path it does not serve.
+        (Method::DELETE, "/Users".to_string(), None),
+        (Method::GET, "/Users/%FF".to_string(), None),
+        (Method::GET, "/Groups".to_string(), None),
     ] {
         // Its only request, refused.
         let (id, secret) = made(&paul, "Fournisseur refusé").await;
@@ -219,4 +256,29 @@ async fn a_refused_request_still_notes_the_token_s_use() {
         assert!(last_used(&paul, &id).await.is_string(), "{method} {path}");
         removed(&paul, &id).await;
     }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn what_the_prefix_does_not_serve_is_refused_as_scim_refuses() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let (id, secret) = made(&paul, "Fournisseur égaré").await;
+    let token = Some(secret.as_str());
+    for (method, path, status) in [
+        (Method::DELETE, "/Users", StatusCode::METHOD_NOT_ALLOWED),
+        (
+            Method::PUT,
+            "/ServiceProviderConfig",
+            StatusCode::METHOD_NOT_ALLOWED,
+        ),
+        (Method::GET, "/Groups", StatusCode::NOT_FOUND),
+        (Method::GET, "/Users/%FF", StatusCode::NOT_FOUND),
+        (Method::GET, "/Users/inconnu/plus", StatusCode::NOT_FOUND),
+    ] {
+        let refused = scim_as(&api, token, method.clone(), path, None).await;
+        assert_eq!(refusal(&refused), (status, Value::Null), "{method} {path}");
+    }
+    assert!(last_used(&paul, &id).await.is_string());
+    removed(&paul, &id).await;
 }

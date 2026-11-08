@@ -64,6 +64,24 @@ impl ScimError {
         Self::new(StatusCode::CONFLICT, Some("uniqueness"), detail)
     }
 
+    pub fn mutability(detail: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, Some("mutability"), detail)
+    }
+
+    /// A path under the SCIM prefix that serves nothing.
+    pub fn no_such_path() -> Self {
+        Self::new(StatusCode::NOT_FOUND, None, "Ressource SCIM introuvable")
+    }
+
+    /// A method the path does not serve.
+    pub fn method_not_allowed() -> Self {
+        Self::new(
+            StatusCode::METHOD_NOT_ALLOWED,
+            None,
+            "Méthode non servie à cette adresse",
+        )
+    }
+
     pub fn status(&self) -> StatusCode {
         self.status
     }

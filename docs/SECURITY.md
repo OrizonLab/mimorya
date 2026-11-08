@@ -334,7 +334,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   l'entreprise du jeton se cherche hors d'elle, `auth_scim_token`). Un compte créé n'a
   que le rôle de base sur ses propres données, sans mot de passe, et jamais à une adresse
   d'un domaine qu'une autre entreprise a prouvé ; un filtre autre que `userName eq` ou
-  `externalId eq` est refusé plutôt que lu approximativement.
+  `externalId eq` est refusé plutôt que lu approximativement. Il change le nom, la fonction,
+  l'identifiant du fournisseur et l'état actif d'un compte, jamais son adresse, ce qui
+  empêche la prise d'un compte par un lien de réinitialisation détourné. Un compte
+  désactivé par SCIM perd aussitôt ce qu'une désactivation par l'administration lui
+  retire. Supprimé, il est désactivé et sort de la vue de SCIM, son adresse et son
+  `externalId` restant pris, jusqu'à ce qu'un administrateur le réactive. Le fournisseur
+  est la source de l'état des comptes qu'il gère : il peut réactiver un compte désactivé
+  par un administrateur et désactiver un administrateur, comme un administrateur le
+  peut ; un compte de secours non assigné à l'application garde l'administration hors
+  de sa portée (ADR-183).
 - Limitation de débit sur la connexion :
   - **par compte** : 10 échecs par quart d'heure et par adresse e-mail, comptes
     inconnus compris (rien ne distingue un compte existant). Chaque tentative réserve
