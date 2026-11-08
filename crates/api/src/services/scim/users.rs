@@ -1,25 +1,26 @@
 //! The company's accounts as its identity provider reads and creates them
-//! through SCIM (ADR-183). It reads every account of the company, page by
-//! page in the order they were made, or the one its filter names (its
-//! address, or its own identifier of it), or one by its identifier; an
-//! account of another company is not there. It creates an account as an
-//! administrator would (ADR-027), but active, without a password: the person
-//! signs in through the company's identity provider (ADR-063); without one,
-//! an administrator gives it a temporary password (it has none to forget,
-//! so « Mot de passe oublié » sends nothing, ADR-028). The account receives
-//! the base role on its own data, nothing more: no unit, no other role, the
-//! default clearance. Never at an address another company holds or of a
-//! domain it proved (ADR-069), nor with an identifier the provider already
-//! gave another account. The creation is audited by the platform
-//! (`system`), naming the token, never its secret.
+//! through SCIM (ADR-183). It reads every account of the company but those
+//! it removed, page by page in the order they were made, or the one its
+//! filter names (its address, or its own identifier of it), or one by its
+//! identifier; an account of another company is not there. It creates an
+//! account as an administrator would (ADR-027), but active, without a
+//! password: the person signs in through the company's identity provider
+//! (ADR-063); without one, an administrator gives it a temporary password
+//! (it has none to forget, so « Mot de passe oublié » sends nothing,
+//! ADR-028). The account receives the base role on its own data, nothing
+//! more: no unit, no other role, the default clearance. Never at an address
+//! another company holds or of a domain it proved (ADR-069), nor with an
+//! identifier the provider already gave another account, removed or not.
+//! The creation is audited by the platform (`system`), naming the token,
+//! never its secret.
 
 use mimorya_core::identity_providers::email_domain;
 use mimorya_core::scim::{UserFilter, parse_user_filter, read_new_user};
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::scim_users::{
-    ScimUserRow, count_scim_users, create_provisioned_user, scim_user, scim_user_by_email,
-    scim_user_by_external_id, scim_users_page, tie_external_id,
+    ScimUserRow, count_scim_users, create_provisioned_user, external_id_taken, scim_user,
+    scim_user_by_email, scim_user_by_external_id, scim_users_page, tie_external_id,
 };
 use mimorya_db::repositories::verified_domains::domain_held_elsewhere;
 use serde_json::{Value, json};
@@ -148,10 +149,9 @@ pub async fn create_scim_user(
         );
         return refuse(tx, refused).await;
     }
+    // A removed account keeps its identifier, as its address.
     if let Some(external_id) = &new.external_id
-        && scim_user_by_external_id(&mut tx, external_id)
-            .await?
-            .is_some()
+        && external_id_taken(&mut tx, None, external_id).await?
     {
         let refused = ScimError::uniqueness("Cet externalId est déjà celui d’un autre compte");
         return refuse(tx, refused).await;

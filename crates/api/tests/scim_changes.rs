@@ -107,6 +107,14 @@ async fn the_provider_changes_an_account_never_its_address() {
         "{}",
         removed.text()
     );
+    // Only attributes no one keeps: the account as it was, nothing audited.
+    let latest = audit_log(&paul).await[0]["id"].clone();
+    let department = "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department";
+    let unkept = patch_of(json!([{ "op": "Replace", "path": department, "value": "Paris" }]));
+    let same = send(&api, token, Method::PATCH, &path, &unkept).await;
+    assert_eq!(same.status, StatusCode::OK, "{}", same.text());
+    assert_eq!(same.json()["meta"], removed.json()["meta"]);
+    assert_eq!(audit_log(&paul).await[0]["id"], latest);
 
     // Its address is the account's for good: another one is refused, and
     // nothing changes.
@@ -286,6 +294,15 @@ async fn a_removed_account_is_out_of_sight_until_enabled_again() {
     // with it.
     let again = create(&api, token, &entra_user(address, "retire-2")).await;
     assert_eq!(refusal(&again), (StatusCode::CONFLICT, json!("uniqueness")));
+    // Nor its identifier, given another account at another address.
+    let elsewhere = "retire.ailleurs@neo-maintenance.example";
+    let reused = create(&api, token, &entra_user(elsewhere, "retire")).await;
+    assert_eq!(
+        refusal(&reused),
+        (StatusCode::CONFLICT, json!("uniqueness"))
+    );
+    let filter = "/Users?filter=userName%20eq%20%22retire.ailleurs%40neo-maintenance.example%22";
+    assert_eq!(get(&api, token, filter).await.json()["totalResults"], 0);
 
     // Enabled again by an administrator, it is there again.
     let enabled = paul

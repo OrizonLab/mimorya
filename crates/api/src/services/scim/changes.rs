@@ -111,6 +111,13 @@ async fn change(
     if let Some(problem) = refusal(&mut tx, &row, &changes).await? {
         return refuse(tx, problem).await;
     }
+    let changed = changed(&changes);
+    if changed.is_empty() {
+        // Only attributes no one keeps: the account is as it was, its last
+        // change and the audit untouched; the token's use is noted.
+        tx.commit().await?;
+        return Ok(ScimUser::of(&row, base));
+    }
     let tenant_id = caller.tenant_id;
     let was_disabled = row.status == "disabled";
     let status = match changes.active {
@@ -137,7 +144,7 @@ async fn change(
         Some(_) => "user.enabled",
         None => "user.updated",
     };
-    let details = json!({ "changed": changed(&changes) });
+    let details = json!({ "changed": changed });
     append_audit(&mut tx, audited(&caller, action, row.id, details)).await?;
     let row = scim_user(&mut tx, row.id)
         .await?
@@ -171,7 +178,7 @@ async fn refusal(
         )));
     }
     if let Some(Some(external_id)) = &changes.external_id
-        && external_id_taken(tx, row.id, external_id).await?
+        && external_id_taken(tx, Some(row.id), external_id).await?
     {
         return Ok(Some(ScimError::uniqueness(
             "Cet externalId est déjà celui d’un autre compte",

@@ -137,16 +137,18 @@ pub async fn tie_external_id(
 }
 
 /// Whether the company ties the provider's identifier `external_id` to an
-/// account other than `user_id`, removed or not.
+/// account, other than `except` when it names one, removed or not: a removed
+/// account keeps its identifier until an administrator enables it again.
 pub async fn external_id_taken(
     conn: &mut PgConnection,
-    user_id: Uuid,
+    except: Option<Uuid>,
     external_id: &str,
 ) -> sqlx::Result<bool> {
     sqlx::query_scalar(
-        "select exists (select 1 from scim_accounts where external_id = $2 and user_id <> $1)",
+        "select exists (select 1 from scim_accounts \
+         where external_id = $2 and user_id is distinct from $1)",
     )
-    .bind(user_id)
+    .bind(except)
     .bind(external_id)
     .fetch_one(conn)
     .await

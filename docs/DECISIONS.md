@@ -12254,7 +12254,17 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     plus le changer (404). Aucun compte n'est supprimé, et son adresse reste prise. Le
     fournisseur ne peut donc pas créer un autre compte à cette adresse : celui qui la
     recevrait hériterait de la mémoire, des conversations et des rôles du précédent.
-    Réactivé par l'administration, le compte redevient visible pour SCIM ;
+    Il garde aussi son `externalId` : aucun autre compte, créé ou changé, ne peut le
+    recevoir. Réactivé par l'administration, le compte redevient visible pour SCIM ;
+  - **le fournisseur est la source de l'état des comptes qu'il gère**. Il peut
+    réactiver un compte qu'un administrateur a désactivé, et désactiver tout compte de
+    l'entreprise, administrateurs compris, comme le peut un administrateur (seul son
+    propre compte lui est refusé). Entra ID et Okta n'agissent que sur les personnes
+    assignées à l'application : un compte de secours qu'ils ne gèrent pas garde
+    l'administration hors de leur portée. Un jeton vaut la permission `user:manage`,
+    c'est pourquoi seuls ceux qui la détiennent pour toute l'entreprise en font ;
+  - un patch qui ne touche que des attributs non gardés ne change rien : ni la date
+    du dernier changement, ni l'audit. Seul l'usage du jeton est noté ;
   - **le jeton d'abord, partout sous le préfixe** :
     - une méthode non servie (405) ;
     - un chemin inconnu, comme `/scim/v2/Groups` (404) ;
@@ -12273,12 +12283,15 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       - adresse refusée et `externalId` d'un autre compte refusé ;
       - désactivation qui coupe la session sur-le-champ, réactivation ;
       - suppression qui retire le compte de la vue de SCIM jusqu'à ce que
-        l'administration le réactive ;
+        l'administration le réactive, son `externalId` refusé à un autre compte ;
+      - patch d'attributs non gardés, sans changement ni audit ;
     - `crates/api/tests/scim_disabling.rs` :
       - autorisations MCP révoquées au nom de la plateforme ;
       - le jeton d'une autre entreprise ne change rien ;
     - `crates/api/tests/scim_refusals.rs` : méthodes et chemins non servis, avec et
       sans jeton ;
     - `crates/core/src/scim/changes.rs` : opérations lues et refusées ;
+    - `crates/api/tests/scim_isolation.rs` : une session ne change ni ne supprime
+      aucun compte par SCIM ;
   - suites de l'audit de la PR #220 : les inventaires de routes de `first_login.rs`
     sont rangés dans `crates/api/tests/support/routes.rs`.

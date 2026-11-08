@@ -1,8 +1,9 @@
 //! What a SCIM token reaches (ADR-183): its company's accounts only, never
 //! another's, by identifier, address or page; nothing while its company is
-//! suspended. A session proves nothing to SCIM, header or not; the
-//! administration's routes keep asking for the header. No account is
-//! created at an address of a domain another company proved (ADR-069).
+//! suspended. A session proves nothing to SCIM, header or not, to read,
+//! create, change or remove an account; the administration's routes keep
+//! asking for the header. No account is created at an address of a domain
+//! another company proved (ADR-069).
 
 mod support;
 
@@ -12,7 +13,7 @@ use mimorya_core::demo::user;
 use serde_json::{Value, json};
 use support::accounts::{INVITED_PASSWORD, accept};
 use support::queue::as_owner;
-use support::scim::{SCIM_JSON, TOKENS, create, entra_user, get, made, refusal, scim_as};
+use support::scim::{SCIM_JSON, TOKENS, create, entra_user, get, made, patch_of, refusal, scim_as};
 use support::{TestApi, companies};
 
 /// The addresses of every account the token `secret` lists.
@@ -227,6 +228,24 @@ async fn a_session_proves_nothing_to_scim() {
     ));
     let created = scim_as(&api, Some(&secret), Method::POST, "/Users", body).await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
+    // Paul's session changes no account through SCIM either.
+    let account = format!("/Users/{}", created.json()["id"].as_str().unwrap());
+    let disabling = patch_of(json!([{ "op": "replace", "path": "active", "value": false }]));
+    let scim_path = format!("/scim/v2{account}");
+    for refused in [
+        paul.patch(&scim_path, disabling).await,
+        paul.put(&scim_path, json!({ "active": false })).await,
+        paul.delete(&scim_path).await,
+    ] {
+        assert_eq!(
+            refused.status,
+            StatusCode::UNAUTHORIZED,
+            "{}",
+            refused.text()
+        );
+    }
+    let still = get(&api, Some(&secret), &account).await;
+    assert_eq!(still.json()["active"], true, "{}", still.text());
     for path in [TOKENS, "/scim/v2", "/scimv2/Users", "/admin/scim/v2/Users"] {
         let request = Request::post(path)
             .header("authorization", format!("Bearer {secret}"))
