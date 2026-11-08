@@ -18,6 +18,8 @@ use support::retention::{account, disabled_days_ago, memory, owner, purged_entri
 use support::{TestApi, companies};
 use uuid::Uuid;
 
+const PURGED: &str = "memory.purged";
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn memories_past_their_retention_go_each_company_told() {
@@ -130,13 +132,13 @@ async fn memories_past_their_retention_go_each_company_told() {
     assert_eq!(told[0]["actorType"], "system");
     assert_eq!(told[0]["metadata"], json!({ "aged": 3, "departed": 1 }));
     assert_eq!(
-        purged_entries(acme.tenant_id).await,
+        purged_entries(acme.tenant_id, PURGED).await,
         [json!({ "aged": 1, "departed": 0 })]
     );
 
     // Nothing more to delete: nothing more told.
     let again = apply_retention(db).await.unwrap().unwrap();
     assert!(again.memories.is_empty(), "{again:?}");
-    assert_eq!(purged_entries(neo).await.len(), 1);
-    assert_eq!(purged_entries(acme.tenant_id).await.len(), 1);
+    assert_eq!(purged_entries(neo, PURGED).await.len(), 1);
+    assert_eq!(purged_entries(acme.tenant_id, PURGED).await.len(), 1);
 }

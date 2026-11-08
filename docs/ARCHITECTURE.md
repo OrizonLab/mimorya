@@ -407,7 +407,9 @@ Défense en profondeur (détails : [SECURITY.md](SECURITY.md)) :
    connecte avec un rôle **sans** `BYPASSRLS` et non propriétaire des tables. Sans
    `app.tenant_id`, aucune ligne n'est visible. Les clés étrangères entre tables
    d'entreprise comparent `(tenant_id, id)` : une ligne ne peut pointer, par une clé
-   étrangère, vers celle d'une autre entreprise (ADR-167).
+   étrangère, vers celle d'une autre entreprise (ADR-167) ; le run qu'une entrée
+   d'audit nomme est vérifié de même à son écriture, par un déclencheur qui le laisse
+   partir ensuite avec sa conversation (ADR-186).
 3. **Moteur** : `AuthorizationEngine.check` refuse toute ressource d'une autre
    entreprise avant toute autre règle.
 4. **Tests** : suites d'intégration qui tentent des lectures croisées et des références
