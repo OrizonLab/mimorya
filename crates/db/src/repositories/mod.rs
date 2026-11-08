@@ -56,6 +56,7 @@ pub mod password_resets;
 pub mod policy_proposal_notices;
 pub mod policy_proposals;
 pub mod rate_limits;
+pub mod retention;
 pub mod role_assignments;
 pub mod roles;
 pub mod run_events;

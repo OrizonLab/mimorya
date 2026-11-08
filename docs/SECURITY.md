@@ -856,7 +856,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - **Provisionnement SCIM** (ADR-183) : l'identifiant que le fournisseur d'identité donne
   à un compte (`externalId`) est gardé avec le compte et supprimé avec lui ; le reste de
   ce que le fournisseur envoie (service, téléphone…) n'est ni lu ni gardé.
-- **Rétention** paramétrable (voir [DATA_MODEL.md](DATA_MODEL.md) §5).
+- **Rétention** (voir [DATA_MODEL.md](DATA_MODEL.md) §5, ADR-185) : appliquée chaque heure
+  aux sessions finies depuis 30 jours (adresse et navigateur compris), aux mémoires
+  épisodiques d'un an et à celles passées leur terme, aux mémoires personnelles d'un compte
+  désactivé depuis 30 jours ; chaque entreprise qui perd des mémoires le trouve dans son
+  journal d'audit, sans le contenu. À venir : le paramétrage par entreprise, la purge des
+  messages anciens, du journal d'audit (qui devra rester vérifiable, ADR-178) et de la
+  consommation, gardés sans limite en attendant.
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.
 - **Hébergement** : SaaS en UE ; installation privée possible.

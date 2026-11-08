@@ -12355,3 +12355,84 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
   - tests : `apps/web/e2e/scim-tokens.spec.ts` (relecture de l'annuaire retenue :
     l'annuaire verrouillé, pas l'avis ; relecture échouée : l'avis et son secret
     restent). Ce test échoue sur l'ancienne disposition.
+
+## ADR-185 — Rétention appliquée : sessions, mémoires épisodiques et mémoires des comptes partis (lot 54a)
+
+- **Statut** : accepté (2026-11-08).
+- **Contexte** : `DATA_MODEL.md` §5 annonçait des durées de rétention que rien
+  n'appliquait, et `SECURITY.md` une « rétention paramétrable » qui n'existait pas :
+  - les sessions finies (révoquées ou expirées) restaient, avec l'adresse et le
+    navigateur de qui s'était connecté ;
+  - les mémoires épisodiques restaient sans limite ;
+  - les mémoires personnelles d'un compte désactivé restaient aussi, et rien ne datait
+    sa désactivation.
+- **Décision** :
+  - **la base date elle-même la désactivation d'un compte** (`users.disabled_at`,
+    migration 0082) :
+    - un déclencheur la pose quand le compte devient désactivé, qu'il le soit par
+      l'administration, par SCIM ou par l'exploitant, et la garde s'il l'est de
+      nouveau ;
+    - il l'efface quand le compte est réactivé ;
+    - à chaque instruction qui nomme le statut ou la date, c'est le déclencheur qui
+      la fixe : une instruction ne la change pas, et une mise à jour qui ne nomme ni
+      l'un ni l'autre (la dernière connexion) ne le réveille pas ;
+    - les comptes déjà désactivés comptent à partir de la migration ;
+  - **une passe horaire** (`plugins/retention.rs`), lancée par la maintenance dès le
+    démarrage, dans un processus à la fois (verrou `retention`, ADR-086), supprime :
+    - les sessions finies depuis plus de 30 jours, par révocation, par inactivité ou à
+      leur terme absolu (`system_purge_ended_sessions`) ;
+    - les mémoires épisodiques enregistrées il y a plus d'un an, et toute mémoire
+      passée son propre terme (`expires_at`) ;
+    - les mémoires personnelles d'un compte désactivé depuis plus de 30 jours
+      (`system_purge_retained_memories`) : deux suppressions de mémoires disjointes,
+      les anciennes par leurs propres index, celles des comptes partis à partir de ces
+      comptes (index partiel `users_departed`), de sorte que la passe ne lit pas toutes
+      les mémoires personnelles ; une mémoire à la fois ancienne et d'un compte parti
+      est comptée `aged` ;
+
+    chaque purge est tentée quoi qu'il advienne de l'autre, son échec journalisé ;
+
+  - **les durées sont celles de la base** : les fonctions ne prennent aucun paramètre.
+    L'application ne peut donc pas purger plus tôt (comme ADR-152 pour les limites de
+    débit) ;
+  - **chaque entreprise qui perd des mémoires le trouve dans son journal d'audit**,
+    écrit par la plateforme dans la même instruction que la suppression, si bien que
+    l'une ne va jamais sans l'autre :
+    - action `memory.purged` ;
+    - nombres seuls : `aged` (épisodes et termes passés) et `departed` (comptes
+      partis) ;
+    - jamais le contenu ni les titres.
+
+    Les sessions ne sont pas tracées : ce sont des données techniques, comme les
+    autres purges de la maintenance.
+- **Conséquences** :
+  - un compte réactivé avant les 30 jours retrouve sa mémoire personnelle ; après, elle
+    est perdue ;
+  - restent à venir, gardés sans limite en attendant et dits tels dans `DATA_MODEL.md`
+    §5, `SECURITY.md` et la feuille de route :
+    - le paramétrage des durées par entreprise ;
+    - la purge des messages et des événements de run, plus délicate parce que le
+      rôle applicatif ne supprime ni conversation ni run, que le journal d'audit les
+      référence et que leur résumé les couvre ;
+    - celle du journal d'audit (5 ans), qui devra garder la chaîne vérifiable
+      (ADR-178), et celle de la consommation (5 ans) ;
+    - des suppressions par lots, si une première passe sur une base ancienne devait
+      en emporter trop d'un coup ;
+  - une passe qui n'a pas pu prendre son verrou (erreur de la base) est retentée à la
+    minute suivante ; une passe faite, ici ou par un autre processus, attend l'heure ;
+  - suite de l'audit de la PR #223 : la carte « Provisionnement SCIM » est séparée de
+    ce qui la précède par une marge ;
+  - tests :
+    - `crates/api/tests/retention.rs` : désactivation datée par l'administration et à
+      la création, inchangée par une instruction, oubliée à la réactivation ; sessions
+      finies depuis 31 jours supprimées, depuis 29 jours gardées, la session en cours
+      intacte ; aucune passe quand un autre processus en tient une ; la maintenance
+      applique la rétention dès son démarrage (ce test échoue sans son appel) ;
+    - `crates/api/tests/retention_memories.rs` : mémoires supprimées et gardées selon
+      leur âge, leur terme et le départ de leur titulaire, l'ancienne d'un compte parti
+      comptée `aged` ; deux entreprises, chacune avec sa seule entrée d'audit et ses
+      nombres, sans contenu ; aucune entrée nouvelle sans rien à supprimer. Ces
+      tests lancent un processus sans maintenance (rôle `api`) : ils jouent la passe
+      eux-mêmes ;
+    - `plugins/retention.rs` : la passe au premier appel, puis une fois l'heure ;
+    - `crates/db/tests/definer_functions.rs` : les deux nouvelles fonctions.
