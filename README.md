@@ -135,7 +135,10 @@ depuis l'onglet « Journal d'audit » de son administration, contre les ancres q
 gardées (ADR-179), et le fait lire par son SIEM avec un jeton d'export, page après page
 (`GET /api/audit/export`, sans `seal` au départ, puis `?after=<place>&seal=<sceau de cette
 place>`, `Authorization: Bearer mae_…` ; une place que la chaîne restaurée ne porte plus
-est refusée, ADR-181), ses jetons gérés depuis le même onglet (ADR-182). Le
+est refusée, ADR-181), ses jetons gérés depuis le même onglet (ADR-182). Le fournisseur d'identité de l'entreprise (Entra ID, Okta…) peut créer et lire ses
+comptes par SCIM 2.0 à `<adresse de l'application>/api/scim/v2`, avec un jeton SCIM
+(`Authorization: Bearer msc_…`) fait par un administrateur des comptes
+(`POST /api/admin/scim/tokens`, ADR-183). Le
 lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal
 sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
 l'administration. Lancez ces commandes dans un terminal (par exemple

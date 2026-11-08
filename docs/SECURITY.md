@@ -107,7 +107,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 /gateways/slack/{id}`, chemin exact, identifiant en forme canonique, ADR-125), que
   leur signature seule prouve, et les mises à jour que Telegram envoie au bot d'une
   entreprise (`POST /gateways/telegram/{id}`, chemin exact, ADR-133), que le secret de
-  son webhook seul prouve.
+  son webhook seul prouve. Les requêtes que le fournisseur d'identité de l'entreprise envoie par SCIM
+  (tout le préfixe `/scim/v2/`, ADR-183) en sont aussi dispensées, que son jeton seul
+  prouve : aucune route de ce préfixe ne lit de session.
 - Passerelle Slack (ADR-125) : une requête de Slack nomme sa passerelle, puis prouve
   qu'elle vient de l'application de l'entreprise par sa signature (HMAC-SHA256 du corps
   et de l'horodatage avec le secret de signature scellé, comparée en temps constant, à
@@ -323,6 +325,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   ou d'une entreprise suspendue répond de même (401) ; une session n'en tient pas lieu.
   Il ne lit que les entrées scellées de son entreprise, sous la RLS : seule l'entreprise
   du jeton se cherche hors d'elle (`auth_audit_export_token`).
+- Provisionnement SCIM (ADR-183) : le fournisseur d'identité de l'entreprise crée et lit
+  ses comptes avec un jeton SCIM (`Authorization: Bearer`, `msc_` et 256 bits, gardé en
+  empreinte SHA-256, montré une fois, jamais journalisé ni audité), fait par qui gère les
+  comptes de toute l'entreprise (`user:manage`), cinq au plus. Un jeton absent, inconnu,
+  retiré ou d'une entreprise suspendue répond de même (401) ; une session n'en tient pas
+  lieu. Il ne lit et ne crée que des comptes de son entreprise, sous la RLS (seule
+  l'entreprise du jeton se cherche hors d'elle, `auth_scim_token`). Un compte créé n'a
+  que le rôle de base sur ses propres données, sans mot de passe, et jamais à une adresse
+  d'un domaine qu'une autre entreprise a prouvé ; un filtre autre que `userName eq` ou
+  `externalId eq` est refusé plutôt que lu approximativement.
 - Limitation de débit sur la connexion :
   - **par compte** : 10 échecs par quart d'heure et par adresse e-mail, comptes
     inconnus compris (rien ne distingue un compte existant). Chaque tentative réserve
@@ -831,6 +843,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   responsable du traitement, le décide par un administrateur habilité (`audit:export`)
   et répond de leur conservation dans son outil. Ce qui est exporté ne s'efface plus
   depuis la plateforme.
+- **Provisionnement SCIM** (ADR-183) : l'identifiant que le fournisseur d'identité donne
+  à un compte (`externalId`) est gardé avec le compte et supprimé avec lui ; le reste de
+  ce que le fournisseur envoie (service, téléphone…) n'est ni lu ni gardé.
 - **Rétention** paramétrable (voir [DATA_MODEL.md](DATA_MODEL.md) §5).
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.

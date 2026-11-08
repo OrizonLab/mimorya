@@ -10,7 +10,9 @@
 //! (ADR-133); and an activity the Bot Framework sends a company's Teams
 //! bot, which the token Microsoft signs it with alone proves (ADR-138).
 //! The latter four's paths are matched whole, their identifier in canonical
-//! form.
+//! form. And the changes a company's identity provider sends through SCIM,
+//! which its token alone proves (ADR-183): every path under the SCIM prefix
+//! is the provider's, none reads a session.
 
 use axum::extract::{Request, State};
 use axum::http::Method;
@@ -22,8 +24,8 @@ use mimorya_core::DomainError;
 use crate::app::AppState;
 use crate::http::ApiError;
 use crate::routes::{
-    HOOK_DELIVERY_PREFIX, SAML_ACS_ROUTE, SLACK_EVENTS_PREFIX, TEAMS_ACTIVITIES_PREFIX,
-    TELEGRAM_UPDATES_PREFIX,
+    HOOK_DELIVERY_PREFIX, SAML_ACS_ROUTE, SCIM_PREFIX, SLACK_EVENTS_PREFIX,
+    TEAMS_ACTIVITIES_PREFIX, TELEGRAM_UPDATES_PREFIX,
 };
 use uuid::Uuid;
 
@@ -40,6 +42,7 @@ pub async fn csrf_protection(
         Method::GET | Method::HEAD | Method::OPTIONS
     ) || path == SAML_ACS_ROUTE
         || (*request.method() == Method::POST && (is_hook_delivery(path) || is_gateway_event(path)))
+        || is_scim(path)
     {
         return next.run(request).await;
     }
@@ -54,6 +57,11 @@ pub async fn csrf_protection(
         return ApiError::from(DomainError::forbidden("Origine non autorisée")).into_response();
     }
     next.run(request).await
+}
+
+/// Whether `path` is the identity provider's, under the SCIM prefix.
+fn is_scim(path: &str) -> bool {
+    path.starts_with(SCIM_PREFIX)
 }
 
 /// Whether `path` is a delivery to an inbound hook: the prefix, then a
@@ -82,7 +90,7 @@ fn names_one(path: &str, prefix: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_gateway_event, is_hook_delivery};
+    use super::{is_gateway_event, is_hook_delivery, is_scim};
 
     #[test]
     fn only_a_hook_s_own_path_goes_without_the_header() {
@@ -139,5 +147,25 @@ mod tests {
         // Neither reaches the other's.
         assert!(!is_hook_delivery(&format!("/gateways/slack/{id}")));
         assert!(!is_gateway_event(&format!("/hooks/{id}")));
+    }
+
+    #[test]
+    fn only_the_scim_prefix_goes_without_the_header() {
+        assert!(is_scim("/scim/v2/Users"));
+        assert!(is_scim(
+            "/scim/v2/Users/0b9c4c1e-7a4f-4f7e-9d1c-2a3b4c5d6e7f"
+        ));
+        for path in [
+            "/scim/v2",
+            "/scim/v1/Users",
+            "/scimx/v2/Users",
+            "/scim/V2/Users",
+            "/admin/scim/tokens",
+            "/admin/scim/v2/Users",
+            "//scim/v2/Users",
+            "/users",
+        ] {
+            assert!(!is_scim(path), "{path}");
+        }
     }
 }

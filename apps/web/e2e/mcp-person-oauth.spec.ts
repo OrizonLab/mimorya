@@ -114,8 +114,9 @@ test('each person authorizes a server for themself, told to by their run', async
     marc.getByText('Le planning est inchangé : la validation a été refusée.'),
   ).toBeVisible({ timeout: 30_000 });
 
-  // There and back from his account: authorized, said once.
-  await marc.getByRole('link', { name: /Mon compte/ }).click();
+  // There and back from his account, through the sidebar (the notice's
+  // link may still be shown): authorized, said once.
+  await marc.getByRole('link', { name: /Mon compte ·/ }).click();
   await expect(marc).toHaveURL(/\/account$/);
   const row = marc.getByRole('region', { name: SERVER });
   await expect(row.getByText('Non autorisé', { exact: true })).toBeVisible();

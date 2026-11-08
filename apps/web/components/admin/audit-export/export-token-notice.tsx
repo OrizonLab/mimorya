@@ -1,7 +1,7 @@
 'use client';
 
 import { SecretNotice } from '@/components/ui';
-import type { AuditExportTokenCreated } from '@/lib/api';
+import type { BearerTokenCreated } from '@/lib/api';
 
 /**
  * An export token just made: shown this once (the API keeps only its
@@ -13,7 +13,7 @@ export function ExportTokenNotice({
   exportUrl,
   onClose,
 }: {
-  made: AuditExportTokenCreated;
+  made: BearerTokenCreated;
   exportUrl: string;
   onClose: () => void;
 }) {

@@ -263,6 +263,9 @@ const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/admin/audit/export-tokens"),
     ("POST", "/admin/audit/export-tokens"),
     ("DELETE", "/admin/audit/export-tokens/{id}"),
+    ("GET", "/admin/scim/tokens"),
+    ("POST", "/admin/scim/tokens"),
+    ("DELETE", "/admin/scim/tokens/{id}"),
     ("GET", "/admin/usage"),
 ];
 
@@ -305,6 +308,10 @@ const OTHER_ROUTES: &[(&str, &str)] = &[
     ("GET", "/health"),
     ("POST", "/hooks/{id}"),
     ("GET", "/audit/export"),
+    ("GET", "/scim/v2/ServiceProviderConfig"),
+    ("GET", "/scim/v2/Users"),
+    ("POST", "/scim/v2/Users"),
+    ("GET", "/scim/v2/Users/{id}"),
     ("POST", "/gateways/slack/{id}"),
     ("POST", "/gateways/telegram/{id}"),
     ("POST", "/gateways/teams/{id}"),

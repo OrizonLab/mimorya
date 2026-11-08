@@ -23,6 +23,8 @@ mod person_authorizations;
 mod run_stream;
 mod runs;
 mod scheduled_tasks;
+mod scim;
+mod scim_body;
 mod session;
 mod sso;
 mod stored;
@@ -75,6 +77,12 @@ pub use scheduled_tasks::{
     LastOccurrence, NewScheduledTask, OccurrenceOutcome, ScheduledTask, ScheduledTaskList,
     ScheduledTaskUpdate,
 };
+pub use scim::{
+    ERROR_SCHEMA as SCIM_ERROR_SCHEMA, LIST_SCHEMA as SCIM_LIST_SCHEMA,
+    MAX_RESULTS as SCIM_MAX_RESULTS, ScimErrorBody, ScimServiceProviderConfig, ScimUser,
+    ScimUserList, scim_url,
+};
+pub use scim_body::read_user_fields as scim_user_fields;
 pub use session::{
     AssistantStatus, AuthOptions, Credentials, Me, MeTenant, MeUser, OrgUnitRef, PasswordUpdate,
 };
@@ -160,8 +168,13 @@ pub fn typescript() -> String {
     declarations.add::<admin::AuditLog>();
     declarations.add::<admin::AuditChainVerification>();
     declarations.add::<admin::AuditExportTokens>();
-    declarations.add::<admin::AuditExportTokenCreated>();
+    declarations.add::<admin::BearerTokenCreated>();
+    declarations.add::<admin::ScimTokens>();
     declarations.add::<AuditExport>();
+    declarations.add::<ScimUser>();
+    declarations.add::<ScimUserList>();
+    declarations.add::<ScimErrorBody>();
+    declarations.add::<ScimServiceProviderConfig>();
     declarations.add::<admin::UsageSummary>();
     declarations.add::<ErrorBody>();
     macro_rules! declare {
@@ -240,7 +253,7 @@ macro_rules! request_bodies {
             admin::DomainProofRequest,
             admin::ApprovalRoutingUpdate,
             admin::AuditChainCheck,
-            admin::NewAuditExportToken
+            admin::NewBearerToken
         )
     };
 }

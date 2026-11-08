@@ -15,9 +15,9 @@
 import type { Page } from '@playwright/test';
 import type {
   AuditExport,
-  AuditExportTokenCreated,
+  BearerTokenCreated,
   AuditExportTokens,
-  NewAuditExportToken,
+  NewBearerToken,
 } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
@@ -52,10 +52,10 @@ async function openTab(page: Page) {
 async function makeElsewhere(page: Page, name: string): Promise<string> {
   const made = await page.request.post(TOKENS, {
     headers: WRITE,
-    data: { name } satisfies NewAuditExportToken,
+    data: { name } satisfies NewBearerToken,
   });
   expect(made.status()).toBe(201);
-  return ((await made.json()) as AuditExportTokenCreated).token.id;
+  return ((await made.json()) as BearerTokenCreated).token.id;
 }
 
 test('an administrator makes a SIEM export token, shown once, then removes it', async ({

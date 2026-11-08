@@ -8,9 +8,7 @@ use axum::http::StatusCode;
 
 use crate::app::AppState;
 use crate::contract::Done;
-use crate::contract::admin::{
-    AuditExportTokenCreated, AuditExportTokenView, AuditExportTokens, NewAuditExportToken,
-};
+use crate::contract::admin::{AuditExportTokens, BearerTokenCreated, NewBearerToken};
 use crate::http::{ApiResult, Body, PathId};
 use crate::plugins::Auth;
 use crate::services::audit_export::{
@@ -33,15 +31,14 @@ pub async fn list(
 pub async fn create(
     State(state): State<AppState>,
     Auth(identity): Auth,
-    Body(body): Body<NewAuditExportToken>,
-) -> ApiResult<(StatusCode, Json<AuditExportTokenCreated>)> {
+    Body(body): Body<NewBearerToken>,
+) -> ApiResult<(StatusCode, Json<BearerTokenCreated>)> {
     let access = state.access.context(identity).await?;
     let (token, secret) = create_audit_export_token(&state.db, &access, &body.name).await?;
-    let made = AuditExportTokenCreated {
-        token: AuditExportTokenView::from(&token),
-        secret,
-    };
-    Ok((StatusCode::CREATED, Json(made)))
+    Ok((
+        StatusCode::CREATED,
+        Json(BearerTokenCreated::of(&token, secret)),
+    ))
 }
 
 pub async fn remove(

@@ -21,16 +21,14 @@ use mimorya_db::Database;
 use mimorya_db::repositories::audit_chain::{
     audit_chain_head, audit_seal_at, sealed_audit_entries,
 };
-use mimorya_db::repositories::audit_export_tokens::{
-    audit_export_token_tenant, touch_audit_export_token,
-};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::auth::credentials::hash_token;
 use crate::config::AppConfig;
 use crate::contract::{AuditExport, ExportedAuditEntry};
 use crate::services::audit_chain::hex;
+
+use super::tokens::EXPORT_TOKENS;
 
 /// Entries a page holds when the SIEM does not say.
 pub const DEFAULT_PAGE: i64 = 500;
@@ -73,7 +71,7 @@ pub async fn export_audit_log(
     let limit = page.limit.clamp(1, MAX_PAGE);
     let mut tx = db.begin(tenant_id).await?;
     // Removed meanwhile, the token reads nothing.
-    if !touch_audit_export_token(&mut tx, token_id, now).await? {
+    if !EXPORT_TOKENS.touch(&mut tx, token_id, now).await? {
         return Err(DomainError::unauthenticated(UNKNOWN).into());
     }
     let after = match page.resume {
@@ -109,10 +107,7 @@ pub async fn export_audit_log(
 /// The company and the token `token` names; refused alike when there is
 /// none, it is unknown or its company is suspended.
 async fn token_company(db: &Database, token: Option<&str>) -> anyhow::Result<(Uuid, Uuid)> {
-    let found = match token {
-        Some(token) => audit_export_token_tenant(db.pool(), &hash_token(token)).await?,
-        None => None,
-    };
+    let found = EXPORT_TOKENS.company(db, token).await?;
     found.ok_or_else(|| DomainError::unauthenticated(UNKNOWN).into())
 }
 

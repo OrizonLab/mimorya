@@ -26,6 +26,7 @@ mod organization;
 mod policies;
 mod policy_proposals;
 mod roles;
+mod scim;
 mod skill_eval_cases;
 mod skill_evaluations;
 mod skills;
@@ -229,6 +230,8 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/admin/audit/export-tokens/{id}",
             delete(audit_export::remove),
         )
+        .route("/admin/scim/tokens", get(scim::list).post(scim::create))
+        .route("/admin/scim/tokens/{id}", delete(scim::remove))
         .route("/admin/usage", get(activity::usage))
         // Last: a route layer only wraps the routes declared before it.
         .route_layer(from_fn_with_state(state.clone(), audit_refusals))

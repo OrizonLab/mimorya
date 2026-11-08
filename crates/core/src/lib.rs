@@ -23,6 +23,7 @@ pub mod policy_rules;
 pub mod provisioning;
 pub mod roles;
 pub mod schedule;
+pub mod scim;
 pub mod skill_eval_cases;
 pub mod skill_evaluations;
 pub mod skill_proposals;

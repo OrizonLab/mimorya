@@ -106,17 +106,35 @@ async fn grant_base_role(
     access: &AccessContext,
     user_id: Uuid,
 ) -> anyhow::Result<()> {
+    grant_member_role(
+        tx,
+        access.subject.tenant_id,
+        user_id,
+        Some(access.subject.user_id),
+    )
+    .await
+}
+
+/// Gives the new account `user_id` the base role every account receives
+/// on its own data, granted by `granted_by` (none: the company's identity
+/// provider, ADR-183).
+pub(crate) async fn grant_member_role(
+    tx: &mut TenantTx,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    granted_by: Option<Uuid>,
+) -> anyhow::Result<()> {
     let Some(role_id) = find_role_id(tx, BASE_ROLE_KEY).await? else {
         return Ok(());
     };
     create_role_assignment(
         tx,
         NewRoleAssignment {
-            tenant_id: access.subject.tenant_id,
+            tenant_id,
             user_id,
             role_id,
             scope: AssignmentScope::Own,
-            granted_by_user_id: Some(access.subject.user_id),
+            granted_by_user_id: granted_by,
             expires_at: None,
         },
     )
