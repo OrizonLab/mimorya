@@ -39,17 +39,20 @@ impl Retention {
         if !due(self.last, now) {
             return;
         }
-        self.last = Some(now);
         match apply_retention(db).await {
-            Ok(Some(retained)) if retained != Retained::default() => {
-                let memories: i32 = retained
-                    .memories
-                    .iter()
-                    .map(|lost| lost.aged + lost.departed)
-                    .sum();
-                tracing::info!(sessions = retained.sessions, memories, "Retention applied");
+            // Done, here or by another process: an hour until the next.
+            Ok(retained) => {
+                self.last = Some(now);
+                if let Some(retained) = retained.filter(|r| *r != Retained::default()) {
+                    let memories: i32 = retained
+                        .memories
+                        .iter()
+                        .map(|lost| lost.aged + lost.departed)
+                        .sum();
+                    tracing::info!(sessions = retained.sessions, memories, "Retention applied");
+                }
             }
-            Ok(_) => {}
+            // Its lock not taken: tried again at the next tick.
             Err(error) => tracing::warn!(error = %error, "Retention pass failed"),
         }
     }

@@ -75,24 +75,34 @@ VOLATILE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  WITH deleted AS (
+  -- Two deletions of disjoint memories: the aged ones, through their own
+  -- indexes; the departed ones, from the accounts gone (`users_departed`).
+  WITH aged AS (
     DELETE FROM memory_items m
      WHERE (m.kind = 'episode' AND m.created_at < now() - interval '12 months')
         OR m.expires_at <= now()
-        OR (m.scope = 'user' AND (m.tenant_id, m.owner_user_id) IN (
-              SELECT u.tenant_id, u.id FROM users u
-               WHERE u.status = 'disabled'
-                 AND u.disabled_at < now() - interval '30 days'))
-    RETURNING m.tenant_id,
-              (m.kind = 'episode' AND m.created_at < now() - interval '12 months')
-              OR coalesce(m.expires_at <= now(), false) AS aged
+    RETURNING m.tenant_id
+  ),
+  departed AS (
+    DELETE FROM memory_items m
+     USING users u
+     WHERE u.status = 'disabled'
+       AND u.disabled_at < now() - interval '30 days'
+       AND m.tenant_id = u.tenant_id
+       AND m.owner_user_id = u.id
+       AND m.scope = 'user'
+       AND NOT (m.kind = 'episode' AND m.created_at < now() - interval '12 months')
+       AND NOT coalesce(m.expires_at <= now(), false)
+    RETURNING m.tenant_id
   ),
   lost AS (
-    SELECT deleted.tenant_id,
-           (count(*) FILTER (WHERE deleted.aged))::integer AS aged,
-           (count(*) FILTER (WHERE NOT deleted.aged))::integer AS departed
-      FROM deleted
-     GROUP BY deleted.tenant_id
+    SELECT counted.tenant_id,
+           (count(*) FILTER (WHERE counted.aged))::integer AS aged,
+           (count(*) FILTER (WHERE NOT counted.aged))::integer AS departed
+      FROM (SELECT aged.tenant_id, true AS aged FROM aged
+            UNION ALL
+            SELECT departed.tenant_id, false FROM departed) AS counted
+     GROUP BY counted.tenant_id
   ),
   audited AS (
     INSERT INTO audit_log (tenant_id, actor_type, action, outcome, metadata)
@@ -109,7 +119,7 @@ REVOKE ALL ON FUNCTION system_purge_retained_memories() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION system_purge_retained_memories() TO mimorya_app;
 
 -- The episodes and the memories with a term, found without reading every
--- memory; a departed account's, through its owner.
+-- memory; a departed account's, from the accounts gone.
 CREATE INDEX memory_items_episodes ON memory_items (created_at) WHERE kind = 'episode';
 
 CREATE INDEX memory_items_expiring ON memory_items (expires_at) WHERE expires_at IS NOT NULL;

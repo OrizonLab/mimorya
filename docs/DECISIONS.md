@@ -12384,8 +12384,10 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     - les mémoires épisodiques enregistrées il y a plus d'un an, et toute mémoire
       passée son propre terme (`expires_at`) ;
     - les mémoires personnelles d'un compte désactivé depuis plus de 30 jours
-      (`system_purge_retained_memories`), trouvées par les comptes partis (index
-      partiel `users_departed`) ; une mémoire à la fois ancienne et d'un compte parti
+      (`system_purge_retained_memories`) : deux suppressions de mémoires disjointes,
+      les anciennes par leurs propres index, celles des comptes partis à partir de ces
+      comptes (index partiel `users_departed`), de sorte que la passe ne lit pas toutes
+      les mémoires personnelles ; une mémoire à la fois ancienne et d'un compte parti
       est comptée `aged` ;
 
     chaque purge est tentée quoi qu'il advienne de l'autre, son échec journalisé ;
@@ -12414,6 +12416,10 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       référence et que leur résumé les couvre ;
     - celle du journal d'audit (5 ans), qui devra garder la chaîne vérifiable
       (ADR-178), et celle de la consommation (5 ans) ;
+    - des suppressions par lots, si une première passe sur une base ancienne devait
+      en emporter trop d'un coup ;
+  - une passe qui n'a pas pu prendre son verrou (erreur de la base) est retentée à la
+    minute suivante ; une passe faite, ici ou par un autre processus, attend l'heure ;
   - suite de l'audit de la PR #223 : la carte « Provisionnement SCIM » est séparée de
     ce qui la précède par une marge ;
   - tests :
