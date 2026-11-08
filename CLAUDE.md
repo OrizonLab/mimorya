@@ -79,7 +79,7 @@ Repères à l'intérieur des crates :
   l'entreprise, une table par sorte (export du journal vers son SIEM, ADR-181, SCIM,
   ADR-183) : `bearer_tokens.rs` ; comptes tels que SCIM les lit et les crée, et
   l'identifiant que leur donne le fournisseur : `scim_users.rs`, ADR-183 ; fenêtres des
-  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; rétention appliquée à toutes les entreprises, sessions et mémoires : `retention.rs`, ADR-185 ; avis à l'auteur
+  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives : `retention.rs`, ADR-185, ADR-186 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
@@ -175,7 +175,7 @@ Repères à l'intérieur des crates :
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062, cartes des avis Teams
   oubliées, ADR-142, propositions de politiques décidées ou expirées, ADR-168, journal d'audit
-  scellé, ADR-178 ; rétention appliquée chaque heure, `retention.rs`, ADR-185 ; indexation de la
+  scellé, ADR-178 ; rétention appliquée chaque heure, `retention.rs`, ADR-185, ADR-186 ; indexation de la
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur

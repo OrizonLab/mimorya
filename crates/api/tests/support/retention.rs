@@ -154,14 +154,16 @@ pub async fn session_agents(prefix: &str) -> Vec<String> {
     agents
 }
 
-/// The metadata of the `memory.purged` entries of the company `tenant_id`.
-pub async fn purged_entries(tenant_id: Uuid) -> Vec<serde_json::Value> {
+/// The metadata of the company `tenant_id`'s entries of `action` written
+/// by the platform (`memory.purged`, `conversation.purged`).
+pub async fn purged_entries(tenant_id: Uuid, action: &str) -> Vec<serde_json::Value> {
     let owner = owner().await;
     let entries = sqlx::query_scalar(
-        "select metadata from audit_log where tenant_id = $1 and action = 'memory.purged' \
+        "select metadata from audit_log where tenant_id = $1 and action = $2 \
          and actor_type = 'system' order by id",
     )
     .bind(tenant_id)
+    .bind(action)
     .fetch_all(&owner)
     .await
     .unwrap();

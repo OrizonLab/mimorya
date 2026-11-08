@@ -26,6 +26,7 @@ pub mod gateways;
 pub mod held_token;
 pub mod hooks;
 pub mod identity_provider;
+pub mod idle_conversations;
 pub mod impostor;
 pub mod knowledge_shares;
 pub mod leases;

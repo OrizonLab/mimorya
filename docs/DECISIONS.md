@@ -12436,3 +12436,83 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       eux-mêmes ;
     - `plugins/retention.rs` : la passe au premier appel, puis une fois l'heure ;
     - `crates/db/tests/definer_functions.rs` : les deux nouvelles fonctions.
+
+## ADR-186 — Conversations gardées 24 mois après leur dernière activité ; le journal d'audit garde le run qu'il nomme (lot 54b)
+
+- **Statut** : accepté (2026-11-08).
+- **Contexte** : `DATA_MODEL.md` §5 annonçait 24 mois pour les messages et les
+  événements de run ; ADR-185 les avait laissés à venir. Trois obstacles :
+  - le rôle applicatif ne supprime ni conversation ni run (migration 0006) ;
+  - un run appartient à sa conversation, qui l'emporte en cascade avec ses événements,
+    ses appels d'outils, ses validations et les runs de ses sous-agents ;
+  - le journal d'audit nomme les runs (`run_id`) par une clé étrangère `ON DELETE SET
+NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné scelle
+    (ADR-178) : la vérification les aurait comptées modifiées.
+
+  Supprimer les messages un à un aurait laissé des runs sans leurs messages, un résumé
+  qui couvre ce qui n'existe plus et des conversations vides mais listées.
+
+- **Décision** :
+  - **une conversation part entière, 24 mois après sa dernière activité**
+    (`system_purge_idle_conversations`, migration 0083), avec ses messages, ses runs et
+    ceux de ses sous-agents, leurs événements, appels d'outils et validations, ses
+    missions, son résumé et son fil dans une messagerie :
+    - sa dernière activité est son `updated_at`, que déplace chaque message, chaque
+      renommage et chaque archivage (une conversation archivée part comme les autres) ;
+    - une conversation dont un run est en file, en cours ou attend une validation
+      reste : elle partira à la passe qui suit sa fin si elle est toujours inactive ;
+    - les conditions portent sur la ligne supprimée elle-même : un message écrit
+      pendant la passe déplace `updated_at`, et la suppression, qui l'attend, saute la
+      conversation ;
+    - les références qui se vident (dernière conversation et dernier run d'une tâche
+      planifiée ou d'un déclencheur, run d'une consommation, d'une mémoire, d'une
+      version de compétence, d'un livrable) sont mises à `NULL` par leurs clés ;
+    - un message reçu plus tard dans le fil Slack, ou dans la conversation privée avec
+      un bot, d'une conversation supprimée en ouvre une nouvelle, comme pour un fil
+      inconnu ;
+  - **le journal d'audit garde le run qu'il nomme** : la clé étrangère de
+    `audit_log.run_id` est remplacée par la vérification qu'elle faisait à
+    l'écriture, un déclencheur (`audit_log_run_known`, à l'insertion et au changement
+    de l'entreprise ou du run) :
+    - le run nommé existe, dans l'entreprise de l'entrée, sinon l'écriture est
+      refusée (`23503`, contrainte `audit_log_run_known`), qu'elle vienne de
+      l'application, sous la sécurité au niveau des lignes, ou du propriétaire de la
+      base, qui voit tous les runs et compare l'entreprise ;
+    - le run peut partir ensuite : l'entrée, inchangée, nomme le run qui fut, et son
+      sceau tient. Le journal (5 ans) survit ainsi aux conversations (24 mois) ;
+    - les autres références du journal (comptes) gardent leurs clés : l'application
+      ne supprime aucun compte ;
+  - **chaque entreprise qui perd des conversations le trouve dans son journal
+    d'audit**, écrit par la plateforme dans la même instruction que la suppression :
+    action `conversation.purged`, nombres seuls (`conversations`, `messages`), jamais
+    un titre ni un contenu ;
+  - **la passe horaire d'ADR-185** appelle cette troisième purge, tentée quoi qu'il
+    advienne des deux autres ; la règle de reprise est une fonction pure (`settled`) :
+    faite ici ou ailleurs, la passe attend l'heure ; échouée avant son verrou, elle
+    est retentée au tic suivant.
+- **Conséquences** :
+  - une conversation active depuis plus de 24 mois garde ses messages anciens tant
+    qu'elle vit : la durée court depuis la dernière activité, non depuis chaque message.
+    Sa purge message par message reste à venir avec les durées par entreprise ;
+  - la référence du journal à un run n'est plus tenue par une clé : elle est vérifiée à
+    l'écriture, pas ensuite. L'export et la vérification lisent l'entrée seule, jamais
+    le run ; qui suit l'identifiant d'un run supprimé ne trouve plus rien ;
+  - le commentaire de la migration 0006 (« conversations are archived ») date d'avant
+    cette décision ; une migration publiée n'est pas modifiée ;
+  - constat mineur de l'audit de la PR #224 repris : la règle de reprise de la passe a
+    son test (`a_failed_pass_is_tried_again_at_the_next_tick`) ;
+  - tests :
+    - `crates/api/tests/retention_conversations.rs` : conversation inactive depuis 25
+      mois supprimée avec son run, le run de son sous-agent, son événement, son appel
+      d'outil et sa validation ; celle de 23 mois et celle dont le run attend une
+      validation gardées entières ; une autre entreprise comptée à part ; l'entrée
+      d'audit qui nomme le run supprimé le nomme encore, et la chaîne scellée de
+      l'entreprise reste intacte avant et après le scellement de l'entrée
+      `conversation.purged` ; une seule entrée par entreprise, nombres seuls ; aucune
+      entrée nouvelle sans rien à supprimer (ce test échoue si la garde des runs qui
+      attendent une validation est retirée) ;
+    - `crates/db/tests/audit_run_references.rs` : une entrée ne nomme ni le run d'une
+      autre entreprise ni un run inconnu, écrite par l'application ou par le
+      propriétaire, ni changée pour le faire ; un run supprimé laisse ses entrées
+      telles qu'écrites (ce test échoue sans le déclencheur) ;
+    - `crates/db/tests/definer_functions.rs` : la nouvelle fonction.

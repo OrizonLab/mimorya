@@ -3,8 +3,9 @@
 //! itself, whatever disables it, and forgets the date when it is enabled
 //! again. A pass deletes the sessions ended thirty days ago and keeps the
 //! more recent ones; the maintenance runs it from the start. A pass runs in
-//! one process at a time. The memories: `retention_memories.rs`. The tests
-//! that run a pass themselves start a process without maintenance.
+//! one process at a time. The memories: `retention_memories.rs`; the
+//! conversations: `retention_conversations.rs`. The tests that run a pass
+//! themselves start a process without maintenance.
 
 mod support;
 
