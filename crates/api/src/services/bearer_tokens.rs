@@ -110,10 +110,13 @@ impl TokenKind {
     ) -> anyhow::Result<()> {
         access.require_tenant_wide(self.permission)?;
         let mut tx = db.begin(access.subject.tenant_id).await?;
-        tx.lock_administration().await?;
+        // The token's row first, then the administration's lock: the order
+        // a request with the token takes them in (its use noted, then a
+        // change it makes), so that neither waits on the other in a cycle.
         let Some(token) = delete_token(&mut tx, self.table, id).await? else {
             return Err(DomainError::not_found(self.unknown).into());
         };
+        tx.lock_administration().await?;
         append_audit(&mut tx, self.audited(access, self.deleted, &token)).await?;
         tx.commit().await?;
         Ok(())

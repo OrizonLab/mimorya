@@ -4,8 +4,9 @@
 //! address, or its own identifier of it), or one by its identifier; an
 //! account of another company is not there. It creates an account as an
 //! administrator would (ADR-027), but active, without a password: the person
-//! signs in through the company's identity provider (ADR-063), or chooses a
-//! password through « Mot de passe oublié » (ADR-028). The account receives
+//! signs in through the company's identity provider (ADR-063); without one,
+//! an administrator gives it a temporary password (it has none to forget,
+//! so « Mot de passe oublié » sends nothing, ADR-028). The account receives
 //! the base role on its own data, nothing more: no unit, no other role, the
 //! default clearance. Never at an address another company holds or of a
 //! domain it proved (ADR-069), nor with an identifier the provider already
@@ -31,13 +32,26 @@ use crate::contract::{
 use crate::http::scim::{ScimError, ScimResult};
 use crate::services::admin::grant_member_role;
 
-/// The page a provider asks for: a filter, where it starts (from 1) and how
-/// many accounts it holds at most.
+/// The page a provider asks for, as it wrote it: a filter, where it starts
+/// (from 1) and how many accounts it holds at most. Read only once the
+/// token is.
 #[derive(Debug, Default)]
 pub struct ScimPage {
     pub filter: Option<String>,
-    pub start_index: Option<i64>,
-    pub count: Option<i64>,
+    pub start_index: Option<String>,
+    pub count: Option<String>,
+}
+
+/// The whole number `name` holds, if sent.
+fn number(value: Option<&str>, name: &str) -> ScimResult<Option<i64>> {
+    value
+        .map(|value| {
+            value
+                .trim()
+                .parse()
+                .map_err(|_| ScimError::invalid_value(format!("{name} : un nombre entier")))
+        })
+        .transpose()
 }
 
 /// The page of the company's accounts `page` asks for, as read at `base`.
@@ -48,16 +62,19 @@ pub async fn list_scim_users(
     base: &str,
 ) -> ScimResult<ScimUserList> {
     let (_, mut tx) = open(db, secret).await?;
+    let read = number(page.start_index.as_deref(), "startIndex")
+        .and_then(|start| Ok((start, number(page.count.as_deref(), "count")?)));
+    let (start, count) = match read {
+        Ok(numbers) => numbers,
+        Err(refused) => return refuse(tx, refused).await,
+    };
     let filter = match page.filter.as_deref().map(parse_user_filter).transpose() {
         Ok(filter) => filter,
         Err(problem) => return refuse(tx, ScimError::invalid_filter(problem)).await,
     };
     // From 1: anything lower reads as 1 (RFC 7644 §3.4.2.4).
-    let start = page.start_index.unwrap_or(1).max(1);
-    let count = page
-        .count
-        .unwrap_or(SCIM_MAX_RESULTS)
-        .clamp(0, SCIM_MAX_RESULTS);
+    let start = start.unwrap_or(1).max(1);
+    let count = count.unwrap_or(SCIM_MAX_RESULTS).clamp(0, SCIM_MAX_RESULTS);
     let (total, rows) = match filter {
         None => {
             let total = count_scim_users(&mut tx).await?;
@@ -102,15 +119,20 @@ pub async fn read_scim_user(
     Ok(ScimUser::of(&row, base))
 }
 
-/// Creates the account `body` describes, as read at `base`.
+/// Creates the account `body` describes, as read at `base`; a body that
+/// could not be read is refused once the token is.
 pub async fn create_scim_user(
     db: &Database,
     secret: Option<&str>,
-    body: &Value,
+    body: ScimResult<Value>,
     base: &str,
 ) -> ScimResult<ScimUser> {
     let (caller, mut tx) = open(db, secret).await?;
-    let read = scim_user_fields(body).and_then(read_new_user);
+    let body = match body {
+        Ok(body) => body,
+        Err(refused) => return refuse(tx, refused).await,
+    };
+    let read = scim_user_fields(&body).and_then(read_new_user);
     let new = match read {
         Ok(new) => new,
         Err(problem) => return refuse(tx, ScimError::invalid_value(problem)).await,

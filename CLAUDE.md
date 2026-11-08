@@ -568,7 +568,7 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
    `only_a_gateway_event_goes_without_the_header`
    (`crates/api/tests/slack_gateway_events.rs`),
    `only_a_bot_s_updates_go_without_the_header`
-   (`crates/api/tests/telegram_gateway_updates.rs`) et
+   (`crates/api/tests/telegram_gateway_updates.rs`),
    `only_a_teams_activity_goes_without_the_header`
    (`crates/api/tests/teams_gateway_activities.rs`),
    `only_the_scim_prefix_goes_without_the_header` (`plugins/csrf.rs`) et

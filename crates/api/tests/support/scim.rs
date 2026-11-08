@@ -61,6 +61,21 @@ pub async fn create(api: &TestApi, token: Option<&str>, user: &Value) -> TestRes
     scim_as(api, token, Method::POST, "/Users", body).await
 }
 
+/// How many accounts the provider holding `secret` sees.
+pub async fn total(api: &TestApi, secret: &str) -> i64 {
+    let listed = get(api, Some(secret), "/Users?count=0").await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", listed.text());
+    listed.json()["totalResults"].as_i64().unwrap()
+}
+
+/// When the token `id` was last used, as the administration lists it.
+pub async fn last_used(client: &Client<'_>, id: &str) -> Value {
+    let listed = client.get(TOKENS).await.json();
+    let tokens = listed["tokens"].as_array().unwrap().clone();
+    let token = tokens.into_iter().find(|t| t["id"] == json!(id));
+    token.expect("token listed")["lastUsedAt"].clone()
+}
+
 /// An account as Entra ID sends it, at `user_name`.
 pub fn entra_user(user_name: &str, external_id: &str) -> Value {
     json!({

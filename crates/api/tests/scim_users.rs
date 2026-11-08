@@ -4,26 +4,20 @@
 //! active, without a password, with the base role only, its address in
 //! lowercase, read back by its identifier, by its address in any case or by
 //! the provider's identifier, page after page; its creation audited by the
-//! platform, naming the token. Refusals are SCIM's, and create nothing.
+//! platform, naming the token; without a password, an administrator gives
+//! it a temporary one. Refusals: `scim_refusals.rs`.
 
 mod support;
 
-use axum::http::header::{CONTENT_TYPE, LOCATION, WWW_AUTHENTICATE};
-use axum::http::{Method, StatusCode};
+use axum::http::StatusCode;
+use axum::http::header::{CONTENT_TYPE, LOCATION};
 use mimorya_core::demo::user;
 use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::directory_entry;
 use support::audit_exports::audit_log;
-use support::scim::{SCIM_JSON, create, entra_user, get, made, refusal, scim_as};
+use support::scim::{SCIM_JSON, create, entra_user, get, made, total};
 use uuid::Uuid;
-
-/// How many accounts the provider sees.
-async fn total(api: &TestApi, secret: &str) -> i64 {
-    let listed = get(api, Some(secret), "/Users?count=0").await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", listed.text());
-    listed.json()["totalResults"].as_i64().unwrap()
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -120,11 +114,24 @@ async fn the_identity_provider_creates_and_reads_accounts_with_its_token() {
     let assignments = entry["assignments"].as_array().unwrap();
     assert_eq!(assignments.len(), 1, "{entry}");
     assert_eq!(assignments[0]["scope"]["type"], "self");
-    // It has no password: no one signs in with one.
+    // It has no password: without the company's identity provider, an
+    // administrator gives it a temporary one, with which the person signs in.
     let attempt = api
         .try_login("ines.garnier@neo-maintenance.example", "")
         .await;
     assert_ne!(attempt.status, StatusCode::OK);
+    let given = paul
+        .post(&format!("/admin/users/{id}/password"), json!({}))
+        .await;
+    assert_eq!(given.status, StatusCode::OK, "{}", given.text());
+    let temporary = given.json()["temporaryPassword"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let signed_in = api
+        .try_login("ines.garnier@neo-maintenance.example", &temporary)
+        .await;
+    assert_eq!(signed_in.status, StatusCode::OK, "{}", signed_in.text());
 
     // Its creation audited by the platform, naming the token.
     let audited = audit_log(&paul)
@@ -221,132 +228,4 @@ async fn the_provider_reads_the_accounts_page_after_page() {
         (&filtered["totalResults"], &filtered["Resources"]),
         (&json!(1), &json!([]))
     );
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn refusals_are_scim_s_and_create_nothing() {
-    let api = TestApi::start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let (_, secret) = made(&paul, "Microsoft Entra ID").await;
-    let token = Some(secret.as_str());
-    let before = total(&api, &secret).await;
-
-    // Without a token, or with an unknown one: the same refusal.
-    let anonymous = get(&api, None, "/Users").await;
-    assert_eq!(refusal(&anonymous), (StatusCode::UNAUTHORIZED, Value::Null));
-    assert!(anonymous.headers.contains_key(WWW_AUTHENTICATE));
-    let unknown = get(&api, Some("msc_inconnu"), "/Users").await;
-    assert_eq!(unknown.text(), anonymous.text());
-    let created = create(
-        &api,
-        Some("msc_inconnu"),
-        &entra_user("x@neo-maintenance.example", "x"),
-    )
-    .await;
-    assert_eq!(created.status, StatusCode::UNAUTHORIZED);
-
-    // A filter read loosely would match the wrong account.
-    for filter in [
-        "userName%20co%20%22paul%22",
-        "userName%20eq%20%22a%40b.example%22%20or%20userName%20eq%20%22c%40d.example%22",
-        "displayName%20eq%20%22Paul%22",
-    ] {
-        let refused = get(&api, token, &format!("/Users?filter={filter}")).await;
-        assert_eq!(
-            refusal(&refused),
-            (StatusCode::BAD_REQUEST, json!("invalidFilter"))
-        );
-    }
-    let refused = get(&api, token, "/Users?startIndex=premier").await;
-    assert_eq!(
-        refusal(&refused),
-        (StatusCode::BAD_REQUEST, json!("invalidValue"))
-    );
-    for path in [
-        format!("/Users/{}", Uuid::new_v4()),
-        "/Users/inconnu".to_string(),
-    ] {
-        let missing = get(&api, token, &path).await;
-        assert_eq!(refusal(&missing), (StatusCode::NOT_FOUND, Value::Null));
-    }
-
-    // An address already used, here or elsewhere; an identifier the provider
-    // already gave another account.
-    let taken = create(
-        &api,
-        token,
-        &entra_user("Paul.Renaud@neo-maintenance.example", "p"),
-    )
-    .await;
-    assert_eq!(refusal(&taken), (StatusCode::CONFLICT, json!("uniqueness")));
-    let first = create(
-        &api,
-        token,
-        &entra_user("une@neo-maintenance.example", "meme"),
-    )
-    .await;
-    assert_eq!(first.status, StatusCode::CREATED, "{}", first.text());
-    let same = create(
-        &api,
-        token,
-        &entra_user("autre@neo-maintenance.example", "meme"),
-    )
-    .await;
-    assert_eq!(refusal(&same), (StatusCode::CONFLICT, json!("uniqueness")));
-
-    // What the account could not hold, or a body not read.
-    for user in [
-        json!({ "displayName": "Sans adresse" }),
-        json!({ "userName": "pas-une-adresse" }),
-        json!({ "userName": "nom@neo-maintenance.example", "displayName": "N" }),
-        json!({ "userName": "actif@neo-maintenance.example", "active": "oui" }),
-        json!({ "userName": "nul@neo-maintenance.example", "title": "\u{0}" }),
-    ] {
-        let refused = create(&api, token, &user).await;
-        assert_eq!(
-            refusal(&refused),
-            (StatusCode::BAD_REQUEST, json!("invalidValue")),
-            "{user}"
-        );
-    }
-    let unread = scim_as(
-        &api,
-        token,
-        Method::POST,
-        "/Users",
-        Some((SCIM_JSON, "{".into())),
-    )
-    .await;
-    assert_eq!(
-        refusal(&unread),
-        (StatusCode::BAD_REQUEST, json!("invalidSyntax"))
-    );
-    let body = entra_user("texte@neo-maintenance.example", "texte").to_string();
-    let as_text = scim_as(
-        &api,
-        token,
-        Method::POST,
-        "/Users",
-        Some(("text/plain", body)),
-    )
-    .await;
-    assert_eq!(
-        refusal(&as_text),
-        (StatusCode::UNSUPPORTED_MEDIA_TYPE, Value::Null)
-    );
-    // As plain JSON, it is read all the same.
-    let body = entra_user("json@neo-maintenance.example", "json").to_string();
-    let as_json = scim_as(
-        &api,
-        token,
-        Method::POST,
-        "/Users",
-        Some(("application/json; charset=utf-8", body)),
-    )
-    .await;
-    assert_eq!(as_json.status, StatusCode::CREATED, "{}", as_json.text());
-
-    // Only the two accounts accepted were created.
-    assert_eq!(total(&api, &secret).await, before + 2);
 }

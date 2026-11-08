@@ -40,6 +40,29 @@ async fn a_token_reaches_its_company_s_accounts_only() {
     let (_, theirs) = made(&jeanne, "Okta Acme").await;
     let (_, ours) = made(&paul, "Entra Néo").await;
 
+    // Each administration sees and removes its own tokens only.
+    let jeannes = jeanne.get(TOKENS).await.json()["tokens"][0]["id"].clone();
+    let listed = paul.get(TOKENS).await.json();
+    assert!(
+        !listed["tokens"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["id"] == jeannes)
+    );
+    let removal = paul
+        .delete(&format!("{TOKENS}/{}", jeannes.as_str().unwrap()))
+        .await;
+    assert_eq!(removal.status, StatusCode::NOT_FOUND, "{}", removal.text());
+    assert_eq!(
+        get(&api, Some(&theirs), "/Users").await.status,
+        StatusCode::OK
+    );
+
+    // An address another company's account holds is taken here too.
+    let taken = create(&api, Some(&ours), &entra_user(address, "jeanne")).await;
+    assert_eq!(refusal(&taken), (StatusCode::CONFLICT, json!("uniqueness")));
+
     // Each token lists its company's accounts.
     assert_eq!(addresses(&api, &theirs).await, [address]);
     let neo = addresses(&api, &ours).await;

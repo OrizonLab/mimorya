@@ -8,13 +8,14 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::TestApi;
 use support::accounts::{activate, create_partial_admin, holder_of};
 use support::audit_exports::audit_log;
+use support::audit_exports::waiting_on_locks;
 use support::mcp::capture_logs;
-use support::scim::{TOKENS, get, made, removed};
+use support::scim::{TOKENS, create, entra_user, get, made, removed};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -125,4 +126,48 @@ async fn only_a_company_wide_account_manager_manages_scim_tokens() {
         );
     }
     removed(&manager, &id).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_token_removed_while_it_creates_an_account_creates_nothing() {
+    let api = TestApi::start().await;
+    let db = &api.app.services.db;
+    let paul = api.sign_in(user::PAUL).await;
+    let (id, secret) = made(&paul, "Fournisseur retiré").await;
+    let account = entra_user("pendant.retrait@neo-maintenance.example", "retrait");
+    // Another change of the company's administration holds its lock. The
+    // removal takes the token's row, then waits for that lock; the creation
+    // waits for the row. Taken in the same order, neither waits on the other
+    // in a cycle: the removal ends, the creation finds no token.
+    let path = format!("{TOKENS}/{id}");
+    let mut held = db.begin(tenant::ID).await.unwrap();
+    held.lock_administration().await.unwrap();
+    let (removal, creation, ()) = tokio::join!(
+        paul.delete(&path),
+        async {
+            waiting_on_locks(db, 1).await;
+            create(&api, Some(&secret), &account).await
+        },
+        async {
+            waiting_on_locks(db, 2).await;
+            held.commit().await.unwrap();
+        },
+    );
+    assert_eq!(removal.status, StatusCode::OK, "{}", removal.text());
+    assert_eq!(
+        creation.status,
+        StatusCode::UNAUTHORIZED,
+        "{}",
+        creation.text()
+    );
+    let (other_id, other) = made(&paul, "Fournisseur suivant").await;
+    let found = get(
+        &api,
+        Some(&other),
+        "/Users?filter=externalId%20eq%20%22retrait%22",
+    )
+    .await;
+    assert_eq!(found.json()["totalResults"], 0);
+    removed(&paul, &other_id).await;
 }

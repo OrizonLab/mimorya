@@ -12155,8 +12155,9 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     - actif ou désactivé selon `active`, sans mot de passe, de la confidentialité par
       défaut, dans aucune unité, avec le seul rôle de base sur ses propres données.
 
-    La personne se connecte par le fournisseur d'identité de l'entreprise (ADR-063), ou
-    choisit un mot de passe par « Mot de passe oublié » (ADR-028). Les règles de
+    La personne se connecte par le fournisseur d'identité de l'entreprise (ADR-063). Sans
+    lui, un administrateur lui donne un mot de passe provisoire : sans mot de passe à
+    oublier, « Mot de passe oublié » ne lui envoie rien (ADR-028). Les règles de
     l'administration s'appliquent : adresse unique sur la plateforme, jamais dans un
     domaine qu'une autre entreprise a prouvé (ADR-069). La création se fait sous le
     verrou d'administration de l'entreprise. Elle est auditée au nom de la plateforme
@@ -12179,13 +12180,24 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     ne lit de session : le jeton seul prouve, et un navigateur ne peut pas l'envoyer
     d'un autre site. Une session ne tient pas lieu de jeton. Les chemins voisins
     (`/scim/v2` sans barre finale, `/admin/scim/…`) exigent toujours l'en-tête ;
-  - **un refus SCIM note l'usage du jeton** : un fournisseur refusé appelle toujours,
-    et l'administration le voit.
+  - **le jeton d'abord** : une requête n'est jugée qu'une fois son jeton lu. Un corps
+    illisible, d'un autre type ou trop grand, et un `startIndex` ou un `count` qui n'est
+    pas un nombre sont refusés après le jeton. Sans jeton valide, toute requête est donc
+    refusée comme telle (401). Avec un jeton valide, un refus note son usage : un
+    fournisseur refusé appelle toujours, et l'administration le voit ;
+  - **un ordre des verrous** : une requête du fournisseur prend la ligne de son jeton
+    (usage noté), puis le verrou d'administration de l'entreprise s'il change quelque
+    chose. Le retrait d'un jeton les prend dans le même ordre : il supprime la ligne,
+    puis prend le verrou. Une création et le retrait de son jeton ne s'attendent donc
+    jamais l'un l'autre en boucle. Le retrait aboutit, et la création ne trouve plus de
+    jeton (401).
 - **Conséquences** :
   - lot suivant : remplacement et modification (`PUT`, `PATCH`), désactivation et
     suppression (`DELETE`) par SCIM, avec les effets d'une désactivation par
     l'administration (sessions, liaisons, autorisations des serveurs MCP) ; changement
-    d'adresse ; puis l'écran des jetons. Les groupes SCIM viendront après ;
+    d'adresse ; puis l'écran des jetons. Les groupes SCIM viendront après. Les requêtes
+    d'un même jeton se suivent, la ligne du jeton tenue jusqu'à la fin de chacune : à
+    revoir si un fournisseur les envoie en parallèle ;
   - données personnelles : l'identifiant du fournisseur est gardé avec le compte et
     supprimé avec lui ;
   - tests :
@@ -12195,10 +12207,19 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     - `crates/api/tests/scim_users.rs` :
       - compte créé comme l'envoie Entra ID, relu par identifiant, adresse et
         `externalId`, base de rôle seule, création auditée ;
+      - mot de passe provisoire donné par l'administration, avec lequel la personne se
+        connecte ;
       - pages ;
+    - `crates/api/tests/scim_refusals.rs` :
       - refus SCIM qui ne créent rien ;
+      - sans jeton, toute requête refusée comme telle, quoi qu'elle porte d'autre ;
+      - le seul usage d'un jeton, refusé, noté ;
+    - `crates/api/tests/scim_tokens.rs` : un jeton retiré pendant qu'il crée un compte ne
+      crée rien, sans interblocage ;
     - `crates/api/tests/scim_isolation.rs` :
       - un jeton n'atteint que son entreprise, rien tant qu'elle est suspendue ;
+      - une administration ne voit ni ne retire le jeton d'une autre ;
+      - une adresse d'un compte d'une autre entreprise est refusée ;
       - domaine prouvé par une autre entreprise refusé ;
       - une session ne prouve rien, et l'exception CSRF ne déborde pas du préfixe ;
     - `crates/core/src/scim/` : filtres acceptés et refusés, compte lu ;

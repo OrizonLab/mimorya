@@ -1,6 +1,9 @@
 //! SCIM over HTTP (RFC 7644, ADR-183): a refusal written as SCIM writes it,
 //! a response in `application/scim+json`, and a body read whether the
-//! provider sends it as `application/scim+json` or `application/json`.
+//! provider sends it as `application/scim+json` or `application/json`. A
+//! body is judged only once the token is: what is wrong with it is kept for
+//! the service, which refuses it after the token (an absent token is always
+//! refused as such, and a refused request still notes the token's use).
 
 use axum::Json;
 use axum::body::Bytes;
@@ -149,41 +152,44 @@ impl<T: Serialize> IntoResponse for ScimJson<T> {
     }
 }
 
-/// A SCIM body: JSON sent as `application/scim+json` or `application/json`.
-pub struct ScimBody(pub Value);
+/// A SCIM body: JSON sent as `application/scim+json` or `application/json`,
+/// or why it cannot be read, refused only after the token.
+pub struct ScimBody(pub ScimResult<Value>);
 
 impl<S> FromRequest<S> for ScimBody
 where
     S: Send + Sync,
 {
-    type Rejection = ScimError;
+    type Rejection = std::convert::Infallible;
 
     async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
-        let json = request
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(';').next())
-            .map(str::trim)
-            .is_some_and(|v| {
-                v.eq_ignore_ascii_case(SCIM_JSON) || v.eq_ignore_ascii_case("application/json")
-            });
-        if !json {
-            return Err(ScimError::new(
-                StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                None,
-                "Corps attendu en application/scim+json",
-            ));
-        }
-        let bytes = Bytes::from_request(request, state).await.map_err(|_| {
-            ScimError::new(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                None,
-                "Corps de requête trop volumineux",
-            )
-        })?;
-        serde_json::from_slice(&bytes)
-            .map(Self)
-            .map_err(|_| ScimError::invalid_syntax("Corps JSON illisible"))
+        Ok(Self(read_body(request, state).await))
     }
+}
+
+async fn read_body<S: Send + Sync>(request: Request, state: &S) -> ScimResult<Value> {
+    let json = request
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .map(str::trim)
+        .is_some_and(|v| {
+            v.eq_ignore_ascii_case(SCIM_JSON) || v.eq_ignore_ascii_case("application/json")
+        });
+    if !json {
+        return Err(ScimError::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            None,
+            "Corps attendu en application/scim+json",
+        ));
+    }
+    let bytes = Bytes::from_request(request, state).await.map_err(|_| {
+        ScimError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            None,
+            "Corps de requête trop volumineux",
+        )
+    })?;
+    serde_json::from_slice(&bytes).map_err(|_| ScimError::invalid_syntax("Corps JSON illisible"))
 }

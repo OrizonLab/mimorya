@@ -16,7 +16,7 @@ use axum::routing::get;
 use crate::app::AppState;
 use crate::contract::{ScimServiceProviderConfig, ScimUser, ScimUserList, scim_url};
 use crate::http::bearer;
-use crate::http::scim::{ScimBody, ScimError, ScimJson, ScimResult};
+use crate::http::scim::{ScimBody, ScimJson, ScimResult};
 use crate::services::scim::{
     ScimPage, authenticate, create_scim_user, list_scim_users, read_scim_user,
 };
@@ -50,21 +50,11 @@ async fn list(
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
 ) -> ScimResult<ScimJson<ScimUserList>> {
-    let number = |name: &str| -> ScimResult<Option<i64>> {
-        query
-            .get(name)
-            .map(|value| {
-                value
-                    .trim()
-                    .parse()
-                    .map_err(|_| ScimError::invalid_value(format!("{name} : un nombre entier")))
-            })
-            .transpose()
-    };
+    // Read once the token is (`services::scim`).
     let page = ScimPage {
         filter: query.get("filter").cloned(),
-        start_index: number("startIndex")?,
-        count: number("count")?,
+        start_index: query.get("startIndex").cloned(),
+        count: query.get("count").cloned(),
     };
     let list = list_scim_users(&state.db, bearer(&headers), page, &base(&state)).await?;
     Ok(ScimJson::ok(list))
@@ -84,7 +74,7 @@ async fn create(
     headers: HeaderMap,
     ScimBody(body): ScimBody,
 ) -> ScimResult<ScimJson<ScimUser>> {
-    let user = create_scim_user(&state.db, bearer(&headers), &body, &base(&state)).await?;
+    let user = create_scim_user(&state.db, bearer(&headers), body, &base(&state)).await?;
     let location = user.meta.location.clone();
     Ok(ScimJson::created(user, location))
 }
