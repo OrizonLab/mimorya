@@ -21,6 +21,8 @@ pub mod missions;
 pub mod notification_settings;
 pub mod password_reset;
 pub mod permission_catalog;
+pub mod personal_export;
+pub mod places;
 pub mod policy_proposal_notice;
 pub mod provisioning;
 pub mod runs;

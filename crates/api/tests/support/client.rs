@@ -1,8 +1,9 @@
 //! Requests sent with a session cookie, and the responses they get.
 
 use axum::body::{Body, Bytes};
-use axum::http::{HeaderMap, Method, Request, StatusCode};
+use axum::http::{HeaderMap, Method, Request, Response, StatusCode};
 use serde_json::Value;
+use tower::ServiceExt;
 
 use super::TestApi;
 
@@ -66,6 +67,19 @@ impl<'a> Client<'a> {
     pub async fn get(&self, url: &str) -> TestResponse {
         let request = self.request(Method::GET, url).body(Body::empty()).unwrap();
         self.api.send(request).await
+    }
+
+    /// The response to a GET of `url`, its body left unread: what the
+    /// server sends waits on the test.
+    pub async fn open(&self, url: &str) -> Response<Body> {
+        let request = self.request(Method::GET, url).body(Body::empty()).unwrap();
+        self.api
+            .app
+            .router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("infallible router")
     }
 
     pub async fn get_with(&self, url: &str, headers: &[(&str, &str)]) -> TestResponse {

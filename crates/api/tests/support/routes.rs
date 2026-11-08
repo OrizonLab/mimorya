@@ -89,6 +89,7 @@ pub const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/admin/memory-settings"),
     ("PUT", "/admin/memory-settings"),
     ("GET", "/account/notifications"),
+    ("GET", "/account/export"),
     ("GET", "/account/links"),
     ("GET", "/account/connector-authorizations"),
     ("POST", "/account/connector-authorizations/{id}"),

@@ -12551,3 +12551,87 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       propriétaire, ni changée pour le faire ; un run supprimé laisse ses entrées
       telles qu'écrites (ce test échoue sans le déclencheur) ;
     - `crates/db/tests/definer_functions.rs` : la nouvelle fonction.
+
+## ADR-187 — Export par chacun de ses propres données (lot 55a)
+
+- **Statut** : accepté (2026-11-08).
+- **Contexte** : `SECURITY.md` §9 annonçait un export (JSON) et une suppression des
+  données d'un utilisateur, ainsi que la suppression complète d'une entreprise ; rien de
+  tout cela n'existait. Le droit d'accès et le droit à la portabilité veulent que chacun
+  obtienne les données que la plateforme garde sur lui et ce qu'il y a écrit.
+- **Décision** :
+  - **`GET /api/account/export`** rend, à la personne connectée, un fichier JSON
+    (`mimorya-mes-donnees-AAAA-MM-JJ.json`, en pièce jointe) de ses propres données dans
+    son entreprise, lues dans une seule transaction en lecture seule de celle-ci
+    (`REPEATABLE READ` : toutes les lectures voient le même instant, et les messages
+    comptés sont ceux des conversations exportées) et pour elle seule :
+    - son compte (adresse, nom, fonction, statut, habilitation, attributs lus par les
+      politiques, langue, dates), ses unités et ses rôles ;
+    - les e-mails qu'elle choisit de recevoir ;
+    - ses sessions encore gardées (dates, adresse IP, navigateur ; jamais l'empreinte
+      du jeton), les fournisseurs d'identité par lesquels elle se connecte et ce qu'ils
+      disent d'elle, l'identifiant que lui donne le provisionnement SCIM ;
+    - ses conversations et tous leurs messages, dans l'ordre où ils ont été écrits,
+      avec le résumé que l'assistant lit à la place des premiers (ADR-145) ;
+    - ses mémoires personnelles ;
+    - ses tâches planifiées, ses déclencheurs, ses missions et les livrables de ses
+      runs ;
+    - les runs faits pour elle, chacun avec les outils qu'il a appelés et ce qu'il
+      leur a passé ; les validations qui lui ont été demandées pour ses runs ; les
+      décisions qu'elle a données sur les runs des autres, réduites à la sienne (outil,
+      issue, date, commentaire), jamais la demande de l'autre ; ce que l'assistant a
+      consommé pour elle, mois par mois ;
+    - ses absences et qui la remplace ;
+    - les comptes, messageries et serveurs MCP qu'elle a reliés ou autorisés ;
+  - **jamais un secret** : ni mot de passe, ni jeton, ni secret scellé ; d'un
+    déclencheur, ni le jeton ni son empreinte ;
+  - **jamais les données d'un autre** : ni la conversation d'un collègue partagée avec
+    son unité, ni la mémoire d'un collègue, de l'unité ou de l'entreprise, ni rien d'une
+    autre entreprise. La route ne prend aucun paramètre : on n'exporte que soi ;
+  - **un processus fait deux exports à la fois, un seul pour une personne** : un export
+    lit tous les messages de quelqu'un, et le serveur le garde en mémoire le temps de
+    l'envoyer. Une seconde demande de la même personne est refusée (409) tant que la
+    première court, une demande quand toutes les places sont prises aussi (503). La
+    place est tenue jusqu'à ce que le fichier soit envoyé : axum écrit une réponse après
+    le retour de sa route, aussi le fichier, écrit une fois, part par blocs d'un corps
+    qui garde la place et la rend à son dernier bloc ou quand il est abandonné (la
+    personne partie avant la fin). Le limiteur de la vérification du journal d'audit
+    (ADR-180) est devenu commun (`services/places.rs`) ;
+  - **l'export est tracé** dans le journal d'audit de l'entreprise (`account.exported`),
+    une fois lu et avant que rien ne parte, dans une transaction à lui, avec l'adresse IP
+    et l'identifiant de la requête, et ses nombres seuls (conversations, messages,
+    mémoires, runs), jamais un contenu. Sans cette trace, rien n'est envoyé.
+- **Conséquences** :
+  - l'écran qui offre ce téléchargement dans « Mon compte » suit (lot 55b) ;
+  - restent à venir, dits tels dans `SECURITY.md` §9 et la feuille de route :
+    l'effacement d'un compte (qui devra garder le journal d'audit vérifiable, ADR-178,
+    comme ADR-186 l'a fait pour les runs) et la suppression complète d'une entreprise.
+    En attendant, un compte se désactive : ses mémoires personnelles partent 30 jours
+    après (ADR-185), ses conversations 24 mois après leur dernière activité (ADR-186) ;
+  - le journal d'audit qui concerne la personne n'est pas exporté : il appartient à
+    l'entreprise, qui le lit et l'exporte (ADR-181). Ne le sont pas non plus les
+    documents déposés (ils appartiennent à l'entreprise et se téléchargent, ADR-095),
+    les événements internes des runs (le détail de leur exécution, dont ce qu'ils ont
+    dit est déjà dans les messages), le résultat brut des outils (des données de
+    l'entreprise ou d'un service, non de la personne) et les avis qu'elle a reçus
+    (leurs dates d'envoi seules) ;
+  - tests :
+    - `crates/api/tests/personal_export.rs` : Marc reçoit son compte, ses unités, sa
+      conversation et ses messages dans l'ordre, sa mémoire, sa tâche, son déclencheur,
+      sa mission et son absence avec qui le remplace ; ni la conversation ni la mémoire
+      de Paul, ni la mémoire de l'entreprise, ni la conversation d'une autre entreprise ;
+      ni le jeton du déclencheur ni une empreinte de mot de passe ; une seule entrée
+      d'audit, aux nombres de l'export (ce test échoue si les mémoires ne sont plus lues
+      pour la seule personne) ; un second export de Marc refusé tant que le premier
+      court, celui de Paul servi, puis refusé quand toutes les places sont prises ; la
+      place tenue tant que le fichier n'est pas lu, rendue quand il est lu jusqu'au bout
+      ou abandonné ;
+    - `crates/api/tests/personal_export_isolation.rs` : Marc, Paul et l'administratrice
+      d'une autre entreprise ont chacun une donnée de chaque sorte, marquée de leur nom
+      (la conversation de Paul partagée avec l'unité de Marc, Marc remplaçant Paul
+      absent, une validation de Paul décidée par Marc) ; l'export de Marc tient
+      exactement les siennes, section par section (unités, rôles et choix d'e-mails
+      compris), sa décision sans la demande de Paul, rien de marqué au nom des autres,
+      ni jeton, ni empreinte, ni secret scellé, ni clé qui en nomme un ;
+    - `services/audit_chain/places.rs` : le limiteur commun, par la vérification du
+      journal.

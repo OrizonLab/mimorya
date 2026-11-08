@@ -19,7 +19,12 @@ Ce document en donne la lecture métier.
 - Énumérations stockées en `text` + contrainte `CHECK` (évolutives sans migration de type).
 - Les secrets ne sont jamais stockés en clair (table `secrets`, AES-256-GCM).
 - Suppression : physique pour les données personnelles (droit à l'effacement), la trace
-  de la suppression restant dans l'audit **sans le contenu**.
+  de la suppression restant dans l'audit **sans le contenu** ; l'effacement d'un compte
+  est encore à venir (ADR-187).
+- Export : chacun télécharge ses propres données en JSON, jamais un secret ni les
+  données d'un autre (`GET /api/account/export`, ADR-187) : son compte et ce qui le
+  connecte, ce qu'il a écrit ou mis en place, les runs faits pour lui, leurs appels
+  d'outils et leurs validations, ses décisions sur ceux des autres, sa consommation.
 
 ## 2. Vue d'ensemble
 

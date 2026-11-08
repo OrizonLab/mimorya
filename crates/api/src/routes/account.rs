@@ -1,7 +1,10 @@
 //! The signed-in user's own account: changing their password, choosing the
-//! e-mails they receive (ADR-094).
+//! e-mails they receive (ADR-094), downloading their own data (ADR-187).
 
 use axum::extract::State;
+use axum::http::HeaderValue;
+use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use mimorya_core::DomainError;
@@ -10,11 +13,12 @@ use mimorya_db::repositories::notification_settings::NotificationSettingsRow;
 use crate::app::AppState;
 use crate::contract::{Done, NotificationSettings, PasswordUpdate};
 use crate::http::{ApiError, ApiResult, Body};
-use crate::plugins::{Auth, AuthPendingPasswordChange};
+use crate::plugins::{Auth, AuthPendingPasswordChange, RequestContext};
 use crate::services::account::{self, PasswordChange};
 use crate::services::notification_settings::{
     own_notification_settings, set_own_notification_settings,
 };
+use crate::services::personal_export::export_own_data;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -23,6 +27,27 @@ pub fn routes() -> Router<AppState> {
             "/account/notifications",
             get(notifications).put(choose_notifications),
         )
+        .route("/account/export", get(export))
+}
+
+/// The person's own data, as a JSON file named for the day it was made.
+async fn export(
+    State(state): State<AppState>,
+    context: RequestContext,
+    Auth(identity): Auth,
+) -> ApiResult<Response> {
+    let access = state.access.context(identity).await?;
+    let file = export_own_data(&state.db, &state.exports, &access, &context).await?;
+    let disposition = HeaderValue::from_str(&format!(
+        "attachment; filename=\"mimorya-mes-donnees-{}.json\"",
+        file.day
+    ))
+    .map_err(|error| anyhow::anyhow!("content disposition: {error}"))?;
+    let headers = [
+        (CONTENT_TYPE, HeaderValue::from_static("application/json")),
+        (CONTENT_DISPOSITION, disposition),
+    ];
+    Ok((headers, file.into_body()).into_response())
 }
 
 async fn change_password(

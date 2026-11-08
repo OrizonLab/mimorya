@@ -4,12 +4,10 @@
 //! takes every place from the others. A place is given back when dropped,
 //! its company's with it.
 
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex, PoisonError};
-
 use mimorya_core::DomainError;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
+
+use crate::services::places::{Place, Places};
 
 /// Verifications one process runs at once.
 pub const CHECKS_AT_ONCE: usize = 2;
@@ -19,36 +17,16 @@ const BUSY: &str = "D’autres vérifications du journal d’audit sont en cours
 const VERIFYING: &str = "Une vérification du journal d’audit de votre entreprise est déjà en \
      cours : attendez son résultat.";
 
+/// A verification's place, held until dropped.
+pub type CheckPlace = Place;
+
 /// The places of the verifications this process runs, and their companies.
 #[derive(Clone)]
-pub struct ChainChecks {
-    places: Arc<Semaphore>,
-    companies: Arc<Mutex<HashSet<Uuid>>>,
-}
+pub struct ChainChecks(Places);
 
 impl Default for ChainChecks {
     fn default() -> Self {
-        Self {
-            places: Arc::new(Semaphore::new(CHECKS_AT_ONCE)),
-            companies: Arc::default(),
-        }
-    }
-}
-
-/// A verification's place, held until dropped.
-pub struct CheckPlace {
-    _place: OwnedSemaphorePermit,
-    companies: Arc<Mutex<HashSet<Uuid>>>,
-    tenant_id: Uuid,
-}
-
-impl Drop for CheckPlace {
-    fn drop(&mut self) {
-        let mut companies = self
-            .companies
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        companies.remove(&self.tenant_id);
+        Self(Places::new(CHECKS_AT_ONCE, BUSY, VERIFYING))
     }
 }
 
@@ -56,22 +34,7 @@ impl ChainChecks {
     /// A place for a verification of the company `tenant_id`; refused while
     /// the company has one, or while this process runs as many as it may.
     pub fn take(&self, tenant_id: Uuid) -> Result<CheckPlace, DomainError> {
-        let mut companies = self
-            .companies
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        if companies.contains(&tenant_id) {
-            return Err(DomainError::conflict(VERIFYING));
-        }
-        let place = Arc::clone(&self.places)
-            .try_acquire_owned()
-            .map_err(|_| DomainError::unavailable(BUSY))?;
-        companies.insert(tenant_id);
-        Ok(CheckPlace {
-            _place: place,
-            companies: Arc::clone(&self.companies),
-            tenant_id,
-        })
+        self.0.take(tenant_id)
     }
 }
 
