@@ -227,4 +227,16 @@ async fn a_batch_is_five_hundred_conversations_at_most() {
         .map(|lost| lost.conversations);
     assert_eq!(lost, Some(500));
     assert_eq!(conversations_left("rétention borne").await.0.len(), 1);
+
+    // The last one goes with the next batch: nothing idle is left for the
+    // other tests.
+    let next = purge_idle_conversations(db.pool(), CONVERSATION_BATCH)
+        .await
+        .unwrap();
+    let lost = next
+        .iter()
+        .find(|lost| lost.tenant_id == company.tenant_id)
+        .map(|lost| lost.conversations);
+    assert_eq!(lost, Some(1));
+    assert_eq!(conversations_left("rétention borne").await, (vec![], 0));
 }
