@@ -303,6 +303,26 @@ async fn a_removed_account_is_out_of_sight_until_enabled_again() {
     );
     let filter = "/Users?filter=userName%20eq%20%22retire.ailleurs%40neo-maintenance.example%22";
     assert_eq!(get(&api, token, filter).await.json()["totalResults"], 0);
+    // Nor given another account by a change, whichever way.
+    let other = created(&api, &secret, elsewhere, "retire-autre").await;
+    let other_path = format!("/Users/{other}");
+    let taking = patch_of(json!([{ "op": "replace", "path": "externalId", "value": "retire" }]));
+    for (method, body) in [
+        (Method::PATCH, taking),
+        (
+            Method::PUT,
+            json!({ "userName": elsewhere, "externalId": "retire" }),
+        ),
+    ] {
+        let refused = send(&api, token, method.clone(), &other_path, &body).await;
+        assert_eq!(
+            refusal(&refused),
+            (StatusCode::CONFLICT, json!("uniqueness")),
+            "{method}"
+        );
+    }
+    let kept = get(&api, token, &other_path).await.json();
+    assert_eq!(kept["externalId"], "retire-autre");
 
     // Enabled again by an administrator, it is there again.
     let enabled = paul

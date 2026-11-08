@@ -70,6 +70,8 @@ pub async fn revoke_all_by(
     by: Option<Uuid>,
     revocations: Vec<Revocation>,
 ) {
+    // Tasks of their own: the request may be abandoned (by a person, or by
+    // the identity provider through SCIM), not the revocation.
     let tasks: Vec<_> = revocations
         .into_iter()
         .map(|revocation| {
