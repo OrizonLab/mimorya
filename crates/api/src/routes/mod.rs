@@ -36,6 +36,9 @@ mod scim;
 mod sso;
 
 use axum::Router;
+use axum::extract::State;
+use axum::http::{HeaderMap, Uri};
+use axum::response::{IntoResponse, Response};
 use mimorya_core::DomainError;
 
 use crate::app::AppState;
@@ -76,6 +79,11 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .fallback(not_found)
 }
 
-async fn not_found() -> ApiError {
-    DomainError::not_found("Ressource introuvable").into()
+/// A path no route serves; under the SCIM prefix, refused as SCIM refuses,
+/// once the token is (ADR-183).
+async fn not_found(State(state): State<AppState>, uri: Uri, headers: HeaderMap) -> Response {
+    if uri.path().starts_with(SCIM_PREFIX) {
+        return scim::no_such_path(&state, &headers).await;
+    }
+    ApiError::from(DomainError::not_found("Ressource introuvable")).into_response()
 }

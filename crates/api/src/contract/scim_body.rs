@@ -34,6 +34,16 @@ pub fn read_user_fields(body: &Value) -> Result<ScimUserFields, String> {
     })
 }
 
+/// The operations of a patch (`PATCH /scim/v2/Users/{id}`), its
+/// `Operations` named in any case; read one by one by `core::scim::patch`.
+pub fn read_operations(body: &Value) -> Result<&[Value], String> {
+    body.as_object()
+        .and_then(|object| attribute(object, "Operations"))
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .ok_or_else(|| "Operations : la liste des opérations, obligatoire".into())
+}
+
 /// The attribute `key` of `object`, its name compared without case.
 fn attribute<'a>(object: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
     object

@@ -44,7 +44,7 @@ Repères à l'intérieur des crates :
   d'une version, ADR-106), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
-  ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080), `core/src/scim/` (SCIM 2.0 : filtres acceptés, ce qu'un compte envoyé par le fournisseur d'identité peut contenir et ce qui en est gardé, ADR-183),
+  ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080), `core/src/scim/` (SCIM 2.0 : filtres acceptés, ce qu'un compte envoyé par le fournisseur d'identité peut contenir et ce qui en est gardé, ce qu'un remplacement ou les opérations d'un patch changent, `changes.rs`, ADR-183),
   `core/src/conversation_summary.rs` (messages d'une conversation repliés dans son
   résumé, et quand, ADR-145 ; passes enchaînées et messages laissés hors de
   l'historique, ADR-149),
@@ -192,7 +192,7 @@ Repères à l'intérieur des crates :
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
-  `api/src/services/admin/` (comptes et absence d'un collaborateur empêché
+  `api/src/services/admin/` (comptes, ce qu'un compte désactivé perd aussitôt, par l'administration ou par SCIM (`account_access.rs`, ADR-183), et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
   MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; version de ce qu'un administrateur en voit, déclaration, secret écrit et autorisations (celles des personnes par leur date, jamais par qui), que nomme une déclaration pour ne remplacer que cela : `oauth_version.rs`, ADR-176 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son
@@ -276,7 +276,8 @@ Repères à l'intérieur des crates :
   ADR-181, ADR-183),
   `api/src/services/scim/` (provisionnement SCIM 2.0 des comptes par le fournisseur
   d'identité de l'entreprise : jetons (`tokens.rs`), entreprise et jeton d'une requête,
-  usage noté même refusée (`caller.rs`), comptes lus et créés (`users.rs`), routes
+  usage noté même refusée (`caller.rs`), comptes lus et créés (`users.rs`), changés,
+  désactivés et retirés de sa vue (`changes.rs`), routes
   `routes/scim.rs` et `routes/admin/scim.rs`, refus, réponses et corps de SCIM
   (`http/scim.rs`), corps lu souplement (`contract/scim_body.rs`), ADR-183),
   `api/src/services/skill_proposal_notice/` (propositions de l'agent annoncées par e-mail

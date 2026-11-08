@@ -187,7 +187,12 @@ pub async fn create_scim_user(
 
 /// The audit entry of a change the provider made to the account `user_id`
 /// through SCIM, naming its token, with its `details`.
-fn audited(caller: &ScimCaller, action: &str, user_id: Uuid, details: Value) -> AuditEntry {
+pub(super) fn audited(
+    caller: &ScimCaller,
+    action: &str,
+    user_id: Uuid,
+    details: Value,
+) -> AuditEntry {
     let mut metadata = json!({ "via": "scim", "scimToken": caller.token_id });
     if let (Some(all), Value::Object(more)) = (metadata.as_object_mut(), details) {
         all.extend(more);

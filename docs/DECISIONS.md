@@ -12227,3 +12227,58 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       écrite ;
     - `plugins/csrf.rs` : `only_the_scim_prefix_goes_without_the_header` ;
     - `crates/db/tests/definer_functions.rs` : `auth_scim_token`.
+- **Complément (lot 53b, modification, désactivation et suppression)** :
+  - **`PUT` et `PATCH /scim/v2/Users/{id}`** changent le nom (`displayName`, ou le
+    prénom et le nom d'un remplacement), la fonction (`title`, qui peut être retirée),
+    l'identifiant du fournisseur (`externalId`, de même, unique dans l'entreprise) et
+    l'état actif. Un remplacement laisse tels quels les attributs qu'il n'envoie pas.
+    Un patch suit les opérations qu'envoient Entra ID et Okta : `add`, `replace` et
+    `remove` dans toute casse, avec ou sans `path`, `"False"` pour `active`. Les
+    attributs non gardés (téléphone, service…) ne sont lus par personne ;
+  - **l'adresse d'un compte ne change pas par SCIM** : une autre adresse est refusée
+    (`mutability`). Un jeton qui changerait l'adresse d'un administrateur pourrait
+    recevoir son lien de réinitialisation et prendre son compte ;
+  - **désactivé par SCIM**, un compte perd aussitôt ce que lui retire une désactivation
+    par l'administration. Le code en est désormais commun
+    (`services/admin/account_access.rs`) :
+    - ses sessions et son invitation ;
+    - ses comptes reliés et ses identités sur les passerelles ;
+    - ses autorisations de serveurs MCP, révoquées chez leur serveur d'autorisation.
+      Ces révocations sont auditées au nom de la plateforme (`system`) quand le
+      fournisseur en est l'auteur.
+
+    Réactivé, il ne retrouve rien de cela ;
+
+  - **`DELETE /scim/v2/Users/{id}`** désactive le compte et le retire de la vue de
+    SCIM (`scim_accounts.removed_at`, migration 0081) : SCIM ne le lit plus et ne peut
+    plus le changer (404). Aucun compte n'est supprimé, et son adresse reste prise. Le
+    fournisseur ne peut donc pas créer un autre compte à cette adresse : celui qui la
+    recevrait hériterait de la mémoire, des conversations et des rôles du précédent.
+    Réactivé par l'administration, le compte redevient visible pour SCIM ;
+  - **le jeton d'abord, partout sous le préfixe** :
+    - une méthode non servie (405) ;
+    - un chemin inconnu, comme `/scim/v2/Groups` (404) ;
+    - un identifiant illisible (404).
+
+    Ces refus sont rendus au format SCIM après lecture du jeton. Sans jeton, ils
+    répondent 401 ; avec un jeton, ils notent son usage ;
+
+  - chaque changement est audité au nom de la plateforme avec le jeton :
+    `user.updated` (attributs changés, jamais leurs valeurs), `user.disabled`,
+    `user.enabled`, et `user.disabled` avec `removed` pour une suppression ;
+  - `ServiceProviderConfig` annonce désormais les patchs ;
+  - tests :
+    - `crates/api/tests/scim_changes.rs` :
+      - patch d'Entra ID et remplacement d'Okta ;
+      - adresse refusée et `externalId` d'un autre compte refusé ;
+      - désactivation qui coupe la session sur-le-champ, réactivation ;
+      - suppression qui retire le compte de la vue de SCIM jusqu'à ce que
+        l'administration le réactive ;
+    - `crates/api/tests/scim_disabling.rs` :
+      - autorisations MCP révoquées au nom de la plateforme ;
+      - le jeton d'une autre entreprise ne change rien ;
+    - `crates/api/tests/scim_refusals.rs` : méthodes et chemins non servis, avec et
+      sans jeton ;
+    - `crates/core/src/scim/changes.rs` : opérations lues et refusées ;
+  - suites de l'audit de la PR #220 : les inventaires de routes de `first_login.rs`
+    sont rangés dans `crates/api/tests/support/routes.rs`.
