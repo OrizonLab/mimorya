@@ -43,7 +43,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   clé étrangère, vers celle d'une autre entreprise, même par une écriture fautive que
   la RLS laisserait passer. Une liste d'identifiants dans une colonne
   (`gateway_cards.approval_ids`) n'est couverte par aucune clé : le code la lit dans
-  l'entreprise de sa transaction.
+  l'entreprise de sa transaction. Le run qu'une entrée d'audit nomme
+  (`audit_log.run_id`) n'est pas tenu par une clé mais vérifié à l'écriture par le
+  déclencheur `audit_log_run_known` : il existe, dans l'entreprise de l'entrée, que
+  l'écriture vienne de l'application ou du propriétaire. L'entrée peut ensuite nommer
+  un run supprimé avec sa conversation, son sceau intact (ADR-186).
   Une clé qui vide sa référence à la suppression ne vide que cette colonne
   (`SET NULL (colonne)`), et la ligne garde son entreprise.
 - Le contexte `app.tenant_id` est posé **par transaction** (`set_config(..., true)`),

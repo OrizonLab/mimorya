@@ -42,11 +42,16 @@ pub async fn purge_retained_memories(pool: &PgPool) -> sqlx::Result<Vec<PurgedMe
 }
 
 /// Deletes the conversations idle for twenty-four months, with all they
-/// hold; what each company lost.
-pub async fn purge_idle_conversations(pool: &PgPool) -> sqlx::Result<Vec<PurgedConversations>> {
+/// hold, the oldest first, `batch` at most (the database keeps it from 1 to
+/// 500); what each company lost.
+pub async fn purge_idle_conversations(
+    pool: &PgPool,
+    batch: i32,
+) -> sqlx::Result<Vec<PurgedConversations>> {
     sqlx::query_as(
-        "select tenant_id, conversations, messages from system_purge_idle_conversations()",
+        "select tenant_id, conversations, messages from system_purge_idle_conversations($1)",
     )
+    .bind(batch)
     .fetch_all(pool)
     .await
 }

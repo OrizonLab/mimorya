@@ -39,6 +39,26 @@ pub async fn conversation(tenant_id: Uuid, person: Uuid, title: &str, months: i3
     id
 }
 
+/// `count` empty conversations of `person` in the company `tenant_id`,
+/// titled `prefix` and their rank, idle for `months`: a backlog.
+pub async fn idle_backlog(tenant_id: Uuid, person: Uuid, prefix: &str, count: i32, months: i32) {
+    let owner = owner().await;
+    sqlx::query(
+        "insert into conversations (tenant_id, owner_user_id, title, created_at, updated_at) \
+         select $1, $2, $3 || ' ' || rank, now() - make_interval(months => $5), \
+         now() - make_interval(months => $5) from generate_series(1, $4) as rank",
+    )
+    .bind(tenant_id)
+    .bind(person)
+    .bind(prefix)
+    .bind(count)
+    .bind(months)
+    .execute(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
+}
+
 /// A run of `person` in the conversation `conversation_id`, in `status`,
 /// and what it leaves: an event, a tool call awaiting or given its
 /// validation, and a sub-agent's run.

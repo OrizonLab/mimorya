@@ -5,19 +5,22 @@
 //! stays. Each company that lost conversations finds it in its own audit
 //! log, by the platform, counted, never read; a pass with nothing to delete
 //! tells no one. An audit entry naming a deleted run keeps naming it, and
-//! the company's sealed chain holds. The test starts a process without
-//! maintenance: it runs the passes and the sealing itself.
+//! the company's sealed chain holds. They go a batch at a time, the oldest
+//! first: a backlog over several statements, each with its own entry. The
+//! tests start a process without maintenance: they run the passes and the
+//! sealing themselves.
 
 mod support;
 
-use mimorya_api::plugins::retention::apply_retention;
+use mimorya_api::plugins::retention::{CONVERSATION_BATCH, apply_retention};
 use mimorya_api::services::audit_chain::SealedHeads;
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::retention::{PurgedConversations, purge_idle_conversations};
 use serde_json::json;
 use support::audit_chain::{chain, intact, seal, verify};
 use support::audit_exports::audit_log;
 use support::idle_conversations::{
-    audited_run, conversation, conversations_left, left_of_run, named_run, run,
+    audited_run, conversation, conversations_left, idle_backlog, left_of_run, named_run, run,
 };
 use support::queue::API;
 use support::retention::purged_entries;
@@ -117,4 +120,86 @@ async fn conversations_idle_two_years_go_whole_each_company_told() {
     assert!(again.conversations.is_empty(), "{again:?}");
     assert_eq!(purged_entries(neo, PURGED).await.len(), 1);
     assert_eq!(purged_entries(acme.tenant_id, PURGED).await.len(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn idle_conversations_go_a_batch_at_a_time_the_oldest_first() {
+    let api = TestApi::start_with(API).await;
+    let db = &api.app.services.db;
+    let company = companies::create(
+        &api,
+        "lots-conversations",
+        "admin@lots-conversations.example",
+    )
+    .await;
+    for months in [40, 41, 42] {
+        let title = format!("rétention lot {months}");
+        conversation(company.tenant_id, company.admin_id, &title, months).await;
+    }
+    let lost = |conversations, messages| {
+        vec![PurgedConversations {
+            tenant_id: company.tenant_id,
+            conversations,
+            messages,
+        }]
+    };
+
+    // A batch is one conversation at least: the oldest.
+    assert_eq!(
+        purge_idle_conversations(db.pool(), 0).await.unwrap(),
+        lost(1, 2)
+    );
+    assert_eq!(
+        conversations_left("rétention lot").await.0,
+        ["rétention lot 40", "rétention lot 41"]
+    );
+    assert_eq!(
+        purge_idle_conversations(db.pool(), 2).await.unwrap(),
+        lost(2, 4)
+    );
+    assert_eq!(conversations_left("rétention lot").await, (vec![], 0));
+    // Each statement told the company of its own batch.
+    assert_eq!(
+        purged_entries(company.tenant_id, PURGED).await,
+        [
+            json!({ "conversations": 1, "messages": 2 }),
+            json!({ "conversations": 2, "messages": 4 }),
+        ]
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_backlog_goes_over_several_statements_of_one_pass() {
+    let api = TestApi::start_with(API).await;
+    let company = companies::create(&api, "arriere-conversations", "admin@arriere.example").await;
+    let backlog = CONVERSATION_BATCH + 1;
+    idle_backlog(
+        company.tenant_id,
+        company.admin_id,
+        "rétention arriéré",
+        backlog,
+        30,
+    )
+    .await;
+
+    let retained = apply_retention(&api.app.services.db)
+        .await
+        .unwrap()
+        .unwrap();
+    let lost = retained
+        .conversations
+        .iter()
+        .find(|lost| lost.tenant_id == company.tenant_id)
+        .map(|lost| (lost.conversations, lost.messages));
+    assert_eq!(lost, Some((backlog, 0)));
+    assert_eq!(conversations_left("rétention arriéré").await, (vec![], 0));
+    assert_eq!(
+        purged_entries(company.tenant_id, PURGED).await,
+        [
+            json!({ "conversations": CONVERSATION_BATCH, "messages": 0 }),
+            json!({ "conversations": 1, "messages": 0 }),
+        ]
+    );
 }

@@ -34,30 +34,40 @@ CREATE TRIGGER audit_log_run_known
   BEFORE INSERT OR UPDATE OF tenant_id, run_id ON audit_log
   FOR EACH ROW EXECUTE FUNCTION audit_log_run_known();
 
--- The conversations idle for twenty-four months, in every company, and
--- what each company lost: how many conversations and messages. A
--- conversation's last activity is its `updated_at`, moved by each message,
--- renaming or archiving; one with a run queued, running or awaiting a
--- validation stays. Each company that lost some finds it in its audit log,
--- in the same statement, by the platform (`conversation.purged`, the
--- counts alone): never what was said.
-CREATE FUNCTION system_purge_idle_conversations()
+-- The conversations idle for twenty-four months, in every company, the
+-- oldest first, `p_batch` at most (from 1 to 500: a backlog goes over several
+-- short statements), and what each company lost: how many conversations and
+-- messages. A conversation's last activity is its `updated_at`, moved by
+-- each message, renaming or archiving; one with a run queued, running or
+-- awaiting a validation stays. Each company that lost some finds it in its
+-- audit log, in the same statement, by the platform (`conversation.purged`,
+-- the counts alone): never what was said.
+CREATE FUNCTION system_purge_idle_conversations(p_batch integer)
 RETURNS TABLE (tenant_id uuid, conversations integer, messages integer)
 LANGUAGE sql
 VOLATILE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  -- Its conditions on the deleted row itself: a message written meanwhile
-  -- moves `updated_at`, and the deletion, waiting on it, skips the row.
-  WITH deleted AS (
-    DELETE FROM conversations c
+  -- Locked as they are chosen: a conversation a turn holds is skipped; one
+  -- a turn moved meanwhile is read again, found recent and left.
+  WITH chosen AS (
+    SELECT c.tenant_id, c.id
+      FROM conversations c
      WHERE c.updated_at < now() - interval '24 months'
        AND NOT EXISTS (
          SELECT 1 FROM agent_runs r
           WHERE r.tenant_id = c.tenant_id
             AND r.conversation_id = c.id
             AND r.status IN ('queued', 'running', 'awaiting_approval'))
+     ORDER BY c.updated_at
+     LIMIT least(greatest(p_batch, 1), 500)
+     FOR UPDATE OF c SKIP LOCKED
+  ),
+  deleted AS (
+    DELETE FROM conversations c
+     USING chosen
+     WHERE c.tenant_id = chosen.tenant_id AND c.id = chosen.id
     RETURNING c.tenant_id, c.id
   ),
   -- The messages as they were before the statement: gone with it.
@@ -80,9 +90,35 @@ AS $$
   SELECT lost.tenant_id, lost.conversations, lost.messages FROM lost
 $$;
 
-REVOKE ALL ON FUNCTION system_purge_idle_conversations() FROM PUBLIC;
+REVOKE ALL ON FUNCTION system_purge_idle_conversations(integer) FROM PUBLIC;
 
-GRANT EXECUTE ON FUNCTION system_purge_idle_conversations() TO mimorya_app;
+GRANT EXECUTE ON FUNCTION system_purge_idle_conversations(integer) TO mimorya_app;
 
 -- The idle conversations, found without reading every conversation.
 CREATE INDEX conversations_idle ON conversations (updated_at);
+
+-- What a deleted conversation's rows are named by, found without reading
+-- the company's: each key that deletes or empties its rows with them
+-- (`crates/db/tests/purge_indexes.rs` fails on one without its index).
+CREATE INDEX agent_runs_request_message ON agent_runs (tenant_id, request_message_id)
+  WHERE request_message_id IS NOT NULL;
+CREATE INDEX messages_run ON messages (tenant_id, run_id) WHERE run_id IS NOT NULL;
+CREATE INDEX conversation_summaries_through ON conversation_summaries (tenant_id, through_message_id);
+CREATE INDEX tool_invocations_approval ON tool_invocations (tenant_id, approval_id)
+  WHERE approval_id IS NOT NULL;
+CREATE INDEX gateway_cards_thread ON gateway_cards (tenant_id, thread_id)
+  WHERE thread_id IS NOT NULL;
+CREATE INDEX usage_records_run ON usage_records (tenant_id, run_id) WHERE run_id IS NOT NULL;
+CREATE INDEX memory_items_created_by_run ON memory_items (tenant_id, created_by_run_id)
+  WHERE created_by_run_id IS NOT NULL;
+CREATE INDEX skill_versions_created_by_run ON skill_versions (tenant_id, created_by_run_id)
+  WHERE created_by_run_id IS NOT NULL;
+CREATE INDEX deliverables_run ON deliverables (tenant_id, run_id) WHERE run_id IS NOT NULL;
+CREATE INDEX scheduled_tasks_last_run ON scheduled_tasks (tenant_id, last_run_id)
+  WHERE last_run_id IS NOT NULL;
+CREATE INDEX scheduled_tasks_last_conversation ON scheduled_tasks (tenant_id, last_conversation_id)
+  WHERE last_conversation_id IS NOT NULL;
+CREATE INDEX inbound_hooks_last_run ON inbound_hooks (tenant_id, last_run_id)
+  WHERE last_run_id IS NOT NULL;
+CREATE INDEX inbound_hooks_last_conversation ON inbound_hooks (tenant_id, last_conversation_id)
+  WHERE last_conversation_id IS NOT NULL;

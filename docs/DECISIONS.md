@@ -12461,9 +12461,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       renommage et chaque archivage (une conversation archivée part comme les autres) ;
     - une conversation dont un run est en file, en cours ou attend une validation
       reste : elle partira à la passe qui suit sa fin si elle est toujours inactive ;
-    - les conditions portent sur la ligne supprimée elle-même : un message écrit
-      pendant la passe déplace `updated_at`, et la suppression, qui l'attend, saute la
-      conversation ;
+    - une conversation qu'un tour tient pendant la passe est sautée, et un message
+      écrit entre-temps déplace `updated_at` : la conversation est relue et laissée
+      (voir les lots ci-dessous) ;
     - les références qui se vident (dernière conversation et dernier run d'une tâche
       planifiée ou d'un déclencheur, run d'une consommation, d'une mémoire, d'une
       version de compétence, d'un livrable) sont mises à `NULL` par leurs clés ;
@@ -12486,6 +12486,23 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     d'audit**, écrit par la plateforme dans la même instruction que la suppression :
     action `conversation.purged`, nombres seuls (`conversations`, `messages`), jamais
     un titre ni un contenu ;
+  - **par lots courts, les plus anciennes d'abord** : chaque instruction supprime au plus
+    `CONVERSATION_BATCH` conversations (200 ; la base borne le lot entre 1 et 500),
+    choisies et verrouillées d'un coup (`FOR UPDATE SKIP LOCKED`). Une conversation
+    qu'un tour tient est sautée ; une que le tour a déplacée entre-temps est relue,
+    trouvée récente et laissée. La passe enchaîne les lots tant qu'ils reviennent
+    pleins, 25 au plus (5 000 conversations l'heure) : un arriéré se vide en plusieurs
+    passes et la maintenance fait le reste entre-temps. Chaque instruction écrit son
+    entrée `conversation.purged`, pour son lot ;
+  - **chaque clé que la cascade suit a son index** : une suppression cherche, pour
+    chaque ligne supprimée, les lignes qui la nomment. Les treize clés qui n'en avaient
+    pas (le run d'un message, d'une consommation, d'une mémoire, d'une version de
+    compétence, d'un livrable ; la demande d'un run ; le dernier message d'un résumé ;
+    la validation d'un appel d'outil ; le fil d'une carte ; les dernières conversation
+    et run d'une tâche planifiée et d'un déclencheur) en reçoivent un sur
+    `(tenant_id, colonne)`, partiel quand la colonne peut être vide. Sans eux, chaque
+    run supprimé relisait les messages, la consommation et les mémoires de toute
+    l'entreprise ;
   - **la passe horaire d'ADR-185** appelle cette troisième purge, tentée quoi qu'il
     advienne des deux autres ; la règle de reprise est une fonction pure (`settled`) :
     faite ici ou ailleurs, la passe attend l'heure ; échouée avant son verrou, elle
@@ -12501,6 +12518,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     cette décision ; une migration publiée n'est pas modifiée ;
   - constat mineur de l'audit de la PR #224 repris : la règle de reprise de la passe a
     son test (`a_failed_pass_is_tried_again_at_the_next_tick`) ;
+  - un message reçu par une passerelle entre la lecture de son fil et le départ du
+    tour, pendant que la passe supprime la conversation, reçoit « Conversation
+    introuvable » ; le suivant en ouvre une nouvelle. Le cas est laissé tel quel ;
   - tests :
     - `crates/api/tests/retention_conversations.rs` : conversation inactive depuis 25
       mois supprimée avec son run, le run de son sous-agent, son événement, son appel
@@ -12511,6 +12531,17 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       `conversation.purged` ; une seule entrée par entreprise, nombres seuls ; aucune
       entrée nouvelle sans rien à supprimer (ce test échoue si la garde des runs qui
       attendent une validation est retirée) ;
+    - le même fichier : un lot d'au moins une conversation, la plus ancienne d'abord,
+      puis le lot suivant, chacun avec son entrée ; un arriéré d'un lot plus un vidé
+      par une seule passe, en deux instructions ;
+    - `crates/api/tests/retention_conversation_links.rs` : les conversations dont un
+      run est en file ou en cours gardées ; avec la conversation partent sa mission,
+      son résumé, son fil Slack et la carte écrite dedans ; la tâche planifiée et le
+      déclencheur qui l'ont ouverte en dernier l'oublient, comme la consommation, la
+      mémoire et le livrable oublient son run ;
+    - `crates/db/tests/purge_indexes.rs` : chaque clé qui supprime ou vide des lignes
+      avec une conversation, un run, un message, une validation, une mission ou un
+      fil a un index qui commence par ses colonnes ;
     - `crates/db/tests/audit_run_references.rs` : une entrée ne nomme ni le run d'une
       autre entreprise ni un run inconnu, écrite par l'application ou par le
       propriétaire, ni changée pour le faire ; un run supprimé laisse ses entrées

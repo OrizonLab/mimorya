@@ -14,6 +14,7 @@ mod client;
 pub mod companies;
 pub mod connector_oauth;
 pub mod connector_sessions;
+pub mod conversation_links;
 pub mod delegations;
 pub mod dns;
 pub mod document_search;

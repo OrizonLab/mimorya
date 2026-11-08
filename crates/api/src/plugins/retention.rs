@@ -20,6 +20,12 @@ use tokio::time::Instant;
 pub const RETENTION_SWEEP: &str = "retention";
 /// How often a process runs the pass.
 const EVERY: Duration = Duration::from_secs(60 * 60);
+/// The idle conversations one statement deletes, at most: a statement and
+/// its transaction stay short.
+pub const CONVERSATION_BATCH: i32 = 200;
+/// The statements a pass gives them, at most: a backlog goes over several
+/// passes, and the maintenance gets on with the rest meanwhile.
+const CONVERSATION_BATCHES: usize = 25;
 
 /// What a pass deleted.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -106,18 +112,45 @@ pub async fn apply_retention(db: &Database) -> anyhow::Result<Option<Retained>> 
             tracing::warn!(error = %error, "Retained memory purge failed");
             Vec::new()
         });
-    let conversations = purge_idle_conversations(db.pool())
-        .await
-        .unwrap_or_else(|error| {
-            tracing::warn!(error = %error, "Idle conversation purge failed");
-            Vec::new()
-        });
+    let conversations = purge_conversations(db).await;
     sweep.release().await;
     Ok(Some(Retained {
         sessions,
         memories,
         conversations,
     }))
+}
+
+/// The idle conversations deleted a batch at a time, while a batch comes
+/// back full and the pass has statements left; what each company lost.
+async fn purge_conversations(db: &Database) -> Vec<PurgedConversations> {
+    let mut lost: Vec<PurgedConversations> = Vec::new();
+    for _ in 0..CONVERSATION_BATCHES {
+        let batch = match purge_idle_conversations(db.pool(), CONVERSATION_BATCH).await {
+            Ok(batch) => batch,
+            Err(error) => {
+                tracing::warn!(error = %error, "Idle conversation purge failed");
+                break;
+            }
+        };
+        let deleted: i32 = batch.iter().map(|company| company.conversations).sum();
+        for company in batch {
+            match lost
+                .iter_mut()
+                .find(|known| known.tenant_id == company.tenant_id)
+            {
+                Some(known) => {
+                    known.conversations += company.conversations;
+                    known.messages += company.messages;
+                }
+                None => lost.push(company),
+            }
+        }
+        if deleted < CONVERSATION_BATCH {
+            break;
+        }
+    }
+    lost
 }
 
 #[cfg(test)]
