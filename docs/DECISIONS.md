@@ -12540,8 +12540,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       déclencheur qui l'ont ouverte en dernier l'oublient, comme la consommation, la
       mémoire et le livrable oublient son run ;
     - `crates/db/tests/purge_indexes.rs` : chaque clé qui supprime ou vide des lignes
-      avec une conversation, un run, un message, une validation, une mission ou un
-      fil a un index qui commence par ses colonnes ;
+      avec une conversation, un run, un événement de run, un message, une validation,
+      une mission ou un fil a un index valide qui commence par ses colonnes, entier ou
+      partiel sur `colonne IS NOT NULL` pour l'une d'elles (suite de l'audit de la PR
+      #225, lot 54c : un index au prédicat sans rapport ou invalide ne compte pas) ;
+    - le même fichier `retention_conversations.rs` : un lot demandé de 10 000 n'en
+      supprime que 500 (lot 54c) ;
     - `crates/db/tests/audit_run_references.rs` : une entrée ne nomme ni le run d'une
       autre entreprise ni un run inconnu, écrite par l'application ou par le
       propriétaire, ni changée pour le faire ; un run supprimé laisse ses entrées

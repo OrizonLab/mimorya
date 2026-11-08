@@ -203,3 +203,28 @@ async fn a_backlog_goes_over_several_statements_of_one_pass() {
         ]
     );
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_batch_is_five_hundred_conversations_at_most() {
+    let api = TestApi::start_with(API).await;
+    let db = &api.app.services.db;
+    let company = companies::create(&api, "borne-conversations", "admin@borne.example").await;
+    // Older than any other test's: the batch takes them first.
+    idle_backlog(
+        company.tenant_id,
+        company.admin_id,
+        "rétention borne",
+        501,
+        60,
+    )
+    .await;
+
+    let batch = purge_idle_conversations(db.pool(), 10_000).await.unwrap();
+    let lost = batch
+        .iter()
+        .find(|lost| lost.tenant_id == company.tenant_id)
+        .map(|lost| lost.conversations);
+    assert_eq!(lost, Some(500));
+    assert_eq!(conversations_left("rétention borne").await.0.len(), 1);
+}
