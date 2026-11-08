@@ -29,11 +29,15 @@ BEGIN
 END
 $$;
 
--- On every update, not only of the status: the date is the database's,
--- never what a statement sets.
+-- On every statement that names the status or the date: the date is the
+-- database's, never what a statement sets; one that names neither leaves
+-- both as they are.
 CREATE TRIGGER users_disabled_at
-  BEFORE INSERT OR UPDATE ON users
+  BEFORE INSERT OR UPDATE OF status, disabled_at ON users
   FOR EACH ROW EXECUTE FUNCTION users_disabled_at();
+
+-- The accounts gone for thirty days, found without reading every account.
+CREATE INDEX users_departed ON users (disabled_at) WHERE status = 'disabled';
 
 -- The sessions ended (revoked, idle past their term or past their absolute
 -- one) more than thirty days ago, in every company: what they kept of who
@@ -61,7 +65,7 @@ GRANT EXECUTE ON FUNCTION system_purge_ended_sessions() TO mimorya_app;
 -- The memories past their retention, in every company, and how many each
 -- company lost, and why: `aged`, an episode recorded more than a year ago
 -- or a memory past its own term; `departed`, a personal memory of an
--- account disabled more than thirty days ago. Each company that lost some
+-- account disabled more than thirty days ago (one both is `aged`). Each company that lost some
 -- finds it in its audit log, in the same statement, by the platform
 -- (`memory.purged`, the counts alone): never their content.
 CREATE FUNCTION system_purge_retained_memories()
@@ -75,11 +79,9 @@ AS $$
     DELETE FROM memory_items m
      WHERE (m.kind = 'episode' AND m.created_at < now() - interval '12 months')
         OR m.expires_at <= now()
-        OR (m.scope = 'user' AND EXISTS (
-              SELECT 1 FROM users u
-               WHERE u.tenant_id = m.tenant_id
-                 AND u.id = m.owner_user_id
-                 AND u.status = 'disabled'
+        OR (m.scope = 'user' AND (m.tenant_id, m.owner_user_id) IN (
+              SELECT u.tenant_id, u.id FROM users u
+               WHERE u.status = 'disabled'
                  AND u.disabled_at < now() - interval '30 days'))
     RETURNING m.tenant_id,
               (m.kind = 'episode' AND m.created_at < now() - interval '12 months')
@@ -106,7 +108,8 @@ REVOKE ALL ON FUNCTION system_purge_retained_memories() FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION system_purge_retained_memories() TO mimorya_app;
 
--- What the purges look for, without reading every memory.
+-- The episodes and the memories with a term, found without reading every
+-- memory; a departed account's, through its owner.
 CREATE INDEX memory_items_episodes ON memory_items (created_at) WHERE kind = 'episode';
 
 CREATE INDEX memory_items_expiring ON memory_items (expires_at) WHERE expires_at IS NOT NULL;

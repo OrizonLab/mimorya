@@ -12373,8 +12373,9 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
       l'administration, par SCIM ou par l'exploitant, et la garde s'il l'est de
       nouveau ;
     - il l'efface quand le compte est réactivé ;
-    - à chaque mise à jour, c'est le déclencheur qui la fixe : une instruction ne la
-      change pas ;
+    - à chaque instruction qui nomme le statut ou la date, c'est le déclencheur qui
+      la fixe : une instruction ne la change pas, et une mise à jour qui ne nomme ni
+      l'un ni l'autre (la dernière connexion) ne le réveille pas ;
     - les comptes déjà désactivés comptent à partir de la migration ;
   - **une passe horaire** (`plugins/retention.rs`), lancée par la maintenance dès le
     démarrage, dans un processus à la fois (verrou `retention`, ADR-086), supprime :
@@ -12383,7 +12384,12 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     - les mémoires épisodiques enregistrées il y a plus d'un an, et toute mémoire
       passée son propre terme (`expires_at`) ;
     - les mémoires personnelles d'un compte désactivé depuis plus de 30 jours
-      (`system_purge_retained_memories`) ;
+      (`system_purge_retained_memories`), trouvées par les comptes partis (index
+      partiel `users_departed`) ; une mémoire à la fois ancienne et d'un compte parti
+      est comptée `aged` ;
+
+    chaque purge est tentée quoi qu'il advienne de l'autre, son échec journalisé ;
+
   - **les durées sont celles de la base** : les fonctions ne prennent aucun paramètre.
     L'application ne peut donc pas purger plus tôt (comme ADR-152 pour les limites de
     débit) ;
@@ -12400,19 +12406,27 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
 - **Conséquences** :
   - un compte réactivé avant les 30 jours retrouve sa mémoire personnelle ; après, elle
     est perdue ;
-  - restent à venir :
+  - restent à venir, gardés sans limite en attendant et dits tels dans `DATA_MODEL.md`
+    §5, `SECURITY.md` et la feuille de route :
     - le paramétrage des durées par entreprise ;
     - la purge des messages et des événements de run, plus délicate parce que le
       rôle applicatif ne supprime ni conversation ni run, que le journal d'audit les
       référence et que leur résumé les couvre ;
+    - celle du journal d'audit (5 ans), qui devra garder la chaîne vérifiable
+      (ADR-178), et celle de la consommation (5 ans) ;
   - suite de l'audit de la PR #223 : la carte « Provisionnement SCIM » est séparée de
     ce qui la précède par une marge ;
   - tests :
     - `crates/api/tests/retention.rs` : désactivation datée par l'administration et à
       la création, inchangée par une instruction, oubliée à la réactivation ; sessions
       finies depuis 31 jours supprimées, depuis 29 jours gardées, la session en cours
-      intacte ; mémoires supprimées et gardées selon leur âge, leur terme et le départ
-      de leur titulaire, une autre entreprise comptée à part ; une seule entrée
-      d'audit par entreprise, sans contenu ; aucune passe quand un autre processus en
-      tient une ;
+      intacte ; aucune passe quand un autre processus en tient une ; la maintenance
+      applique la rétention dès son démarrage (ce test échoue sans son appel) ;
+    - `crates/api/tests/retention_memories.rs` : mémoires supprimées et gardées selon
+      leur âge, leur terme et le départ de leur titulaire, l'ancienne d'un compte parti
+      comptée `aged` ; deux entreprises, chacune avec sa seule entrée d'audit et ses
+      nombres, sans contenu ; aucune entrée nouvelle sans rien à supprimer. Ces
+      tests lancent un processus sans maintenance (rôle `api`) : ils jouent la passe
+      eux-mêmes ;
+    - `plugins/retention.rs` : la passe au premier appel, puis une fois l'heure ;
     - `crates/db/tests/definer_functions.rs` : les deux nouvelles fonctions.

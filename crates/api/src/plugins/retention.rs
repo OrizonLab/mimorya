@@ -35,10 +35,11 @@ pub struct Retention {
 impl Retention {
     /// The pass, at the first call and then once an hour.
     pub async fn pass(&mut self, db: &Database) {
-        if self.last.is_some_and(|last| last.elapsed() < EVERY) {
+        let now = Instant::now();
+        if !due(self.last, now) {
             return;
         }
-        self.last = Some(Instant::now());
+        self.last = Some(now);
         match apply_retention(db).await {
             Ok(Some(retained)) if retained != Retained::default() => {
                 let memories: i32 = retained
@@ -54,18 +55,46 @@ impl Retention {
     }
 }
 
-/// One pass, unless another process runs one: nothing then.
+/// Whether a process that last ran the pass at `last` runs it at `now`:
+/// never yet, or an hour ago.
+pub fn due(last: Option<Instant>, now: Instant) -> bool {
+    last.is_none_or(|last| now.saturating_duration_since(last) >= EVERY)
+}
+
+/// One pass, unless another process runs one: nothing then. Each purge is
+/// tried whatever the other did, its failure logged.
 pub async fn apply_retention(db: &Database) -> anyhow::Result<Option<Retained>> {
     let Some(sweep) = db.try_sweep_lock(RETENTION_SWEEP).await? else {
         return Ok(None);
     };
-    let retained = purge(db).await;
+    let sessions = purge_ended_sessions(db.pool())
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(error = %error, "Ended session purge failed");
+            0
+        });
+    let memories = purge_retained_memories(db.pool())
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(error = %error, "Retained memory purge failed");
+            Vec::new()
+        });
     sweep.release().await;
-    retained.map(Some)
+    Ok(Some(Retained { sessions, memories }))
 }
 
-async fn purge(db: &Database) -> anyhow::Result<Retained> {
-    let sessions = purge_ended_sessions(db.pool()).await?;
-    let memories = purge_retained_memories(db.pool()).await?;
-    Ok(Retained { sessions, memories })
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runs_at_once_then_once_an_hour() {
+        let start = Instant::now();
+        assert!(due(None, start));
+        assert!(!due(Some(start), start));
+        assert!(!due(Some(start), start + EVERY - Duration::from_secs(1)));
+        assert!(due(Some(start), start + EVERY));
+        // A clock that went back runs nothing.
+        assert!(!due(Some(start + EVERY), start));
+    }
 }
