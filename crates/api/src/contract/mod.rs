@@ -21,7 +21,6 @@ mod missions;
 mod notifications;
 mod person_authorizations;
 mod personal_export;
-mod personal_export_rows;
 mod run_stream;
 mod runs;
 mod scheduled_tasks;
@@ -66,8 +65,7 @@ pub use notifications::NotificationSettings;
 pub use person_authorizations::{
     PersonAuthorizationState, PersonAuthorizationView, PersonAuthorizations,
 };
-pub use personal_export::{ExportAccount, PersonalExport};
-pub use personal_export_rows::conversation_exports;
+pub use personal_export::{ExportAccount, PersonalExport, conversation_exports, run_exports};
 pub use run_stream::{
     ApprovalRequestedEvent, ApprovalResolvedEvent, AssistantDelta, AssistantMessage,
     ConnectorsUnavailable, RunFinished, RunQueued, RunResumed, RunStarted, RunStreamEvent,

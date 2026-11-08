@@ -3,7 +3,7 @@
 
 use axum::extract::State;
 use axum::http::HeaderValue;
-use axum::http::header::CONTENT_DISPOSITION;
+use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -13,7 +13,7 @@ use mimorya_db::repositories::notification_settings::NotificationSettingsRow;
 use crate::app::AppState;
 use crate::contract::{Done, NotificationSettings, PasswordUpdate};
 use crate::http::{ApiError, ApiResult, Body};
-use crate::plugins::{Auth, AuthPendingPasswordChange};
+use crate::plugins::{Auth, AuthPendingPasswordChange, RequestContext};
 use crate::services::account::{self, PasswordChange};
 use crate::services::notification_settings::{
     own_notification_settings, set_own_notification_settings,
@@ -31,15 +31,23 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// The person's own data, as a JSON file named for the day it was made.
-async fn export(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Response> {
+async fn export(
+    State(state): State<AppState>,
+    context: RequestContext,
+    Auth(identity): Auth,
+) -> ApiResult<Response> {
     let access = state.access.context(identity).await?;
-    let export = export_own_data(&state.db, &state.exports, &access).await?;
-    let day = export.exported_at.get(..10).unwrap_or("export");
+    let file = export_own_data(&state.db, &state.exports, &access, &context).await?;
     let disposition = HeaderValue::from_str(&format!(
-        "attachment; filename=\"mimorya-mes-donnees-{day}.json\""
+        "attachment; filename=\"mimorya-mes-donnees-{}.json\"",
+        file.day
     ))
     .map_err(|error| anyhow::anyhow!("content disposition: {error}"))?;
-    Ok(([(CONTENT_DISPOSITION, disposition)], Json(export)).into_response())
+    let headers = [
+        (CONTENT_TYPE, HeaderValue::from_static("application/json")),
+        (CONTENT_DISPOSITION, disposition),
+    ];
+    Ok((headers, file.into_body()).into_response())
 }
 
 async fn change_password(

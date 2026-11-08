@@ -4,10 +4,12 @@
 //! never a colleague's conversation or memory, nor the company's, nor
 //! another company's; never a token nor a password hash. The export is
 //! traced in the company's audit log by its counts alone. A process makes
-//! a few exports at once, one at a time for a person.
+//! a few exports at once, one at a time for a person, each holding its
+//! place until its file is sent.
 
 mod support;
 
+use axum::body::to_bytes;
 use mimorya_api::services::personal_export::EXPORTS_AT_ONCE;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
@@ -168,6 +170,7 @@ async fn a_person_exports_their_own_data_and_nobody_else_s() {
             "conversations": export["conversations"].as_array().unwrap().len(),
             "messages": messages,
             "memories": export["memories"].as_array().unwrap().len(),
+            "runs": export["runs"].as_array().unwrap().len(),
         })
     );
 }
@@ -196,4 +199,33 @@ async fn a_process_makes_a_few_exports_one_at_a_time_for_a_person() {
     drop(others);
     drop(held);
     assert_eq!(marc.get(EXPORT).await.status.as_u16(), 200);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_export_holds_its_place_until_its_file_is_sent() {
+    let api = TestApi::start_with(API).await;
+    let marc = api.sign_in(user::MARC).await;
+    let exports = &api.app.services.exports;
+
+    // Answered, its file not yet read: the place is still Marc's.
+    let answered = marc.open(EXPORT).await;
+    assert_eq!(answered.status().as_u16(), 200);
+    let held = exports
+        .take(user::MARC)
+        .err()
+        .map(|refusal| refusal.message);
+    assert!(held.is_some_and(|message| message.contains("déjà en cours")));
+
+    // Read to its end, the file gives it back.
+    let body = to_bytes(answered.into_body(), usize::MAX).await.unwrap();
+    let export: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(export["account"]["id"], json!(user::MARC));
+    drop(exports.take(user::MARC).unwrap());
+
+    // Dropped unread (the person gone), it gives it back too.
+    let dropped = marc.open(EXPORT).await;
+    assert!(exports.take(user::MARC).is_err());
+    drop(dropped);
+    assert!(exports.take(user::MARC).is_ok());
 }

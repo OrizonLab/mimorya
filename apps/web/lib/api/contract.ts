@@ -919,9 +919,19 @@ export type ExportAccount = { id: string, email: string, displayName: string, jo
  */
 attributes: Record<string, unknown>, locale: string, createdAt: string, lastLoginAt: string | null, units: Array<ExportUnit>, roles: Array<ExportRole>, };
 
+export type ExportApproval = { runId: string, tool: string, actionSummary: string, payload: unknown, status: string, createdAt: string, decidedAt: string | null, decisionComment: string | null, };
+
 export type ExportAuthorization = { connector: string, scopes: string, authorizedAt: string, };
 
-export type ExportConversation = { id: string, title: string, visibility: string, createdAt: string, updatedAt: string, archivedAt: string | null, messages: Array<ExportMessage>, };
+export type ExportConversation = { id: string, title: string, visibility: string, createdAt: string, updatedAt: string, archivedAt: string | null,
+/**
+ * What the assistant reads in place of the first messages (ADR-145).
+ */
+summary: string | null, messages: Array<ExportMessage>, };
+
+export type ExportDecision = { tool: string, status: string, decidedAt: string | null, decisionComment: string | null, };
+
+export type ExportDeliverable = { kind: string, title: string, content: unknown, status: string, createdAt: string, };
 
 export type ExportIdentity = {
 /**
@@ -949,11 +959,32 @@ role: string, content: string, createdAt: string, };
 
 export type ExportMission = { title: string, description: string, status: string, createdAt: string, finishedAt: string | null, result: string | null, };
 
+/**
+ * The account as the company's identity provider made it through SCIM.
+ */
+export type ExportProvisioning = { externalId: string | null, createdAt: string, removedAt: string | null, };
+
 export type ExportRole = { name: string,
 /**
- * `tenant` or `org_unit`.
+ * `tenant`, `org_unit` or `self`.
  */
 scope: string, unit: string | null, includeDescendants: boolean, expiresAt: string | null, };
+
+export type ExportRun = { id: string, conversationId: string | null,
+/**
+ * The run that delegated to this one, for a sub-agent's (ADR-098).
+ */
+parentRunId: string | null, objective: string, status: string, channel: string, createdAt: string, finishedAt: string | null, toolCalls: Array<ExportToolCall>, };
+
+/**
+ * A session: when, from which address, with what browser.
+ */
+export type ExportSession = { createdAt: string, lastSeenAt: string, expiresAt: string, revokedAt: string | null, ip: string | null, userAgent: string | null, };
+
+/**
+ * An identity provider the person signs in through.
+ */
+export type ExportSignIn = { provider: string, kind: string, subject: string, createdAt: string, lastUsedAt: string, };
 
 export type ExportTask = { title: string, instruction: string,
 /**
@@ -961,9 +992,28 @@ export type ExportTask = { title: string, instruction: string,
  */
 weekdays: Array<number>, timeOfDay: string, timeZone: string, createdAt: string, };
 
+export type ExportToolCall = { tool: string,
+/**
+ * `allow`, `require_approval` or `deny`.
+ */
+decision: string, status: string, input: unknown, createdAt: string, };
+
 export type ExportTrigger = { title: string, instruction: string, enabled: boolean, createdAt: string, };
 
 export type ExportUnit = { name: string, primary: boolean, };
+
+/**
+ * What the assistant consumed for the person in a month, of one kind.
+ */
+export type ExportUsage = {
+/**
+ * The month's first instant.
+ */
+month: string,
+/**
+ * `llm`, `embedding` or `tool`.
+ */
+kind: string, inputTokens: number, outputTokens: number, costMicros: number, };
 
 /**
  * An entry as exported: its place and seal in the company's chain, then
@@ -2257,7 +2307,24 @@ export type PersonAuthorizations = { servers: Array<PersonAuthorizationView>, };
 /**
  * `GET /account/export`: everything exported, as of `exportedAt`.
  */
-export type PersonalExport = { exportedAt: string, account: ExportAccount, notifications: NotificationSettings, conversations: Array<ExportConversation>, memories: Array<ExportMemory>, scheduledTasks: Array<ExportTask>, triggers: Array<ExportTrigger>, missions: Array<ExportMission>, absences: Array<ExportAbsence>, linkedAccounts: Array<ExportLink>, messagingIdentities: Array<ExportIdentity>, serverAuthorizations: Array<ExportAuthorization>, };
+export type PersonalExport = { exportedAt: string, account: ExportAccount, notifications: NotificationSettings,
+/**
+ * The sessions opened in the person's name, still kept (30 days past
+ * their end, ADR-185).
+ */
+sessions: Array<ExportSession>, signIns: Array<ExportSignIn>, provisioning: Array<ExportProvisioning>, conversations: Array<ExportConversation>, memories: Array<ExportMemory>, scheduledTasks: Array<ExportTask>, triggers: Array<ExportTrigger>, missions: Array<ExportMission>, deliverables: Array<ExportDeliverable>,
+/**
+ * The runs made on the person's behalf, each with the tools it called.
+ */
+runs: Array<ExportRun>,
+/**
+ * The validations asked of the person for their own runs.
+ */
+approvals: Array<ExportApproval>,
+/**
+ * The decisions the person gave on others' runs: theirs alone.
+ */
+decisions: Array<ExportDecision>, usage: Array<ExportUsage>, absences: Array<ExportAbsence>, linkedAccounts: Array<ExportLink>, messagingIdentities: Array<ExportIdentity>, serverAuthorizations: Array<ExportAuthorization>, };
 
 /**
  * The provider the platform offers every company.

@@ -1,6 +1,6 @@
 //! What one person wrote or set the assistant to do, as the export of their
-//! own data reads it (ADR-187): their conversations and every message in
-//! them, their personal memories, their scheduled tasks, triggers and
+//! own data reads it (ADR-187): their conversations, every message in them
+//! and the summary shown in place of the first ones, their personal memories, their scheduled tasks, triggers and
 //! missions. A trigger's token is never read: only its hash is kept, and
 //! it is not theirs to export. Read in the person's company's transaction,
 //! for the person alone: a colleague's conversation shared with their unit
@@ -26,6 +26,13 @@ pub struct ExportedMessage {
     pub role: String,
     pub content: String,
     pub created_at: DateTime<Utc>,
+}
+
+/// The summary of one of the person's conversations (ADR-145).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ExportedSummary {
+    pub conversation_id: Uuid,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -90,6 +97,21 @@ pub async fn exported_messages(
         "select m.conversation_id, m.role, m.content, m.created_at from messages m \
          join conversations c on c.tenant_id = m.tenant_id and c.id = m.conversation_id \
          where c.owner_user_id = $1 order by m.conversation_id, m.created_at, m.id",
+    )
+    .bind(user_id)
+    .fetch_all(conn)
+    .await
+}
+
+/// The summaries of the person's own conversations.
+pub async fn exported_summaries(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+) -> sqlx::Result<Vec<ExportedSummary>> {
+    sqlx::query_as(
+        "select s.conversation_id, s.content from conversation_summaries s \
+         join conversations c on c.tenant_id = s.tenant_id and c.id = s.conversation_id \
+         where c.owner_user_id = $1",
     )
     .bind(user_id)
     .fetch_all(conn)
