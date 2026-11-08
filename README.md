@@ -140,7 +140,7 @@ désactiver et retirer ses comptes par SCIM 2.0 à `<adresse de l'application>/a
 (un compte retiré est désactivé et sort de la vue de SCIM, mais n'est jamais supprimé :
 ses données restent sur la plateforme), avec un jeton SCIM
 (`Authorization: Bearer msc_…`) fait par un administrateur des comptes depuis l'onglet
-« Utilisateurs » (ADR-183). Le
+« Utilisateurs » (ADR-183, ADR-184). Le
 lien d'invitation (valable 7 jours) n'est affiché qu'une fois : transmettez-le par un canal
 sûr, l'administrateur y choisit son mot de passe puis construit son organisation depuis
 l'administration. Lancez ces commandes dans un terminal (par exemple

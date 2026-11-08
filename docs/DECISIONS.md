@@ -12339,3 +12339,19 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     comptes lus avec lui à l'adresse montrée, focus, retrait, puis 401 ; qui lit
     seulement l'annuaire ne voit pas la section). Le comportement de la section
     commune sur les refus reste testé par `audit-export.spec.ts`.
+- **Complément (lot 53d, suites de l'audit du lot 53c)** :
+  - **la section se tient hors de la lecture de l'annuaire** : rendue après lui,
+    montrée selon le dernier annuaire lu (`useApiData` le garde quand une relecture
+    échoue), elle n'est ni verrouillée pendant que l'annuaire est relu après un
+    changement, ni démontée si cette relecture échoue. Le secret d'un jeton nouveau,
+    montré une seule fois, ne peut donc plus se perdre par un changement fait
+    ailleurs dans l'onglet ; c'est la règle d'ADR-182 pour les jetons d'export, hors
+    de la lecture du journal ;
+  - le test e2e de qui lit seulement l'annuaire vérifie l'absence du bouton
+    « Ajouter un collaborateur », et non d'un champ que le formulaire fermé ne
+    montre à personne ;
+  - l'historique de la feuille de route dit « retirés », et le README comme l'en-tête
+    de l'onglet citent ADR-184 ;
+  - tests : `apps/web/e2e/scim-tokens.spec.ts` (relecture de l'annuaire retenue :
+    l'annuaire verrouillé, pas l'avis ; relecture échouée : l'avis et son secret
+    restent). Ce test échoue sur l'ancienne disposition.
