@@ -1,10 +1,13 @@
-// The SCIM tokens of the « Utilisateurs » tab (ADR-183):
+// The SCIM tokens of the « Utilisateurs » tab (ADR-183, ADR-184):
 // - Paul, who manages the company's accounts, makes a token named for the
 //   identity provider. Its secret is shown this once, with the SCIM address
 //   to give the provider, and reads the company's accounts there; the notice
 //   closed, the focus is on the section's title. Read again after reloading,
 //   the token is listed by its name, its last use noted, its secret gone.
 //   Removed after a confirmation, it reads nothing more;
+// - the notice of a new token stands outside the directory's reading: while
+//   the directory is read again after a change, its buttons still work;
+//   when that reading fails, the notice and its secret stay;
 // - an account that only reads the directory (`user:read`, company-wide)
 //   sees the accounts, neither the making of one nor the SCIM tokens.
 // Every token a test makes carries `MARK`, removed even when it fails; the
@@ -13,7 +16,7 @@
 // the section's behaviour on refusals is the export tokens' (`BearerTokens`,
 // `audit-export.spec.ts`).
 import type { Page } from '@playwright/test';
-import type { ScimTokens, ScimUserList } from '../lib/api/contract';
+import type { ErrorBody, ScimTokens, ScimUserList } from '../lib/api/contract';
 import {
   activate,
   grantCompanyWide,
@@ -24,6 +27,7 @@ import {
 } from './support/accounts';
 import { openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
+import { holdList } from './support/hold';
 
 const TAB = 'Utilisateurs';
 const TITLE = 'Provisionnement SCIM';
@@ -33,6 +37,10 @@ const MARK = '(bout en bout)';
 const NAME = `Microsoft Entra ID ${MARK}`;
 const PAUL = 'paul.renaud@neo-maintenance.example';
 const CHOSEN = 'phrase-de-passe-scim-e2e';
+/** What the API answers when the directory cannot be read. */
+const FAILED = {
+  error: { code: 'internal', message: 'Annuaire momentanément illisible' },
+} satisfies ErrorBody;
 
 /** What the test made of accounts and roles, for its cleanup. */
 const made: MadeAccounts & { paul?: Page } = { roles: [] };
@@ -112,6 +120,57 @@ test('an administrator makes a SCIM token, shown once, then removes it', async (
   await noError(page);
 });
 
+test('a new token’s notice is neither locked nor lost by the directory read again', async ({
+  page,
+}) => {
+  await openAdmin(page, TAB);
+  made.paul = page;
+  const email = `fonction.scim.${Date.now()}@neo-maintenance.example`;
+  await makeAccount(page, made, { email, displayName: 'Alix Morel' });
+  await openTab(page);
+  await page.getByLabel(/Nom du nouveau jeton/).fill(NAME);
+  await page.getByRole('button', { name: 'Créer un jeton' }).click();
+  const notice = page.getByRole('region', { name: `Jeton « ${NAME} »` });
+  const secret = await notice.getByLabel(/Jeton secret/).inputValue();
+  const copy = notice.getByRole('button', { name: 'Copier le jeton' });
+  const noted = notice.getByRole('button', { name: 'J’ai noté le jeton' });
+
+  // The directory read again after a change, held: the directory is locked,
+  // not the notice.
+  await page
+    .getByRole('row')
+    .filter({ hasText: email })
+    .getByRole('button', { name: 'Gérer' })
+    .click();
+  const jobTitle = page.getByLabel('Fonction');
+  const save = page.getByRole('button', { name: 'Enregistrer', exact: true });
+  const directory = await holdList(page, '/api/admin/users');
+  const reload = directory.arm();
+  await jobTitle.fill('Technicienne');
+  await save.click();
+  await reload;
+  await expect(jobTitle).toBeDisabled();
+  await expect(copy).toBeEnabled();
+  await expect(noted).toBeEnabled();
+  directory.release();
+  await expect(jobTitle).toBeEnabled();
+
+  // Read again and failed: the directory says so; the notice and its secret
+  // stay.
+  await page.route('**/api/admin/users', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ status: 500, json: FAILED })
+      : route.fallback(),
+  );
+  await jobTitle.fill('Cheffe d’équipe');
+  await save.click();
+  await expect(page.getByText(FAILED.error.message)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Réessayer' })).toBeVisible();
+  await expect(notice.getByLabel(/Jeton secret/)).toHaveValue(secret);
+  await expect(copy).toBeEnabled();
+  await expect(noted).toBeEnabled();
+});
+
 test('who only reads the directory sees neither the making of an account nor the SCIM tokens', async ({
   page,
   newContext,
@@ -134,7 +193,7 @@ test('who only reads the directory sees neither the making of an account nor the
   await expect(hugo.getByRole('row').filter({ hasText: 'Paul Renaud' })).toBeVisible();
   await expect(hugo.getByRole('heading', { name: TITLE })).toHaveCount(0);
   await expect(hugo.getByRole('button', { name: 'Créer un jeton' })).toHaveCount(0);
-  await expect(hugo.getByLabel('Nom affiché')).toHaveCount(0);
+  await expect(hugo.getByRole('button', { name: 'Ajouter un collaborateur' })).toHaveCount(0);
   expect((await hugo.request.get(TOKENS)).status()).toBe(403);
   await noError(hugo);
 });
