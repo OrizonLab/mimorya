@@ -190,6 +190,11 @@ async fn only_another_administrator_of_its_company_erases_an_account() {
     // Nor does the directory offer it to them.
     let rights = manager.get("/admin/users").await.json()["canManage"].clone();
     assert_eq!(rights["erase"], false, "{rights}");
+    let entries = manager.get("/admin/users").await.json()["users"].clone();
+    assert!(
+        (entries.as_array().unwrap().iter()).all(|u| u.get("erasable").is_none()),
+        "{entries}"
+    );
 
     // Another company's administrator finds no such account.
     let address = "admin@acme-effacement.example";
@@ -215,6 +220,9 @@ async fn only_another_administrator_of_its_company_erases_an_account() {
             .clone()
     };
     assert_eq!(listed(user::LEA)["email"], json!(lea));
+    // Whether each may be erased, as the domain says it.
+    assert_eq!(listed(user::LEA)["erasable"], true);
+    assert_eq!(listed(user::PAUL)["erasable"], false);
     // That of a disabled account alone: no other is to be erased.
     assert!(listed(user::PAUL).get("email").is_none());
     let erased = erase(&eraser, user::LEA, &lea).await;

@@ -12868,3 +12868,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       quand il est de nouveau désactivé : la personne la rouvre si elle le veut
       (`apps/web/e2e/account-erasure.spec.ts`, la ligne de Bastien, réactivé puis
       désactivé de nouveau, relue après chacun de deux effacements).
+  - **suites de l'audit du lot 57** (lot 58) :
+    - l'annuaire dit lui-même, à qui efface les comptes, si chaque compte peut être
+      effacé (`erasable`, calculé par `erasable_status`) ; l'écran le lit au lieu de
+      comparer un statut, la règle restant au serveur (`admin_directory.rs`,
+      `account_erasure_refusals.rs`) ;
+    - le nettoyage des tests de l'effacement essaie chaque retrait pour lui-même : un
+      retrait qui échoue n'empêche pas les suivants, et le premier échec est dit à la
+      fin.

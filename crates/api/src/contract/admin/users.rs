@@ -95,6 +95,11 @@ pub struct DirectoryUser {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub assignments: Option<Vec<Assignment>>,
+    /// To who erases accounts only: whether the account may be erased at
+    /// all, as the domain says it (ADR-190).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub erasable: Option<bool>,
 }
 
 /// Account and role management, and the erasure of a disabled account

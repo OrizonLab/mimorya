@@ -627,7 +627,12 @@ invitationExpiresAt?: string | null,
 /**
  * To role managers only.
  */
-grants?: Array<string>, assignments?: Array<Assignment>, };
+grants?: Array<string>, assignments?: Array<Assignment>,
+/**
+ * To who erases accounts only: whether the account may be erased at
+ * all, as the domain says it (ADR-190).
+ */
+erasable?: boolean, };
 
 /**
  * A document deposited: its identifier and the passages its text gave.

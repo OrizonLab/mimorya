@@ -84,6 +84,7 @@ pub async fn list(
                 grants: manage_roles.then(|| own.iter().map(|a| grant_label(&access, a)).collect()),
                 assignments: manage_roles
                     .then(|| own.iter().map(|a| assignment_view(&access, a)).collect()),
+                erasable: erase.then(|| erasable_status(&u.status)),
             })
         })
         .collect::<anyhow::Result<_>>()?;
