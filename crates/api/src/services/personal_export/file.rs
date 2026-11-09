@@ -3,10 +3,13 @@
 //! place is given back when the last block is taken, when the body is
 //! dropped (the person gone before the end), or when no block is taken
 //! for `STALL` (a download paused, a client that no longer reads, ADR-188):
-//! the file is then let go of and its sending ends in error. Never before:
-//! axum writes a response after its handler returns, so a place given back
-//! with the handler would let a process hold more files at once than it
-//! may.
+//! the file is then let go of and its sending ends in error. Each block is
+//! a copy, never a slice of the file: the blocks the HTTP server still
+//! queues for a client that no longer reads (a few hundred KiB at most)
+//! would otherwise keep the whole file alive after its place is given
+//! back. Never before: axum writes a response after its handler returns,
+//! so a place given back with the handler would let a process hold more
+//! files at once than it may.
 
 use std::io;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -74,7 +77,8 @@ enum State {
         /// When its last block was taken.
         taken_at: Instant,
     },
-    /// No block taken for too long: the file and its place let go of.
+    /// No block taken for too long: the file and its place let go of; only
+    /// the copied blocks the server already queued remain.
     Stalled,
     /// Sent, dropped, or its stall told.
     Over,
@@ -99,7 +103,11 @@ impl Left {
             }
             State::Sending { rest, taken_at, .. } => {
                 *taken_at = Instant::now();
-                Some(Ok(rest.split_to(rest.len().min(BLOCK))))
+                let size = rest.len().min(BLOCK);
+                // A copy: the block may outlive the file in the server's queue.
+                let block = Bytes::copy_from_slice(&rest[..size]);
+                *rest = rest.slice(size..);
+                Some(Ok(block))
             }
             State::Stalled => {
                 *state = State::Over;

@@ -77,18 +77,19 @@ async fn an_export_holds_exactly_the_person_s_own_data() {
     decided_for(tenant::ID, pauls.run, user::PAUL, user::MARC, "pour-paul").await;
     absence(tenant::ID, user::MARC, user::JULIEN).await;
     absence(tenant::ID, user::PAUL, user::MARC).await;
-    invited(
-        tenant::ID,
-        user::MARC,
-        Some(user::PAUL),
-        "invitation-de-marc",
-    )
-    .await;
+    // Paul's invitation first: a read that lost its person would find it.
     invited(
         tenant::ID,
         user::PAUL,
         Some(user::MARC),
         "invitation-de-paul",
+    )
+    .await;
+    invited(
+        tenant::ID,
+        user::MARC,
+        Some(user::PAUL),
+        "invitation-de-marc",
     )
     .await;
     // Acme's administrator has the invitation that made her account.

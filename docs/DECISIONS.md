@@ -12658,8 +12658,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **un envoi qui n'avance plus est arrêté** : si aucun bloc n'est pris pendant
     60 secondes (`STALL`, `services/personal_export/file.rs`), le fichier est lâché, sa
     place rendue et son envoi terminé en erreur. Une tâche veille sur chaque envoi ; un
-    corps abandonné rend sa place aussitôt, sans l'attendre. La mémoire retenue alors se
-    borne à ce que le serveur HTTP avait déjà pris (un bloc de 64 Kio) ;
+    corps abandonné rend sa place aussitôt, sans l'attendre. Chaque bloc envoyé est une
+    copie, jamais une tranche du fichier : le serveur HTTP garde en file, pour un client
+    qui ne lit plus, jusqu'à seize blocs (quelques centaines de Kio), qui sinon
+    retiendraient le fichier entier après que sa place a été rendue. Restent alors, par
+    connexion arrêtée et jusqu'au départ du client, ces seuls blocs, sans le fichier ;
   - **la taille du fichier est donnée** (`Content-Length`) : le navigateur suit la
     progression, et un envoi coupé ne passe pas pour un fichier complet ;
   - **l'export dit aussi** :
@@ -12680,7 +12683,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       n'est pas lu, et rendue à son dernier bloc ou quand il est abandonné. Un envoi dont
       un bloc est pris juste avant le délai continue. Celui dont aucun bloc n'est pris
       pendant le délai rend sa place, puis finit en erreur. Ce test bloque si
-      l'arrêt est retiré ;
+      l'arrêt est retiré. Un fichier arrêté est lâché même quand un de ses blocs est
+      encore tenu, ce qui échoue si les blocs redeviennent des tranches du fichier ;
     - `crates/api/tests/personal_export.rs` : la taille annoncée est celle du fichier ;
     - `crates/api/tests/personal_export_isolation.rs` : Marc a exactement :
       - l'unité qu'il dirige ;

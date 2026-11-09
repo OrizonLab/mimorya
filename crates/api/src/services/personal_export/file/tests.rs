@@ -1,6 +1,7 @@
 //! An export file's place (ADR-187, ADR-188): held while the file is
 //! unread, given back once it is read to its end, dropped, or left with no
-//! block taken for its stall, its sending then ended in error.
+//! block taken for its stall, its sending then ended in error and the file
+//! let go of, though a block taken is still held.
 
 use std::time::Duration;
 
@@ -72,4 +73,25 @@ async fn a_file_whose_blocks_are_no_longer_taken_lets_its_place_go() {
     assert!(places.take(PERSON).is_ok());
     assert!(blocks.next().await.unwrap().is_err());
     assert!(blocks.next().await.is_none());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stalled_file_is_let_go_of_though_its_blocks_are_still_held() {
+    let places = places();
+    let written = Bytes::from(vec![b'x'; BLOCK * 3]);
+    let file = ExportFile {
+        day: "2026-11-08".into(),
+        bytes: written.clone(),
+        place: places.take(PERSON).unwrap(),
+    };
+    let mut blocks = file.into_body_within(STALL).into_data_stream();
+    // A block still held, as by a server whose client no longer reads.
+    let held = blocks.next().await.unwrap().unwrap();
+    assert!(!written.is_unique());
+
+    tokio::time::sleep(STALL + Duration::from_secs(1)).await;
+    assert!(places.take(PERSON).is_ok());
+    // The file is let go of: the block held is a copy of it.
+    assert!(written.is_unique());
+    assert_eq!(held.len(), BLOCK);
 }

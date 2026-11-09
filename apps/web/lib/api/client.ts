@@ -25,19 +25,27 @@ export const READ_TIMEOUT_MS = 30_000;
 
 const NO_ANSWER = 'Le serveur ne répond pas. Réessayez dans un instant.';
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const read = method === 'GET';
+/**
+ * Runs `send` with a signal that aborts it past `READ_TIMEOUT_MS`, said as
+ * the server not answering. Past `send`, nothing is cut short.
+ */
+async function withReadDeadline<T>(send: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
   // A timer rather than AbortSignal.timeout: the page's clock drives it.
-  const timer = read ? setTimeout(() => controller.abort(), READ_TIMEOUT_MS) : undefined;
+  const timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
   try {
-    return await send<T>(method, path, body, controller.signal);
+    return await send(controller.signal);
   } catch (error) {
     if (controller.signal.aborted) throw new ApiError(0, 'timeout', NO_ANSWER);
     throw error;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  if (method === 'GET') return withReadDeadline((signal) => send<T>(method, path, body, signal));
+  return send<T>(method, path, body, new AbortController().signal);
 }
 
 /** A body as sent: a file as it is (ADR-095), anything else as JSON. */
@@ -97,20 +105,9 @@ function fileName(res: Response, fallback: string): string {
  * longer moves (ADR-188).
  */
 async function download(path: string, fallback: string): Promise<DownloadedFile> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(`/api${path}`, {
-      credentials: 'same-origin',
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (controller.signal.aborted) throw new ApiError(0, 'timeout', NO_ANSWER);
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await withReadDeadline((signal) =>
+    fetch(`/api${path}`, { credentials: 'same-origin', signal }),
+  );
   if (!res.ok) throw await failure(res);
   return { name: fileName(res, fallback), blob: await res.blob() };
 }
