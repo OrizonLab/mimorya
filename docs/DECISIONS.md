@@ -12701,7 +12701,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 ## ADR-189 — Effacement d'un compte désactivé (lot 56a)
 
-- **Statut** : accepté (2026-11-09).
+- **Statut** : accepté (2026-11-09) · modifie ADR-019 (les comptes n'étaient jamais
+  supprimés par l'application) et ADR-186 (le journal gardait ses clés vers les comptes).
 - **Contexte** : `SECURITY.md` §9 annonçait l'effacement d'un compte (droit à
   l'effacement) ; ADR-187 en avait fixé la condition : garder le journal d'audit
   vérifiable (ADR-178). Le schéma prévoyait déjà, pour chaque table nommant un compte, la
@@ -12761,7 +12762,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     ans) : les adresses IP des connexions, et l'identifiant chez Slack, Telegram ou Teams
     des identités de messagerie (`externalId` des entrées `gateway.identity_linked`,
     `gateway.identity_unlinked`, `gateway.identity_removed`, `gateway.link_code_offered`,
-    `gateway.link_code_claimed`), qui prouve quel compte d'un service a été relié à qui,
+    `gateway.link_code_claimed`, et `gateway.conversation_refused`, qui ne nomme pas le
+    compte mais garde le même identifiant), qui prouve quel compte d'un service a été relié à qui,
     ou refusé. Une entrée scellée ne s'expurge pas : la vider romprait la chaîne ;
   - **l'effacement est tracé** (`user.erased`) par l'administrateur, le compte effacé
     nommé par son identifiant, et ses nombres seuls ;
@@ -12804,5 +12806,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       par son entreprise, hors de toute entreprise), mais un compte désactivé de la
       sienne ; aucune clé vers `users` n'arrête un effacement : chacune supprime ses
       lignes ou vide sa colonne ;
+    - les tests de bout en bout qui se font un compte le désactivent puis l'effacent en
+      retapant son adresse (`apps/web/e2e/support/accounts.ts`), l'effacement réussi ;
     - `crates/db/tests/purge_indexes.rs` couvre les clés vers `users` ;
       `tenant_references.rs` vérifie le vidage d'une référence sur la consommation.

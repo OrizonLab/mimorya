@@ -602,8 +602,8 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
   modifié s'accompagne de son test. Les tests partagent l'entreprise de démonstration
   (recréée à chaque démarrage) et s'exécutent dans l'ordre des fichiers : chacun la
   laisse sans effet sur les suivants. Ce qu'il crée, il le supprime quand l'API le
-  permet, même s'il échoue quand l'effet serait gênant (`afterEach`) ; un compte, que
-  l'API ne supprime pas, porte une adresse propre au test et ne garde aucun rôle métier.
+  permet, même s'il échoue quand l'effet serait gênant (`afterEach`) ; un compte porte une
+  adresse propre au test, et il est désactivé puis effacé (ADR-189).
   Une assertion vérifie ce que l'API a enregistré (relu après rechargement), pas l'état
   local d'un formulaire.
 - Toute règle d'autorisation ou d'isolation nouvelle s'accompagne d'un test qui tente
