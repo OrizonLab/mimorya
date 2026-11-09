@@ -12,6 +12,7 @@ use crate::authz::{AssignmentScope, OrgTree, OrgUnitType, matches_permission};
 pub const TENANT_WIDE_PERMISSIONS: &[&str] = &[
     "org:manage",
     "user:manage",
+    "user:erase",
     "role:manage",
     "policy:manage",
     "connector:manage",

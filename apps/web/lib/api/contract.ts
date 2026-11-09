@@ -30,6 +30,12 @@ export type AbsenceRecorded = {
 notified: boolean, };
 
 /**
+ * Body of `POST /admin/users/{id}/erasure`: the account's address, typed
+ * again by the administrator.
+ */
+export type AccountErasure = { confirmEmail: string, };
+
+/**
  * A gateway of the company, and the person's identity there.
  */
 export type AccountGatewayView = { gatewayId: string,
@@ -831,6 +837,11 @@ endpoints: Array<string>, };
  * Where a permission is checked so far.
  */
 export type Enforcement = "not_yet" | "holder" | "per_resource";
+
+/**
+ * `POST /admin/users/{id}/erasure`: what the account took with it.
+ */
+export type ErasedAccount = { conversations: number, messages: number, memories: number, runs: number, };
 
 /**
  * The body of every error response.

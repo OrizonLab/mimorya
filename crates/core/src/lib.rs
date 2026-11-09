@@ -2,6 +2,7 @@
 //! organisation tree, autonomy levels, the tool contract, memory visibility
 //! rules and the fictional demo company. No I/O.
 
+pub mod account_erasure;
 pub mod account_links;
 pub mod accounts;
 pub mod administration;

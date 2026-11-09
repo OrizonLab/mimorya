@@ -115,9 +115,10 @@ async fn a_deleted_reference_leaves_the_row_in_its_company() {
     .execute(&mut *tx)
     .await
     .unwrap();
-    let entry: i64 = sqlx::query_scalar(
-        "insert into audit_log (tenant_id, actor_type, actor_user_id, action, outcome) \
-         values ($1, 'user', $2, 'test.reference', 'success') returning id",
+    // What the assistant consumed for them: the company's, still.
+    let usage: i64 = sqlx::query_scalar(
+        "insert into usage_records (tenant_id, user_id, kind, provider, model) \
+         values ($1, $2, 'llm', 'anthropic', 'modèle') returning id",
     )
     .bind(tenant::ID)
     .bind(user)
@@ -130,13 +131,13 @@ async fn a_deleted_reference_leaves_the_row_in_its_company() {
         .execute(&mut *tx)
         .await
         .unwrap();
-    let (company, actor): (Uuid, Option<Uuid>) =
-        sqlx::query_as("select tenant_id, actor_user_id from audit_log where id = $1")
-            .bind(entry)
+    let (company, person): (Uuid, Option<Uuid>) =
+        sqlx::query_as("select tenant_id, user_id from usage_records where id = $1")
+            .bind(usage)
             .fetch_one(&mut *tx)
             .await
             .unwrap();
-    assert_eq!((company, actor), (tenant::ID, None));
+    assert_eq!((company, person), (tenant::ID, None));
     // Nothing of this test stays for the others.
     tx.rollback().await.unwrap();
 }

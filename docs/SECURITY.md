@@ -761,9 +761,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   de production, le vérifie avec l'ancre journalisée, sauvegarde, puis restaure : l'ancre
   d'avant la sauvegarde y est retrouvée, celle d'une entrée scellée après ne l'est plus.
 - Ni effacement ni réécriture indirecte : le rôle applicatif ne peut pas supprimer les
-  entreprises, utilisateurs, conversations et runs que l'audit référence (les clés
-  étrangères effaceraient ou videraient des entrées). Leur suppression relève du rôle
-  propriétaire (voir [DATA_MODEL.md](DATA_MODEL.md) §4).
+  entreprises, conversations et runs (la clé vers l'entreprise effacerait des entrées ;
+  le journal garde le run qu'il nomme, ADR-186). Il ne supprime un compte que pour
+  l'effacer, désactivé et de son entreprise (ADR-189) : le journal n'a plus de clé vers
+  les comptes, il vérifie à l'écriture les personnes qu'il nomme
+  (`audit_log_people_known`), et les entrées d'un compte effacé restent inchangées et
+  scellées. Le reste relève du rôle propriétaire (voir [DATA_MODEL.md](DATA_MODEL.md)
+  §4).
 - Contenu : qui (utilisateur, agent pour le compte de…), quoi (action, ressource),
   résultat (succès, refus, échec), pourquoi (raison de la décision), contexte
   (requête, run, IP). Pas de contenu de message ni de secret.
@@ -848,10 +852,18 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   sienne seule), sa consommation par mois, ses absences, ce qu'il a relié ou autorisé ;
   jamais un secret ni les données d'un autre ; l'export, lu sur un même instantané, est
   tracé par ses nombres seuls avant d'être envoyé, et un envoi qui n'avance plus pendant
-  une minute est arrêté. L'effacement d'un compte et la suppression
-  complète d'une entreprise sont à venir : un compte se désactive, ses mémoires
-  personnelles partent 30 jours après (ADR-185), ses conversations 24 mois après leur
-  dernière activité (ADR-186), le journal conservant la trace sans le contenu. Un document
+  une minute est arrêté. Un administrateur qui détient `user:erase` (non délégable, sur
+  toute l'entreprise) efface un compte désactivé en retapant son adresse
+  (`POST /api/admin/users/{id}/erasure`, ADR-189) : le compte et tout ce que la plateforme
+  garde sur la personne partent, ce qu'elle a laissé à l'entreprise reste sans la nommer.
+  L'effacement est refusé tant qu'un run du compte vit, qu'une demande attend sa
+  décision, qu'il remplace un absent ou dirige une unité. Le journal d'audit garde, inchangées et scellées, les entrées qui
+  nomment le compte par son identifiant (jamais une adresse e-mail ni un nom ; restent les
+  adresses IP de ses connexions et l'identifiant chez Slack, Telegram ou Teams de ses
+  identités de messagerie reliées ou retirées, qu'une entrée scellée ne laisse pas
+  expurger), et trace l'effacement par ses nombres. La suppression complète d'une entreprise est à venir.
+  Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
+  (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a
   déposé, se télécharge tel quel par qui le lit, et sa suppression par qui peut écrire
   son espace emporte son fichier, ses passages et leurs vecteurs. Remplacé par une

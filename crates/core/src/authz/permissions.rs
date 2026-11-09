@@ -82,6 +82,14 @@ pub const PLATFORM_PERMISSIONS: &[PermissionInfo] = &[
     info("org:manage", "Gérer l'organisation", false, Holder),
     info("user:read", "Consulter l’annuaire", true, Holder),
     info("user:manage", "Gérer les comptes", false, Holder),
+    // Deleting a disabled account and what the platform keeps on the person
+    // (ADR-189): irreversible, so apart from managing accounts.
+    info(
+        "user:erase",
+        "Effacer les comptes désactivés",
+        false,
+        Holder,
+    ),
     info(
         "role:manage",
         "Gérer les rôles et habilitations",

@@ -1,10 +1,11 @@
 // Accounts a test makes for itself (CLAUDE.md, « Tests »): an address of its
 // own, roles made for it and given on the whole company, the account
 // activated from its invitation; then, whatever happened, its assignments
-// revoked, the account disabled (the API deletes no account) and its roles
-// deleted, so that it keeps no business role.
+// revoked, the account disabled then erased with its address typed again
+// (ADR-189), and its roles deleted.
 import type { Page } from '@playwright/test';
 import type {
+  AccountErasure,
   AccountUpdate,
   Directory,
   NewAccount,
@@ -19,6 +20,8 @@ const WRITE = { 'X-Mimorya-Request': '1' };
 /** What a test made of accounts and roles, for its cleanup (`retire`). */
 export interface MadeAccounts {
   account?: string;
+  /** The account's address, typed again to erase it. */
+  email?: string;
   roles: string[];
 }
 
@@ -40,6 +43,7 @@ export async function makeAccount(
   const created = await admin.request.post('/api/admin/users', { headers: WRITE, data: account });
   expect(created.status()).toBe(201);
   made.account = ((await created.json()) as { id: string }).id;
+  made.email = account.email;
   return made.account;
 }
 
@@ -79,8 +83,8 @@ export async function revokeAssignments(admin: Page, account: string, soft = fal
 
 /**
  * The cleanup of what `made` holds, whatever failed before: the account's
- * assignments revoked and the account disabled, then the roles deleted.
- * `made` is emptied.
+ * assignments revoked, the account disabled then erased, then the roles
+ * deleted. `made` is emptied.
  */
 export async function retire(admin: Page, made: MadeAccounts) {
   try {
@@ -91,6 +95,11 @@ export async function retire(admin: Page, made: MadeAccounts) {
         data: { status: 'disabled' } satisfies AccountUpdate,
       });
       expect.soft(disabled.status()).toBe(200);
+      const erased = await admin.request.post(`/api/admin/users/${made.account}/erasure`, {
+        headers: WRITE,
+        data: { confirmEmail: made.email ?? '' } satisfies AccountErasure,
+      });
+      expect.soft(erased.status()).toBe(200);
     }
   } finally {
     for (const role of made.roles) {
@@ -98,6 +107,7 @@ export async function retire(admin: Page, made: MadeAccounts) {
       expect.soft(removed.status()).toBe(200);
     }
     made.account = undefined;
+    made.email = undefined;
     made.roles = [];
   }
 }
