@@ -12860,3 +12860,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       seul, avec l'adresse du compte désactivé à retaper, sans celle d'un compte actif ;
       `admin_users.rs` et `admin_assignments.rs` disent `canManage.erase` de
       l'administrateur et d'un administrateur limité à une équipe.
+  - **suites de l'audit du lot 56b** (lot 57) :
+    - la règle « seul un compte désactivé s'efface » est un prédicat du domaine
+      (`erasable_status`, `core/src/account_erasure.rs`), que lisent l'effacement et
+      l'annuaire, au lieu d'un statut écrit dans la route ;
+    - une ligne refermée parce que son compte a été réactivé ne se rouvre pas d'elle-même
+      quand il est de nouveau désactivé : la personne la rouvre si elle le veut
+      (`apps/web/e2e/account-erasure.spec.ts`, la ligne de Bastien, réactivé puis
+      désactivé de nouveau, relue après chacun de deux effacements).

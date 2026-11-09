@@ -61,6 +61,13 @@ impl ErasureObstacle {
     }
 }
 
+/// Whether an account of status `status`, as stored, may be erased at all:
+/// a disabled account alone. The directory gives who erases accounts the
+/// address of such an account only (ADR-190).
+pub fn erasable_status(status: &str) -> bool {
+    status == "disabled"
+}
+
 /// Whether `typed` names the account at `email`: case and surrounding
 /// spaces aside.
 pub fn confirms(typed: &str, email: &str) -> bool {
@@ -70,7 +77,7 @@ pub fn confirms(typed: &str, email: &str) -> bool {
 /// The first reason `candidate` may not be erased with `typed` as its
 /// confirmation; `None` when it may.
 pub fn obstacle(candidate: &ErasureCandidate, typed: &str) -> Option<ErasureObstacle> {
-    if candidate.status != "disabled" {
+    if !erasable_status(&candidate.status) {
         Some(ErasureObstacle::NotDisabled)
     } else if !confirms(typed, &candidate.email) {
         Some(ErasureObstacle::NotConfirmed)
@@ -103,6 +110,13 @@ mod tests {
     }
 
     const TYPED: &str = " Lucas.Petit@Neo-Maintenance.example ";
+
+    #[test]
+    fn a_disabled_account_alone_may_be_erased() {
+        assert!(erasable_status("disabled"));
+        assert!(!erasable_status("active"));
+        assert!(!erasable_status("invited"));
+    }
 
     #[test]
     fn a_disabled_account_confirmed_with_no_tie_is_erased() {
