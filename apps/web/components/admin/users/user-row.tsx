@@ -34,6 +34,9 @@ export function UserRow({
   // A disabled account is also open to who erases accounts (ADR-190).
   const erasable = canManage.erase && user.status === 'disabled';
   const manageable = (canManage.users || canManage.roles || erasable) && !isSelf;
+  // Read again, an account no longer open to this reader closes, and stays
+  // closed should it be open to them again (ADR-190).
+  if (open && !manageable) setOpen(false);
   return (
     <>
       <tr className="align-top">
@@ -74,8 +77,7 @@ export function UserRow({
           )}
         </Cell>
       </tr>
-      {/* Read again, the account may be no longer open to this reader. */}
-      {open && manageable && (
+      {open && (
         <tr>
           <td colSpan={4} className="bg-surface-2/50 px-4 py-4">
             <div className="flex flex-col gap-6">

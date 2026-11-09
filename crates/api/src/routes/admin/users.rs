@@ -11,6 +11,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::http::header::CACHE_CONTROL;
+use mimorya_core::account_erasure::erasable_status;
 use mimorya_db::repositories::invitations::pending_invitations;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
 use mimorya_db::repositories::users::list_users;
@@ -71,7 +72,7 @@ pub async fn list(
                 org_unit: u.primary_unit_id.map(|unit| tree.path_label(unit)),
                 // Who erases a disabled account types its address again
                 // (ADR-190): that one's alone.
-                email: (admin || (erase && u.status == "disabled")).then(|| u.email.clone()),
+                email: (admin || (erase && erasable_status(&u.status))).then(|| u.email.clone()),
                 last_login_at: admin.then(|| u.last_login_at.as_ref().map(iso)),
                 org_unit_id: admin.then_some(u.primary_unit_id),
                 clearance: admin
