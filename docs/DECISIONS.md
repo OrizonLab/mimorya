@@ -12915,12 +12915,18 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     demande plus, jusqu'à son redémarrage ; les jetons délégués des comptes reliés
     (ADR-117) restent en mémoire jusqu'à leur échéance, sans servir. Un run en cours
     l'apprend à sa prochaine étape, et en 30 s au plus si l'annonce se perd ;
-  - **rien n'est supprimé** : suspendue, une entreprise ne connecte plus personne, ses
-    sessions et ses jetons sont refusés, ses runs s'arrêtent à leur prochaine étape,
-    rien n'est lancé pour elle ni aucun avis envoyé. Ses passerelles de conversation
-    répondent encore : à un message, que l'entreprise est suspendue, et la fin d'un run
-    arrêté par la suspension est écrite dans son fil. Réactivée, elle retrouve tout tel
-    qu'elle l'avait laissé, y compris ses sessions encore valables.
+  - **la commande ne supprime rien** : suspendue, une entreprise ne connecte plus
+    personne, ses sessions et ses jetons sont refusés, ses runs s'arrêtent à leur
+    prochaine étape, aucun run n'est lancé à sa demande ni aucun avis envoyé. Ses
+    passerelles de conversation répondent encore : à un message, que l'entreprise est
+    suspendue, et la fin d'un run arrêté par la suspension est écrite dans son fil ;
+  - **le temps court pendant la suspension** : la plateforme ne gèle rien. Une demande
+    de validation qui passe son échéance (ADR-061) est expirée et tracée, et son run,
+    repris, s'arrête aussitôt sur la suspension ; la rétention (ADR-185, ADR-186)
+    efface sessions finies, mémoires et conversations inactives comme pour toute
+    entreprise. Réactivée, l'entreprise retrouve ses comptes, ses données et ses
+    sessions encore valables, moins ce que ces échéances ont retiré entre-temps. Un gel
+    de ces délais serait une autre décision, qui n'est pas prise ;
 - **Conséquences** :
   - l'exploitant suspend une entreprise sans écrire de SQL, et l'entreprise en garde la
     trace ;

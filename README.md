@@ -116,8 +116,8 @@ mimorya-admin migrate          # DATABASE_URL (rôle propriétaire) : schéma se
 mimorya-admin create-company --name 'Acme Industrie' --slug acme \
   --admin-email jeanne.martin@acme.example --admin-name 'Jeanne Martin'
 mimorya-admin invite --email jeanne.martin@acme.example   # nouveau lien, si le premier a expiré
-mimorya-admin suspend-company --slug acme      # plus personne ne s'y connecte ; rien n'est supprimé (ADR-191)
-mimorya-admin reactivate-company --slug acme   # la rétablit telle qu'elle était
+mimorya-admin suspend-company --slug acme      # plus personne ne s'y connecte ; les délais courent toujours (ADR-191)
+mimorya-admin reactivate-company --slug acme   # la rétablit, moins ce que ces délais ont retiré
 mimorya-admin verify-audit --anchor <entreprise>:<place>:<sceau>   # journal d'audit scellé (ADR-178)
 ```
 

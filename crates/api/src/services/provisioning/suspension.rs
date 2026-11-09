@@ -8,9 +8,12 @@
 //! in, its sessions and tokens are refused, its runs stop at their next
 //! step, nothing is launched for it and no notice is sent. Its messaging
 //! gateways still answer: a message says the company is suspended, and a
-//! run stopped by the suspension has its end written in its thread. Nothing
-//! is deleted: reactivated, it finds everything as it was, its sessions not
-//! yet expired included.
+//! run stopped by the suspension has its end written in its thread. The
+//! command deletes nothing, but freezes nothing either: a request for
+//! approval past its deadline still expires (its run, taken up, stops at
+//! once) and retention still applies. Reactivated, the company finds its
+//! accounts, its data and its sessions not yet expired, less what those
+//! deadlines took meanwhile.
 
 use mimorya_core::DomainError;
 use mimorya_db::Database;

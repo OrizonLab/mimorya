@@ -17,10 +17,12 @@ Commandes :
                      --email <adresse>
   suspend-company  suspend une entreprise : plus personne ne s’y connecte, ses sessions et
                    ses jetons sont refusés, ses runs s’arrêtent à leur prochaine étape ;
-                   rien n’est supprimé
+                   la commande ne supprime rien, mais les échéances des validations et la
+                   rétention courent toujours
                      --slug <sigle>
   reactivate-company
-                   réactive une entreprise suspendue, retrouvée telle qu’elle était
+                   réactive une entreprise suspendue, moins ce que ces échéances ont
+                   retiré entre-temps
                      --slug <sigle>
   verify-audit     vérifie le journal d’audit scellé de chaque entreprise (MIMORYA_MASTER_KEY) ;
                    échoue si une entrée scellée a été modifiée ou supprimée, ou si une

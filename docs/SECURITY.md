@@ -867,7 +867,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   ADR-191), chaque changement tracé dans son journal d'audit par la plateforme :
   suspendue, elle ne connecte plus personne, ses sessions et ses jetons sont refusés, ses
   runs s'arrêtent à leur prochaine étape, et chaque processus lâche ce qu'il garde d'elle
-  (instances de ses connecteurs, réglages et clés de son modèle) ; rien n'est supprimé. La
+  (instances de ses connecteurs, réglages et clés de son modèle). La commande ne supprime
+  rien, mais ne gèle rien non plus : une demande de validation échue est expirée, et la
+  rétention s'applique comme à toute entreprise. La
   suppression complète d'une entreprise, qui ne partira que d'une entreprise suspendue,
   est à venir.
   Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après

@@ -9,22 +9,30 @@ use std::time::Duration;
 
 use mimorya_api::services::provisioning::{CompanyStatusChange, change_company_status};
 use mimorya_core::{DomainError, ErrorCode};
+use mimorya_db::{Database, PoolOptions};
 use sqlx::PgPool;
 use support::TestApi;
 use support::companies::create;
-use support::owner_url;
 use support::suspension::state;
+use support::{app_url, owner_url};
 
 const SLUG: &str = "acme-entre-temps";
+/// The suspension's own connection, told from any other by its name.
+const SUSPENSION: &str = "mimorya-suspension-race";
 
-/// Whether a statement waits on a lock, within five seconds.
-async fn one_waits_on_a_lock(owner: &PgPool) -> bool {
+/// Whether the suspension's connection waits on a lock, within five
+/// seconds: no other waiting statement of the cluster passes for it.
+async fn the_suspension_waits_on_a_lock(owner: &PgPool) -> bool {
     for _ in 0..100 {
-        // Every role reads `pg_locks`; another's wait events need more.
-        let waiting: i64 = sqlx::query_scalar("select count(*) from pg_locks where not granted")
-            .fetch_one(owner)
-            .await
-            .unwrap();
+        // `pg_locks` and another role's application name are read by any role.
+        let waiting: i64 = sqlx::query_scalar(
+            "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid \
+             where not l.granted and a.application_name = $1",
+        )
+        .bind(SUSPENSION)
+        .fetch_one(owner)
+        .await
+        .unwrap();
         if waiting > 0 {
             return true;
         }
@@ -52,12 +60,20 @@ async fn a_company_changed_meanwhile_is_refused_unchanged() {
         .execute(&mut *other)
         .await
         .unwrap();
-    let db = api.app.services.db.clone();
+    let db = Database::connect(
+        app_url(),
+        PoolOptions {
+            max_connections: 1,
+            application_name: SUSPENSION,
+        },
+    )
+    .await
+    .unwrap();
     let suspension = tokio::spawn(async move {
         change_company_status(&db, SLUG, CompanyStatusChange::Suspend).await
     });
     // It read the company active, and now waits on its row.
-    assert!(one_waits_on_a_lock(&owner).await);
+    assert!(the_suspension_waits_on_a_lock(&owner).await);
     other.commit().await.unwrap();
 
     let refusal = suspension

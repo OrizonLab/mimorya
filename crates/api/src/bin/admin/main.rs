@@ -126,8 +126,9 @@ fn status_told(slug: &str, tenant_id: uuid::Uuid, change: CompanyStatusChange) -
         CompanyStatusChange::Suspend => format!(
             "Entreprise de sigle {slug} suspendue (identifiant {tenant_id}) : plus personne ne \
              s’y connecte, ses sessions et ses jetons sont refusés, ses runs s’arrêtent à leur \
-             prochaine étape. Rien n’est supprimé : mimorya-admin reactivate-company --slug \
-             {slug} la rétablit."
+             prochaine étape. La commande ne supprime rien, mais les échéances des demandes \
+             de validation et la rétention courent toujours. mimorya-admin \
+             reactivate-company --slug {slug} la rétablit."
         ),
         CompanyStatusChange::Reactivate => format!(
             "Entreprise de sigle {slug} réactivée (identifiant {tenant_id}) : ses comptes se \
