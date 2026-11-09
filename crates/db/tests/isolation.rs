@@ -190,9 +190,15 @@ async fn cannot_erase_audit_entries_through_their_references() {
             "{table}"
         );
     }
-    // An account the application deletes, erasing it (ADR-189), leaves the
-    // entries naming it as they were written: no key reaches them.
+    // An account the application deletes, erasing it once disabled
+    // (ADR-189), leaves the entries naming it as they were written: no key
+    // reaches them.
     let mut tx = db.begin(tenant::ID).await.unwrap();
+    sqlx::query("update users set status = 'disabled' where id = $1")
+        .bind(user::LUCAS)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     let entry: i64 = sqlx::query_scalar(
         "insert into audit_log (tenant_id, actor_type, actor_user_id, on_behalf_of_user_id, \
          action, outcome) values ($1, 'user', $2, $2, 'test.erasure', 'success') returning id",
@@ -202,11 +208,12 @@ async fn cannot_erase_audit_entries_through_their_references() {
     .fetch_one(&mut *tx)
     .await
     .unwrap();
-    sqlx::query("delete from users where id = $1")
+    let deleted = sqlx::query("delete from users where id = $1")
         .bind(user::LUCAS)
         .execute(&mut *tx)
         .await
         .unwrap();
+    assert_eq!(deleted.rows_affected(), 1);
     let named: (Option<Uuid>, Option<Uuid>) =
         sqlx::query_as("select actor_user_id, on_behalf_of_user_id from audit_log where id = $1")
             .bind(entry)

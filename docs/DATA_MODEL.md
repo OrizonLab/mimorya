@@ -221,13 +221,19 @@ utilisateur).
   - `audit_log` : **`INSERT`/`SELECT` seulement**, l'`INSERT` limité aux colonnes du
     contenu d'une entrée : jamais `chain_seq` ni `chain_hash`, que seule
     `system_seal_audit_entries` pose (ADR-178) ;
-  - `tenants`, `users`, `conversations`, `agent_runs` : **pas de `DELETE`**. La
-    suppression d'une entreprise ou d'un compte effacerait ou réécrirait des entrées
-    d'audit par les clés étrangères (`ON DELETE cascade` / `set null`) ; celle d'une
-    conversation et de ses runs ne touche plus le journal, qui garde le run qu'il nomme
-    (ADR-186). Elles sont réservées au rôle propriétaire, par la purge des conversations
-    inactives (`system_purge_idle_conversations`), qui garde la trace ; les procédures
-    d'effacement restent à venir ;
+  - `tenants`, `conversations`, `agent_runs` : **pas de `DELETE`**. La suppression d'une
+    entreprise effacerait des entrées d'audit par leur clé étrangère vers elle ; celle
+    d'une conversation et de ses runs ne touche plus le journal, qui garde le run qu'il
+    nomme (ADR-186). Elles sont réservées au rôle propriétaire, par la purge des
+    conversations inactives (`system_purge_idle_conversations`), qui garde la trace ; la
+    suppression d'une entreprise reste à venir ;
+  - `users` : **`DELETE` d'un compte désactivé de son entreprise seulement**, pour
+    l'effacer (ADR-189) : la RLS borne l'entreprise, et une politique restrictive
+    (`erased_once_disabled`) refuse un compte qui n'est pas désactivé, quoi que demande le
+    code. Les clés qui nomment le compte suppriment ou vident les lignes des autres
+    tables. Le journal d'audit n'en a plus vers les comptes : il vérifie à l'écriture les
+    personnes qu'il nomme (`audit_log_people_known`) et garde, inchangées et scellées,
+    les entrées d'un compte effacé ;
   - `_sqlx_migrations` (journal des migrations) : aucun droit ;
   - `rate_limit_windows` et `rate_limit_values` (fenêtres des limites d'authentification
     partagées par tous les processus, ADR-088) : aucun droit. Elles ne portent aucune

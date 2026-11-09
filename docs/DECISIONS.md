@@ -12728,7 +12728,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     désactivés »), non délégable et valable sur toute l'entreprise seulement. Le rôle
     d'administrateur technique la reçoit, dans les entreprises nouvelles comme dans
     celles déjà là (migration). Gérer les comptes (`user:manage`) n'y suffit pas : un
-    effacement ne se défait pas. Jamais son propre compte ;
+    effacement ne se défait pas. Un rôle dont une permission est un motif (`user:*`,
+    `*`) la reçoit en revanche, comme toute permission nouvelle de son domaine : ce
+    motif accorde ce qui vient. Jamais son propre compte ;
   - **quand** : seulement un compte **désactivé**, dont l'administrateur retape
     l'adresse (sans égard à la casse ni aux espaces autour). L'effacement est refusé,
     sans rien changer :
@@ -12744,7 +12746,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **comment** : la ligne du compte est supprimée, dans la transaction de
     l'administration, sous son verrou. Le compte est verrouillé pendant que ses liens sont
     comptés. Le rôle applicatif reçoit le droit de supprimer un compte de son entreprise,
-    sous la sécurité au niveau des lignes. Ce qu'un compte désactivé avant ADR-174 ou
+    sous la sécurité au niveau des lignes, et désactivé seulement : une politique
+    restrictive (`erased_once_disabled`) le redit dans la base, quoi que demande le code.
+    Ce qu'un compte désactivé avant ADR-174 ou
     ADR-183 tenait encore lui est retiré comme à la désactivation (`take_access`), et ses
     jetons sont révoqués une fois la transaction validée ;
   - **le journal d'audit garde les personnes qu'il nomme** : ses deux clés vers `users`
@@ -12752,9 +12756,13 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     (`audit_log_people_known`), comme ADR-186 l'a fait pour le run. Une entrée nomme un
     compte de son entreprise quand elle est écrite ; le compte peut partir ensuite, et
     l'entrée, inchangée, reste scellée. Elle nomme alors un identifiant qui ne mène plus
-    à personne dans la plateforme. Les entrées ne contiennent ni adresse ni nom ; restent
-    les adresses IP des connexions, gardées avec le journal, qui est la trace de sécurité
-    de l'entreprise (cinq ans) ;
+    à personne dans la plateforme. Les entrées ne contiennent ni adresse e-mail ni nom.
+    Restent, gardés avec le journal, qui est la trace de sécurité de l'entreprise (cinq
+    ans) : les adresses IP des connexions, et l'identifiant chez Slack, Telegram ou Teams
+    des identités de messagerie (`externalId` des entrées `gateway.identity_linked`,
+    `gateway.identity_unlinked`, `gateway.identity_removed`, `gateway.link_code_offered`,
+    `gateway.link_code_claimed`), qui prouve quel compte d'un service a été relié à qui,
+    ou refusé. Une entrée scellée ne s'expurge pas : la vider romprait la chaîne ;
   - **l'effacement est tracé** (`user.erased`) par l'administrateur, le compte effacé
     nommé par son identifiant, et ses nombres seuls ;
   - **chaque clé nommant un compte a son index** (36 index partiels, sur les lignes où
@@ -12791,5 +12799,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `crates/db/tests/audit_people_references.rs` : une entrée ne nomme qu'un compte de
       son entreprise, écrite par l'application comme par le propriétaire, et changée
       comme écrite ; un compte supprimé laisse ses entrées telles quelles ;
+    - `crates/db/tests/account_deletion.rs` : l'application ne supprime ni un compte
+      actif de son entreprise, ni un compte désactivé d'une autre (par son identifiant,
+      par son entreprise, hors de toute entreprise), mais un compte désactivé de la
+      sienne ; aucune clé vers `users` n'arrête un effacement : chacune supprime ses
+      lignes ou vide sa colonne ;
     - `crates/db/tests/purge_indexes.rs` couvre les clés vers `users` ;
       `tenant_references.rs` vérifie le vidage d'une référence sur la consommation.

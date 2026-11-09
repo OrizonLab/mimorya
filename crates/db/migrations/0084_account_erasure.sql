@@ -46,6 +46,11 @@ CREATE TRIGGER audit_log_people_known
 -- empty the rows of every other table, as their owner.
 GRANT DELETE ON users TO mimorya_app;
 
+-- And a disabled account alone, whatever the code asks: an account still
+-- in use is never deleted by the application, even of its own company.
+CREATE POLICY erased_once_disabled ON users AS RESTRICTIVE FOR DELETE TO mimorya_app
+  USING (status = 'disabled');
+
 -- Each key naming an account is looked up once per account erased: without
 -- an index starting with its columns, each would read all of the company's
 -- rows of its table, messages and consumption included.
