@@ -116,11 +116,15 @@ mimorya-admin migrate          # DATABASE_URL (rôle propriétaire) : schéma se
 mimorya-admin create-company --name 'Acme Industrie' --slug acme \
   --admin-email jeanne.martin@acme.example --admin-name 'Jeanne Martin'
 mimorya-admin invite --email jeanne.martin@acme.example   # nouveau lien, si le premier a expiré
+mimorya-admin suspend-company --slug acme      # plus personne ne s'y connecte ; rien n'est supprimé (ADR-191)
+mimorya-admin reactivate-company --slug acme   # la rétablit telle qu'elle était
 mimorya-admin verify-audit --anchor <entreprise>:<place>:<sceau>   # journal d'audit scellé (ADR-178)
 ```
 
-`create-company`, `invite` et `verify-audit` utilisent `DATABASE_APP_URL` comme l'API, les
-deux premières `WEB_ORIGIN`, la dernière `MIMORYA_MASTER_KEY`. Le journal d'audit de chaque
+`create-company`, `invite`, `suspend-company`, `reactivate-company` et `verify-audit`
+utilisent `DATABASE_APP_URL` comme l'API, les deux premières `WEB_ORIGIN`, la dernière
+`MIMORYA_MASTER_KEY`. Une suspension est tracée dans le journal d'audit de l'entreprise,
+et chaque processus de l'API lâche aussitôt ce qu'il garde d'elle. Le journal d'audit de chaque
 entreprise est scellé chaque minute sous une clé qui en dérive. Le dernier sceau posé dans
 chaque entreprise à chaque passage, et celui trouvé au démarrage, sont journalisés au
 niveau `info` (`LOG_LEVEL=info`, par défaut) avec leur ancre toute écrite (`Audit log

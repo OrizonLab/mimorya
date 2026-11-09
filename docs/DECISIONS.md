@@ -12881,3 +12881,52 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     le premier seul : un échec est levé tel quel ; plusieurs, chacun écrit dans le message
     d'une seule erreur. Playwright ne rapporte ni les erreurs d'une `AggregateError` ni ses
     autres champs : il n'en dirait aucun.
+
+## ADR-191 — Entreprise suspendue et réactivée par l'exploitant (lot 60a)
+
+- **Statut** : accepté (2026-11-09) · complète ADR-033 (commandes de l'exploitant).
+- **Contexte** : le statut d'une entreprise (`active`, `suspended`) existait depuis le
+  schéma initial, et chaque chemin le lisait déjà : connexion, sessions
+  (`auth_resolve_session`), jetons des autres systèmes (export du journal, SCIM,
+  déclencheurs, passerelles), runs arrêtés à leur étape suivante (ADR-035), tâches
+  planifiées, avis et passes de la maintenance. Mais rien ne le changeait, sinon une
+  requête SQL écrite à la main par l'exploitant, sans trace dans le journal de
+  l'entreprise. La suppression d'une entreprise, qui vient ensuite, en part : seule une
+  entreprise suspendue pourra être supprimée.
+- **Décision** :
+  - **deux commandes de `mimorya-admin`** : `suspend-company --slug <sigle>` et
+    `reactivate-company --slug <sigle>`. Comme `create-company`, elles passent par le
+    rôle applicatif (`DATABASE_APP_URL`) ;
+  - **l'entreprise est trouvée par son sigle**, avant d'entrer dans sa transaction, par
+    une fonction minimale, `system_find_tenant` (`SECURITY DEFINER`), qui ne rend que son
+    identifiant. Le changement se fait ensuite dans la transaction de l'entreprise, sous
+    sa RLS, du statut quitté au statut pris : un sigle inconnu, une entreprise déjà
+    suspendue (ou pas suspendue, pour la réactiver), ou changée entre-temps par une autre
+    commande, est refusé sans rien changer ;
+  - **chaque changement est tracé** dans le journal d'audit de l'entreprise, par
+    l'acteur `system` (`tenant.suspended`, `tenant.reactivated`, avec le sigle) ;
+  - **chaque processus lâche ce qu'il garde de l'entreprise** une fois le changement
+    validé : instances de ses connecteurs et sessions qu'elles tiennent, accès, réglages
+    de son modèle et de ses embeddings avec leurs clés. La commande l'annonce sur le
+    canal des invalidations (ADR-085), d'une origine à elle, qu'aucun processus ne
+    partage : chacun l'applique ;
+  - **rien n'est supprimé** : suspendue, une entreprise ne connecte plus personne, ses
+    sessions et ses jetons sont refusés, ses runs s'arrêtent à leur prochaine étape, et
+    rien n'est lancé ni annoncé pour elle. Réactivée, elle retrouve tout tel qu'elle
+    l'avait laissé, y compris ses sessions encore valables.
+- **Conséquences** :
+  - l'exploitant suspend une entreprise sans écrire de SQL, et l'entreprise en garde la
+    trace ;
+  - tests :
+    - `crates/api/tests/company_suspension.rs` : une entreprise suspendue perd aussitôt
+      sa session et sa connexion, une autre continue ; réactivée, la même session et la
+      connexion sont acceptées de nouveau, chaque changement tracé une fois ; un sigle
+      inconnu, une entreprise déjà suspendue ou une entreprise active qu'on réactive
+      sont refusés sans entrée ; chaque changement annonce l'accès, le modèle, les
+      embeddings et chaque connecteur de l'entreprise, d'une seule origine ;
+    - `crates/db/tests/definer_functions.rs` : `system_find_tenant` rejoint la liste ;
+    - `crates/api/src/bin/admin/args.rs` : les deux commandes et leur option ;
+    - `infra/docker/production-test.sh` : dans la pile de production de la CI,
+      l'exploitant suspend l'entreprise qu'il vient de créer, dont la session est
+      refusée, puis la réactive, dont la session est acceptée de nouveau ;
+  - à venir : la suppression d'une entreprise suspendue (lot 60b).

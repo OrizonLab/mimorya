@@ -353,6 +353,8 @@ Repères à l'intérieur des crates :
   `domain_proofs.rs`),
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033,
+  entreprise suspendue et réactivée par son sigle, chaque processus lâchant ce qu'il garde
+  d'elle, `suspension.rs`, ADR-191,
   vérification du journal d'audit scellé, `verify.rs`, et ce qu'elle dit à
   l'exploitant, `report.rs`, ADR-178),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),

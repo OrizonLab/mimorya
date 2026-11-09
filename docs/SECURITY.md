@@ -861,7 +861,14 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   nomment le compte par son identifiant (jamais une adresse e-mail ni un nom ; restent les
   adresses IP de ses connexions et l'identifiant chez Slack, Telegram ou Teams de ses
   identités de messagerie reliées ou retirées, qu'une entrée scellée ne laisse pas
-  expurger), et trace l'effacement par ses nombres. La suppression complète d'une entreprise est à venir.
+  expurger), et trace l'effacement par ses nombres. L'exploitant suspend et réactive une
+  entreprise par son sigle (`mimorya-admin suspend-company`, `reactivate-company`,
+  ADR-191), chaque changement tracé dans son journal d'audit par la plateforme :
+  suspendue, elle ne connecte plus personne, ses sessions et ses jetons sont refusés, ses
+  runs s'arrêtent à leur prochaine étape, et chaque processus lâche ce qu'il garde d'elle
+  (instances de ses connecteurs, réglages et clés de son modèle) ; rien n'est supprimé. La
+  suppression complète d'une entreprise, qui ne partira que d'une entreprise suspendue,
+  est à venir.
   Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
   (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a
