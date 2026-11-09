@@ -51,7 +51,9 @@ const departing: MadeAccounts[] = [];
 
 // What the test made, removed even when it fails: each removal tried on
 // its own, so that one failing leaves none of the others undone (Noé, who
-// erases accounts, and his role last); the first failure said at the end.
+// erases accounts, and his role last). Every failure is said at the end:
+// one as is, several each in the message of one error, since Playwright
+// reports neither the errors of an `AggregateError` nor its other keys.
 test.afterEach(async () => {
   const paul = made.paul;
   made.paul = undefined;
@@ -76,7 +78,14 @@ test.afterEach(async () => {
   }
   for (const account of departing.splice(0)) await attempt(() => retire(paul, account));
   await attempt(() => retire(paul, made));
-  if (failures.length > 0) throw failures[0];
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    const said = failures.map(
+      (failure, index) =>
+        `${index + 1}. ${failure instanceof Error ? failure.message : String(failure)}`,
+    );
+    throw new Error(`${failures.length} removals failed:\n${said.join('\n')}`);
+  }
 });
 
 /** A team under the company's root, led by `lead`, noted in `made`. */
