@@ -12878,4 +12878,6 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       retrait qui échoue n'empêche pas les suivants, et le premier échec est dit à la
       fin.
   - **suites de l'audit du lot 58** (lot 59) : le nettoyage dit chacun de ses échecs, et non
-    le premier seul : un échec est levé tel quel, plusieurs ensemble (`AggregateError`).
+    le premier seul : un échec est levé tel quel ; plusieurs, chacun écrit dans le message
+    d'une seule erreur. Playwright ne rapporte ni les erreurs d'une `AggregateError` ni ses
+    autres champs : il n'en dirait aucun.
