@@ -600,9 +600,10 @@ export type Directory = { users: Array<DirectoryUser>, canManage: DirectoryRight
 emailEnabled: boolean, };
 
 /**
- * Account and role management, each requiring its permission company-wide.
+ * Account and role management, and the erasure of a disabled account
+ * (ADR-189), each requiring its permission company-wide.
  */
-export type DirectoryRights = { users: boolean, roles: boolean, };
+export type DirectoryRights = { users: boolean, roles: boolean, erase: boolean, };
 
 export type DirectoryUser = { id: string, displayName: string, jobTitle: string | null, status: AccountStatus,
 /**
@@ -610,7 +611,8 @@ export type DirectoryUser = { id: string, displayName: string, jobTitle: string 
  */
 orgUnit: string | null,
 /**
- * To account or role managers only.
+ * To account or role managers, and that of a disabled account to who
+ * erases accounts (ADR-190).
  */
 email?: string, lastLoginAt?: string | null, orgUnitId?: string | null, clearance?: Sensitivity,
 /**

@@ -41,6 +41,7 @@ pub async fn list(
     access.require("user:read")?;
     let manage_users = access.require_tenant_wide("user:manage").is_ok();
     let manage_roles = access.require_tenant_wide("role:manage").is_ok();
+    let erase = access.require_tenant_wide("user:erase").is_ok();
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let users = list_users(&mut tx).await?;
     let assignments = if manage_roles {
@@ -68,7 +69,9 @@ pub async fn list(
                 job_title: u.job_title.clone(),
                 status: stored_text("account status", &u.status)?,
                 org_unit: u.primary_unit_id.map(|unit| tree.path_label(unit)),
-                email: admin.then(|| u.email.clone()),
+                // Who erases a disabled account types its address again
+                // (ADR-190): that one's alone.
+                email: (admin || (erase && u.status == "disabled")).then(|| u.email.clone()),
                 last_login_at: admin.then(|| u.last_login_at.as_ref().map(iso)),
                 org_unit_id: admin.then_some(u.primary_unit_id),
                 clearance: admin
@@ -88,6 +91,7 @@ pub async fn list(
         can_manage: DirectoryRights {
             users: manage_users,
             roles: manage_roles,
+            erase,
         },
         email_enabled: state.mailer.is_some(),
     }))

@@ -56,7 +56,7 @@ async fn creates_accounts_that_sign_in_once_their_invitation_is_accepted() {
     let directory = paul.get("/admin/users").await.json();
     assert_eq!(
         directory["canManage"],
-        json!({ "users": true, "roles": true })
+        json!({ "users": true, "roles": true, "erase": true })
     );
     let listed = directory_entry(&paul, body["id"].as_str().unwrap().parse().unwrap()).await;
     assert_eq!(listed["email"], json!(email));

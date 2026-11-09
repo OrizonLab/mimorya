@@ -160,7 +160,7 @@ async fn honours_administration_permissions_on_the_whole_company_only() {
     let directory = partial.get("/admin/users").await.json();
     assert_eq!(
         directory["canManage"],
-        json!({ "users": false, "roles": false })
+        json!({ "users": false, "roles": false, "erase": false })
     );
     assert!(directory["users"][0].get("email").is_none());
 

@@ -1,9 +1,12 @@
 //! What an erasure refuses (ADR-189), each refusal leaving the account as
 //! it was. Hugo is erased only once disabled, with his own address typed
 //! again, none of his runs still living, no request awaiting his decision,
-//! standing in for nobody and leading no unit. Nobody erases their own account; managing accounts is not
-//! enough to erase one; another company's administrator finds no such
-//! account, nor does anyone an account that never was.
+//! standing in for nobody and leading no unit. Nobody erases their own
+//! account; managing accounts is not enough to erase one, nor does the
+//! directory offer it then; another company's administrator finds no such
+//! account, nor does anyone an account that never was. Who holds the
+//! permission is offered it, the address to type again shown for a disabled
+//! account alone.
 
 mod support;
 
@@ -184,6 +187,9 @@ async fn only_another_administrator_of_its_company_erases_an_account() {
     refused(erase(&marc, user::LEA, &lea).await, 403, "", user::LEA).await;
     let manager = holder_of(&api, &paul, "gestion.comptes", &["user:manage"]).await;
     refused(erase(&manager, user::LEA, &lea).await, 403, "", user::LEA).await;
+    // Nor does the directory offer it to them.
+    let rights = manager.get("/admin/users").await.json()["canManage"].clone();
+    assert_eq!(rights["erase"], false, "{rights}");
 
     // Another company's administrator finds no such account.
     let address = "admin@acme-effacement.example";
@@ -199,6 +205,18 @@ async fn only_another_administrator_of_its_company_erases_an_account() {
 
     // Who holds the permission erases it.
     let eraser = holder_of(&api, &paul, "effacement.comptes", &["user:erase"]).await;
+    // The directory offers it to them, with the address to type again.
+    let directory = eraser.get("/admin/users").await.json();
+    assert_eq!(directory["canManage"]["erase"], true, "{directory}");
+    let listed = |id: Uuid| {
+        (directory["users"].as_array().unwrap().iter())
+            .find(|u| u["id"] == json!(id))
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(listed(user::LEA)["email"], json!(lea));
+    // That of a disabled account alone: no other is to be erased.
+    assert!(listed(user::PAUL).get("email").is_none());
     let erased = erase(&eraser, user::LEA, &lea).await;
     assert_eq!(erased.status.as_u16(), 200, "{}", erased.text());
     assert!(!exists(user::LEA).await);
