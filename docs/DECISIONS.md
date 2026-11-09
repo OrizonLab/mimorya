@@ -12810,3 +12810,41 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       retapant son adresse (`apps/web/e2e/support/accounts.ts`), l'effacement réussi ;
     - `crates/db/tests/purge_indexes.rs` couvre les clés vers `users` ;
       `tenant_references.rs` vérifie le vidage d'une référence sur la consommation.
+
+## ADR-190 — Écran de l'effacement d'un compte dans « Utilisateurs » (lot 56b)
+
+- **Statut** : accepté (2026-11-09).
+- **Contexte** : ADR-189 a donné l'effacement d'un compte désactivé à l'API seule ; son
+  écran restait à faire dans l'onglet « Utilisateurs ».
+- **Décision** :
+  - **qui le voit** : l'annuaire (`GET /api/admin/users`) dit, dans `canManage.erase`, si
+    la personne détient `user:erase` sur toute l'entreprise, et lui donne l'adresse de
+    chaque compte, qu'elle retapera. Un compte qui n'est pas désactivé n'offre pas
+    l'effacement. Un compte désactivé s'ouvre (« Gérer ») pour qui ne détient que cette
+    permission, et seul la section « Effacement » y figure alors. Jamais son propre
+    compte, comme les autres sections ;
+  - **ce qu'elle dit** : ce que l'effacement emporte, ce qui reste à l'entreprise sans
+    nommer la personne, que le journal d'audit garde les entrées qui la nomment, et
+    qu'il ne se défait pas. L'adresse retapée est la confirmation : pas d'autre boîte de
+    dialogue ;
+  - **refus** : le message du serveur, tel quel (autre adresse, run vivant, demande en
+    attente de sa décision, remplacement d'un absent, unité dirigée), le compte restant
+    listé ;
+  - **réussite** : un avis en tête de l'onglet dit ce qui est parti, par les nombres que
+    rend l'API, accordés (« 1 demande faite pour lui ») ; l'annuaire est relu, et le
+    compte n'y est plus.
+- **Conséquences** :
+  - un compte qui ne détient que `user:erase` voit les adresses de l'annuaire, et rien
+    de plus que ce que voit qui le lit (`user:read`) ;
+  - tests :
+    - `apps/web/e2e/account-erasure.spec.ts` : un compte fait pour le test, chef d'une
+      équipe faite pour lui, n'offre pas l'effacement tant qu'il n'est pas désactivé. Une
+      fois désactivé, l'effacement est refusé avec une autre adresse, puis avec la
+      sienne tant qu'il dirige l'équipe, chaque refus dit tel que le serveur le dit et le
+      compte toujours listé. L'équipe donnée à personne, il est effacé : l'avis dit ce
+      qui est parti, et le compte n'est plus dans l'annuaire, relu après rechargement
+      comme par l'API ;
+    - `crates/api/tests/account_erasure_refusals.rs` : l'annuaire n'offre pas
+      l'effacement à qui gère les comptes sans `user:erase`, et l'offre à qui le détient
+      seul, avec l'adresse à retaper ; `admin_users.rs` et `admin_assignments.rs` disent
+      `canManage.erase` de l'administrateur et d'un administrateur limité à une équipe.

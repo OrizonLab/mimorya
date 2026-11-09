@@ -8,6 +8,7 @@ import type { Directory, DirectoryUser, OrgUnitView } from '@/lib/api';
 import { AbsenceEditor } from './absence-editor';
 import { AssignmentsEditor } from './assignments-editor';
 import { AttributesEditor } from './attributes-editor';
+import { ErasureForm } from './erasure-form';
 import { ProfileEditor } from './profile-editor';
 import type { AccountNotice } from './types';
 
@@ -30,7 +31,9 @@ export function UserRow({
   onNotice: (notice: AccountNotice) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const manageable = (canManage.users || canManage.roles) && !isSelf;
+  // A disabled account is also open to who erases accounts (ADR-189).
+  const erasable = canManage.erase && user.status === 'disabled';
+  const manageable = (canManage.users || canManage.roles || erasable) && !isSelf;
   return (
     <>
       <tr className="align-top">
@@ -100,6 +103,17 @@ export function UserRow({
                 <section>
                   <h3 className="mb-2 text-sm font-medium">Habilitations</h3>
                   <AssignmentsEditor user={user} units={units} onChanged={onChanged} />
+                </section>
+              )}
+              {erasable && (
+                <section>
+                  <h3 className="mb-2 text-sm font-medium">Effacement</h3>
+                  <ErasureForm
+                    user={user}
+                    onErased={(erased) =>
+                      onNotice({ kind: 'erased', who: user.displayName, erased })
+                    }
+                  />
                 </section>
               )}
             </div>

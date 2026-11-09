@@ -854,7 +854,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   tracé par ses nombres seuls avant d'être envoyé, et un envoi qui n'avance plus pendant
   une minute est arrêté. Un administrateur qui détient `user:erase` (non délégable, sur
   toute l'entreprise) efface un compte désactivé en retapant son adresse
-  (`POST /api/admin/users/{id}/erasure`, ADR-189) : le compte et tout ce que la plateforme
+  (`POST /api/admin/users/{id}/erasure`, ADR-189), depuis la section « Effacement » d’un compte désactivé de l’onglet « Utilisateurs » (ADR-190) : le compte et tout ce que la plateforme
   garde sur la personne partent, ce qu'elle a laissé à l'entreprise reste sans la nommer.
   L'effacement est refusé tant qu'un run du compte vit, qu'une demande attend sa
   décision, qu'il remplace un absent ou dirige une unité. Le journal d'audit garde, inchangées et scellées, les entrées qui

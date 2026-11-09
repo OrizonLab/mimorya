@@ -96,11 +96,13 @@ pub struct DirectoryUser {
     pub assignments: Option<Vec<Assignment>>,
 }
 
-/// Account and role management, each requiring its permission company-wide.
+/// Account and role management, and the erasure of a disabled account
+/// (ADR-189), each requiring its permission company-wide.
 #[derive(Debug, Serialize, TS)]
 pub struct DirectoryRights {
     pub users: bool,
     pub roles: bool,
+    pub erase: bool,
 }
 
 /// `GET /admin/users`.
