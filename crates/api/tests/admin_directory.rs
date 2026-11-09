@@ -2,7 +2,8 @@
 //! every entry: readers see who is who; account managers also see sign-ins,
 //! units, clearance, attributes and pending invitations; role managers also
 //! see sign-ins, units, clearance and roles; who erases accounts also sees
-//! the address of a disabled account, to type it again, and nothing else
+//! whether each account may be erased, as the domain says it, and the
+//! address of a disabled account, to type it again, and nothing else
 //! (ADR-190). A withheld field is absent, not `null`, and rights limited to
 //! one team count as none.
 
@@ -20,6 +21,7 @@ const READER: &[&str] = &["id", "displayName", "jobTitle", "status", "orgUnit"];
 const MANAGER: &[&str] = &["email", "lastLoginAt", "orgUnitId", "clearance"];
 const ACCOUNTS: &[&str] = &["attributes", "invitationExpiresAt"];
 const ROLES: &[&str] = &["grants", "assignments"];
+const ERASURE: &[&str] = &["erasable"];
 
 fn fields(parts: &[&[&str]]) -> BTreeSet<String> {
     parts
@@ -101,11 +103,16 @@ async fn each_directory_field_reaches_only_those_entitled_to_it() {
     let team_admin = activate(&api, &mut team_admin).await;
 
     every_entry_shows(&reader, fields(&[READER])).await;
-    every_entry_shows_by_status(&eraser, fields(&[READER, &["email"]]), fields(&[READER])).await;
+    every_entry_shows_by_status(
+        &eraser,
+        fields(&[READER, ERASURE, &["email"]]),
+        fields(&[READER, ERASURE]),
+    )
+    .await;
     every_entry_shows(&team_admin, fields(&[READER])).await;
     every_entry_shows(&accounts, fields(&[READER, MANAGER, ACCOUNTS])).await;
     every_entry_shows(&roles, fields(&[READER, MANAGER, ROLES])).await;
-    every_entry_shows(&paul, fields(&[READER, MANAGER, ACCOUNTS, ROLES])).await;
+    every_entry_shows(&paul, fields(&[READER, MANAGER, ACCOUNTS, ROLES, ERASURE])).await;
 
     // The withheld values exist: they are not merely empty.
     let listed = paul.get("/admin/users").await.json()["users"]

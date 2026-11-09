@@ -31,8 +31,9 @@ export function UserRow({
   onNotice: (notice: AccountNotice) => void;
 }) {
   const [open, setOpen] = useState(false);
-  // A disabled account is also open to who erases accounts (ADR-190).
-  const erasable = canManage.erase && user.status === 'disabled';
+  // An account the API says may be erased is also open to who erases
+  // accounts (ADR-190); the rule is the server's alone.
+  const erasable = canManage.erase && user.erasable === true;
   const manageable = (canManage.users || canManage.roles || erasable) && !isSelf;
   // Read again, an account no longer open to this reader closes, and stays
   // closed should it be open to them again (ADR-190).

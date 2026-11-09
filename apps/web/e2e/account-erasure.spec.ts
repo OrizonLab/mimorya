@@ -49,20 +49,34 @@ const made: MadeAccounts & { paul?: Page; unit?: string } = { roles: [] };
 /** The accounts a test erases, each its own, when not the one in `made`. */
 const departing: MadeAccounts[] = [];
 
-// What the test made, removed even when it fails.
+// What the test made, removed even when it fails: each removal tried on
+// its own, so that one failing leaves none of the others undone (Noé, who
+// erases accounts, and his role last); the first failure said at the end.
 test.afterEach(async () => {
   const paul = made.paul;
   made.paul = undefined;
   if (!paul) return;
-  if (made.unit) {
-    const removed = await paul.request.delete(`/api/admin/org-units/${made.unit}`, {
-      headers: WRITE,
+  const failures: unknown[] = [];
+  const attempt = async (removal: () => Promise<void>) => {
+    try {
+      await removal();
+    } catch (failure) {
+      failures.push(failure);
+    }
+  };
+  const unit = made.unit;
+  made.unit = undefined;
+  if (unit) {
+    await attempt(async () => {
+      const removed = await paul.request.delete(`/api/admin/org-units/${unit}`, {
+        headers: WRITE,
+      });
+      expect.soft(removed.status()).toBe(200);
     });
-    expect.soft(removed.status()).toBe(200);
-    made.unit = undefined;
   }
-  for (const account of departing.splice(0)) await retire(paul, account);
-  await retire(paul, made);
+  for (const account of departing.splice(0)) await attempt(() => retire(paul, account));
+  await attempt(() => retire(paul, made));
+  if (failures.length > 0) throw failures[0];
 });
 
 /** A team under the company's root, led by `lead`, noted in `made`. */
