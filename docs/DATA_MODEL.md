@@ -225,8 +225,9 @@ utilisateur).
     entreprise effacerait des entrées d'audit par leur clé étrangère vers elle ; celle
     d'une conversation et de ses runs ne touche plus le journal, qui garde le run qu'il
     nomme (ADR-186). Elles sont réservées au rôle propriétaire, par la purge des
-    conversations inactives (`system_purge_idle_conversations`), qui garde la trace ; la
-    suppression d'une entreprise reste à venir ;
+    conversations inactives (`system_purge_idle_conversations`), qui garde la trace, et par
+    la suppression d'une entreprise suspendue (`mimorya-admin delete-company`, ADR-192),
+    chaque table qui la nomme la suivant par une clé `ON DELETE CASCADE` sur `tenant_id` ;
   - `users` : **`DELETE` d'un compte désactivé de son entreprise seulement**, pour
     l'effacer (ADR-189) : la RLS borne l'entreprise, et une politique restrictive
     (`erased_once_disabled`) refuse un compte qui n'est pas désactivé, quoi que demande le

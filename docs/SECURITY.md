@@ -869,9 +869,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   runs s'arrêtent à leur prochaine étape, et chaque processus lâche ce qu'il garde d'elle
   (instances de ses connecteurs, réglages et clés de son modèle). La commande ne supprime
   rien, mais ne gèle rien non plus : une demande de validation échue est expirée, et la
-  rétention s'applique comme à toute entreprise. La
-  suppression complète d'une entreprise, qui ne partira que d'une entreprise suspendue,
-  est à venir.
+  rétention s'applique comme à toute entreprise. Une entreprise suspendue est supprimée
+  par l'exploitant avec tout ce qu'elle garde, son journal d'audit compris
+  (`mimorya-admin delete-company`, ADR-192), par le seul rôle propriétaire de la base, son
+  sigle confirmé, aucun de ses runs en file ni en cours ; la sortie de la commande en
+  est la trace, et les sauvegardes la gardent jusqu'à leur retrait.
   Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
   (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a

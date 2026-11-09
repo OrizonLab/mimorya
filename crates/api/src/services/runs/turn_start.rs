@@ -188,11 +188,17 @@ impl RunService {
         Ok((conversation_id, started))
     }
 
-    /// The rights of whom a run would serve, once a model can answer them,
-    /// their company is active and they may use the agent: refused
-    /// otherwise, saying why. A session of a suspended company is refused
-    /// beforehand; a scheduled task (ADR-080) or a hook (ADR-109) has none.
+    /// The rights of whom a run would serve, once their company is active, a
+    /// model can answer them and they may use the agent: refused otherwise,
+    /// saying why. A session of a suspended company is refused beforehand; a
+    /// scheduled task (ADR-080) or a hook (ADR-109) has none, and its
+    /// company's status is read before its model is loaded, which a
+    /// suspension had every process let go of (ADR-191).
     pub async fn ready_to_run(&self, identity: AuthIdentity) -> anyhow::Result<AccessContext> {
+        let access = self.access.context(identity).await?;
+        if access.tenant.status != "active" {
+            return Err(DomainError::forbidden(COMPANY_NOT_ACTIVE).into());
+        }
         match self.executor.llm.provider_for(identity.tenant_id).await {
             Ok(Some(_)) => {}
             Ok(None) => {
@@ -210,10 +216,6 @@ impl RunService {
                 )
                 .into());
             }
-        }
-        let access = self.access.context(identity).await?;
-        if access.tenant.status != "active" {
-            return Err(DomainError::forbidden(COMPANY_NOT_ACTIVE).into());
         }
         access.require("agent:use")?;
         Ok(access)

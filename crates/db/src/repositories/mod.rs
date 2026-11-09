@@ -78,6 +78,7 @@ pub mod skill_proposals;
 pub mod skills;
 pub mod sso_assertions;
 pub mod sub_runs;
+pub mod tenant_deletion;
 pub mod tenants;
 pub mod tool_invocations;
 pub mod usage;

@@ -24,6 +24,10 @@ Commandes :
                    réactive une entreprise suspendue, moins ce que ces échéances ont
                    retiré entre-temps
                      --slug <sigle>
+  delete-company   supprime une entreprise suspendue et tout ce qu’elle garde, son journal
+                   d’audit compris, sans retour (DATABASE_URL, rôle propriétaire) ; sans
+                   --confirm, montre ce qu’elle garde et ne supprime rien
+                     --slug <sigle>  [--confirm <sigle>]
   verify-audit     vérifie le journal d’audit scellé de chaque entreprise (MIMORYA_MASTER_KEY) ;
                    échoue si une entrée scellée a été modifiée ou supprimée, ou si une
                    chaîne ne porte plus un sceau relevé dans les journaux (« Audit log
@@ -47,6 +51,10 @@ pub enum Command {
     CompanyStatus {
         slug: String,
         change: CompanyStatusChange,
+    },
+    DeleteCompany {
+        slug: String,
+        confirm: Option<String>,
     },
     VerifyAudit {
         anchors: Vec<Anchor>,
@@ -86,6 +94,10 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
         "reactivate-company" => Command::CompanyStatus {
             slug: options.take("--slug")?,
             change: CompanyStatusChange::Reactivate,
+        },
+        "delete-company" => Command::DeleteCompany {
+            slug: options.take("--slug")?,
+            confirm: options.take_optional("--confirm"),
         },
         "verify-audit" => Command::VerifyAudit {
             anchors: options
@@ -129,6 +141,12 @@ impl Options {
             Some(index) => Ok(self.0.remove(index).1),
             None => Err(format!("Option obligatoire : {name}")),
         }
+    }
+
+    /// The value given to `name`, if any.
+    fn take_optional(&mut self, name: &str) -> Option<String> {
+        let index = self.0.iter().position(|(given, _)| given == name)?;
+        Some(self.0.remove(index).1)
     }
 
     /// Every value given to `name`, in their order.
@@ -220,6 +238,20 @@ mod tests {
             })
         );
         assert_eq!(
+            parse_line(&["delete-company", "--slug", "acme"]),
+            Ok(Command::DeleteCompany {
+                slug: "acme".into(),
+                confirm: None
+            })
+        );
+        assert_eq!(
+            parse_line(&["delete-company", "--confirm", "acme", "--slug", "acme"]),
+            Ok(Command::DeleteCompany {
+                slug: "acme".into(),
+                confirm: Some("acme".into())
+            })
+        );
+        assert_eq!(
             parse_line(&["reactivate-company", "--slug", "acme"]),
             Ok(Command::CompanyStatus {
                 slug: "acme".into(),
@@ -230,7 +262,7 @@ mod tests {
 
     #[test]
     fn refuses_what_it_does_not_understand() {
-        let refused: [&[&str]; 12] = [
+        let refused: [&[&str]; 15] = [
             &["deploy"],
             &["invite"],
             &["invite", "--email"],
@@ -243,6 +275,17 @@ mod tests {
             &["suspend-company"],
             &["suspend-company", "--slug", "acme", "--slug", "beta"],
             &["reactivate-company", "--name", "Acme"],
+            &["delete-company", "--confirm", "acme"],
+            &[
+                "delete-company",
+                "--slug",
+                "a",
+                "--confirm",
+                "a",
+                "--confirm",
+                "b",
+            ],
+            &["delete-company", "--slug", "acme", "--force", "yes"],
         ];
         for line in refused {
             assert!(parse_line(line).is_err(), "{line:?}");

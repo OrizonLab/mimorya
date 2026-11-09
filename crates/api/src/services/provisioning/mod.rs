@@ -4,13 +4,16 @@
 //! invitation link, suspend and reactivate a company (ADR-191). Each change
 //! runs in the company's own transaction (row-level security applies) with
 //! its audit entries, by the `system` actor. The links are returned to the
-//! operator only: never stored in clear, logged nor audited.
+//! operator only: never stored in clear, logged nor audited. Deleting a
+//! suspended company (ADR-192) alone runs as the database's owner.
 
 mod company;
+mod deletion;
 mod invitation;
 mod suspension;
 
 pub use company::{CreatedCompany, NewCompany, create_company};
+pub use deletion::{CompanyDeletion, CompanyRows, delete_company};
 pub use invitation::{OperatorInvitation, reinvite};
 pub use suspension::{CompanyStatusChange, change_company_status};
 

@@ -354,7 +354,9 @@ Repères à l'intérieur des crates :
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033,
   entreprise suspendue et réactivée par son sigle, chaque processus lâchant ce qu'il garde
-  d'elle, `suspension.rs`, ADR-191,
+  d'elle, `suspension.rs`, ADR-191, entreprise suspendue supprimée par le rôle propriétaire,
+  montrée d'abord, `deletion.rs` et `bin/admin/deletion.rs`, lignes de chaque table d'une
+  entreprise comptées et supprimées, `db/src/repositories/tenant_deletion.rs`, ADR-192,
   vérification du journal d'audit scellé, `verify.rs`, et ce qu'elle dit à
   l'exploitant, `report.rs`, ADR-178),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),

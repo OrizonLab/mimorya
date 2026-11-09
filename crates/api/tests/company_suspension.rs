@@ -32,7 +32,7 @@ const ADMIN: &str = "jeanne.martin@acme-suspendue.example";
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_suspended_company_is_closed_at_once_and_reopened_as_it_was() {
+async fn a_suspended_company_is_closed_at_once_and_reopened_with_its_sessions() {
     let api = TestApi::start().await;
     let created = create(&api, SLUG, ADMIN).await;
     let accepted = accept(&api, &created.invitation.link, INVITED_PASSWORD).await;

@@ -1,11 +1,12 @@
 //! Operator commands of a private installation (ADR-033), run with the API's
 //! environment: apply the migrations without any data, create a company with
 //! its first administrator, give an invited account a new link, suspend and
-//! reactivate a company (ADR-191), verify the sealed audit log against the
-//! seals logged (ADR-178). The link is printed for the operator to transmit,
-//! and nowhere else.
+//! reactivate a company (ADR-191), delete a suspended one (ADR-192), verify
+//! the sealed audit log against the seals logged (ADR-178). The link is
+//! printed for the operator to transmit, and nowhere else.
 
 mod args;
+mod deletion;
 mod report;
 mod verify;
 
@@ -94,6 +95,9 @@ async fn run(command: Command) -> anyhow::Result<()> {
             db.close().await;
             let tenant_id = changed?;
             println!("{}", status_told(slug.trim(), tenant_id, change));
+        }
+        Command::DeleteCompany { slug, confirm } => {
+            deletion::delete(&slug, confirm.as_deref()).await?;
         }
         Command::VerifyAudit { anchors } => {
             let (db, config) = connect().await?;
