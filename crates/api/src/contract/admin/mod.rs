@@ -1,6 +1,7 @@
 //! What the administration screens are answered with, and what they write.
 
 mod absences;
+mod account_erasure;
 mod activity;
 mod approval_routing;
 mod assignments;
@@ -33,6 +34,7 @@ mod skills;
 mod users;
 
 pub use absences::{AbsenceRecorded, CollaboratorAbsence};
+pub use account_erasure::{AccountErasure, ErasedAccount};
 pub use activity::{
     AuditActor, AuditEntry, AuditLog, AuditOutcome, UsageKind, UsageRow, UsageSummary,
 };

@@ -20,6 +20,7 @@ pub mod dns;
 pub mod document_search;
 pub mod documents;
 pub mod embeddings;
+pub mod erasure;
 pub mod evaluation_passes;
 mod fixtures;
 pub mod gateway_apps;

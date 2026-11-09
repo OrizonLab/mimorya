@@ -1,9 +1,10 @@
-//! The rows a deleted conversation takes with it, or empties, are found
-//! through an index (ADR-186). The retention pass deletes conversations,
-//! their runs and events, messages and validations, their missions and
-//! threads; each key that deletes or empties rows with them is looked up
-//! once per row deleted. Without an index starting with its columns, each
-//! lookup would read all of the company's rows.
+//! The rows a deleted conversation or account takes with it, or empties,
+//! are found through an index (ADR-186, ADR-189). The retention pass
+//! deletes conversations, their runs and events, messages and validations,
+//! their missions and threads; an erasure deletes an account. Each key that
+//! deletes or empties rows with them is looked up once per row deleted.
+//! Without an index starting with its columns, each lookup would read all
+//! of the company's rows.
 
 mod support;
 
@@ -26,7 +27,7 @@ const UNINDEXED_KEYS: &str = "\
       and c.confrelid in ('conversations'::regclass, 'agent_runs'::regclass, \
                           'messages'::regclass, 'approvals'::regclass, \
                           'gateway_threads'::regclass, 'missions'::regclass, \
-                          'run_events'::regclass) \
+                          'run_events'::regclass, 'users'::regclass) \
       and not exists ( \
         select 1 from pg_index i \
         where i.indrelid = c.conrelid \

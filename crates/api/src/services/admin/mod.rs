@@ -14,6 +14,7 @@
 mod absence_mail;
 mod absences;
 mod account_access;
+mod account_erasure;
 mod approval_routing;
 mod assignments;
 mod connector_authorization;
@@ -62,6 +63,7 @@ mod users;
 
 pub use absences::{AbsenceAdmin, absence_of, declare_absence_for, end_absence_for};
 pub(crate) use account_access::{let_go, take_access};
+pub use account_erasure::erase_account;
 pub use approval_routing::{manager_risks, set_manager_risks};
 pub use assignments::{grant_role, revoke_role};
 pub use connector_authorization::{

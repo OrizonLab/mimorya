@@ -52,6 +52,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route("/admin/users/{id}/password", post(users::reset))
         .route("/admin/users/{id}/password-link", post(users::send_link))
         .route("/admin/users/{id}/invitation", post(users::invite))
+        .route("/admin/users/{id}/erasure", post(users::erase))
         .route("/admin/users/{id}/assignments", post(assignments::grant))
         .route(
             "/admin/users/{id}/absence",

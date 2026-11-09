@@ -37,6 +37,7 @@ pub const PLATFORM_ROLE_TEMPLATES: &[RoleTemplate] = &[
             "org:manage",
             "user:read",
             "user:manage",
+            "user:erase",
             "role:manage",
             "policy:manage",
             "connector:manage",

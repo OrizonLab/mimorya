@@ -12698,3 +12698,98 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       une empreinte de mot de passe. Le journal de l'entreprise, lu par Paul, en garde la
       trace aux nombres du fichier. Un refus est dit en français, et rien n'est
       enregistré.
+
+## ADR-189 — Effacement d'un compte désactivé (lot 56a)
+
+- **Statut** : accepté (2026-11-09).
+- **Contexte** : `SECURITY.md` §9 annonçait l'effacement d'un compte (droit à
+  l'effacement) ; ADR-187 en avait fixé la condition : garder le journal d'audit
+  vérifiable (ADR-178). Le schéma prévoyait déjà, pour chaque table nommant un compte, la
+  suppression de ses lignes ou le vidage de la colonne, sauf deux clés du journal d'audit
+  (`actor_user_id`, `on_behalf_of_user_id`) qui auraient vidé ces colonnes d'entrées
+  scellées et rompu la chaîne. Les clés désignant un compte n'avaient pas toutes d'index.
+- **Décision** :
+  - **`POST /api/admin/users/{id}/erasure`**, corps `{ confirmEmail }`, efface un compte
+    de l'entreprise, et avec lui ce que la plateforme garde sur la personne :
+    - sessions, invitation, connexions par un fournisseur d'identité, compte SCIM ;
+    - conversations, leurs messages, résumés et fils de messagerie ;
+    - mémoires personnelles, tâches, déclencheurs, missions et livrables ;
+    - runs faits pour elle, leurs événements, appels d'outils et validations ;
+    - absences, comptes reliés, identités de messagerie, autorisations de serveurs MCP
+      (révoquées chez leur serveur d'autorisation, comme à la désactivation) ;
+    - unités, rôles et choix d'e-mails.
+
+    Ce qu'elle a laissé à l'entreprise reste, sans plus la nommer : documents déposés,
+    mémoires d'unité ou d'entreprise, compétences, décisions sur les validations des
+    autres, consommation. La réponse donne ce qui est parti, par ses nombres
+    (conversations, messages, mémoires, runs).
+
+  - **qui efface** : une permission à part, `user:erase` (« Effacer les comptes
+    désactivés »), non délégable et valable sur toute l'entreprise seulement. Le rôle
+    d'administrateur technique la reçoit, dans les entreprises nouvelles comme dans
+    celles déjà là (migration). Gérer les comptes (`user:manage`) n'y suffit pas : un
+    effacement ne se défait pas. Jamais son propre compte ;
+  - **quand** : seulement un compte **désactivé**, dont l'administrateur retape
+    l'adresse (sans égard à la casse ni aux espaces autour). L'effacement est refusé,
+    sans rien changer :
+    - tant qu'un run du compte est en file, en cours ou attend une validation ;
+    - tant qu'une demande d'un autre attend sa décision de responsable ;
+    - tant que le compte remplace quelqu'un pendant une absence qui n'est pas finie ;
+    - tant qu'il dirige une unité.
+
+    Ces cas effaceraient ou videraient en silence ce qui sert à d'autres. Les
+    règles sont dans le domaine (`core/src/account_erasure.rs`), et chaque refus est dit
+    en français ;
+
+  - **comment** : la ligne du compte est supprimée, dans la transaction de
+    l'administration, sous son verrou. Le compte est verrouillé pendant que ses liens sont
+    comptés. Le rôle applicatif reçoit le droit de supprimer un compte de son entreprise,
+    sous la sécurité au niveau des lignes. Ce qu'un compte désactivé avant ADR-174 ou
+    ADR-183 tenait encore lui est retiré comme à la désactivation (`take_access`), et ses
+    jetons sont révoqués une fois la transaction validée ;
+  - **le journal d'audit garde les personnes qu'il nomme** : ses deux clés vers `users`
+    sont remplacées par la vérification qu'elles faisaient à l'écriture
+    (`audit_log_people_known`), comme ADR-186 l'a fait pour le run. Une entrée nomme un
+    compte de son entreprise quand elle est écrite ; le compte peut partir ensuite, et
+    l'entrée, inchangée, reste scellée. Elle nomme alors un identifiant qui ne mène plus
+    à personne dans la plateforme. Les entrées ne contiennent ni adresse ni nom ; restent
+    les adresses IP des connexions, gardées avec le journal, qui est la trace de sécurité
+    de l'entreprise (cinq ans) ;
+  - **l'effacement est tracé** (`user.erased`) par l'administrateur, le compte effacé
+    nommé par son identifiant, et ses nombres seuls ;
+  - **chaque clé nommant un compte a son index** (36 index partiels, sur les lignes où
+    la colonne est remplie). Sinon, chaque effacement lirait toutes les lignes de
+    l'entreprise de chaque table, messages et consommation compris.
+- **Conséquences** :
+  - un compte provisionné par SCIM et effacé n'est plus connu du fournisseur
+    d'identité ; s'il l'envoie de nouveau, c'est un compte nouveau ;
+  - une proposition d'autorisation faite par un administrateur effacé part avec lui
+    (ADR-168) ; le journal garde la trace de sa décision ;
+  - l'effacement n'atteint ni les sauvegardes déjà faites (ADR-166), ni ce que le SIEM
+    de l'entreprise a déjà exporté du journal (ADR-181) ;
+  - l'écran qui offre l'effacement dans « Utilisateurs » suit (lot 56b) ; la suppression
+    complète d'une entreprise reste à venir ;
+  - tests :
+    - `crates/api/tests/account_erasure.rs` : Lucas a une donnée de chaque sorte et a
+      décidé une validation de Marc. Paul le désactive, puis l'efface en retapant son
+      adresse, en majuscules et entourée d'espaces. Ensuite :
+      - plus aucune ligne d'aucune table ne nomme Lucas (relevé depuis les clés du
+        catalogue), et sa session ne vaut plus ;
+      - les nombres rendus sont ceux qui sont partis ;
+      - les données de Marc sont intactes, sa validation gardée sans qui l'a décidée ;
+      - le journal garde toutes les entrées nommant Lucas, et trace l'effacement par
+        ses nombres ;
+      - scellée avant et après, la chaîne se vérifie intacte ;
+    - `crates/api/tests/account_erasure_refusals.rs` :
+      - un compte actif, une autre adresse ou aucune, un run qui attend une
+        validation, une demande de Marc qui attend sa décision, une absence où il
+        remplace Marc, une unité qu'il dirige : chaque refus laisse le compte en place ;
+      - effacé, le compte ne s'efface pas deux fois ;
+      - ni son propre compte, ni un responsable, ni qui gère les comptes sans
+        `user:erase` ; l'administratrice d'une autre entreprise ne trouve pas le compte,
+        personne ne trouve un compte qui n'existe pas ; qui détient `user:erase` efface ;
+    - `crates/db/tests/audit_people_references.rs` : une entrée ne nomme qu'un compte de
+      son entreprise, écrite par l'application comme par le propriétaire, et changée
+      comme écrite ; un compte supprimé laisse ses entrées telles quelles ;
+    - `crates/db/tests/purge_indexes.rs` couvre les clés vers `users` ;
+      `tenant_references.rs` vérifie le vidage d'une référence sur la consommation.

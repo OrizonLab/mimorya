@@ -848,10 +848,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   sienne seule), sa consommation par mois, ses absences, ce qu'il a relié ou autorisé ;
   jamais un secret ni les données d'un autre ; l'export, lu sur un même instantané, est
   tracé par ses nombres seuls avant d'être envoyé, et un envoi qui n'avance plus pendant
-  une minute est arrêté. L'effacement d'un compte et la suppression
-  complète d'une entreprise sont à venir : un compte se désactive, ses mémoires
-  personnelles partent 30 jours après (ADR-185), ses conversations 24 mois après leur
-  dernière activité (ADR-186), le journal conservant la trace sans le contenu. Un document
+  une minute est arrêté. Un administrateur qui détient `user:erase` (non délégable, sur
+  toute l'entreprise) efface un compte désactivé en retapant son adresse
+  (`POST /api/admin/users/{id}/erasure`, ADR-189) : le compte et tout ce que la plateforme
+  garde sur la personne partent, ce qu'elle a laissé à l'entreprise reste sans la nommer.
+  L'effacement est refusé tant qu'un run du compte vit, qu'une demande attend sa
+  décision, qu'il remplace un absent ou dirige une unité. Le journal d'audit garde, inchangées et scellées, les entrées qui
+  nomment le compte par son identifiant (jamais une adresse ni un nom), et trace
+  l'effacement par ses nombres. La suppression complète d'une entreprise est à venir.
+  Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
+  (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a
   déposé, se télécharge tel quel par qui le lit, et sa suppression par qui peut écrire
   son espace emporte son fichier, ses passages et leurs vecteurs. Remplacé par une

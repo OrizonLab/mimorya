@@ -180,7 +180,7 @@ async fn keeps_the_audit_log_append_only() {
 #[ignore = "requires PostgreSQL"]
 async fn cannot_erase_audit_entries_through_their_references() {
     let db = app().await;
-    for table in ["tenants", "users", "conversations", "agent_runs"] {
+    for table in ["tenants", "conversations", "agent_runs"] {
         let mut tx = db.begin(tenant::ID).await.unwrap();
         let delete = sqlx::query(&format!("delete from {table}"))
             .execute(&mut *tx)
@@ -190,6 +190,31 @@ async fn cannot_erase_audit_entries_through_their_references() {
             "{table}"
         );
     }
+    // An account the application deletes, erasing it (ADR-189), leaves the
+    // entries naming it as they were written: no key reaches them.
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    let entry: i64 = sqlx::query_scalar(
+        "insert into audit_log (tenant_id, actor_type, actor_user_id, on_behalf_of_user_id, \
+         action, outcome) values ($1, 'user', $2, $2, 'test.erasure', 'success') returning id",
+    )
+    .bind(tenant::ID)
+    .bind(user::LUCAS)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query("delete from users where id = $1")
+        .bind(user::LUCAS)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let named: (Option<Uuid>, Option<Uuid>) =
+        sqlx::query_as("select actor_user_id, on_behalf_of_user_id from audit_log where id = $1")
+            .bind(entry)
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+    assert_eq!(named, (Some(user::LUCAS), Some(user::LUCAS)));
+    // Rolled back: nothing of this test stays for the others.
 }
 
 #[tokio::test]

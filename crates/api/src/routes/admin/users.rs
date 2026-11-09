@@ -2,7 +2,8 @@
 //! company-wide): a new account gets an invitation link (ADR-027), e-mailed
 //! or shown once; a password is reset by an e-mailed link (ADR-029) or a
 //! temporary password shown once. Emails, logins and rights are only shown
-//! to administrators.
+//! to administrators. A disabled account is erased, its address typed again
+//! (`user:erase`, ADR-189).
 
 use std::collections::HashMap;
 
@@ -18,16 +19,17 @@ use super::connectors::{admin, secrets};
 use crate::app::AppState;
 use crate::contract::Done;
 use crate::contract::admin::{
-    AccountUpdate, Assignment, Directory, DirectoryRights, DirectoryUser, InvitationIssued,
-    NewAccount, ResetLinkSent, StatusChange, TemporaryPassword, UserCreated,
+    AccountErasure, AccountUpdate, Assignment, Directory, DirectoryRights, DirectoryUser,
+    ErasedAccount, InvitationIssued, NewAccount, ResetLinkSent, StatusChange, TemporaryPassword,
+    UserCreated,
 };
 use crate::contract::stored_text;
 use crate::http::{ApiResult, Body, PathId, iso};
 use crate::plugins::Auth;
 use crate::services::access::{AccessContext, describe_scope};
 use crate::services::admin::{
-    LinkSender, NewUserInput, UserChanges, create_user, issue_invitation, reset_password,
-    send_reset_link, update_user,
+    LinkSender, NewUserInput, UserChanges, create_user, erase_account, issue_invitation,
+    reset_password, send_reset_link, update_user,
 };
 use crate::services::permission_catalog::permission_catalog;
 
@@ -219,5 +221,25 @@ pub async fn send_link(
     let expires_at = send_reset_link(&link_sender(&state), &access, id).await?;
     Ok(Json(ResetLinkSent {
         expires_at: iso(&expires_at),
+    }))
+}
+
+/// Erases a disabled account and what the platform keeps on the person
+/// (ADR-189); what went, by its counts.
+pub async fn erase(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+    Body(body): Body<AccountErasure>,
+) -> ApiResult<Json<ErasedAccount>> {
+    let access = state.access.context(identity).await?;
+    let (store, catalog) = (secrets(&state), permission_catalog());
+    let admin = admin(&state, &store, &catalog);
+    let erased = erase_account(&admin, &access, id, &body.confirm_email).await?;
+    Ok(Json(ErasedAccount {
+        conversations: erased.conversations,
+        messages: erased.messages,
+        memories: erased.memories,
+        runs: erased.runs,
     }))
 }

@@ -141,6 +141,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::UserCreated>();
     declarations.add::<admin::InvitationIssued>();
     declarations.add::<admin::TemporaryPassword>();
+    declarations.add::<admin::ErasedAccount>();
     declarations.add::<admin::ResetLinkSent>();
     declarations.add::<admin::CollaboratorAbsence>();
     declarations.add::<admin::AbsenceRecorded>();
@@ -219,6 +220,7 @@ macro_rules! request_bodies {
             DocumentReplacement,
             admin::NewAccount,
             admin::AccountUpdate,
+            admin::AccountErasure,
             admin::RoleGrant,
             admin::NewOrgUnit,
             admin::OrgUnitUpdate,

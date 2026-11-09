@@ -19,8 +19,10 @@ Ce document en donne la lecture métier.
 - Énumérations stockées en `text` + contrainte `CHECK` (évolutives sans migration de type).
 - Les secrets ne sont jamais stockés en clair (table `secrets`, AES-256-GCM).
 - Suppression : physique pour les données personnelles (droit à l'effacement), la trace
-  de la suppression restant dans l'audit **sans le contenu** ; l'effacement d'un compte
-  est encore à venir (ADR-187).
+  de la suppression restant dans l'audit **sans le contenu**. Un compte désactivé
+  s'efface (ADR-189) : chaque clé nommant un compte supprime ses lignes ou vide sa
+  colonne, et a son index ; le journal d'audit garde l'identifiant qu'il nomme, vérifié
+  à l'écriture (`audit_log_people_known`), comme le run (ADR-186).
 - Export : chacun télécharge ses propres données en JSON depuis « Mon compte », jamais un
   secret ni les données d'un autre (`GET /api/account/export`, ADR-187, ADR-188) : son
   compte et ce qui le connecte, les unités qu'il dirige, l'invitation qui l'attend, ce
