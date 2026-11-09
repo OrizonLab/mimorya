@@ -1,10 +1,11 @@
 //! What one person wrote or set the assistant to do, as the export of their
 //! own data reads it (ADR-187): their conversations, every message in them
-//! and the summary shown in place of the first ones, their personal memories, their scheduled tasks, triggers and
-//! missions. A trigger's token is never read: only its hash is kept, and
-//! it is not theirs to export. Read in the person's company's transaction,
-//! for the person alone: a colleague's conversation shared with their unit
-//! is the colleague's.
+//! and the summary shown in place of the first ones, the messaging thread
+//! each is held in, their personal memories, their scheduled tasks,
+//! triggers and missions. A trigger's token is never read: only its hash
+//! is kept, and it is not theirs to export. Read in the person's company's
+//! transaction, for the person alone: a colleague's conversation shared
+//! with their unit is the colleague's.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -33,6 +34,22 @@ pub struct ExportedMessage {
 pub struct ExportedSummary {
     pub conversation_id: Uuid,
     pub content: String,
+}
+
+/// Where one of the person's conversations is held in a messaging service
+/// (ADR-127, ADR-135, ADR-140): the service, the person there, the channel
+/// and the thread.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ExportedThread {
+    pub conversation_id: Uuid,
+    pub kind: String,
+    pub gateway: String,
+    pub external_id: String,
+    pub channel_id: String,
+    pub thread_ts: String,
+    pub created_at: DateTime<Utc>,
+    pub active_at: DateTime<Utc>,
+    pub closed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -111,6 +128,23 @@ pub async fn exported_summaries(
     sqlx::query_as(
         "select s.conversation_id, s.content from conversation_summaries s \
          join conversations c on c.tenant_id = s.tenant_id and c.id = s.conversation_id \
+         where c.owner_user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_all(conn)
+    .await
+}
+
+/// The messaging threads of the person's own conversations.
+pub async fn exported_threads(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+) -> sqlx::Result<Vec<ExportedThread>> {
+    sqlx::query_as(
+        "select t.conversation_id, t.kind, g.name as gateway, t.external_id, t.channel_id, \
+         t.thread_ts, t.created_at, t.active_at, t.closed_at from gateway_threads t \
+         join gateways g on g.tenant_id = t.tenant_id and g.id = t.gateway_id \
+         join conversations c on c.tenant_id = t.tenant_id and c.id = t.conversation_id \
          where c.owner_user_id = $1",
     )
     .bind(user_id)

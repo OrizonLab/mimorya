@@ -1,9 +1,9 @@
 //! How one person reaches the platform, as the export of their own data
 //! reads it (ADR-187): their sessions (when, from which address, with what
 //! browser; never the token's hash), the identity providers they sign in
-//! through and who those say they are, and the identifier their company's
-//! provider gave them through SCIM. Read in the person's company's
-//! transaction, for the person alone.
+//! through and who those say they are, the identifier their company's
+//! provider gave them through SCIM, and the invitation still awaiting
+//! them. Read in the person's company's transaction, for the person alone.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
@@ -37,6 +37,15 @@ pub struct ExportedProvisioning {
     pub external_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub removed_at: Option<DateTime<Utc>>,
+}
+
+/// The invitation still awaiting the person (ADR-027): who sent it, when,
+/// until when; never its token's hash.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ExportedInvitation {
+    pub invited_by: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
 }
 
 pub async fn exported_sessions(
@@ -77,5 +86,19 @@ pub async fn exported_provisioning(
     )
     .bind(user_id)
     .fetch_all(conn)
+    .await
+}
+
+pub async fn exported_invitation(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+) -> sqlx::Result<Option<ExportedInvitation>> {
+    sqlx::query_as(
+        "select u.display_name as invited_by, i.created_at, i.expires_at from user_invitations i \
+         left join users u on u.tenant_id = i.tenant_id and u.id = i.created_by_user_id \
+         where i.user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(conn)
     .await
 }

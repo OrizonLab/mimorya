@@ -1,8 +1,9 @@
 //! The person's account in their export (ADR-187): who they are, their
-//! units and roles, their absences, their sessions and how they sign in.
+//! units (those they lead too) and roles, their absences, their sessions,
+//! how they sign in and the invitation awaiting them.
 
 use mimorya_db::repositories::personal_access::{
-    ExportedProvisioning, ExportedSession, ExportedSignIn,
+    ExportedInvitation, ExportedProvisioning, ExportedSession, ExportedSignIn,
 };
 use mimorya_db::repositories::personal_data::{
     ExportedAbsence, ExportedProfile, ExportedRole, ExportedUnit,
@@ -32,6 +33,8 @@ pub struct ExportAccount {
     pub created_at: String,
     pub last_login_at: Option<String>,
     pub units: Vec<ExportUnit>,
+    /// The units the person leads, by name.
+    pub leads: Vec<String>,
     pub roles: Vec<ExportRole>,
 }
 
@@ -85,6 +88,15 @@ pub struct ExportSignIn {
     pub last_used_at: String,
 }
 
+/// The invitation still awaiting the person: who sent it, by name.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportInvitation {
+    pub invited_by: Option<String>,
+    pub created_at: String,
+    pub expires_at: String,
+}
+
 /// The account as the company's identity provider made it through SCIM.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -94,12 +106,22 @@ pub struct ExportProvisioning {
     pub removed_at: Option<String>,
 }
 
+/// What the account is made of, as read.
+pub struct AccountRows {
+    pub profile: ExportedProfile,
+    pub units: Vec<ExportedUnit>,
+    pub leads: Vec<String>,
+    pub roles: Vec<ExportedRole>,
+}
+
 impl ExportAccount {
-    pub fn new(
-        profile: ExportedProfile,
-        units: Vec<ExportedUnit>,
-        roles: Vec<ExportedRole>,
-    ) -> Self {
+    pub fn new(rows: AccountRows) -> Self {
+        let AccountRows {
+            profile,
+            units,
+            leads,
+            roles,
+        } = rows;
         Self {
             id: profile.id,
             email: profile.email,
@@ -118,6 +140,7 @@ impl ExportAccount {
                     primary: unit.is_primary,
                 })
                 .collect(),
+            leads,
             roles: roles
                 .into_iter()
                 .map(|role| ExportRole {
@@ -173,6 +196,16 @@ impl From<ExportedProvisioning> for ExportProvisioning {
             external_id: provisioning.external_id,
             created_at: iso(&provisioning.created_at),
             removed_at: iso_opt(provisioning.removed_at),
+        }
+    }
+}
+
+impl From<ExportedInvitation> for ExportInvitation {
+    fn from(invitation: ExportedInvitation) -> Self {
+        Self {
+            invited_by: invitation.invited_by,
+            created_at: iso(&invitation.created_at),
+            expires_at: iso(&invitation.expires_at),
         }
     }
 }

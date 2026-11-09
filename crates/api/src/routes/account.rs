@@ -3,7 +3,7 @@
 
 use axum::extract::State;
 use axum::http::HeaderValue;
-use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
+use axum::http::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -45,6 +45,7 @@ async fn export(
     .map_err(|error| anyhow::anyhow!("content disposition: {error}"))?;
     let headers = [
         (CONTENT_TYPE, HeaderValue::from_static("application/json")),
+        (CONTENT_LENGTH, HeaderValue::from(file.size())),
         (CONTENT_DISPOSITION, disposition),
     ];
     Ok((headers, file.into_body()).into_response())

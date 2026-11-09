@@ -25,19 +25,27 @@ export const READ_TIMEOUT_MS = 30_000;
 
 const NO_ANSWER = 'Le serveur ne répond pas. Réessayez dans un instant.';
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const read = method === 'GET';
+/**
+ * Runs `send` with a signal that aborts it past `READ_TIMEOUT_MS`, said as
+ * the server not answering. Past `send`, nothing is cut short.
+ */
+async function withReadDeadline<T>(send: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
   // A timer rather than AbortSignal.timeout: the page's clock drives it.
-  const timer = read ? setTimeout(() => controller.abort(), READ_TIMEOUT_MS) : undefined;
+  const timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
   try {
-    return await send<T>(method, path, body, controller.signal);
+    return await send(controller.signal);
   } catch (error) {
     if (controller.signal.aborted) throw new ApiError(0, 'timeout', NO_ANSWER);
     throw error;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  if (method === 'GET') return withReadDeadline((signal) => send<T>(method, path, body, signal));
+  return send<T>(method, path, body, new AbortController().signal);
 }
 
 /** A body as sent: a file as it is (ADR-095), anything else as JSON. */
@@ -65,16 +73,43 @@ async function send<T>(
     },
     ...(sent ? { body: sent.payload } : {}),
   });
-  if (!res.ok) {
-    // The API's error body, or anything else (a proxy's page, an empty body).
-    const payload = (await res.json().catch(() => null)) as Partial<ErrorBody> | null;
-    throw new ApiError(
-      res.status,
-      payload?.error?.code ?? 'error',
-      payload?.error?.message ?? `Erreur ${res.status}`,
-    );
-  }
+  if (!res.ok) throw await failure(res);
   return (await res.json()) as T;
+}
+
+/** What a refused answer says: the API's error body, or anything else (a proxy's page, an empty body). */
+async function failure(res: Response): Promise<ApiError> {
+  const payload = (await res.json().catch(() => null)) as Partial<ErrorBody> | null;
+  return new ApiError(
+    res.status,
+    payload?.error?.code ?? 'error',
+    payload?.error?.message ?? `Erreur ${res.status}`,
+  );
+}
+
+/** A file the API gives, and the name it gives it. */
+export interface DownloadedFile {
+  name: string;
+  blob: Blob;
+}
+
+/** The name an answer's `Content-Disposition` gives its file, or `fallback`. */
+function fileName(res: Response, fallback: string): string {
+  const named = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '');
+  return named?.[1] ?? fallback;
+}
+
+/**
+ * The file at `path`. Its answer waits as long as a read's; the file, once
+ * it comes, takes the time it takes, the server ending a sending that no
+ * longer moves (ADR-188).
+ */
+async function download(path: string, fallback: string): Promise<DownloadedFile> {
+  const res = await withReadDeadline((signal) =>
+    fetch(`/api${path}`, { credentials: 'same-origin', signal }),
+  );
+  if (!res.ok) throw await failure(res);
+  return { name: fileName(res, fallback), blob: await res.blob() };
 }
 
 export const api = {
@@ -87,4 +122,6 @@ export const api = {
   upload: <T>(path: string, file: Blob) => request<T>('POST', path, file),
   /** Puts `file` in place of the one at `path` (ADR-150), described as `upload`'s. */
   replace: <T>(path: string, file: Blob) => request<T>('PUT', path, file),
+  /** The file at `path`, named as the API names it, else `fallback`. */
+  download: (path: string, fallback: string) => download(path, fallback),
 };

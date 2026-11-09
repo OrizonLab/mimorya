@@ -11,7 +11,7 @@ mod support;
 use mimorya_core::demo::{tenant, unit, user};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use support::personal_belongings::{belongings, company_parts, decided_for};
+use support::personal_belongings::{belongings, company_parts, decided_for, invited};
 use support::personal_export::absence;
 use support::queue::API;
 use support::{TestApi, companies};
@@ -77,6 +77,22 @@ async fn an_export_holds_exactly_the_person_s_own_data() {
     decided_for(tenant::ID, pauls.run, user::PAUL, user::MARC, "pour-paul").await;
     absence(tenant::ID, user::MARC, user::JULIEN).await;
     absence(tenant::ID, user::PAUL, user::MARC).await;
+    // Paul's invitation first: a read that lost its person would find it.
+    invited(
+        tenant::ID,
+        user::PAUL,
+        Some(user::MARC),
+        "invitation-de-paul",
+    )
+    .await;
+    invited(
+        tenant::ID,
+        user::MARC,
+        Some(user::PAUL),
+        "invitation-de-marc",
+    )
+    .await;
+    // Acme's administrator has the invitation that made her account.
     let chosen = marc
         .put(
             "/account/notifications",
@@ -94,6 +110,7 @@ async fn an_export_holds_exactly_the_person_s_own_data() {
         timeless(&export["account"]["units"]),
         json!([{ "name": "Service technique", "primary": true }])
     );
+    assert_eq!(export["account"]["leads"], json!(["Service technique"]));
     assert_eq!(
         timeless(&export["account"]["roles"]),
         json!([
@@ -113,6 +130,8 @@ async fn an_export_holds_exactly_the_person_s_own_data() {
         json!([{
             "id": his.conversation, "title": "conversation-de-marc", "visibility": "private",
             "summary": "résumé-de-marc",
+            "messaging": { "kind": "telegram", "gateway": "bot-neo", "externalId": "11",
+                           "channel": "11", "thread": "1" },
             "messages": [
                 { "role": "user", "content": "question-de-marc" },
                 { "role": "assistant", "content": "réponse-de-marc" },
@@ -183,6 +202,10 @@ async fn an_export_holds_exactly_the_person_s_own_data() {
         json!([{ "externalId": "scim-de-marc" }])
     );
     assert_eq!(
+        timeless(&export["invitation"]),
+        json!({ "invitedBy": "Paul Renaud" })
+    );
+    assert_eq!(
         timeless(&export["absences"]),
         json!([{ "delegate": "Julien Moreau" }])
     );
@@ -208,7 +231,15 @@ async fn an_export_holds_exactly_the_person_s_own_data() {
     }
     // Never a token, its hash, a sealed secret nor a password hash.
     let hook_hash = format!("{:x}", Sha256::digest("de-marc"));
-    for secret in ["hash-de-marc", &hook_hash, "chiffré", "accès-", "$argon2"] {
+    let invitation_hash = format!("{:x}", Sha256::digest("invitation-de-marc"));
+    for secret in [
+        "hash-de-marc",
+        &hook_hash,
+        &invitation_hash,
+        "chiffré",
+        "accès-",
+        "$argon2",
+    ] {
         assert!(!text.contains(secret), "{secret} exported");
     }
     let mut found = Vec::new();

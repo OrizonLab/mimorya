@@ -110,6 +110,14 @@ pub async fn exported_units(
     .await
 }
 
+/// The units the person leads, by name.
+pub async fn exported_leads(conn: &mut PgConnection, user_id: Uuid) -> sqlx::Result<Vec<String>> {
+    sqlx::query_scalar("select name from org_units where lead_user_id = $1 order by name")
+        .bind(user_id)
+        .fetch_all(conn)
+        .await
+}
+
 pub async fn exported_roles(
     conn: &mut PgConnection,
     user_id: Uuid,
