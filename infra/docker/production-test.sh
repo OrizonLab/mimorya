@@ -7,7 +7,9 @@
 # change; no demonstration company exists and the sign-in page lists no demo
 # account; the operator creates a company (ADR-033), whose first
 # administrator opens the invitation link, chooses a password and gets a
-# secure session in a company that is not a demo.
+# secure session in a company that is not a demo; the operator suspends the
+# company, whose session is refused at once, then reactivates it, whose
+# session is accepted again (ADR-191).
 #
 # It leaves that company and its active administrator behind: for a stack
 # thrown away afterwards only (the CI's), hence DISPOSABLE_STACK=yes. The
@@ -59,6 +61,15 @@ fi
 
 slug=verification-$(date +%s)
 session=$(open_company "$base" "$slug" 'Entreprise de vérification' "$(openssl rand -hex 24)")
+check_company_of "$base" "$session" 'Entreprise de vérification'
+
+suspended=$("${compose[@]}" exec -T api mimorya-admin suspend-company --slug "$slug") ||
+  fail "company not suspended: $suspended"
+refused=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/auth/me" \
+  -H "cookie: mimorya_session=$session")
+[[ $refused == 401 ]] || fail "the suspended company's session answered $refused, not 401"
+reactivated=$("${compose[@]}" exec -T api mimorya-admin reactivate-company --slug "$slug") ||
+  fail "company not reactivated: $reactivated"
 check_company_of "$base" "$session" 'Entreprise de vérification'
 
 echo "production test passed: $base"

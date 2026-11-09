@@ -1,8 +1,9 @@
 //! Operator commands of a private installation (ADR-033), run with the API's
 //! environment: apply the migrations without any data, create a company with
-//! its first administrator, give an invited account a new link, verify the
-//! sealed audit log against the seals logged (ADR-178). The link is printed
-//! for the operator to transmit, and nowhere else.
+//! its first administrator, give an invited account a new link, suspend and
+//! reactivate a company (ADR-191), verify the sealed audit log against the
+//! seals logged (ADR-178). The link is printed for the operator to transmit,
+//! and nowhere else.
 
 mod args;
 mod report;
@@ -14,7 +15,8 @@ use args::{Command, USAGE};
 use mimorya_api::AppConfig;
 use mimorya_api::mail::expiry_label;
 use mimorya_api::services::provisioning::{
-    NewCompany, OperatorInvitation, create_company, reinvite,
+    CompanyStatusChange, NewCompany, OperatorInvitation, change_company_status, create_company,
+    reinvite,
 };
 use mimorya_core::DomainError;
 use mimorya_db::{Database, PoolOptions, run_migrations};
@@ -86,6 +88,13 @@ async fn run(command: Command) -> anyhow::Result<()> {
             let email = email.trim().to_lowercase();
             print_link(&invitation?, &email);
         }
+        Command::CompanyStatus { slug, change } => {
+            let (db, _) = connect().await?;
+            let changed = change_company_status(&db, &slug, change).await;
+            db.close().await;
+            let tenant_id = changed?;
+            println!("{}", status_told(slug.trim(), tenant_id, change));
+        }
         Command::VerifyAudit { anchors } => {
             let (db, config) = connect().await?;
             let verified = verify::verify_audit(&config, &db, &anchors).await;
@@ -109,6 +118,23 @@ async fn connect() -> anyhow::Result<(Database, AppConfig)> {
     )
     .await?;
     Ok((db, config))
+}
+
+/// What a suspension or a reactivation means, told to the operator.
+fn status_told(slug: &str, tenant_id: uuid::Uuid, change: CompanyStatusChange) -> String {
+    match change {
+        CompanyStatusChange::Suspend => format!(
+            "Entreprise de sigle {slug} suspendue (identifiant {tenant_id}) : plus personne ne \
+             s’y connecte, ses sessions et ses jetons sont refusés, ses runs s’arrêtent à leur \
+             prochaine étape. La commande ne supprime rien, mais les échéances des demandes \
+             de validation et la rétention courent toujours. mimorya-admin \
+             reactivate-company --slug {slug} la rétablit."
+        ),
+        CompanyStatusChange::Reactivate => format!(
+            "Entreprise de sigle {slug} réactivée (identifiant {tenant_id}) : ses comptes se \
+             connectent de nouveau, ses sessions encore valables et ses jetons sont acceptés."
+        ),
+    }
 }
 
 fn print_link(invitation: &OperatorInvitation, email: &str) {

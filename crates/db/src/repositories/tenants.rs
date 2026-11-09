@@ -1,9 +1,10 @@
-//! Companies created by the platform's operator (ADR-033). The insert runs
-//! in the new company's own transaction (`Database::begin` with its id): the
-//! row-level security of `tenants` lets a transaction write and read its
-//! tenant only.
+//! Companies created, suspended and reactivated by the platform's operator
+//! (ADR-033, ADR-191). Each change runs in the company's own transaction
+//! (`Database::begin` with its id): the row-level security of `tenants` lets
+//! a transaction write and read its tenant only. The operator names a
+//! company by its slug, found before entering it.
 
-use sqlx::PgConnection;
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 pub struct NewTenant<'a> {
@@ -39,4 +40,32 @@ pub async fn tenant_slug(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Opti
         .bind(id)
         .fetch_optional(conn)
         .await
+}
+
+/// The company whose slug is `slug`, found before entering it, as the
+/// operator names it (ADR-191): its identifier alone.
+pub async fn find_tenant_by_slug(pool: &PgPool, slug: &str) -> sqlx::Result<Option<Uuid>> {
+    sqlx::query_scalar("select system_find_tenant($1)")
+        .bind(slug)
+        .fetch_one(pool)
+        .await
+}
+
+/// Moves the company from status `from` to `to`; false if it was not in
+/// `from` (changed meanwhile).
+pub async fn change_tenant_status(
+    conn: &mut PgConnection,
+    id: Uuid,
+    from: &str,
+    to: &str,
+) -> sqlx::Result<bool> {
+    let changed = sqlx::query(
+        "update tenants set status = $3, updated_at = now() where id = $1 and status = $2",
+    )
+    .bind(id)
+    .bind(from)
+    .bind(to)
+    .execute(conn)
+    .await?;
+    Ok(changed.rows_affected() == 1)
 }

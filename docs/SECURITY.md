@@ -622,9 +622,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     - un run d'agent en cours relit les droits de son utilisateur avant chaque appel au
       modèle, avant les appels d'outils qu'il renvoie, avant de conclure une réponse et
       à la reprise après validation (ADR-035) : un compte désactivé, ou privé de
-      `agent:use`, l'arrête à ce moment, une entreprise suspendue dans les 30 s au plus
-      (la suspension se fait en base, l'API le voit à l'expiration du cache de
-      l'entreprise) ; une habilitation retirée ne compte plus. Restent
+      `agent:use`, l'arrête à ce moment, une entreprise suspendue aussi : la commande
+      de l'exploitant (ADR-191) fait oublier aussitôt à chaque processus les règles
+      qu'il garde de l'entreprise, et l'expiration de ce cache, 30 s au plus, borne une
+      annonce perdue ; une habilitation retirée ne compte plus. Restent
       acquis au run : ses consignes et mémoires rappelées au démarrage, les résultats
       d'outils déjà obtenus, l'outil en cours d'exécution (délai borné), le registre
       d'outils jusqu'à la pause ou la fin et le niveau d'autonomie. Les règles de
@@ -861,7 +862,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   nomment le compte par son identifiant (jamais une adresse e-mail ni un nom ; restent les
   adresses IP de ses connexions et l'identifiant chez Slack, Telegram ou Teams de ses
   identités de messagerie reliées ou retirées, qu'une entrée scellée ne laisse pas
-  expurger), et trace l'effacement par ses nombres. La suppression complète d'une entreprise est à venir.
+  expurger), et trace l'effacement par ses nombres. L'exploitant suspend et réactive une
+  entreprise par son sigle (`mimorya-admin suspend-company`, `reactivate-company`,
+  ADR-191), chaque changement tracé dans son journal d'audit par la plateforme :
+  suspendue, elle ne connecte plus personne, ses sessions et ses jetons sont refusés, ses
+  runs s'arrêtent à leur prochaine étape, et chaque processus lâche ce qu'il garde d'elle
+  (instances de ses connecteurs, réglages et clés de son modèle). La commande ne supprime
+  rien, mais ne gèle rien non plus : une demande de validation échue est expirée, et la
+  rétention s'applique comme à toute entreprise. La
+  suppression complète d'une entreprise, qui ne partira que d'une entreprise suspendue,
+  est à venir.
   Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
   (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a

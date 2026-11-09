@@ -120,6 +120,18 @@ pub async fn update_connector_instance(
     Ok(result.rows_affected() > 0)
 }
 
+/// The company's connector instances, the company named: for the operator's
+/// commands, as the database's owner too (ADR-191).
+pub async fn tenant_connector_ids(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+) -> sqlx::Result<Vec<Uuid>> {
+    sqlx::query_scalar("select id from connector_instances where tenant_id = $1 order by id")
+        .bind(tenant_id)
+        .fetch_all(conn)
+        .await
+}
+
 pub async fn delete_connector_instance(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<bool> {
     let result = sqlx::query("delete from connector_instances where id = $1")
         .bind(id)

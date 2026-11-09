@@ -2,6 +2,7 @@
 //! `--option value` pairs, each given once but `--anchor`.
 
 use mimorya_api::services::audit_chain::Anchor;
+use mimorya_api::services::provisioning::CompanyStatusChange;
 
 pub const USAGE: &str = "\
 Usage : mimorya-admin <commande> [options]
@@ -14,6 +15,15 @@ Commandes :
   invite           nouveau lien d’invitation d’un compte qui n’a pas encore choisi
                    son mot de passe
                      --email <adresse>
+  suspend-company  suspend une entreprise : plus personne ne s’y connecte, ses sessions et
+                   ses jetons sont refusés, ses runs s’arrêtent à leur prochaine étape ;
+                   la commande ne supprime rien, mais les échéances des validations et la
+                   rétention courent toujours
+                     --slug <sigle>
+  reactivate-company
+                   réactive une entreprise suspendue, moins ce que ces échéances ont
+                   retiré entre-temps
+                     --slug <sigle>
   verify-audit     vérifie le journal d’audit scellé de chaque entreprise (MIMORYA_MASTER_KEY) ;
                    échoue si une entrée scellée a été modifiée ou supprimée, ou si une
                    chaîne ne porte plus un sceau relevé dans les journaux (« Audit log
@@ -23,16 +33,24 @@ Commandes :
                      l’entreprise par son identifiant, tel que journalisé, ou son sigle)
   help             affiche cette aide
 
-create-company, invite et verify-audit passent par DATABASE_APP_URL ; les liens mènent à
-WEB_ORIGIN.";
+create-company, invite, suspend-company, reactivate-company et verify-audit passent par
+DATABASE_APP_URL ; les liens mènent à WEB_ORIGIN.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Help,
     Migrate,
     CreateCompany(CompanyArgs),
-    Invite { email: String },
-    VerifyAudit { anchors: Vec<Anchor> },
+    Invite {
+        email: String,
+    },
+    CompanyStatus {
+        slug: String,
+        change: CompanyStatusChange,
+    },
+    VerifyAudit {
+        anchors: Vec<Anchor>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -60,6 +78,14 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
         }),
         "invite" => Command::Invite {
             email: options.take("--email")?,
+        },
+        "suspend-company" => Command::CompanyStatus {
+            slug: options.take("--slug")?,
+            change: CompanyStatusChange::Suspend,
+        },
+        "reactivate-company" => Command::CompanyStatus {
+            slug: options.take("--slug")?,
+            change: CompanyStatusChange::Reactivate,
         },
         "verify-audit" => Command::VerifyAudit {
             anchors: options
@@ -186,11 +212,25 @@ mod tests {
                 email: "jeanne@acme.example".into()
             })
         );
+        assert_eq!(
+            parse_line(&["suspend-company", "--slug", "acme"]),
+            Ok(Command::CompanyStatus {
+                slug: "acme".into(),
+                change: CompanyStatusChange::Suspend
+            })
+        );
+        assert_eq!(
+            parse_line(&["reactivate-company", "--slug", "acme"]),
+            Ok(Command::CompanyStatus {
+                slug: "acme".into(),
+                change: CompanyStatusChange::Reactivate
+            })
+        );
     }
 
     #[test]
     fn refuses_what_it_does_not_understand() {
-        let refused: [&[&str]; 9] = [
+        let refused: [&[&str]; 12] = [
             &["deploy"],
             &["invite"],
             &["invite", "--email"],
@@ -200,6 +240,9 @@ mod tests {
             &["migrate", "--force", "yes"],
             &["verify-audit", "--company", "acme"],
             &["verify-audit", "--anchor", "acme:3:abcd"],
+            &["suspend-company"],
+            &["suspend-company", "--slug", "acme", "--slug", "beta"],
+            &["reactivate-company", "--name", "Acme"],
         ];
         for line in refused {
             assert!(parse_line(line).is_err(), "{line:?}");

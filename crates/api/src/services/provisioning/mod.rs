@@ -1,16 +1,18 @@
 //! What the platform's operator does from the command line (`mimorya-admin`,
 //! ADR-033), outside any company's administration: create a company with its
-//! first administrator, and give an account that never chose its password a
-//! new invitation link. Each change runs in the company's own transaction
-//! (row-level security applies) with its audit entries, by the `system`
-//! actor. The links are returned to the operator only: never stored in
-//! clear, logged nor audited.
+//! first administrator, give an account that never chose its password a new
+//! invitation link, suspend and reactivate a company (ADR-191). Each change
+//! runs in the company's own transaction (row-level security applies) with
+//! its audit entries, by the `system` actor. The links are returned to the
+//! operator only: never stored in clear, logged nor audited.
 
 mod company;
 mod invitation;
+mod suspension;
 
 pub use company::{CreatedCompany, NewCompany, create_company};
 pub use invitation::{OperatorInvitation, reinvite};
+pub use suspension::{CompanyStatusChange, change_company_status};
 
 use mimorya_db::repositories::audit::AuditEntry;
 use uuid::Uuid;

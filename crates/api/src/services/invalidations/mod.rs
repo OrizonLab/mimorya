@@ -94,6 +94,13 @@ impl Invalidations {
     }
 }
 
+/// `invalidation` as a command that keeps no cache announces it, from an
+/// `origin` of its own which no process shares: each of them applies it
+/// (the operator's, `mimorya-admin`, ADR-191).
+pub fn announcement(origin: Uuid, invalidation: Invalidation) -> String {
+    payload(origin, invalidation)
+}
+
 /// `invalidation` as `origin` announces it.
 fn payload(origin: Uuid, invalidation: Invalidation) -> String {
     let announced = Announced {
