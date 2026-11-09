@@ -11,10 +11,11 @@ import {
 } from '@/lib/api';
 
 /**
- * The erasure of a disabled account (ADR-189), offered to who holds
- * `user:erase` company-wide: the account's address typed again confirms
- * it, and the server's refusal (a run still living, a request awaiting its
- * decision, an absence it stands in for, a unit it leads) is said as is.
+ * The erasure of a disabled account (ADR-189), as its screen offers it to
+ * who holds `user:erase` company-wide (ADR-190): the account's address
+ * typed again confirms it, and the server's refusal (a run still living, a
+ * request awaiting its decision, an absence it stands in for, a unit it
+ * leads) is said as is.
  */
 export function ErasureForm({
   user,

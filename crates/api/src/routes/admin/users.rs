@@ -69,8 +69,9 @@ pub async fn list(
                 job_title: u.job_title.clone(),
                 status: stored_text("account status", &u.status)?,
                 org_unit: u.primary_unit_id.map(|unit| tree.path_label(unit)),
-                // Who erases an account types its address again (ADR-189).
-                email: (admin || erase).then(|| u.email.clone()),
+                // Who erases a disabled account types its address again
+                // (ADR-190): that one's alone.
+                email: (admin || (erase && u.status == "disabled")).then(|| u.email.clone()),
                 last_login_at: admin.then(|| u.last_login_at.as_ref().map(iso)),
                 org_unit_id: admin.then_some(u.primary_unit_id),
                 clearance: admin

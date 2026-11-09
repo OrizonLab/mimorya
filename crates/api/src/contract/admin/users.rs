@@ -65,7 +65,8 @@ pub struct DirectoryUser {
     pub status: AccountStatus,
     /// Its primary unit, as a path from the root.
     pub org_unit: Option<String>,
-    /// To account or role managers only.
+    /// To account or role managers, and that of a disabled account to who
+    /// erases accounts (ADR-190).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub email: Option<String>,

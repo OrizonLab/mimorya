@@ -611,7 +611,8 @@ export type DirectoryUser = { id: string, displayName: string, jobTitle: string 
  */
 orgUnit: string | null,
 /**
- * To account or role managers only.
+ * To account or role managers, and that of a disabled account to who
+ * erases accounts (ADR-190).
  */
 email?: string, lastLoginAt?: string | null, orgUnitId?: string | null, clearance?: Sensitivity,
 /**

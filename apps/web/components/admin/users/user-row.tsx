@@ -31,7 +31,7 @@ export function UserRow({
   onNotice: (notice: AccountNotice) => void;
 }) {
   const [open, setOpen] = useState(false);
-  // A disabled account is also open to who erases accounts (ADR-189).
+  // A disabled account is also open to who erases accounts (ADR-190).
   const erasable = canManage.erase && user.status === 'disabled';
   const manageable = (canManage.users || canManage.roles || erasable) && !isSelf;
   return (
@@ -74,7 +74,8 @@ export function UserRow({
           )}
         </Cell>
       </tr>
-      {open && (
+      {/* Read again, the account may be no longer open to this reader. */}
+      {open && manageable && (
         <tr>
           <td colSpan={4} className="bg-surface-2/50 px-4 py-4">
             <div className="flex flex-col gap-6">

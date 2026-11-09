@@ -5,7 +5,8 @@
 //! account; managing accounts is not enough to erase one, nor does the
 //! directory offer it then; another company's administrator finds no such
 //! account, nor does anyone an account that never was. Who holds the
-//! permission is offered it, the address to type again shown.
+//! permission is offered it, the address to type again shown for a disabled
+//! account alone.
 
 mod support;
 
@@ -207,10 +208,15 @@ async fn only_another_administrator_of_its_company_erases_an_account() {
     // The directory offers it to them, with the address to type again.
     let directory = eraser.get("/admin/users").await.json();
     assert_eq!(directory["canManage"]["erase"], true, "{directory}");
-    let listed = (directory["users"].as_array().unwrap().iter())
-        .find(|u| u["id"] == json!(user::LEA))
-        .unwrap();
-    assert_eq!(listed["email"], json!(lea));
+    let listed = |id: Uuid| {
+        (directory["users"].as_array().unwrap().iter())
+            .find(|u| u["id"] == json!(id))
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(listed(user::LEA)["email"], json!(lea));
+    // That of a disabled account alone: no other is to be erased.
+    assert!(listed(user::PAUL).get("email").is_none());
     let erased = erase(&eraser, user::LEA, &lea).await;
     assert_eq!(erased.status.as_u16(), 200, "{}", erased.text());
     assert!(!exists(user::LEA).await);

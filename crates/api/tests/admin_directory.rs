@@ -1,8 +1,10 @@
 //! The user directory shows each field only to those entitled to it, on
 //! every entry: readers see who is who; account managers also see sign-ins,
 //! units, clearance, attributes and pending invitations; role managers also
-//! see sign-ins, units, clearance and roles. A withheld field is absent, not
-//! `null`, and rights limited to one team count as none.
+//! see sign-ins, units, clearance and roles; who erases accounts also sees
+//! the address of a disabled account, to type it again, and nothing else
+//! (ADR-190). A withheld field is absent, not `null`, and rights limited to
+//! one team count as none.
 
 mod support;
 
@@ -29,13 +31,30 @@ fn fields(parts: &[&[&str]]) -> BTreeSet<String> {
 
 /// Every entry of the directory as `client` reads it has exactly `expected`.
 async fn every_entry_shows(client: &Client<'_>, expected: BTreeSet<String>) {
+    every_entry_shows_by_status(client, expected.clone(), expected).await;
+}
+
+/// Every entry of the directory as `client` reads it has exactly
+/// `disabled` when its account is disabled, `others` otherwise; one at
+/// least is disabled.
+async fn every_entry_shows_by_status(
+    client: &Client<'_>,
+    disabled: BTreeSet<String>,
+    others: BTreeSet<String>,
+) {
     let directory = client.get("/admin/users").await;
     assert_eq!(directory.status, StatusCode::OK, "{}", directory.text());
     let users = directory.json()["users"].as_array().unwrap().clone();
     assert!(users.len() > 5);
+    assert!(users.iter().any(|u| u["status"] == "disabled"));
     for entry in users {
         let shown: BTreeSet<String> = entry.as_object().unwrap().keys().cloned().collect();
-        assert_eq!(shown, expected, "{entry}");
+        let expected = if entry["status"] == "disabled" {
+            &disabled
+        } else {
+            &others
+        };
+        assert_eq!(&shown, expected, "{entry}");
     }
 }
 
@@ -62,10 +81,27 @@ async fn each_directory_field_reaches_only_those_entitled_to_it() {
     )
     .await;
     let roles = holder_of(&api, &paul, "gestion.roles", &["user:read", "role:manage"]).await;
+    let eraser = holder_of(
+        &api,
+        &paul,
+        "effacement.annuaire",
+        &["user:read", "user:erase"],
+    )
+    .await;
+    // A disabled account, whose address who erases accounts sees.
+    let (gone, _) = invite_account(&paul, "compte.desactive").await;
+    let disabled = paul
+        .patch(
+            &format!("/admin/users/{}", gone.id),
+            json!({ "status": "disabled" }),
+        )
+        .await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
     let mut team_admin = create_partial_admin(&api, &paul, "admin.equipe").await;
     let team_admin = activate(&api, &mut team_admin).await;
 
     every_entry_shows(&reader, fields(&[READER])).await;
+    every_entry_shows_by_status(&eraser, fields(&[READER, &["email"]]), fields(&[READER])).await;
     every_entry_shows(&team_admin, fields(&[READER])).await;
     every_entry_shows(&accounts, fields(&[READER, MANAGER, ACCOUNTS])).await;
     every_entry_shows(&roles, fields(&[READER, MANAGER, ROLES])).await;

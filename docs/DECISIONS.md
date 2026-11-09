@@ -12819,10 +12819,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 - **Décision** :
   - **qui le voit** : l'annuaire (`GET /api/admin/users`) dit, dans `canManage.erase`, si
     la personne détient `user:erase` sur toute l'entreprise, et lui donne l'adresse de
-    chaque compte, qu'elle retapera. Un compte qui n'est pas désactivé n'offre pas
+    chaque compte désactivé, qu'elle retapera ; celle d'un compte actif ou invité, qui ne
+    s'efface pas, lui reste cachée. Un compte qui n'est pas désactivé n'offre pas
     l'effacement. Un compte désactivé s'ouvre (« Gérer ») pour qui ne détient que cette
-    permission, et seul la section « Effacement » y figure alors. Jamais son propre
-    compte, comme les autres sections ;
+    permission, et seule la section « Effacement » y figure alors. Jamais son propre
+    compte, comme les autres sections. Relu, un compte qui ne s'ouvre plus à cette
+    personne (réactivé entre-temps) se referme ;
   - **ce qu'elle dit** : ce que l'effacement emporte, ce qui reste à l'entreprise sans
     nommer la personne, que le journal d'audit garde les entrées qui la nomment, et
     qu'il ne se défait pas. L'adresse retapée est la confirmation : pas d'autre boîte de
@@ -12831,20 +12833,30 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     attente de sa décision, remplacement d'un absent, unité dirigée), le compte restant
     listé ;
   - **réussite** : un avis en tête de l'onglet dit ce qui est parti, par les nombres que
-    rend l'API, accordés (« 1 demande faite pour lui ») ; l'annuaire est relu, et le
-    compte n'y est plus.
+    rend l'API, les mots accordés à chacun (« 2 conversations », « 1 demande faite pour
+    lui ») ; il prend le focus, la ligne dont le bouton l'avait étant partie avec le
+    compte, à chaque effacement. L'annuaire est relu, et le compte n'y est plus.
 - **Conséquences** :
-  - un compte qui ne détient que `user:erase` voit les adresses de l'annuaire, et rien
-    de plus que ce que voit qui le lit (`user:read`) ;
+  - un compte qui ne détient que `user:erase` voit l'adresse des comptes désactivés et,
+    à part elles, rien de plus que ce que voit qui lit l'annuaire (`user:read`) ;
   - tests :
-    - `apps/web/e2e/account-erasure.spec.ts` : un compte fait pour le test, chef d'une
-      équipe faite pour lui, n'offre pas l'effacement tant qu'il n'est pas désactivé. Une
-      fois désactivé, l'effacement est refusé avec une autre adresse, puis avec la
-      sienne tant qu'il dirige l'équipe, chaque refus dit tel que le serveur le dit et le
-      compte toujours listé. L'équipe donnée à personne, il est effacé : l'avis dit ce
-      qui est parti, et le compte n'est plus dans l'annuaire, relu après rechargement
-      comme par l'API ;
+    - `apps/web/e2e/account-erasure.spec.ts` :
+      - un compte fait pour le test, chef d'une équipe faite pour lui, n'offre pas
+        l'effacement tant qu'il n'est pas désactivé. Une fois désactivé, l'effacement est
+        refusé avec une autre adresse, puis avec la sienne tant qu'il dirige l'équipe,
+        chaque refus dit tel que le serveur le dit et le compte toujours listé. L'équipe
+        donnée à personne, il est effacé : l'avis prend le focus et dit ce qui est
+        parti, et le compte n'est plus dans l'annuaire, relu après rechargement comme
+        par l'API ;
+      - un compte qui ne détient que `user:erase` n'ouvre aucun compte actif ; d'un
+        compte désactivé, qui gardait deux conversations et deux mémoires, il n'a que
+        l'effacement (ni attributs, ni habilitations, ni réactivation) ; effacé, l'avis
+        le dit en mots accordés à ses nombres ;
+    - `crates/api/tests/admin_directory.rs` : qui ne détient que `user:erase` reçoit de
+      chaque compte désactivé ce que reçoit qui lit l'annuaire et son adresse, de tout
+      autre compte ce que reçoit qui le lit ;
     - `crates/api/tests/account_erasure_refusals.rs` : l'annuaire n'offre pas
       l'effacement à qui gère les comptes sans `user:erase`, et l'offre à qui le détient
-      seul, avec l'adresse à retaper ; `admin_users.rs` et `admin_assignments.rs` disent
-      `canManage.erase` de l'administrateur et d'un administrateur limité à une équipe.
+      seul, avec l'adresse du compte désactivé à retaper, sans celle d'un compte actif ;
+      `admin_users.rs` et `admin_assignments.rs` disent `canManage.erase` de
+      l'administrateur et d'un administrateur limité à une équipe.
