@@ -521,8 +521,13 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
      `(tenant_id, colonne)` vers `(tenant_id, id)`, `ON DELETE SET NULL (colonne)` si
      elle vide sa référence (ADR-167) ; `crates/db/tests/tenant_references.rs` échoue
      sinon.
+   - Toute table métier suit la suppression de son entreprise : une clé de sa colonne
+     `tenant_id` vers `tenants`, `ON DELETE CASCADE` (ADR-192) ;
+     `crates/db/tests/tenant_deletion.rs` échoue sinon.
    - Le runtime utilise exclusivement `DATABASE_APP_URL` (rôle `mimorya_app`, RLS
-     appliquée). Le rôle propriétaire ne sert qu'aux migrations et au seed.
+     appliquée). Le rôle propriétaire ne sert qu'aux migrations, au seed et à la
+     suppression d'une entreprise suspendue par l'exploitant (ADR-192 :
+     `mimorya-admin delete-company`), qu'aucun processus de l'application ne peut faire.
    - Migrations : nouveau fichier SQL numéroté dans `crates/db/migrations/`
      (`NNNN_description.sql`), écrit et relu à la main, appliqué par
      `run_migrations` avec le rôle propriétaire. **Ne jamais modifier une migration

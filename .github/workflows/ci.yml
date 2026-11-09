@@ -232,7 +232,7 @@ jobs:
         run: docker compose -f compose.production.yml -f compose.production.build.yml up -d
       - name: Installation test of the production stack
         env:
-          # The test leaves a company and its administrator behind.
+          # The test creates a company, then deletes it (ADR-192).
           DISPOSABLE_STACK: 'yes'
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
         run: infra/docker/production-test.sh https://localhost

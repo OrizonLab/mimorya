@@ -873,7 +873,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   par l'exploitant avec tout ce qu'elle garde, son journal d'audit compris
   (`mimorya-admin delete-company`, ADR-192), par le seul rôle propriétaire de la base, son
   sigle confirmé, aucun de ses runs en file ni en cours ; la sortie de la commande en
-  est la trace, et les sauvegardes la gardent jusqu'à leur retrait.
+  est la trace, et les sauvegardes la gardent jusqu'à leur retrait. Ce qu'elle a déclaré chez d'autres services (autorisations OAuth de serveurs MCP, comptes reliés, bots de messagerie) n'y est pas révoqué : la commande le compte, à retirer chez chacun.
   Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
   (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a

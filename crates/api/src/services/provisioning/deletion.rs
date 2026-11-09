@@ -7,11 +7,13 @@
 //! company holds, table by table, and deletes nothing; confirmed, it
 //! deletes the company and every row of it in one transaction, its audit
 //! log included, and tells every process to let go of what it keeps of it.
-//! What it held stays in the backups made before, until they are retired.
+//! What it held stays in the backups made before, until they are retired;
+//! what it declared at other services (OAuth grants, linked accounts,
+//! messaging bots) stays there, to withdraw at each of them.
 
 use mimorya_core::DomainError;
 use mimorya_db::repositories::tenant_deletion::{
-    delete_tenant, living_runs, lock_tenant_by_slug, tenant_rows,
+    delete_tenant, living_work, lock_tenant_by_slug, tenant_rows,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -26,9 +28,42 @@ pub struct CompanyRows {
     pub tables: Vec<(String, i64)>,
 }
 
+/// What a company declares at other services, by the table that keeps it:
+/// deleting the company forgets it here, not there.
+const HELD_OUTSIDE: [(&str, &str); 4] = [
+    (
+        "connector_authorizations",
+        "autorisations OAuth de serveurs MCP données pour l’entreprise",
+    ),
+    (
+        "connector_person_authorizations",
+        "autorisations OAuth de serveurs MCP données par ses personnes",
+    ),
+    (
+        "account_links",
+        "comptes Microsoft 365 ou Google Workspace reliés par ses personnes",
+    ),
+    (
+        "gateways",
+        "passerelles de conversation (Slack, Telegram, Teams)",
+    ),
+];
+
 impl CompanyRows {
     pub fn total(&self) -> i64 {
         self.tables.iter().map(|(_, rows)| rows).sum()
+    }
+
+    /// What it declared at other services, which stays there once it is
+    /// deleted: what each is, and how many.
+    pub fn held_outside(&self) -> Vec<(&'static str, i64)> {
+        HELD_OUTSIDE
+            .iter()
+            .filter_map(|(table, what)| {
+                let rows = self.tables.iter().find(|(name, _)| name == table)?.1;
+                Some((*what, rows))
+            })
+            .collect()
     }
 }
 
@@ -61,10 +96,10 @@ pub async fn delete_company(
         )
         .into());
     }
-    if living_runs(&mut tx, tenant_id).await? > 0 {
+    if living_work(&mut tx, tenant_id).await? > 0 {
         return Err(DomainError::conflict(
-            "Un run de l’entreprise est encore en file ou en cours : il s’arrête à sa \
-             prochaine étape, réessayez dans un instant",
+            "Un run de l’entreprise est encore en file ou en cours, ou une évaluation de ses \
+             compétences se joue : ils s’arrêtent bientôt, réessayez dans un instant",
         )
         .into());
     }
@@ -87,5 +122,32 @@ pub async fn delete_company(
             tx.commit().await?;
             Ok(CompanyDeletion::Deleted(rows))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn says_what_stays_at_other_services() {
+        let rows = CompanyRows {
+            tenant_id: Uuid::nil(),
+            tables: vec![
+                ("account_links".into(), 2),
+                ("audit_log".into(), 40),
+                ("gateways".into(), 1),
+            ],
+        };
+        assert_eq!(
+            rows.held_outside(),
+            [
+                (
+                    "comptes Microsoft 365 ou Google Workspace reliés par ses personnes",
+                    2
+                ),
+                ("passerelles de conversation (Slack, Telegram, Teams)", 1),
+            ]
+        );
     }
 }

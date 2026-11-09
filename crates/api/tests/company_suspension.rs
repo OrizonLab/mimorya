@@ -16,8 +16,9 @@ use std::time::Duration;
 use axum::http::StatusCode;
 use mimorya_api::services::AuthIdentity;
 use mimorya_api::services::provisioning::CompanyStatusChange;
-use mimorya_core::ErrorCode;
+use mimorya_api::services::runs::COMPANY_NOT_ACTIVE;
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::{DomainError, ErrorCode};
 use mimorya_db::notifications::listen_invalidations;
 use serde_json::Value;
 use support::TestApi;
@@ -193,4 +194,39 @@ async fn every_process_lets_go_of_what_it_keeps_of_the_company() {
     }
     let (status, _) = state(&api, tenant::ID, "tenant.suspended").await;
     assert_eq!(status, "active");
+}
+
+/// Why a run for Marc would be refused, as a scheduled task or a hook asks.
+async fn refusal_for_marc(api: &TestApi) -> String {
+    let identity = AuthIdentity {
+        tenant_id: tenant::ID,
+        user_id: user::MARC,
+        session_id: Uuid::nil(),
+        must_change_password: false,
+    };
+    let Err(refused) = api.app.services.runs.ready_to_run(identity).await else {
+        panic!("a run would start");
+    };
+    refused
+        .downcast::<DomainError>()
+        .expect("domain error")
+        .message
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_suspended_company_is_refused_before_its_model_is_loaded() {
+    // No model at all: what refuses comes first.
+    let api = TestApi::without_llm().await;
+    let _active = DemoActiveOnDrop;
+    change(&api, tenant::SLUG, CompanyStatusChange::Suspend)
+        .await
+        .unwrap();
+    assert_eq!(refusal_for_marc(&api).await, COMPANY_NOT_ACTIVE);
+
+    change(&api, tenant::SLUG, CompanyStatusChange::Reactivate)
+        .await
+        .unwrap();
+    let unavailable = refusal_for_marc(&api).await;
+    assert!(unavailable.starts_with("Aucun modèle"), "{unavailable}");
 }

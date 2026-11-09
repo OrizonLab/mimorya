@@ -14,8 +14,13 @@ l'agent).
       `(tenant_id, colonne)` vers `(tenant_id, id)`, `SET NULL (colonne)` si elles
       vident leur référence (ADR-167 ; `crates/db/tests/tenant_references.rs` échoue
       sinon).
+- [ ] Toute table métier a une clé de sa colonne `tenant_id` vers `tenants`,
+      `ON DELETE CASCADE`, pour suivre la suppression de son entreprise (ADR-192 ;
+      `crates/db/tests/tenant_deletion.rs` échoue sinon).
 - [ ] Tout accès base au runtime passe par `Database::begin(tenant_id)` (`TenantTx`) avec
-      le rôle applicatif ; aucun usage du rôle propriétaire hors migrations et seed.
+      le rôle applicatif ; aucun usage du rôle propriétaire hors migrations, seed et
+      suppression d'une entreprise suspendue par l'exploitant (ADR-192 :
+      `mimorya-admin delete-company`, dont chaque requête nomme l'entreprise).
 - [ ] Aucune nouvelle lecture inter-entreprises, sauf fonction `SECURITY DEFINER`
       minimale (`auth_*`, `system_*`) avec `search_path` figé et droits révoqués à
       `PUBLIC`.

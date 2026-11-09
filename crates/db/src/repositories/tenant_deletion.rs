@@ -21,10 +21,16 @@ pub async fn lock_tenant_by_slug(
         .await
 }
 
-/// The company's runs still queued or under way.
-pub async fn living_runs(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Result<i64> {
+/// The company's work still under way: its runs queued or running, and
+/// its skill evaluations being played (one left running by a stopped
+/// process is played again, wherever; queued ones of a suspended company
+/// wait and go with it).
+pub async fn living_work(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Result<i64> {
     sqlx::query_scalar(
-        "select count(*) from agent_runs where tenant_id = $1 and status in ('queued', 'running')",
+        "select (select count(*) from agent_runs \
+                  where tenant_id = $1 and status in ('queued', 'running')) \
+              + (select count(*) from skill_evaluations \
+                  where tenant_id = $1 and status = 'running')",
     )
     .bind(tenant_id)
     .fetch_one(conn)
@@ -51,10 +57,10 @@ pub async fn tenant_rows(
 ) -> sqlx::Result<Vec<(String, i64)>> {
     let mut rows = Vec::new();
     for table in tenant_tables(conn).await? {
-        // Read from the catalog; quoted all the same.
+        // Read from the catalog, in `public`; quoted all the same.
         let quoted = table.replace('"', "\"\"");
         let count: i64 = sqlx::query_scalar(&format!(
-            "select count(*) from \"{quoted}\" where tenant_id = $1"
+            "select count(*) from public.\"{quoted}\" where tenant_id = $1"
         ))
         .bind(tenant_id)
         .fetch_one(&mut *conn)

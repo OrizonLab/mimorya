@@ -132,7 +132,9 @@ et ferme les instances de ses connecteurs : au mieux, comme toute invalidation (
 une entreprise : dans la pile de production,
 `docker compose run --rm migrate mimorya-admin delete-company --slug acme --confirm acme`.
 Gardez sa sortie : le journal d'audit de l'entreprise part avec elle, et ses sauvegardes la
-gardent jusqu'à leur retrait. Le journal d'audit de chaque
+gardent jusqu'à leur retrait (après une restauration, supprimez-la de nouveau). Elle dit aussi
+ce que l'entreprise a déclaré chez d'autres services (autorisations OAuth, comptes reliés,
+passerelles), qui y reste : à retirer chez chacun. Le journal d'audit de chaque
 entreprise est scellé chaque minute sous une clé qui en dérive. Le dernier sceau posé dans
 chaque entreprise à chaque passage, et celui trouvé au démarrage, sont journalisés au
 niveau `info` (`LOG_LEVEL=info`, par défaut) avec leur ancre toute écrite (`Audit log

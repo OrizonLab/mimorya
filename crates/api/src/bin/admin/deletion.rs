@@ -24,6 +24,7 @@ pub async fn delete(slug: &str, confirm: Option<&str>) -> anyhow::Result<()> {
                 rows.tenant_id
             );
             println!("{}", held(&rows));
+            outside(&rows);
             println!(
                 "Rien n’a été supprimé. Pour la supprimer avec tout ce qu’elle garde, son \
                  journal d’audit compris, sans retour :\n  mimorya-admin delete-company \
@@ -36,14 +37,28 @@ pub async fn delete(slug: &str, confirm: Option<&str>) -> anyhow::Result<()> {
                 rows.tenant_id
             );
             println!("{}", held(&rows));
+            outside(&rows);
             println!(
-                "Les sauvegardes faites avant la gardent jusqu’à leur retrait ; restaurée \
-                 depuis l’une d’elles, elle reviendrait. Ses ancres du journal d’audit ne sont \
-                 plus à donner à verify-audit."
+                "Les sauvegardes faites avant la gardent jusqu’à leur retrait : après une \
+                 restauration depuis l’une d’elles, supprimez-la de nouveau (gardez cette \
+                 sortie). Ses ancres du journal d’audit ne sont plus à donner à verify-audit."
             );
         }
     }
     Ok(())
+}
+
+/// What the company declared at other services, which its deletion does not
+/// withdraw there, said when there is any.
+fn outside(rows: &CompanyRows) {
+    let held = rows.held_outside();
+    if held.is_empty() {
+        return;
+    }
+    println!("Restent déclarés chez leurs fournisseurs, à retirer là :");
+    for (what, count) in held {
+        println!("  {what} : {count}");
+    }
 }
 
 /// What `rows` holds, a table a line, then the total.
