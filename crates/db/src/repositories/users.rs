@@ -1,7 +1,8 @@
 //! Accounts of a tenant: directory, creation by an administrator or at a
 //! first sign-in through the company's provider, profile and status
-//! changes, primary unit, passwords and session revocation. Accounts are
-//! never deleted by the application (audit references, ADR-018).
+//! changes, primary unit, passwords and session revocation. The
+//! application deletes an account only to erase a disabled one (ADR-189,
+//! `account_erasure.rs`); otherwise it disables it.
 
 use chrono::{DateTime, Utc};
 use mimorya_core::authz::Sensitivity;

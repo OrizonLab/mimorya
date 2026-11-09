@@ -244,7 +244,8 @@ async fn an_authorization_goes_with_its_connector_and_its_account() {
     authorize(&db, server, leaving, 1).await;
     authorize(&db, server, user::MARC, 2).await;
 
-    // The application never deletes an account: the operator does, as owner.
+    // An active account is deleted by the operator alone, as owner: the
+    // application deletes only a disabled one, erasing it (ADR-189).
     let owner = support::connect(&support::urls(|_| {}).owner).await;
     let mut tx = owner.begin(tenant::ID).await.unwrap();
     sqlx::query("delete from users where id = $1")
