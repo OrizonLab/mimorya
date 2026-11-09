@@ -6,9 +6,11 @@
 //! embedding settings with their keys). Everything else follows from the
 //! status, which each path already reads: suspended, a company signs nobody
 //! in, its sessions and tokens are refused, its runs stop at their next
-//! step, nothing is launched nor announced for it. Nothing is deleted:
-//! reactivated, it finds everything as it was, its sessions not yet
-//! expired included.
+//! step, nothing is launched for it and no notice is sent. Its messaging
+//! gateways still answer: a message says the company is suspended, and a
+//! run stopped by the suspension has its end written in its thread. Nothing
+//! is deleted: reactivated, it finds everything as it was, its sessions not
+//! yet expired included.
 
 use mimorya_core::DomainError;
 use mimorya_db::Database;

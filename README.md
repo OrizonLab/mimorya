@@ -123,8 +123,9 @@ mimorya-admin verify-audit --anchor <entreprise>:<place>:<sceau>   # journal d'a
 
 `create-company`, `invite`, `suspend-company`, `reactivate-company` et `verify-audit`
 utilisent `DATABASE_APP_URL` comme l'API, les deux premières `WEB_ORIGIN`, la dernière
-`MIMORYA_MASTER_KEY`. Une suspension est tracée dans le journal d'audit de l'entreprise,
-et chaque processus de l'API lâche aussitôt ce qu'il garde d'elle. Le journal d'audit de chaque
+`MIMORYA_MASTER_KEY`. Une suspension est tracée dans le journal d'audit de l'entreprise, et
+annoncée à chaque processus, qui oublie l'accès, le modèle et les embeddings de l'entreprise
+et ferme les instances de ses connecteurs : au mieux, comme toute invalidation (ADR-085). Le journal d'audit de chaque
 entreprise est scellé chaque minute sous une clé qui en dérive. Le dernier sceau posé dans
 chaque entreprise à chaque passage, et celui trouvé au démarrage, sont journalisés au
 niveau `info` (`LOG_LEVEL=info`, par défaut) avec leur ancre toute écrite (`Audit log

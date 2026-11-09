@@ -12886,10 +12886,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 - **Statut** : accepté (2026-11-09) · complète ADR-033 (commandes de l'exploitant).
 - **Contexte** : le statut d'une entreprise (`active`, `suspended`) existait depuis le
-  schéma initial, et chaque chemin le lisait déjà : connexion, sessions
-  (`auth_resolve_session`), jetons des autres systèmes (export du journal, SCIM,
-  déclencheurs, passerelles), runs arrêtés à leur étape suivante (ADR-035), tâches
-  planifiées, avis et passes de la maintenance. Mais rien ne le changeait, sinon une
+  schéma initial, et les chemins qui agissent pour elle le lisaient déjà : connexion,
+  sessions (`auth_resolve_session`), jetons des autres systèmes (export du journal,
+  SCIM, déclencheurs, passerelles), runs arrêtés à leur étape suivante (ADR-035),
+  tâches planifiées, avis par e-mail, évaluations et indexation. Mais rien ne le changeait, sinon une
   requête SQL écrite à la main par l'exploitant, sans trace dans le journal de
   l'entreprise. La suppression d'une entreprise, qui vient ensuite, en part : seule une
   entreprise suspendue pourra être supprimée.
@@ -12909,11 +12909,18 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     validé : instances de ses connecteurs et sessions qu'elles tiennent, accès, réglages
     de son modèle et de ses embeddings avec leurs clés. La commande l'annonce sur le
     canal des invalidations (ADR-085), d'une origine à elle, qu'aucun processus ne
-    partage : chacun l'applique ;
+    partage : chacun l'applique. Au mieux, comme toute invalidation : un processus
+    dont l'écoute était coupée oublie l'accès, le modèle et les embeddings en se
+    reconnectant, mais garde les instances des connecteurs, qu'aucun run ne lui
+    demande plus, jusqu'à son redémarrage ; les jetons délégués des comptes reliés
+    (ADR-117) restent en mémoire jusqu'à leur échéance, sans servir. Un run en cours
+    l'apprend à sa prochaine étape, et en 30 s au plus si l'annonce se perd ;
   - **rien n'est supprimé** : suspendue, une entreprise ne connecte plus personne, ses
-    sessions et ses jetons sont refusés, ses runs s'arrêtent à leur prochaine étape, et
-    rien n'est lancé ni annoncé pour elle. Réactivée, elle retrouve tout tel qu'elle
-    l'avait laissé, y compris ses sessions encore valables.
+    sessions et ses jetons sont refusés, ses runs s'arrêtent à leur prochaine étape,
+    rien n'est lancé pour elle ni aucun avis envoyé. Ses passerelles de conversation
+    répondent encore : à un message, que l'entreprise est suspendue, et la fin d'un run
+    arrêté par la suspension est écrite dans son fil. Réactivée, elle retrouve tout tel
+    qu'elle l'avait laissé, y compris ses sessions encore valables.
 - **Conséquences** :
   - l'exploitant suspend une entreprise sans écrire de SQL, et l'entreprise en garde la
     trace ;
@@ -12923,7 +12930,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       connexion sont acceptées de nouveau, chaque changement tracé une fois ; un sigle
       inconnu, une entreprise déjà suspendue ou une entreprise active qu'on réactive
       sont refusés sans entrée ; chaque changement annonce l'accès, le modèle, les
-      embeddings et chaque connecteur de l'entreprise, d'une seule origine ;
+      embeddings et chaque connecteur de l'entreprise, d'une seule origine, et un
+      worker à l'écoute voit le statut changé dans les cinq secondes, bien avant
+      l'expiration de son cache ;
+    - `crates/api/tests/company_suspension_race.rs` : une suspension qui a lu
+      l'entreprise active, puis attend sa ligne qu'une autre commande suspend, est
+      refusée une fois ce changement validé, sans entrée d'audit ;
     - `crates/db/tests/definer_functions.rs` : `system_find_tenant` rejoint la liste ;
     - `crates/api/src/bin/admin/args.rs` : les deux commandes et leur option ;
     - `infra/docker/production-test.sh` : dans la pile de production de la CI,

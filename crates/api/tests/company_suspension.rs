@@ -3,8 +3,10 @@
 //! and nobody of it signs in, while another company carries on; reactivated,
 //! its sessions not yet expired and its sign-ins are accepted again. Each
 //! change is audited by `system`, and every process is told to let go of
-//! what it keeps of the company. An unknown slug, or a company already in
-//! the status asked, changes nothing.
+//! what it keeps of the company: a listening worker sees the change at
+//! once, well before its cached access expires. An unknown slug, or a
+//! company already in the status asked, changes nothing (one changed
+//! meanwhile: `company_suspension_race.rs`).
 
 mod support;
 
@@ -12,47 +14,21 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use mimorya_api::services::provisioning::{CompanyStatusChange, change_company_status};
+use mimorya_api::services::AuthIdentity;
+use mimorya_api::services::provisioning::CompanyStatusChange;
+use mimorya_core::ErrorCode;
 use mimorya_core::demo::{tenant, user};
-use mimorya_core::{DomainError, ErrorCode};
 use mimorya_db::notifications::listen_invalidations;
 use serde_json::Value;
 use support::TestApi;
 use support::accounts::{INVITED_PASSWORD, accept};
 use support::companies::create;
+use support::queue::{WORKER, listening};
+use support::suspension::{DemoActiveOnDrop, change, refused, state};
 use uuid::Uuid;
 
 const SLUG: &str = "acme-suspendue";
 const ADMIN: &str = "jeanne.martin@acme-suspendue.example";
-
-async fn change(api: &TestApi, slug: &str, change: CompanyStatusChange) -> anyhow::Result<Uuid> {
-    change_company_status(&api.app.services.db, slug, change).await
-}
-
-async fn refused(api: &TestApi, slug: &str, asked: CompanyStatusChange) -> DomainError {
-    let error = change(api, slug, asked).await.expect_err("refusal");
-    error.downcast::<DomainError>().expect("domain error")
-}
-
-/// The company's status, and its audit entries of `action` by `system`.
-async fn state(api: &TestApi, tenant_id: Uuid, action: &str) -> (String, i64) {
-    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-    let status = sqlx::query_scalar("select status from tenants where id = $1")
-        .bind(tenant_id)
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap();
-    let entries = sqlx::query_scalar(
-        "select count(*) from audit_log where action = $1 and actor_type = 'system' \
-         and resource_type = 'tenant' and resource_id = $2::text and outcome = 'success'",
-    )
-    .bind(action)
-    .bind(tenant_id)
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    (status, entries)
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -155,10 +131,37 @@ fn released(announced: &[Value]) -> (BTreeSet<String>, BTreeSet<String>) {
     (what, origins)
 }
 
+/// The demo company's status as `process` holds it for Marc's access.
+async fn status_held(process: &TestApi) -> String {
+    let identity = AuthIdentity {
+        tenant_id: tenant::ID,
+        user_id: user::MARC,
+        session_id: Uuid::nil(),
+        must_change_password: false,
+    };
+    let access = process.app.services.access.context(identity).await.unwrap();
+    access.tenant.status.clone()
+}
+
+/// Whether `process` holds `expected` within five seconds, well before the
+/// 30 s its cached access lasts.
+async fn holds_at_once(process: &TestApi, expected: &str) -> bool {
+    for _ in 0..50 {
+        if status_held(process).await == expected {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    false
+}
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn every_process_lets_go_of_what_it_keeps_of_the_company() {
     let api = TestApi::start().await;
+    let worker = TestApi::start_with(WORKER).await;
+    listening(&worker).await;
+    let _active = DemoActiveOnDrop;
     let connectors: Vec<Uuid> = {
         let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
         sqlx::query_scalar("select id from connector_instances")
@@ -173,10 +176,12 @@ async fn every_process_lets_go_of_what_it_keeps_of_the_company() {
         .collect();
     expected.extend(connectors.iter().map(|id| format!("connector:{id}")));
     let mut listener = listen_invalidations(support::app_url()).await.unwrap();
+    // Loaded by the worker, and kept.
+    assert_eq!(status_held(&worker).await, "active");
 
-    for asked in [
-        CompanyStatusChange::Suspend,
-        CompanyStatusChange::Reactivate,
+    for (asked, held) in [
+        (CompanyStatusChange::Suspend, "suspended"),
+        (CompanyStatusChange::Reactivate, "active"),
     ] {
         change(&api, tenant::SLUG, asked).await.unwrap();
         let announced = heard(&mut listener, expected.len()).await;
@@ -184,6 +189,7 @@ async fn every_process_lets_go_of_what_it_keeps_of_the_company() {
         assert_eq!(what, expected, "{asked:?}");
         // From the command alone: no process takes it for its own.
         assert_eq!(origins.len(), 1, "{announced:?}");
+        assert!(holds_at_once(&worker, held).await, "{asked:?}");
     }
     let (status, _) = state(&api, tenant::ID, "tenant.suspended").await;
     assert_eq!(status, "active");

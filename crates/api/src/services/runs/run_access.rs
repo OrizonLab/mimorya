@@ -4,9 +4,10 @@
 //! its assignments and attributes from the database. The run goes on only
 //! while the account is active and may still use the agent, as when it
 //! started (`services::runs::service`), and while its company is active. A
-//! company is suspended in the database only (no route nor command does it
-//! yet): the run learns it once the company's cached rules expire (30 s at
-//! most). Before all that, the execution must still hold its lease
+//! company is suspended by the operator's command (ADR-191), which tells
+//! every process to forget the company's cached rules: the run learns it at
+//! its next step, and within 30 s, the cache's lifetime, if that notice was
+//! lost. Before all that, the execution must still hold its lease
 //! (ADR-086): one that lost it stops, calling no model and no tool.
 
 use std::sync::Arc;
