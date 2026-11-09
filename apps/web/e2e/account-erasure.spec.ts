@@ -76,7 +76,8 @@ test.afterEach(async () => {
   }
   for (const account of departing.splice(0)) await attempt(() => retire(paul, account));
   await attempt(() => retire(paul, made));
-  if (failures.length > 0) throw failures[0];
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Several removals failed');
 });
 
 /** A team under the company's root, led by `lead`, noted in `made`. */

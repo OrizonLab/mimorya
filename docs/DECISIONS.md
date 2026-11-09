@@ -12837,8 +12837,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     lui ») ; il prend le focus, la ligne dont le bouton l'avait étant partie avec le
     compte, à chaque effacement. L'annuaire est relu, et le compte n'y est plus.
 - **Conséquences** :
-  - un compte qui ne détient que `user:erase` voit l'adresse des comptes désactivés et,
-    à part elles, rien de plus que ce que voit qui lit l'annuaire (`user:read`) ;
+  - un compte qui ne détient que `user:erase` voit l'adresse des comptes désactivés et si
+    chaque compte peut être effacé (lot 58) et, à part cela, rien de plus que ce que voit
+    qui lit l'annuaire (`user:read`) ;
   - tests :
     - `apps/web/e2e/account-erasure.spec.ts` :
       - un compte fait pour le test, chef d'une équipe faite pour lui, n'offre pas
@@ -12854,7 +12855,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         le dit en mots accordés à ses nombres ;
     - `crates/api/tests/admin_directory.rs` : qui ne détient que `user:erase` reçoit de
       chaque compte désactivé ce que reçoit qui lit l'annuaire et son adresse, de tout
-      autre compte ce que reçoit qui le lit ;
+      autre compte ce que reçoit qui le lit, et de chacun s'il peut être effacé (lot 58) ;
     - `crates/api/tests/account_erasure_refusals.rs` : l'annuaire n'offre pas
       l'effacement à qui gère les comptes sans `user:erase`, et l'offre à qui le détient
       seul, avec l'adresse du compte désactivé à retaper, sans celle d'un compte actif ;
@@ -12876,3 +12877,5 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - le nettoyage des tests de l'effacement essaie chaque retrait pour lui-même : un
       retrait qui échoue n'empêche pas les suivants, et le premier échec est dit à la
       fin.
+  - **suites de l'audit du lot 58** (lot 59) : le nettoyage dit chacun de ses échecs, et non
+    le premier seul : un échec est levé tel quel, plusieurs ensemble (`AggregateError`).
