@@ -1,8 +1,9 @@
 //! Retention applied (DATA_MODEL §5, ADR-185, ADR-186): once an hour, in one
-//! process at a time, the sessions ended thirty days ago are deleted, the
-//! episodes recorded a year ago and the memories past their own term, the
-//! personal memories of the accounts disabled thirty days ago, and the
-//! conversations idle for twenty-four months, whole. Each company that lost
+//! process at a time, the sessions ended thirty days ago are deleted, and,
+//! past each company's own durations (ADR-195; the platform's without its
+//! choice: a year, thirty days, twenty-four months), the episodes and the
+//! memories past their own term, the personal memories of the accounts
+//! disabled, and the conversations idle, whole. Each company that lost
 //! memories or conversations finds it in its audit log, written by the
 //! platform in the deletion's own statement: how many, and why, never what
 //! they said.

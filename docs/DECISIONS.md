@@ -13317,8 +13317,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     sans ligne, la durée de la plateforme s'applique. Les sessions finies restent
     30 jours pour toutes : ce sont des données techniques ;
 
-  - **les bornes et les durées de la plateforme sont celles de la base**
-    (`retention_platform`, `retention_allowed`, contrainte de la table). Le domaine
+  - **les bornes, les durées de la plateforme et la semaine sont celles de la base**
+    (`retention_platform`, `retention_allowed`, `retention_shortening_applies_at`,
+    contrainte de la table). Le domaine
     (`core/src/retention.rs`) les répète pour dire un refus en français ; un test vérifie
     qu'ils concordent ;
   - **un allongement s'applique aussitôt, un raccourcissement sept jours plus tard** :
@@ -13366,8 +13367,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 - **Conséquences** :
   - une entreprise qui raccourcit une durée la voit s'appliquer à la première passe
     horaire après sept jours ; d'ici là, rien de ce qu'elle gardait ne part ;
-  - la purge compare chaque ligne à l'horizon de son entreprise ; le plus récent des
-    horizons borne la lecture de l'index, comme avant ;
+  - la purge lit chaque entreprise par son propre index (`conversations_idle` et
+    `memory_items_episodes` portent désormais `tenant_id` avant la date) : une
+    entreprise qui garde peu ne fait pas relire, à chaque passe, ce que gardent les
+    autres. Les mémoires passées leur propre terme sont supprimées à part, sans
+    recouvrir les épisodes, et comptées avec eux (`aged`) ;
   - l'écran de ces durées, dans l'administration, vient au lot 66b ;
   - restent à venir, comme avant :
     - la purge message par message d'une conversation toujours active ;
@@ -13376,18 +13380,26 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - tests :
     - `crates/core/src/retention.rs` (unitaires) : chaque durée de la plateforme est dans
       ses bornes, et une durée hors bornes est refusée avec elles ;
+    - `crates/db/tests/retention_roles.rs` : le rôle d'administrateur technique des
+      entreprises déjà là gagne `retention:manage`, ni un rôle de l'entreprise de même
+      clé ni les autres ; un second passage ne change rien ;
+    - `crates/db/tests/check_constraints.rs` : les sortes de la table sont celles du
+      domaine ;
+    - `crates/api/tests/account_erasure.rs` : la durée choisie par un compte effacé
+      reste, sans son auteur ;
     - `crates/api/tests/retention_durations.rs` :
       - les durées de la plateforme et leurs bornes ;
       - un allongement aussitôt, un raccourcissement retardé ;
-      - une durée demandée telle qu'elle est ne change rien ni ne relance la semaine ;
+      - une durée demandée telle qu'elle est ne change rien ni ne relance la semaine,
+        dont le raccourcissement s'applique toujours sept jours après son choix ;
       - un second raccourcissement garde la durée qui s'appliquait ;
       - les refus hors bornes ;
       - le journal ;
-      - seul qui détient `retention:manage` les règle, ni un membre ni qui gère les
-        autres réglages ;
+      - seul qui détient `retention:manage` sur toute l'entreprise les règle, ni un
+        membre, ni qui gère les autres réglages, ni un administrateur d'une équipe ;
     - `crates/api/tests/retention_durations_purge.rs` :
       - les mémoires d'une entreprise qui raccourcit partent une semaine plus tard, pas
-        celles d'une autre ;
+        celles d'une autre ; l'épisode d'un compte parti est compté une fois, `aged` ;
       - une conversation reste aussitôt qu'une entreprise allonge sa durée, et part
         selon la durée de son entreprise une semaine après un raccourcissement ;
       - l'application ne peut ni dater un changement, ni écrire ce qui s'appliquait

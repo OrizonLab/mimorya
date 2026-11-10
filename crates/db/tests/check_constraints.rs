@@ -10,6 +10,7 @@ use mimorya_core::authz::Sensitivity;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::documents::{DocumentKind, DocumentSpace};
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus};
+use mimorya_core::retention::RetentionKind;
 use mimorya_db::repositories::access_policies::POLICY_EFFECTS;
 use mimorya_db::repositories::approvals::APPROVAL_STATUSES;
 use mimorya_db::repositories::audit::{AUDIT_ACTORS, AUDIT_OUTCOMES};
@@ -51,6 +52,10 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
     let db = support::connect(&urls.owner).await;
     let expected = [
         ("users_status_check", owned(USER_STATUSES)),
+        (
+            "tenant_retention_durations_kind",
+            owned(RetentionKind::ALL.map(RetentionKind::key)),
+        ),
         (
             "users_clearance_check",
             owned(Sensitivity::ALL.map(Sensitivity::as_str)),

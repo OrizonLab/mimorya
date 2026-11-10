@@ -53,6 +53,16 @@ async fn a_shortening_applies_to_memories_once_its_week_has_passed() {
     disabled_days_ago(acme_gone, 10).await;
     memory(neo, "durée épisode Néo", "episode", None, 120, false).await;
     memory(neo, "durée partie Néo", "preference", Some(gone), 1, false).await;
+    // Both an episode past Néo's horizon and a departed account's: aged.
+    memory(
+        neo,
+        "durée épisode partie Néo",
+        "episode",
+        Some(gone),
+        120,
+        false,
+    )
+    .await;
     memory(
         acme.tenant_id,
         "durée épisode Acme",
@@ -78,13 +88,13 @@ async fn a_shortening_applies_to_memories_once_its_week_has_passed() {
     set(db, neo, RetentionKind::Departed, 7).await;
     let retained = apply_retention(db).await.unwrap().unwrap();
     assert_eq!(memories_lost(&retained, neo), None);
-    assert_eq!(titles("durée").await.len(), 4);
+    assert_eq!(titles("durée").await.len(), 5);
 
     // A week later, Néo's go; Acme's, under the platform's, stay.
     retention_changed_days_ago(neo, "episodes", 8).await;
     retention_changed_days_ago(neo, "departed", 8).await;
     let retained = apply_retention(db).await.unwrap().unwrap();
-    assert_eq!(memories_lost(&retained, neo), Some((1, 1)));
+    assert_eq!(memories_lost(&retained, neo), Some((2, 1)));
     assert_eq!(memories_lost(&retained, acme.tenant_id), None);
     assert_eq!(
         titles("durée").await,

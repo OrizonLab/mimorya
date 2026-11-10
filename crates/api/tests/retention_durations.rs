@@ -8,10 +8,11 @@
 mod support;
 
 use axum::http::StatusCode;
+use chrono::{DateTime, Duration, Utc};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::TestApi;
-use support::accounts::holder_of;
+use support::accounts::{activate, create_partial_admin, holder_of};
 use support::refusals::latest_entry;
 use support::retention::{clear_retention, retention_changed_days_ago};
 
@@ -109,11 +110,24 @@ async fn a_company_sets_its_retention_within_the_platform_s_bounds() {
         })]
     );
 
-    // Asked again as they are: nothing changes, the delay goes on.
+    // Asked again as they are: nothing changes, the delay goes on, its
+    // shortening a day away.
     retention_changed_days_ago(tenant::ID, "episodes", 6).await;
     let again = paul.put(RETENTION, asked(36, 6, 14)).await;
     assert_eq!(again.status, StatusCode::OK, "{}", again.text());
     assert_eq!(changes(&api, since).await.len(), 1);
+    let waiting = paul.get(RETENTION).await.json();
+    assert_eq!(
+        durations(&waiting)[1],
+        ("episodes".into(), 6, 12, true, true)
+    );
+    let applies = waiting["durations"][1]["shorteningAppliesAt"]
+        .as_str()
+        .unwrap()
+        .parse::<DateTime<Utc>>()
+        .unwrap();
+    let in_a_day = applies - Utc::now() - Duration::days(1);
+    assert!(in_a_day.num_minutes().abs() < 5, "{applies}");
     retention_changed_days_ago(tenant::ID, "episodes", 8).await;
     let waited = paul.get(RETENTION).await.json();
     assert_eq!(
@@ -163,15 +177,25 @@ async fn only_who_holds_retention_manage_company_wide_sets_it() {
     let claire = api.sign_in(user::CLAIRE).await;
     let settings = holder_of(&api, &paul, "reglages.retention", &["settings:manage"]).await;
     let keeper = holder_of(&api, &paul, "gardien.retention", &["retention:manage"]).await;
+    // An administrator of one team only: the role holds it, not over the
+    // whole company.
+    let mut partial = create_partial_admin(&api, &paul, "admin.equipe.retention").await;
+    let partial = activate(&api, &mut partial).await;
     let since = latest_entry(&api).await;
 
-    // Neither a member nor who manages the other settings.
-    for refused in [&claire, &settings] {
+    // Neither a member, nor who manages the other settings, nor who holds
+    // it on one team.
+    for refused in [&claire, &settings, &partial] {
         assert_eq!(refused.get(RETENTION).await.status, StatusCode::FORBIDDEN);
         let set = refused.put(RETENTION, asked(1, 1, 7)).await;
         assert_eq!(set.status, StatusCode::FORBIDDEN, "{}", set.text());
     }
     assert!(changes(&api, since).await.is_empty());
+    let platform = paul.get(RETENTION).await.json();
+    assert!(
+        durations(&platform).iter().all(|(_, _, _, own, _)| !own),
+        "{platform}"
+    );
 
     // Who holds it company-wide does.
     let set = keeper.put(RETENTION, asked(12, 12, 30)).await;

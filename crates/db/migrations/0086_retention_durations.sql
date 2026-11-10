@@ -38,16 +38,26 @@ AS $$
          END
 $$;
 
+-- When a shortening chosen at `p_changed_at` applies: seven days later.
+CREATE FUNCTION retention_shortening_applies_at(p_changed_at timestamptz)
+RETURNS timestamptz
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT p_changed_at + interval '7 days'
+$$;
+
 -- What the purge applies of a duration `p_duration` chosen at
--- `p_changed_at` when `p_before` applied: for seven days, the longer of the
--- two; then the one chosen.
+-- `p_changed_at` when `p_before` applied: until a shortening applies, the
+-- longer of the two; then the one chosen.
 CREATE FUNCTION retention_in_effect(p_duration integer, p_before integer, p_changed_at timestamptz)
 RETURNS integer
 LANGUAGE sql
 STABLE
 SET search_path = public, pg_temp
 AS $$
-  SELECT CASE WHEN p_changed_at > now() - interval '7 days'
+  SELECT CASE WHEN now() < retention_shortening_applies_at(p_changed_at)
               THEN greatest(p_duration, p_before)
               ELSE p_duration
          END
@@ -157,6 +167,14 @@ $$;
 -- Read by the purges alone, which run as the owner across the companies.
 REVOKE ALL ON FUNCTION retention_horizons() FROM PUBLIC;
 
+-- Each company's episodes and idle conversations, read by its own
+-- index: a company keeping little never has the others' read again. They
+-- replace the indexes of the platform's single horizon (0082, 0083).
+DROP INDEX memory_items_episodes;
+CREATE INDEX memory_items_episodes ON memory_items (tenant_id, created_at) WHERE kind = 'episode';
+DROP INDEX conversations_idle;
+CREATE INDEX conversations_idle ON conversations (tenant_id, updated_at);
+
 -- The memories past their company's retention (ADR-185), its own durations
 -- now: `aged`, an episode recorded before its company's horizon or a memory
 -- past its own term; `departed`, a personal memory of an account disabled
@@ -171,16 +189,24 @@ AS $$
   WITH horizons AS (
     SELECT h.tenant_id, h.episodes_before, h.departed_before FROM retention_horizons() h
   ),
-  -- Two deletions of disjoint memories, as before; the latest horizon of
-  -- any company bounds what the episodes' index reads.
-  aged AS (
+  -- Three deletions of disjoint memories: the episodes before their
+  -- company's horizon, through its own index; the others past their own
+  -- term; the departed accounts' others, from the accounts gone
+  -- (`users_departed`).
+  episodes AS (
     DELETE FROM memory_items m
      USING horizons h
      WHERE m.tenant_id = h.tenant_id
-       AND ((m.kind = 'episode'
-             AND m.created_at < h.episodes_before
-             AND m.created_at < (SELECT max(episodes_before) FROM horizons))
-            OR m.expires_at <= now())
+       AND m.kind = 'episode'
+       AND m.created_at < h.episodes_before
+    RETURNING m.tenant_id
+  ),
+  expired AS (
+    DELETE FROM memory_items m
+     USING horizons h
+     WHERE m.tenant_id = h.tenant_id
+       AND m.expires_at <= now()
+       AND NOT (m.kind = 'episode' AND m.created_at < h.episodes_before)
     RETURNING m.tenant_id
   ),
   departed AS (
@@ -201,7 +227,9 @@ AS $$
     SELECT counted.tenant_id,
            (count(*) FILTER (WHERE counted.aged))::integer AS aged,
            (count(*) FILTER (WHERE NOT counted.aged))::integer AS departed
-      FROM (SELECT aged.tenant_id, true AS aged FROM aged
+      FROM (SELECT episodes.tenant_id, true AS aged FROM episodes
+            UNION ALL
+            SELECT expired.tenant_id, true FROM expired
             UNION ALL
             SELECT departed.tenant_id, false FROM departed) AS counted
      GROUP BY counted.tenant_id
@@ -229,23 +257,29 @@ AS $$
   WITH horizons AS (
     SELECT h.tenant_id, h.conversations_before FROM retention_horizons() h
   ),
-  -- Locked as they are chosen: a conversation a turn holds is skipped; one
-  -- a turn moved meanwhile is read again, found recent and left. The latest
-  -- horizon of any company bounds what the index reads.
+  -- Each company's oldest, through its own index, locked as they are
+  -- chosen: a conversation a turn holds is skipped; one a turn moved
+  -- meanwhile is read again, found recent and left. Then the oldest of
+  -- them all, a batch at most.
   chosen AS (
-    SELECT c.tenant_id, c.id
-      FROM conversations c
-      JOIN horizons h ON h.tenant_id = c.tenant_id
-     WHERE c.updated_at < h.conversations_before
-       AND c.updated_at < (SELECT max(conversations_before) FROM horizons)
-       AND NOT EXISTS (
-         SELECT 1 FROM agent_runs r
-          WHERE r.tenant_id = c.tenant_id
-            AND r.conversation_id = c.id
-            AND r.status IN ('queued', 'running', 'awaiting_approval'))
-     ORDER BY c.updated_at
+    SELECT picked.tenant_id, picked.id
+      FROM horizons h
+      CROSS JOIN LATERAL (
+        SELECT c.tenant_id, c.id, c.updated_at
+          FROM conversations c
+         WHERE c.tenant_id = h.tenant_id
+           AND c.updated_at < h.conversations_before
+           AND NOT EXISTS (
+             SELECT 1 FROM agent_runs r
+              WHERE r.tenant_id = c.tenant_id
+                AND r.conversation_id = c.id
+                AND r.status IN ('queued', 'running', 'awaiting_approval'))
+         ORDER BY c.updated_at
+         LIMIT least(greatest(p_batch, 1), 500)
+         FOR UPDATE OF c SKIP LOCKED
+      ) picked
+     ORDER BY picked.updated_at
      LIMIT least(greatest(p_batch, 1), 500)
-     FOR UPDATE OF c SKIP LOCKED
   ),
   deleted AS (
     DELETE FROM conversations c

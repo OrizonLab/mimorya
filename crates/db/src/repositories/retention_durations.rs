@@ -27,7 +27,7 @@ pub async fn retention_durations(conn: &mut PgConnection) -> sqlx::Result<Vec<St
     sqlx::query_as(
         "select kind, duration, \
          retention_in_effect(duration, before_duration, changed_at) as in_effect, changed_at, \
-         changed_at + interval '7 days' as shortening_applies_at \
+         retention_shortening_applies_at(changed_at) as shortening_applies_at \
          from tenant_retention_durations order by kind",
     )
     .fetch_all(conn)
