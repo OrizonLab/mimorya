@@ -2551,6 +2551,70 @@ export type RestrictablePermission = { permission: string, label: string,
 perResource: boolean, };
 
 /**
+ * One kind's duration.
+ */
+export type RetentionDurationView = { kind: RetentionKindName,
+/**
+ * What it is, in French.
+ */
+label: string, unit: RetentionUnitName,
+/**
+ * The company's choice, or the platform's without one.
+ */
+duration: number,
+/**
+ * What the purge applies now: longer than `duration` while a
+ * shortening waits.
+ */
+inEffect: number,
+/**
+ * Whether the company chose it.
+ */
+own: boolean,
+/**
+ * When a shortening that waits applies; absent when none waits.
+ */
+shorteningAppliesAt?: string,
+/**
+ * The platform's duration, which applies without the company's choice.
+ */
+platform: number,
+/**
+ * What a company may set: from this much…
+ */
+min: number,
+/**
+ * …to this much.
+ */
+max: number, };
+
+/**
+ * What retention purges, by the duration a company sets.
+ */
+export type RetentionKindName = "conversations" | "episodes" | "departed";
+
+/**
+ * The unit of a duration.
+ */
+export type RetentionUnitName = "months" | "days";
+
+/**
+ * Body of `PUT /admin/retention`: every kind's duration, checked against
+ * the platform's bounds by the service, which says them in its refusal.
+ * One unchanged is left as it is, a shortening that waits with it.
+ */
+export type RetentionUpdate = { conversationMonths: number, episodeMonths: number, departedDays: number, };
+
+/**
+ * `GET /admin/retention`.
+ */
+export type RetentionView = { durations: Array<RetentionDurationView>,
+/**
+ * How many days a shortening waits before it applies.
+ */
+shorteningDelayDays: number, };
+
+/**
  * What becomes of a proposed memory: kept as active, or archived.
  */
 export type ReviewDecision = "approve" | "reject";

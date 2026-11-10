@@ -18,6 +18,7 @@ pub const TENANT_WIDE_PERMISSIONS: &[&str] = &[
     "connector:manage",
     "skill:manage",
     "settings:manage",
+    "retention:manage",
     "memory:manage",
     "audit:read",
     "audit:export",

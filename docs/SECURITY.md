@@ -875,8 +875,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   sigle confirmé, aucun de ses runs en file ni en cours ni évaluation de ses compétences en
   cours ; la sortie de la commande en
   est la trace, et les sauvegardes la gardent jusqu'à leur retrait. Avant elle, ce que la plateforme a déclaré pour elle chez d'autres services y est retiré par `mimorya-admin release-company` (ADR-193), dans le service `api` qui a la clé maître : chaque autorisation OAuth de ses serveurs MCP, de l'entreprise et de ses personnes, révoquée chez son serveur d'autorisation (RFC 7009), chaque bot Telegram retiré avec son webhook, chaque compte Google relié par ses personnes révoqué chez Google (ADR-194), tracés sans aucun jeton, rien n'étant pris sans la clé maître ; la suppression confirmée est refusée tant qu'il en reste. Les comptes Microsoft 365 reliés par ses personnes, Microsoft ne révoquant pas l'accord d'une seule application, et ses applications Slack et Teams restent chez leurs fournisseurs, comptés par la suppression, à retirer chez chacun ; les clients OAuth que la plateforme a enregistrés, les applications et les fournisseurs d'identité déclarés par l'entreprise y restent aussi, sans accord de personne.
-  Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
-  (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document
+  Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après par
+  défaut, de 7 à 90 selon l'entreprise (ADR-185, ADR-195), et ses conversations 24 mois
+  après leur dernière activité par défaut, de 1 à 60 selon l'entreprise (ADR-186, ADR-195). Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a
   déposé, se télécharge tel quel par qui le lit, et sa suppression par qui peut écrire
   son espace emporte son fichier, ses passages et leurs vecteurs. Remplacé par une
@@ -897,17 +898,28 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 - **Provisionnement SCIM** (ADR-183) : l'identifiant que le fournisseur d'identité donne
   à un compte (`externalId`) est gardé avec le compte et supprimé avec lui ; le reste de
   ce que le fournisseur envoie (service, téléphone…) n'est ni lu ni gardé.
-- **Rétention** (voir [DATA_MODEL.md](DATA_MODEL.md) §5, ADR-185, ADR-186) : appliquée
-  chaque heure aux sessions finies depuis 30 jours (adresse et navigateur compris), aux
-  mémoires épisodiques d'un an et à celles passées leur terme, aux mémoires personnelles
-  d'un compte désactivé depuis 30 jours, et aux conversations inactives depuis 24 mois,
-  supprimées entières (messages, runs, événements, appels d'outils, validations) ; chaque
-  entreprise qui perd des mémoires ou des conversations le trouve dans son journal
-  d'audit, sans le contenu. Une entrée d'audit garde le run qu'elle nomme, vérifié à son
-  écriture (même entreprise), si bien que la purge ne touche pas le journal scellé. À
-  venir : le paramétrage par entreprise, la purge message par message d'une conversation
-  active depuis plus de 24 mois, celle du journal d'audit (qui devra rester vérifiable,
-  ADR-178) et de la consommation, gardés sans limite en attendant.
+- **Rétention** (voir [DATA_MODEL.md](DATA_MODEL.md) §5, ADR-185, ADR-186, ADR-195) :
+  appliquée chaque heure aux sessions finies depuis 30 jours (adresse et navigateur
+  compris), aux mémoires épisodiques, à celles passées leur terme, aux mémoires
+  personnelles d'un compte désactivé et aux conversations inactives, supprimées entières
+  (messages, runs, événements, appels d'outils, validations) ; chaque entreprise qui perd
+  des mémoires ou des conversations le trouve dans son journal d'audit, sans le contenu.
+  Une entrée d'audit garde le run qu'elle nomme, vérifié à son écriture (même
+  entreprise), si bien que la purge ne touche pas le journal scellé.
+- **Durées par entreprise** (ADR-195) : la plateforme garde les épisodes 12 mois, les
+  mémoires d'un compte parti 30 jours et les conversations inactives 24 mois ; chaque
+  entreprise peut régler les siennes dans des bornes que la base impose (épisodes et
+  conversations de 1 à 36 et 60 mois, comptes partis de 7 à 90 jours), par qui détient
+  `retention:manage` sur toute l'entreprise (non délégable, à part de `settings:manage`
+  puisqu'un raccourcissement supprime ce qui n'est plus gardé). Un allongement s'applique
+  aussitôt ; un raccourcissement attend sept jours, la purge appliquant jusque-là la plus
+  longue des deux durées. La date d'un changement et ce qui s'appliquait avant lui sont
+  ceux de la base, jamais ce qu'écrit l'application, qui n'écrit que la durée et son
+  auteur et ne retire aucune durée : elle ne peut ni sauter la semaine ni sortir des
+  bornes. Chaque changement est tracé (`retention.configured`), avant et après. À venir :
+  la purge message par message d'une conversation toujours active, celle du journal
+  d'audit (qui devra rester vérifiable, ADR-178) et de la consommation, gardés sans limite
+  en attendant.
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.
 - **Hébergement** : SaaS en UE ; installation privée possible.

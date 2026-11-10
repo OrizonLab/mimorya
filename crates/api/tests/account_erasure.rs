@@ -3,7 +3,8 @@
 //! disables him, then erases him, typing his address again: nothing in any
 //! table names Lucas any more, his session is gone, and the counts given
 //! are those that went. Marc's data is as it was, his validation kept
-//! without who decided it. The audit log keeps every entry naming Lucas,
+//! without who decided it, the company's retention duration he chose
+//! without who chose it. The audit log keeps every entry naming Lucas,
 //! unchanged: sealed before and after, the chain verifies intact. The
 //! erasure itself is traced by its counts alone.
 
@@ -11,13 +12,14 @@ mod support;
 
 use mimorya_api::services::audit_chain::SealedHeads;
 use mimorya_core::demo::{tenant, user};
+use mimorya_db::repositories::retention_durations::set_retention_duration;
 use serde_json::{Value, json};
 use support::audit_chain::{seal, verify};
 use support::audit_exports::audit_log;
 use support::erasure::{entries_naming, rows_naming};
 use support::personal_belongings::{belongings, company_parts, decided_for};
 use support::queue::API;
-use support::retention::owner;
+use support::retention::{clear_retention, owner};
 use support::{TestApi, email};
 use uuid::Uuid;
 
@@ -54,6 +56,12 @@ async fn an_administrator_erases_a_disabled_account_and_all_it_held() {
     belongings(&neo, user::LUCAS, "de-lucas", None, 31, 10).await;
     let marcs = belongings(&neo, user::MARC, "de-marc", None, 11, 20).await;
     decided_for(tenant::ID, marcs.run, user::MARC, user::LUCAS, "par-lucas").await;
+    // A retention duration he chose for the company (ADR-195).
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    set_retention_duration(&mut tx, tenant::ID, "episodes", 6, user::LUCAS)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
 
     let disabled = paul
         .patch(
@@ -102,8 +110,19 @@ async fn an_administrator_erases_a_disabled_account_and_all_it_held() {
     .fetch_all(&owner)
     .await
     .unwrap();
-    owner.close().await;
     assert_eq!(decided, [("rejected".to_owned(), None)]);
+    // The company's duration stays as it was, without who chose it.
+    let chosen: Vec<(String, i32, Option<Uuid>)> = sqlx::query_as(
+        "select kind, duration, updated_by_user_id from tenant_retention_durations \
+         where tenant_id = $1",
+    )
+    .bind(tenant::ID)
+    .fetch_all(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
+    assert_eq!(chosen, [("episodes".to_owned(), 6, None)]);
+    clear_retention(tenant::ID).await;
 
     // The log keeps what named him, unchanged, and traces the erasure.
     let still: Vec<i64> = entries_naming(user::LUCAS).await;

@@ -170,3 +170,47 @@ pub async fn purged_entries(tenant_id: Uuid, action: &str) -> Vec<serde_json::Va
     owner.close().await;
     entries
 }
+
+/// Moves the last change of the company `tenant_id`'s retention duration
+/// of `kind` `days` back, past the rule that keeps it the database's: what
+/// time does.
+pub async fn retention_changed_days_ago(tenant_id: Uuid, kind: &str, days: i32) {
+    let owner = owner().await;
+    let mut tx = owner.begin().await.unwrap();
+    sqlx::query(
+        "alter table tenant_retention_durations disable trigger tenant_retention_durations_changed",
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "update tenant_retention_durations set changed_at = now() - make_interval(days => $3) \
+         where tenant_id = $1 and kind = $2",
+    )
+    .bind(tenant_id)
+    .bind(kind)
+    .bind(days)
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::query(
+        "alter table tenant_retention_durations enable trigger tenant_retention_durations_changed",
+    )
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    owner.close().await;
+}
+
+/// The company `tenant_id` back to the platform's durations, as an operator
+/// removes them: what a test leaves.
+pub async fn clear_retention(tenant_id: Uuid) {
+    let owner = owner().await;
+    sqlx::query("delete from tenant_retention_durations where tenant_id = $1")
+        .bind(tenant_id)
+        .execute(&owner)
+        .await
+        .unwrap();
+    owner.close().await;
+}

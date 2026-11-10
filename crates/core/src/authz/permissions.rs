@@ -163,6 +163,15 @@ pub const PLATFORM_PERMISSIONS: &[PermissionInfo] = &[
         false,
         Holder,
     ),
+    // How long the company keeps its conversations and memories (ADR-195):
+    // a shortening deletes what it no longer keeps, so apart from its
+    // settings, as erasing an account is apart from managing it.
+    info(
+        "retention:manage",
+        "Régler la conservation des données",
+        false,
+        Holder,
+    ),
     info("usage:read", "Consulter la consommation", true, Holder),
 ];
 

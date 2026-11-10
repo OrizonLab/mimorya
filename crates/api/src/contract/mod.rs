@@ -162,6 +162,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::MemorySettingsView>();
     declarations.add::<admin::MissionSettingsView>();
     declarations.add::<admin::EvaluationSettingsView>();
+    declarations.add::<admin::RetentionView>();
     declarations.add::<admin::IdentityProvidersView>();
     declarations.add::<admin::Connectors>();
     declarations.add::<admin::Gateways>();
@@ -255,6 +256,7 @@ macro_rules! request_bodies {
             admin::MemorySettingsUpdate,
             admin::MissionSettingsUpdate,
             admin::EvaluationSettingsUpdate,
+            admin::RetentionUpdate,
             admin::NewIdentityProvider,
             admin::IdentityProviderUpdate,
             admin::DomainProofRequest,
