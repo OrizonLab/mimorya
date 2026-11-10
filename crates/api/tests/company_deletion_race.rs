@@ -7,8 +7,6 @@
 
 mod support;
 
-use std::time::Duration;
-
 use mimorya_api::services::provisioning::{
     CompanyStatusChange, change_company_status, delete_company,
 };
@@ -18,6 +16,7 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use support::TestApi;
 use support::companies::{create, rows_of};
+use support::locks::named_waits;
 use support::retention::owner;
 use support::suspension::change;
 use support::{app_url, owner_url};
@@ -26,25 +25,6 @@ use support::{app_url, owner_url};
 const DELETION: &str = "mimorya-deletion-race";
 /// The reactivation's own connection.
 const REACTIVATION: &str = "mimorya-reactivation-race";
-
-/// Whether the connection named `name` waits on a lock, within five seconds.
-async fn waits_on_a_lock(owner: &PgPool, name: &str) -> bool {
-    for _ in 0..100 {
-        let waiting: i64 = sqlx::query_scalar(
-            "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid \
-             where not l.granted and a.application_name = $1",
-        )
-        .bind(name)
-        .fetch_one(owner)
-        .await
-        .unwrap();
-        if waiting > 0 {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    false
-}
 
 /// A suspended company of its own, its slug `slug`.
 async fn suspended(api: &TestApi, slug: &str) -> uuid::Uuid {
@@ -106,7 +86,7 @@ async fn a_company_reactivated_meanwhile_is_not_deleted() {
         .unwrap();
     let deletion = tokio::spawn(async move { delete_company(&deleting, SLUG, Some(SLUG)).await });
     // It waits on the company's row before reading anything of it.
-    assert!(waits_on_a_lock(&owner, DELETION).await);
+    assert!(named_waits(&owner, DELETION).await);
     other.commit().await.unwrap();
 
     let refusal = domain_error(deletion.await.unwrap());
@@ -151,7 +131,7 @@ async fn a_company_deleted_meanwhile_is_not_reactivated() {
         change_company_status(&db, SLUG, CompanyStatusChange::Reactivate).await
     });
     // It read the company suspended, and now waits on its row.
-    assert!(waits_on_a_lock(&owner, REACTIVATION).await);
+    assert!(named_waits(&owner, REACTIVATION).await);
     deletion.commit().await.unwrap();
 
     let refusal = domain_error(reactivation.await.unwrap());

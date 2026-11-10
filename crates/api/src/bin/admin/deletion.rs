@@ -25,6 +25,13 @@ pub async fn delete(slug: &str, confirm: Option<&str>) -> anyhow::Result<()> {
             );
             println!("{}", held(&rows));
             outside(&rows);
+            if rows.to_release > 0 {
+                println!(
+                    "Avant de la supprimer, retirez chez leurs fournisseurs les autorisations \
+                     OAuth de ses serveurs MCP et ses bots Telegram, dans le service api :\n  \
+                     mimorya-admin release-company --slug {slug}"
+                );
+            }
             println!(
                 "Rien n’a été supprimé. Pour la supprimer avec tout ce qu’elle garde, son \
                  journal d’audit compris, sans retour :\n  mimorya-admin delete-company \
@@ -86,6 +93,7 @@ mod tests {
         let rows = CompanyRows {
             tenant_id: Uuid::nil(),
             tables: vec![("audit_log".into(), 12), ("users".into(), 3)],
+            to_release: 0,
         };
         assert_eq!(
             held(&rows),

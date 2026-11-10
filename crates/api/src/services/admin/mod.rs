@@ -30,6 +30,7 @@ mod domain_proofs;
 mod embedding;
 mod evaluation_settings;
 mod gateway_check;
+mod gateway_withdrawal;
 mod gateways;
 mod google_workspace;
 mod identity_providers;
@@ -73,6 +74,7 @@ pub use connector_authorization::{
     redirect_uri as oauth_redirect_uri, remove_authorization, remove_person_authorization,
     start_authorization, start_person_authorization,
 };
+pub(crate) use connector_authorization::{revoke_all_waited, take_company_authorizations};
 pub use connector_config::{Editable, RestChanges};
 pub use connector_oauth::{OAuthInput, declare_oauth, remove_oauth};
 pub use connector_oauth_holder::set_oauth_holder;
@@ -93,6 +95,7 @@ pub use evaluation_settings::{
     company_evaluation_spending, reset_company_evaluation_limit, set_company_evaluation_limit,
 };
 pub use gateway_check::check_gateway;
+pub(crate) use gateway_withdrawal::withdraw_gateway;
 pub use gateways::{
     GatewayChanges, NewSlackGatewayInput, change_gateway, declare_slack_gateway, remove_gateway,
 };

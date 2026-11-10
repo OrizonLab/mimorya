@@ -2,9 +2,11 @@
 //! delete-company`, ADR-192), as the database's owner. The demo company,
 //! its people having something of every kind and its audit log sealed, is
 //! shown first, table by table, with what gives access at other services,
-//! and nothing goes; confirmed, it is deleted whole: no table keeps a row
-//! of it, its sessions and sign-ins are gone, and every process is told to
-//! let go of what it kept of it. Another company keeps every row it had.
+//! and nothing goes; confirmed, it is refused until the release withdraws
+//! what the platform declared there (ADR-193), then deleted whole: no table
+//! keeps a row of it, its sessions and sign-ins are gone, and every process
+//! is told to let go of what it kept of it. Another company keeps every row
+//! it had.
 
 mod support;
 
@@ -13,7 +15,10 @@ use std::time::Duration;
 
 use axum::http::StatusCode;
 use mimorya_api::services::audit_chain::SealedHeads;
-use mimorya_api::services::provisioning::{CompanyDeletion, CompanyStatusChange, delete_company};
+use mimorya_api::services::provisioning::{
+    CompanyDeletion, CompanyStatusChange, delete_company, release_company,
+};
+use mimorya_core::DomainError;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::notifications::listen_invalidations;
 use support::audit_chain::seal;
@@ -92,6 +97,25 @@ async fn a_suspended_company_is_deleted_whole_and_another_keeps_every_row() {
             "{what} not in {outside:?}"
         );
     }
+    // Refused until the release withdraws there what the platform declared.
+    let refused = delete_company(&owner, tenant::SLUG, Some(tenant::SLUG)).await;
+    let refused = refused.unwrap_err().downcast::<DomainError>().unwrap();
+    assert!(
+        refused.message.contains("release-company"),
+        "{}",
+        refused.message
+    );
+    let freed = release_company(&api.app.services, tenant::SLUG)
+        .await
+        .unwrap();
+    // Its bot's token was never kept: its webhook is said to stay.
+    assert_eq!(freed.bots.len(), 1);
+    assert!(freed.bots[0].webhook.is_err());
+    let CompanyDeletion::Shown(shown) = delete_company(&owner, tenant::SLUG, None).await.unwrap()
+    else {
+        panic!("deleted without its slug confirmed");
+    };
+    assert_eq!(shown.to_release, 0);
 
     let connectors: Vec<Uuid> =
         sqlx::query_scalar("select id from connector_instances where tenant_id = $1")

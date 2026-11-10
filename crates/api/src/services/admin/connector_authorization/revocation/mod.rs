@@ -12,6 +12,7 @@
 //! no revocation endpoint, does not answer or refuses keeps its grant, to be
 //! withdrawn there; the withdrawal stands.
 
+mod company;
 mod persons;
 mod sending;
 
@@ -30,8 +31,9 @@ use crate::secrets::SecretRead;
 use crate::services::AccessContext;
 use crate::services::connectors::client_secret_name;
 
+pub use company::take_company_authorizations;
 pub use persons::{take_person, take_persons_of_user};
-pub use sending::{revoke, revoke_all_by};
+pub use sending::{revoke, revoke_all_by, revoke_all_waited};
 
 /// Authorizations of one connector taken away, with what revoking their
 /// tokens needs.

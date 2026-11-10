@@ -5,41 +5,19 @@
 
 mod support;
 
-use std::time::Duration;
-
 use mimorya_api::services::provisioning::{CompanyStatusChange, change_company_status};
 use mimorya_core::{DomainError, ErrorCode};
 use mimorya_db::{Database, PoolOptions};
 use sqlx::PgPool;
 use support::TestApi;
 use support::companies::create;
+use support::locks::named_waits;
 use support::suspension::state;
 use support::{app_url, owner_url};
 
 const SLUG: &str = "acme-entre-temps";
 /// The suspension's own connection, told from any other by its name.
 const SUSPENSION: &str = "mimorya-suspension-race";
-
-/// Whether the suspension's connection waits on a lock, within five
-/// seconds: no other waiting statement of the cluster passes for it.
-async fn the_suspension_waits_on_a_lock(owner: &PgPool) -> bool {
-    for _ in 0..100 {
-        // `pg_locks` and another role's application name are read by any role.
-        let waiting: i64 = sqlx::query_scalar(
-            "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid \
-             where not l.granted and a.application_name = $1",
-        )
-        .bind(SUSPENSION)
-        .fetch_one(owner)
-        .await
-        .unwrap();
-        if waiting > 0 {
-            return true;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    false
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -73,7 +51,7 @@ async fn a_company_changed_meanwhile_is_refused_unchanged() {
         change_company_status(&db, SLUG, CompanyStatusChange::Suspend).await
     });
     // It read the company active, and now waits on its row.
-    assert!(the_suspension_waits_on_a_lock(&owner).await);
+    assert!(named_waits(&owner, SUSPENSION).await);
     other.commit().await.unwrap();
 
     let refusal = suspension

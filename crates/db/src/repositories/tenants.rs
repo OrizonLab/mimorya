@@ -34,6 +34,15 @@ pub async fn tenant_status(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Op
         .await
 }
 
+/// The company's status, its row locked until the end of the transaction:
+/// a change of its status waits for it (ADR-193).
+pub async fn lock_tenant_status(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Option<String>> {
+    sqlx::query_scalar("select status from tenants where id = $1 for update")
+        .bind(id)
+        .fetch_optional(conn)
+        .await
+}
+
 /// The company's slug, as its operator knows it.
 pub async fn tenant_slug(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Option<String>> {
     sqlx::query_scalar("select slug from tenants where id = $1")
