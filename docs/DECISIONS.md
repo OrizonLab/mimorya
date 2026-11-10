@@ -13079,13 +13079,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     l'a pas été, avec sa raison. Ce qu'un fournisseur n'a pas retiré est à retirer chez
     lui ; la plateforme ne le garde plus ;
   - **la suppression confirmée est refusée** tant que l'entreprise garde une autorisation
-    OAuth ou un bot Telegram ; sans confirmation, la commande dit de lancer
+    OAuth ou un bot Telegram (ou, depuis l'ADR-194, un compte relié chez Google) ; sans
+    confirmation, la commande dit de lancer
     `release-company` d'abord. La libération retire toujours ce qu'elle prend, même quand
     un fournisseur ne répond pas : elle ne bloque jamais la suppression ;
   - **restent chez leurs fournisseurs**, comptés par la suppression : les comptes
     Microsoft 365 ou Google Workspace reliés par ses personnes, que la plateforme ne
     révoque pas non plus quand une personne les retire (ADR-116), et ses applications
-    Slack et Teams, que l'entreprise a déclarées dans son propre espace.
+    Slack et Teams, que l'entreprise a déclarées dans son propre espace. Depuis
+    l'ADR-194 (lot 64b), seuls les comptes Microsoft 365 restent : les accords des comptes
+    Google Workspace sont révoqués chez Google par la libération.
 - **Conséquences** :
   - l'exploitant supprime une entreprise en trois commandes : `suspend-company` et
     `release-company` (service `api`), puis `delete-company` (service `migrate`) ;
@@ -13125,7 +13128,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 ## ADR-194 — Accord d'un compte Google relié révoqué chez Google quand la plateforme le laisse (lot 64a)
 
-- **Statut** : accepté.
+- **Statut** : accepté (2026-11-10) · complète ADR-116 et ADR-121 (comptes reliés) ;
+  modifie ADR-193 depuis le lot 64b : la libération d'une entreprise suspendue prend aussi
+  les comptes reliés chez Google de ses personnes, dont les accords ne restent plus chez
+  Google, et sa suppression confirmée est refusée tant qu'il en reste.
 - **Contexte** : une personne relie son compte Microsoft 365 ou Google Workspace
   (ADR-116, ADR-121). La plateforme garde son jeton de renouvellement scellé. Quand la
   liaison disparaît, ce jeton est effacé ici. Jusqu'ici, l'accord donné à l'application
@@ -13280,3 +13286,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         reliés, et de relancer la libération quand des comptes ont été reliés de nouveau
         entre-temps ;
       - l'aide de la commande (`args.rs`) nomme les comptes Google reliés.
+  - suites de l'audit du lot 64b (lot 65) :
+    - le statut dit que cette décision modifie l'ADR-193, et les deux puces de l'ADR-193
+      qu'elle change renvoient ici ;
+    - `crates/api/tests/account_links.rs` : un retour Microsoft refusé une fois son code
+      échangé (compte d'une autre adresse, compte non vérifié) n'envoie rien à Microsoft
+      et n'est tracé comme aucune révocation.
