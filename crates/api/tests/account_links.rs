@@ -2,7 +2,8 @@
 //! application (ADR-116): the delegated permissions asked, their address as
 //! a hint; the return keeps the refresh token sealed for this connector and
 //! person, never in clear nor in the audit; another account than theirs is
-//! never linked; the return must be the starter's own; the link is theirs
+//! never linked, and its grant is not revoked at Microsoft, which revokes
+//! no single one; the return must be the starter's own; the link is theirs
 //! to remove, and goes with its connector or their disabled account.
 
 mod support;
@@ -16,6 +17,7 @@ use support::account_links::{
 };
 use support::accounts::{activate, assignment_of, create_account};
 use support::identity_provider::{MockIdentityProvider, Tamper};
+use support::link_revocations::revocations;
 use support::refusals::latest_entry;
 use support::sso::{SSO_DEPLOYMENT, audit_text_since, location, set_cookie};
 use support::{TestApi, email};
@@ -165,6 +167,11 @@ async fn another_account_than_the_persons_own_is_never_linked() {
             ),
         ]
     );
+    // Each return was refused once its code was redeemed, its grant kept
+    // by no link: Microsoft revokes no single grant (ADR-194), so nothing
+    // is sent there, nor audited as revoked.
+    assert_eq!(idp.revocations_asked(), 0);
+    assert!(revocations(&api, since).await.is_empty());
 
     // Without offline access, nothing could be read while she is away.
     idp.sign_in_as(microsoft_person("objet-claire", &email(user::CLAIRE)));
