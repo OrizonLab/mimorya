@@ -195,10 +195,17 @@ AS $$
   -- (`users_departed`).
   episodes AS (
     DELETE FROM memory_items m
-     USING horizons h
-     WHERE m.tenant_id = h.tenant_id
-       AND m.kind = 'episode'
-       AND m.created_at < h.episodes_before
+     USING (SELECT old.tenant_id, old.id
+              FROM horizons h
+              CROSS JOIN LATERAL (
+                SELECT e.tenant_id, e.id
+                  FROM memory_items e
+                 WHERE e.tenant_id = h.tenant_id
+                   AND e.kind = 'episode'
+                   AND e.created_at < h.episodes_before
+              ) old) aged_out
+     WHERE m.tenant_id = aged_out.tenant_id
+       AND m.id = aged_out.id
     RETURNING m.tenant_id
   ),
   expired AS (
@@ -257,11 +264,9 @@ AS $$
   WITH horizons AS (
     SELECT h.tenant_id, h.conversations_before FROM retention_horizons() h
   ),
-  -- Each company's oldest, through its own index, locked as they are
-  -- chosen: a conversation a turn holds is skipped; one a turn moved
-  -- meanwhile is read again, found recent and left. Then the oldest of
-  -- them all, a batch at most.
-  chosen AS (
+  -- Each company's oldest, through its own index, then the oldest of them
+  -- all, a batch at most, unlocked.
+  candidates AS (
     SELECT picked.tenant_id, picked.id
       FROM horizons h
       CROSS JOIN LATERAL (
@@ -276,10 +281,25 @@ AS $$
                 AND r.status IN ('queued', 'running', 'awaiting_approval'))
          ORDER BY c.updated_at
          LIMIT least(greatest(p_batch, 1), 500)
-         FOR UPDATE OF c SKIP LOCKED
       ) picked
      ORDER BY picked.updated_at
      LIMIT least(greatest(p_batch, 1), 500)
+  ),
+  -- Those alone locked, as they were chosen: a conversation a turn holds
+  -- is skipped; one a turn moved meanwhile is read again, found recent and
+  -- left.
+  chosen AS (
+    SELECT c.tenant_id, c.id
+      FROM conversations c
+      JOIN candidates k ON k.tenant_id = c.tenant_id AND k.id = c.id
+      JOIN horizons h ON h.tenant_id = c.tenant_id
+     WHERE c.updated_at < h.conversations_before
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_runs r
+          WHERE r.tenant_id = c.tenant_id
+            AND r.conversation_id = c.id
+            AND r.status IN ('queued', 'running', 'awaiting_approval'))
+     FOR UPDATE OF c SKIP LOCKED
   ),
   deleted AS (
     DELETE FROM conversations c

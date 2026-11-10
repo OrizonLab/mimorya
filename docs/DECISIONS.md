@@ -13370,7 +13370,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - la purge lit chaque entreprise par son propre index (`conversations_idle` et
     `memory_items_episodes` portent désormais `tenant_id` avant la date) : une
     entreprise qui garde peu ne fait pas relire, à chaque passe, ce que gardent les
-    autres. Les mémoires passées leur propre terme sont supprimées à part, sans
+    autres. Les conversations choisies, les plus anciennes de toutes, sont seules
+    verrouillées. Les mémoires passées leur propre terme sont supprimées à part, sans
     recouvrir les épisodes, et comptées avec eux (`aged`) ;
   - l'écran de ces durées, dans l'administration, vient au lot 66b ;
   - restent à venir, comme avant :

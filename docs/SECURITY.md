@@ -875,8 +875,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   sigle confirmé, aucun de ses runs en file ni en cours ni évaluation de ses compétences en
   cours ; la sortie de la commande en
   est la trace, et les sauvegardes la gardent jusqu'à leur retrait. Avant elle, ce que la plateforme a déclaré pour elle chez d'autres services y est retiré par `mimorya-admin release-company` (ADR-193), dans le service `api` qui a la clé maître : chaque autorisation OAuth de ses serveurs MCP, de l'entreprise et de ses personnes, révoquée chez son serveur d'autorisation (RFC 7009), chaque bot Telegram retiré avec son webhook, chaque compte Google relié par ses personnes révoqué chez Google (ADR-194), tracés sans aucun jeton, rien n'étant pris sans la clé maître ; la suppression confirmée est refusée tant qu'il en reste. Les comptes Microsoft 365 reliés par ses personnes, Microsoft ne révoquant pas l'accord d'une seule application, et ses applications Slack et Teams restent chez leurs fournisseurs, comptés par la suppression, à retirer chez chacun ; les clients OAuth que la plateforme a enregistrés, les applications et les fournisseurs d'identité déclarés par l'entreprise y restent aussi, sans accord de personne.
-  Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
-  (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document
+  Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après par
+  défaut, de 7 à 90 selon l'entreprise (ADR-185, ADR-195), et ses conversations 24 mois
+  après leur dernière activité par défaut, de 1 à 60 selon l'entreprise (ADR-186). Un document
   déposé (ADR-095) appartient à l'entreprise : il reste au départ de celui qui l'a
   déposé, se télécharge tel quel par qui le lit, et sa suppression par qui peut écrire
   son espace emporte son fichier, ses passages et leurs vecteurs. Remplacé par une
