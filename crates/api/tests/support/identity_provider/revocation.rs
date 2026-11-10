@@ -1,7 +1,8 @@
 //! The provider's revocation endpoint (ADR-194), as Google's: a refresh
 //! token sent alone (`token`) is revoked, its renewals refused from then
 //! on; one it never issued answers `invalid_token`. A test may have it
-//! refuse every revocation, or not name its endpoint in its discovery.
+//! refuse every revocation, keep them waiting beyond any bound, or not
+//! name its endpoint in its discovery.
 
 use axum::Form;
 use axum::extract::State;
@@ -18,6 +19,10 @@ pub struct Revocations {
     pub revoked: Vec<String>,
     /// Every revocation answered by a refusal.
     pub refused: bool,
+    /// Every revocation kept waiting, never answered in time.
+    pub held: bool,
+    /// How many revocations were asked, answered or not.
+    pub asked: usize,
     /// Its discovery names no revocation endpoint.
     pub unnamed: bool,
 }
@@ -26,8 +31,16 @@ pub(super) async fn revoke(
     State(shared): State<Shared>,
     Form(params): Form<HashMap<String, String>>,
 ) -> Response {
+    let held = {
+        let mut provider = shared.lock().expect("provider");
+        provider.requests += 1;
+        provider.revocations.asked += 1;
+        provider.revocations.held
+    };
+    if held {
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    }
     let mut provider = shared.lock().expect("provider");
-    provider.requests += 1;
     if provider.revocations.refused {
         return error(StatusCode::SERVICE_UNAVAILABLE, "temporarily_unavailable");
     }

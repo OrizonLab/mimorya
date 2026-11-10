@@ -207,6 +207,12 @@ impl AccountLinkService {
             .begin(tenant_id)
             .await
             .map_err(|e| internal(e.into()))?;
+        // Behind a change of the administration, as an MCP server's return
+        // is: a connector being deleted, its links taken to be revoked, is
+        // seen gone, never left with one it did not take (ADR-194).
+        tx.lock_administration()
+            .await
+            .map_err(|e| internal(e.into()))?;
         // Deleted or disabled while the person was at the provider.
         let instance = get_connector_instance(&mut tx, connector_id)
             .await

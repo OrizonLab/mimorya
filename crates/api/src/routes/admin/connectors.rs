@@ -13,6 +13,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use mimorya_connectors::connector_types;
 use mimorya_connectors::rest::RestConfig;
+use mimorya_core::account_links::LinkKind;
 use mimorya_db::repositories::account_links::count_account_links;
 use mimorya_db::repositories::connectors::list_connector_instances;
 
@@ -89,6 +90,7 @@ pub async fn list(
                         secret_stored: token_stored,
                         links: count_account_links(&mut tx, i.id).await?,
                         write_tools: config.write_tools,
+                        revokes_grants: LinkKind::Microsoft365.revokes(),
                     });
                 }
                 Editable::GoogleWorkspace(config) => {
@@ -98,6 +100,7 @@ pub async fn list(
                         secret_stored: token_stored,
                         links: count_account_links(&mut tx, i.id).await?,
                         write_tools: config.write_tools,
+                        revokes_grants: LinkKind::GoogleWorkspace.revokes(),
                     });
                 }
             }

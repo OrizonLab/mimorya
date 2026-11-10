@@ -46,4 +46,7 @@ pub struct GoogleWorkspaceApp {
     pub links: i64,
     /// Its tools may send e-mail and create events.
     pub write_tools: bool,
+    /// Google revokes the people's grants when the platform lets go of
+    /// their links (ADR-194).
+    pub revokes_grants: bool,
 }

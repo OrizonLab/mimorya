@@ -109,6 +109,7 @@ async fn the_company_declares_its_application_once() {
             "secretStored": true,
             "links": 0,
             "writeTools": false,
+            "revokesGrants": false,
         })
     );
     assert!(!view.to_string().contains(SECRET));

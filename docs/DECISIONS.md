@@ -13162,6 +13162,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     La déclaration dit chez qui ses personnes se sont connectées : elle est lue dans la
     même transaction. Ce qui est pris est révoqué une fois la transaction validée.
 
+    Le retour d'une liaison prend le verrou d'administration de l'entreprise, comme le
+    retour d'une autorisation MCP. Une liaison qui revient pendant la suppression de son
+    connecteur attend donc la fin de cette suppression, puis trouve le connecteur parti.
+    Sans ce verrou, elle aurait pu être gardée puis emportée par la cascade, sans
+    révocation.
+
   - **Le point de révocation** est celui que nomme la déclaration de l'émetteur où les
     personnes se sont connectées (`.well-known/openid-configuration`) :
     - la déclaration doit nommer cet émetteur ;
@@ -13173,6 +13179,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **Envoyé par une tâche à part**, que l'abandon de la requête n'arrête pas :
     - les liaisons d'un connecteur partent quatre à la fois ;
     - la requête attend au plus 25 secondes, puis la tâche continue jusqu'à son audit ;
+    - ces tâches démarrent dès la validation, avant que les sessions gardées du connecteur
+      ou de la personne soient oubliées : une requête abandonnée à ce moment-là ne les
+      arrête pas. Une tâche qui s'arrête avant son issue est dite dans le journal ;
     - l'audit (`account.links_revoked`) porte une entrée par connecteur, au nom de qui a
       laissé les liaisons (la personne, l'administrateur, ou `system` pour SCIM). Elle
       donne le nombre de révocations réussies et échouées, et la première raison d'un
@@ -13188,7 +13197,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
   - **Une liaison remplacée par une nouvelle n'est pas révoquée** : chez Google, l'accord
     est le même, et révoquer l'ancien jeton emporterait le nouveau.
-  - **Dans l'interface** :
+  - **Dans l'interface**, qui lit ce que dit le serveur (`revokesGrants`, tiré de
+    `LinkKind::revokes`) :
     - pour un compte Google, « Mon compte » dit que la plateforme demande à Google de
       révoquer l'accord, et sinon de le retirer dans son compte Google ;
     - pour un compte Microsoft 365, il dit que l'accord reste chez Microsoft ;
@@ -13209,7 +13219,13 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       - un refus de Google, ou un point de révocation qu'il ne nomme pas, est dit par son
         seul code, et la liaison part quand même ;
       - un compte désactivé, puis le connecteur supprimé, révoquent les accords de chacun ;
+      - un compte désactivé par SCIM voit son accord révoqué, audité au nom de `system` ;
       - aucun jeton n'apparaît dans l'audit ;
+    - `crates/api/tests/google_workspace_revocation_races.rs` :
+      - un retrait dont la requête est abandonnée pendant que Google fait attendre est
+        révoqué quand même, jusqu'à sa borne, et audité ;
+      - une liaison qui revient pendant la suppression de son connecteur n'est jamais
+        gardée ;
     - `revocation/endpoint.rs` (unitaires) : le point de révocation est celui de la
       déclaration du même émetteur ; une réponse est lue par son code seul ;
     - `revocation/sending.rs` (unitaires) : l'issue compte les révocations et borne la

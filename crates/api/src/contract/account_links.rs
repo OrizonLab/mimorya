@@ -27,6 +27,10 @@ pub struct AccountLinkView {
     /// Its tools may send e-mail and create events, each validated: a
     /// link asks those permissions too (ADR-119, ADR-120).
     pub write_tools: bool,
+    /// The provider revokes the grant when the platform lets go of the
+    /// link (Google); otherwise it stays there until withdrawn there
+    /// (Microsoft, ADR-194).
+    pub revokes_grants: bool,
     pub linked: Option<LinkedAccount>,
 }
 

@@ -17,8 +17,6 @@
 mod endpoint;
 mod sending;
 
-pub use sending::{LINKS_REVOKED, LinksOutcome};
-
 use std::collections::BTreeMap;
 
 use mimorya_core::account_links::LinkKind;

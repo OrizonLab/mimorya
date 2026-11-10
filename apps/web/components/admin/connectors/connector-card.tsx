@@ -115,10 +115,11 @@ export function ConnectorCard({
   async function remove() {
     const question = linked
       ? `Supprimer ${google ? 'le client' : 'l’application'} « ${connector.name} », son secret et les ${linked.links} compte(s) que les collaborateurs y ont relié(s) ? ${
-          // Google revokes their grants when asked; Microsoft keeps them (ADR-194).
-          google
-            ? 'La plateforme demande à Google de révoquer leurs accords.'
-            : 'Leurs accords restent chez Microsoft : retirez-les dans Microsoft Entra.'
+          // The server says whether the provider revokes their grants when
+          // asked (Google) or keeps them (Microsoft, ADR-194).
+          linked.revokesGrants
+            ? `La plateforme demande à ${google ? 'Google' : 'Microsoft'} de révoquer leurs accords.`
+            : `Leurs accords restent chez ${google ? 'Google' : 'Microsoft'} : retirez-les dans ${google ? 'la console d’administration de Google' : 'Microsoft Entra'}.`
         }`
       : connector.mcp?.oauth
         ? `Supprimer le serveur « ${connector.name} », sa déclaration OAuth, le secret du client et son autorisation ?${

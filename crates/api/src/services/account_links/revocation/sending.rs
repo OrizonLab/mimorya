@@ -21,7 +21,7 @@ use super::endpoint::{revocation_endpoint, revoke_token};
 use crate::services::account_links::AccountLinkService;
 
 /// What the audit calls the revocation of a connector's links' grants.
-pub const LINKS_REVOKED: &str = "account.links_revoked";
+const LINKS_REVOKED: &str = "account.links_revoked";
 /// How many tokens of one connector are sent at once.
 const AT_ONCE: usize = 4;
 /// How long the request that let them go waits: a provider's answer is
@@ -31,11 +31,11 @@ const WAITED: Duration = Duration::from_secs(25);
 /// How the revocation of one connector's links went: counted, with the
 /// first reason one was not revoked. Never a token nor whose.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LinksOutcome {
-    pub connector_id: Uuid,
-    pub revoked: usize,
-    pub failed: usize,
-    pub reason: Option<String>,
+struct LinksOutcome {
+    connector_id: Uuid,
+    revoked: usize,
+    failed: usize,
+    reason: Option<String>,
 }
 
 impl AccountLinkService {
@@ -57,8 +57,11 @@ impl AccountLinkService {
                 service.revoke_links(tenant_id, by, links).await;
             }
         });
-        // Waited for a while only: the task goes on to its audit.
-        let _ = tokio::time::timeout(WAITED, task).await;
+        // Waited for a while only: the task goes on to its audit. One that
+        // stopped before it is said in the log, never a token.
+        if let Ok(Err(error)) = tokio::time::timeout(WAITED, task).await {
+            tracing::error!(error = %error, "The revocation of linked accounts' grants stopped");
+        }
     }
 
     async fn revoke_links(

@@ -64,7 +64,7 @@ async fn a_person_links_their_workspace_account() {
         listed(&claire, GOOGLE_WORKSPACE).await,
         json!({
             "connectorId": connector, "name": "Google Workspace", "type": "google_workspace",
-            "available": true, "writeTools": false, "linked": null,
+            "available": true, "writeTools": false, "revokesGrants": true, "linked": null,
         })
     );
 

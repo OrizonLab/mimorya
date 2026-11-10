@@ -7,89 +7,21 @@
 
 mod support;
 
-use axum::http::StatusCode;
-use mimorya_core::demo::{tenant, user};
-use serde_json::{Value, json};
+use axum::http::{Method, StatusCode};
+use mimorya_core::demo::{role, user};
+use serde_json::json;
 use support::account_links::{
-    LINKED, LINKS, google_person, insert_google_workspace, insert_microsoft365, kept_refresh_token,
-    link, microsoft_person,
+    LINKED, LINKS, insert_google_workspace, insert_microsoft365, kept_refresh_token, link,
+    microsoft_person,
 };
+use support::accounts::{activate, create_account};
 use support::identity_provider::MockIdentityProvider;
+use support::link_revocations::{
+    last_entry, link_google, link_google_as, no_token_audited, remove_connectors, revocations,
+};
+use support::scim::{made, patch_of, send};
 use support::sso::{SSO_DEPLOYMENT, location};
-use support::{Client, TestApi, email};
-use uuid::Uuid;
-
-/// The revocations audited after `since`: actor, outcome, connector,
-/// reason, counts.
-async fn revocations(
-    api: &TestApi,
-    since: i64,
-) -> Vec<(Option<Uuid>, String, Option<String>, Option<String>, Value)> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let rows = sqlx::query_as(
-        "select actor_user_id, outcome, resource_id, reason, metadata from audit_log \
-         where id > $1 and action = 'account.links_revoked' order by id",
-    )
-    .bind(since)
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    rows
-}
-
-/// The last audit entry's place.
-async fn last_entry(api: &TestApi) -> i64 {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let last = sqlx::query_scalar("select coalesce(max(id), 0) from audit_log")
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap();
-    tx.commit().await.unwrap();
-    last
-}
-
-/// No refresh token, nor anything Google wrote around its error code,
-/// anywhere in the company's audit.
-async fn no_token_audited(api: &TestApi) {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let found: i64 = sqlx::query_scalar(
-        "select count(*) from audit_log where coalesce(reason, '') like '%jeton-de-renouvellement%' \
-         or metadata::text like '%jeton-de-renouvellement%'",
-    )
-    .fetch_one(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-    assert_eq!(found, 0);
-}
-
-fn domain_of(address: &str) -> String {
-    address.rsplit_once('@').unwrap().1.to_string()
-}
-
-/// Links `who`'s Google account, its subject `subject`.
-async fn link_google<'a>(
-    api: &'a TestApi,
-    idp: &MockIdentityProvider,
-    connector: Uuid,
-    who: Uuid,
-    subject: &str,
-) -> Client<'a> {
-    let person = api.sign_in(who).await;
-    let address = email(who);
-    idp.sign_in_as(google_person(subject, &address, Some(&domain_of(&address))));
-    assert_eq!(location(&link(&person, idp, connector).await), LINKED);
-    person
-}
-
-async fn remove_connectors(api: &TestApi, connectors: &[Uuid]) {
-    let paul = api.sign_in(user::PAUL).await;
-    for connector in connectors {
-        let removed = paul.delete(&format!("/admin/connectors/{connector}")).await;
-        assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());
-    }
-}
+use support::{TestApi, email};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -225,4 +157,46 @@ async fn a_disabled_account_and_a_deleted_connector_revoke_their_google_grants()
     };
     assert_eq!(entries, [by_paul(1), by_paul(2)]);
     no_token_audited(&api).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_account_the_provider_disables_through_scim_has_its_google_grant_revoked() {
+    let api = TestApi::start_with(&SSO_DEPLOYMENT).await;
+    let idp = MockIdentityProvider::start().await;
+    let google = insert_google_workspace(&api, &idp, true, false).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let mut account = create_account(&paul, "scim.google").await;
+    let granted = paul
+        .post(
+            &format!("/admin/users/{}/assignments", account.id),
+            json!({ "roleId": role::MEMBER, "scope": { "type": "tenant" } }),
+        )
+        .await;
+    assert_eq!(granted.status, StatusCode::CREATED, "{}", granted.text());
+    let leaving = activate(&api, &mut account).await;
+    link_google_as(&leaving, &idp, google, &account.email, "g-scim").await;
+    let since = last_entry(&api).await;
+
+    // The identity provider disables the account: its grant revoked at
+    // Google, audited as let go by the platform.
+    let (_, secret) = made(&paul, "Okta").await;
+    let off = patch_of(json!([{ "op": "Replace", "path": "active", "value": "False" }]));
+    let path = format!("/Users/{}", account.id);
+    let disabled = send(&api, Some(&secret), Method::PATCH, &path, &off).await;
+    assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+    assert_eq!(idp.revoked(), ["jeton-de-renouvellement-g-scim"]);
+    assert_eq!(kept_refresh_token(&api, google, account.id).await, None);
+    assert_eq!(
+        revocations(&api, since).await,
+        [(
+            None,
+            "success".to_string(),
+            Some(google.to_string()),
+            None,
+            json!({ "revoked": 1, "failed": 0 }),
+        )]
+    );
+    no_token_audited(&api).await;
+    remove_connectors(&api, &[google]).await;
 }

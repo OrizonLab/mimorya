@@ -348,7 +348,8 @@ pub async fn delete_connector(
     )
     .await?;
     tx.commit().await?;
-    admin.connectors.invalidate(id).await;
+    // The revocations' tasks started at once, before the kept instance is
+    // let go: a request abandoned meanwhile leaves them going.
     let servers = async {
         if let Some(taken) = taken {
             revoke(admin, access, taken).await;
@@ -356,7 +357,7 @@ pub async fn delete_connector(
     };
     let by = Some(access.subject.user_id);
     let accounts = admin.account_links.revoke(tenant_id, by, links);
-    futures::join!(servers, accounts);
+    futures::join!(servers, accounts, admin.connectors.invalidate(id));
     Ok(())
 }
 

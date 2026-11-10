@@ -86,7 +86,13 @@ available: boolean,
  * Its tools may send e-mail and create events, each validated: a
  * link asks those permissions too (ADR-119, ADR-120).
  */
-writeTools: boolean, linked: LinkedAccount | null, };
+writeTools: boolean,
+/**
+ * The provider revokes the grant when the platform lets go of the
+ * link (Google); otherwise it stays there until withdrawn there
+ * (Microsoft, ADR-194).
+ */
+revokesGrants: boolean, linked: LinkedAccount | null, };
 
 /**
  * `GET /account/links`.
@@ -1222,7 +1228,12 @@ links: number,
 /**
  * Its tools may send e-mail and create events.
  */
-writeTools: boolean, };
+writeTools: boolean,
+/**
+ * Google revokes the people's grants when the platform lets go of
+ * their links (ADR-194).
+ */
+revokesGrants: boolean, };
 
 /**
  * `GET /health`: answered once the database answers.
@@ -1828,7 +1839,12 @@ links: number,
 /**
  * Its tools may send e-mail and create events (ADR-119).
  */
-writeTools: boolean, };
+writeTools: boolean,
+/**
+ * Whether Microsoft revokes the people's grants when the platform lets
+ * go of their links: it does not (ADR-194).
+ */
+revokesGrants: boolean, };
 
 export type Mission = { id: string, title: string, objective: string, successCriteria: Array<string>, status: MissionStatus,
 /**

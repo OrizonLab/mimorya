@@ -121,6 +121,7 @@ async fn the_company_declares_its_google_client_once() {
             "secretStored": true,
             "links": 0,
             "writeTools": false,
+            "revokesGrants": true,
         })
     );
     assert_eq!(view["microsoft365"], Value::Null);

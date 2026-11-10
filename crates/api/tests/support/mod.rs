@@ -34,6 +34,7 @@ pub mod knowledge_shares;
 pub mod leases;
 pub mod lessons;
 pub mod limits;
+pub mod link_revocations;
 pub mod llm;
 pub mod locks;
 pub mod mail;

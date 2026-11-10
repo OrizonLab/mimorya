@@ -227,14 +227,9 @@ export const ACCOUNT_PERMISSIONS: Record<string, string> = {
  * Where a person links an account of each type (ADR-118, ADR-124): the
  * provider who asks their consent, and its product.
  */
-export const ACCOUNT_PROVIDERS: Record<
-  string,
-  { provider: string; product: string; revokes: boolean }
-> = {
-  // Microsoft revokes no single application's grant (ADR-194).
-  microsoft365: { provider: 'Microsoft', product: 'Microsoft 365', revokes: false },
-  // Google does, when the platform asks it (ADR-194).
-  google_workspace: { provider: 'Google', product: 'Google Workspace', revokes: true },
+export const ACCOUNT_PROVIDERS: Record<string, { provider: string; product: string }> = {
+  microsoft365: { provider: 'Microsoft', product: 'Microsoft 365' },
+  google_workspace: { provider: 'Google', product: 'Google Workspace' },
 };
 
 /** The services a conversation can be held in (ADR-127, ADR-128, ADR-135, ADR-140). */

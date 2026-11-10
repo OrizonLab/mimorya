@@ -10,9 +10,11 @@
 //! by the `system` actor, each bot as its removal is, never a token; how
 //! each went is told to the operator. What a server does not revoke stays granted
 //! there, to withdraw there; what was taken is gone here all the same.
-//! The accounts its people linked and its Slack and Teams applications are
-//! not the platform's to withdraw: they stay, as at a person's withdrawal
-//! (ADR-116) or a gateway's (ADR-125).
+//! The accounts its people linked are not taken here yet, though their
+//! Google grants are revoked when a person removes one (ADR-194;
+//! Microsoft revokes none); its Slack and Teams applications are not the
+//! platform's to withdraw: they stay, as at a gateway's withdrawal
+//! (ADR-125).
 
 use std::sync::Arc;
 

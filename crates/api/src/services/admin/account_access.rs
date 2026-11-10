@@ -63,17 +63,19 @@ pub(crate) async fn let_go(
     taken: TakenAccess,
 ) {
     let TakenAccess { revocations, links } = taken;
-    for revocation in &revocations {
-        admin
-            .connectors
-            .forget_person(revocation.connector_id, user_id)
-            .await;
-    }
+    let connectors: Vec<Uuid> = revocations.iter().map(|r| r.connector_id).collect();
+    // The revocations' tasks started at once, before the kept sessions are
+    // forgotten: a request abandoned meanwhile leaves them going.
     let servers = async {
         if !revocations.is_empty() {
             revoke_all_by(admin, tenant_id, by, revocations).await;
         }
     };
     let accounts = admin.account_links.revoke(tenant_id, by, links);
-    futures::join!(servers, accounts);
+    let forgotten = async {
+        for connector_id in connectors {
+            admin.connectors.forget_person(connector_id, user_id).await;
+        }
+    };
+    futures::join!(servers, accounts, forgotten);
 }

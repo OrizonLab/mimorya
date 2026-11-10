@@ -257,6 +257,16 @@ impl MockIdentityProvider {
             .clone()
     }
 
+    /// How many revocations were asked of it, answered or not.
+    pub fn revocations_asked(&self) -> usize {
+        self.shared.lock().expect("provider").revocations.asked
+    }
+
+    /// Keeps every revocation waiting from now on, beyond any bound.
+    pub fn hold_revocations(&self) {
+        self.shared.lock().expect("provider").revocations.held = true;
+    }
+
     /// Refuses every revocation from now on.
     pub fn refuse_revocations(&self) {
         self.shared.lock().expect("provider").revocations.refused = true;
