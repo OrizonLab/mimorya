@@ -13059,7 +13059,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     maître et les réglages du réseau sortant (mandataire, réseau privé), avec le rôle
     applicatif, dans la transaction de l'entreprise (RLS) ;
   - **seule une entreprise suspendue** (ADR-191) est libérée, sa ligne verrouillée le temps
-    de la transaction : une réactivation l'attend ;
+    de la transaction (`for no key update`) : une réactivation ou une suppression
+    l'attend, et une libération qui l'attend la trouve active ou partie et ne prend rien ;
+    les lignes qui nomment l'entreprise s'écrivent toujours ;
+  - **sans la clé maître, rien n'est pris** : la commande est refusée avant de toucher à
+    l'entreprise, car rien de ce qu'elle prendrait ne pourrait être révoqué ;
   - **chaque autorisation OAuth de ses serveurs MCP**, celle de l'entreprise et celle de
     chaque personne, est prise sous la déclaration que tient son connecteur, puis révoquée
     chez le serveur d'autorisation qui l'a accordée (RFC 7009), comme quand
@@ -13069,7 +13073,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     chez Telegram, puis la passerelle, les identités de ses personnes et ses secrets, par
     le même code (`services/admin/gateway_withdrawal.rs`) ;
   - **tracée** dans le journal de l'entreprise par l'acteur `system` (`tenant.released`,
-    avec les nombres ; chaque révocation comme à l'administration), jamais avec un jeton ;
+    avec les nombres ; chaque révocation comme à l'administration ; chaque bot comme son
+    retrait, `gateway.deleted`, avec l'issue de son webhook), jamais avec un jeton ;
     **la sortie dit**, pour chaque serveur et chaque bot, ce qui a été retiré et ce qui ne
     l'a pas été, avec sa raison. Ce qu'un fournisseur n'a pas retiré est à retirer chez
     lui ; la plateforme ne le garde plus ;
@@ -13095,13 +13100,17 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - tests :
     - `crates/api/tests/company_release.rs` : une entreprise active, ou inconnue, est
       refusée ; suspendue, sa suppression est refusée tant qu'elle garde une autorisation de
-      l'entreprise, celle d'une personne et un bot Telegram ; libérée, chacune est révoquée
-      chez le serveur d'autorisation, le jeton de renouvellement demandé, le bot retiré avec
-      son webhook, rien n'en reste ici ; la libération est tracée sans jeton ; une seconde
-      ne trouve rien ;
+      l'entreprise, celle d'une personne et un bot Telegram, et sa libération sans la clé
+      maître ne prend rien ; libérée, chacune est révoquée chez le serveur d'autorisation,
+      le jeton de renouvellement demandé, le bot retiré avec son webhook, rien n'en reste
+      ici, son application Slack reste ; la libération et le bot sont tracés sans jeton ;
+      une seconde ne trouve rien ;
+    - `crates/api/tests/company_release_race.rs` : une libération qui attend la ligne
+      qu'une réactivation tient est refusée une fois l'entreprise réactivée, et son bot
+      reste ; celle qui attend une suppression ne trouve plus l'entreprise ;
     - `crates/api/tests/company_deletion.rs`, `company_deletion_refusals.rs` : la
       suppression confirmée est refusée tant que la libération n'a pas eu lieu, puis
-      l'entreprise est libérée et supprimée ;
+      l'entreprise est libérée et supprimée, son application Slack avec elle ;
     - `crates/api/src/bin/admin/args.rs`, `release.rs` : la commande et ce qu'elle dit ;
     - `infra/docker/production-test.sh` : dans la pile de production de la CI,
       l'entreprise suspendue est libérée par le service `api`, puis supprimée.

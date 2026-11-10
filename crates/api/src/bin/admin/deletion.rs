@@ -27,8 +27,8 @@ pub async fn delete(slug: &str, confirm: Option<&str>) -> anyhow::Result<()> {
             outside(&rows);
             if rows.to_release > 0 {
                 println!(
-                    "Avant de la supprimer, retirez chez leurs fournisseurs les autorisations \
-                     OAuth de ses serveurs MCP et ses bots Telegram, dans le service api :\n  \
+                    "Avant de la supprimer, retirez chez leurs fournisseurs ses autorisations \
+                     OAuth et ses bots Telegram, dans le service api :\n  \
                      mimorya-admin release-company --slug {slug}"
                 );
             }
@@ -55,14 +55,22 @@ pub async fn delete(slug: &str, confirm: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// What the company declared at other services, which its deletion does not
-/// withdraw there, said when there is any.
+/// What the company declared at other services, said when there is any:
+/// before the release, what it withdraws there is among it; after, what
+/// stays there is to withdraw there.
 fn outside(rows: &CompanyRows) {
     let held = rows.held_outside();
     if held.is_empty() {
         return;
     }
-    println!("Restent déclarés chez leurs fournisseurs, à retirer là :");
+    if rows.to_release > 0 {
+        println!(
+            "Déclarés chez leurs fournisseurs (release-company y retire les autorisations OAuth \
+             et les bots Telegram ; le reste est à retirer là) :"
+        );
+    } else {
+        println!("Restent déclarés chez leurs fournisseurs, à retirer là :");
+    }
     for (what, count) in held {
         println!("  {what} : {count}");
     }

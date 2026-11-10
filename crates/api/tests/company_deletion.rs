@@ -23,6 +23,7 @@ use mimorya_core::demo::{tenant, user};
 use mimorya_db::notifications::listen_invalidations;
 use support::audit_chain::seal;
 use support::companies::{create, rows_of};
+use support::llm;
 use support::personal_belongings::{belongings, company_parts};
 use support::retention::owner;
 use support::suspension::change;
@@ -46,7 +47,8 @@ async fn released(listener: &mut sqlx::postgres::PgListener, count: usize) -> BT
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn a_suspended_company_is_deleted_whole_and_another_keeps_every_row() {
-    let api = TestApi::start().await;
+    // The master key: the release takes nothing without it (ADR-193).
+    let api = TestApi::start_with(&[("MIMORYA_MASTER_KEY", llm::MASTER_KEY)]).await;
     let marc = api.sign_in(user::MARC).await;
     let neo = company_parts(tenant::ID, "neo", 2001).await;
     belongings(&neo, user::MARC, "de-marc", None, 41, 10).await;
@@ -88,7 +90,7 @@ async fn a_suspended_company_is_deleted_whole_and_another_keeps_every_row() {
     for what in [
         "autorisations OAuth de serveurs MCP données par ses personnes",
         "comptes Microsoft 365 ou Google Workspace reliés par ses personnes",
-        "passerelles de conversation (Slack, Telegram, Teams)",
+        "passerelles de conversation",
     ] {
         assert!(
             outside
@@ -97,6 +99,15 @@ async fn a_suspended_company_is_deleted_whole_and_another_keeps_every_row() {
             "{what} not in {outside:?}"
         );
     }
+    // A Slack application, in the company's own workspace, holds nothing back.
+    sqlx::query(
+        "insert into gateways (tenant_id, kind, name, workspace_id, workspace_name, bot_user_id) \
+         values ($1, 'slack', 'Slack Néo', 'T0NEO', 'Néo', 'U0NEO')",
+    )
+    .bind(tenant::ID)
+    .execute(&owner)
+    .await
+    .unwrap();
     // Refused until the release withdraws there what the platform declared.
     let refused = delete_company(&owner, tenant::SLUG, Some(tenant::SLUG)).await;
     let refused = refused.unwrap_err().downcast::<DomainError>().unwrap();
@@ -116,6 +127,8 @@ async fn a_suspended_company_is_deleted_whole_and_another_keeps_every_row() {
         panic!("deleted without its slug confirmed");
     };
     assert_eq!(shown.to_release, 0);
+    // Only the Slack application is left of its gateways, and it goes too.
+    assert!(shown.tables.contains(&("gateways".to_string(), 1)));
 
     let connectors: Vec<Uuid> =
         sqlx::query_scalar("select id from connector_instances where tenant_id = $1")

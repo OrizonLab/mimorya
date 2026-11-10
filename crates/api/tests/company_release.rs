@@ -2,14 +2,15 @@
 //! by the operator before it is deleted (ADR-193): every OAuth
 //! authorization of its MCP servers, the company's and its people's,
 //! revoked at the authorization server that granted it, and its Telegram
-//! bot withdrawn with its webhook. An active company keeps them; its
+//! bot withdrawn with its webhook; its Slack application stays. An active
+//! company keeps them; without the master key, nothing is taken; its
 //! deletion is refused while they are declared. Audited by the `system`
 //! actor, never with a token; a second release finds nothing.
 
 mod support;
 
 use mimorya_api::services::provisioning::{
-    CompanyDeletion, CompanyStatusChange, delete_company, release_company,
+    CompanyDeletion, CompanyStatusChange, delete_company, release_company, release_company_with,
 };
 use mimorya_connectors::testing::{FakeAuthorizationServer, FakeTelegram, TELEGRAM_BOT};
 use mimorya_core::demo::{tenant, user};
@@ -57,6 +58,20 @@ async fn released_entries(api: &TestApi) -> Vec<Value> {
     entries
 }
 
+/// The bots the platform withdrew, as audited.
+async fn bot_entries(api: &TestApi) -> Vec<Value> {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let entries = sqlx::query_scalar(
+        "select metadata from audit_log where action = 'gateway.deleted' \
+         and actor_type = 'system' order by id",
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    entries
+}
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services() {
@@ -93,6 +108,16 @@ async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services()
         .await
         .unwrap();
     let owner = owner().await;
+    // Its Slack application lives in its own workspace: nothing of it is
+    // the platform's to withdraw, nor does it hold the deletion back.
+    let slack: uuid::Uuid = sqlx::query_scalar(
+        "insert into gateways (tenant_id, kind, name, workspace_id, workspace_name, bot_user_id) \
+         values ($1, 'slack', 'Slack Néo', 'T0LIBRE', 'Néo', 'U0LIBRE') returning id",
+    )
+    .bind(tenant::ID)
+    .fetch_one(&owner)
+    .await
+    .unwrap();
     let CompanyDeletion::Shown(shown) = delete_company(&owner, tenant::SLUG, None).await.unwrap()
     else {
         panic!("deleted without its slug confirmed");
@@ -102,7 +127,7 @@ async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services()
     for what in [
         "autorisations OAuth de serveurs MCP données pour l’entreprise",
         "autorisations OAuth de serveurs MCP données par ses personnes",
-        "passerelles de conversation (Slack, Telegram, Teams)",
+        "passerelles de conversation",
     ] {
         assert!(
             outside
@@ -118,6 +143,14 @@ async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services()
         "{}",
         refused.message
     );
+    assert_eq!(rows_of(&owner, tenant::ID).await, shown.tables);
+    // Without the master key, nothing taken could be revoked: nothing is.
+    let mut keyless = services.config.clone();
+    keyless.secrets = None;
+    let keyless = release_company_with(&services.db, &keyless, tenant::SLUG).await;
+    let keyless = domain(keyless.unwrap_err());
+    assert_eq!(keyless.code, ErrorCode::Validation);
+    assert!(keyless.message.starts_with("MIMORYA_MASTER_KEY"));
     assert_eq!(rows_of(&owner, tenant::ID).await, shown.tables);
 
     let released = release_company(services, tenant::SLUG).await.unwrap();
@@ -158,7 +191,20 @@ async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services()
         panic!("deleted without its slug confirmed");
     };
     assert_eq!(shown.to_release, 0);
-    // Audited by the platform, never with a token.
+    // The Slack application stays, untouched.
+    let gateways: Vec<uuid::Uuid> =
+        sqlx::query_scalar("select id from gateways where tenant_id = $1")
+            .bind(tenant::ID)
+            .fetch_all(&owner)
+            .await
+            .unwrap();
+    assert_eq!(gateways, [slack]);
+    // Audited by the platform, never with a token: the bot as its removal is.
+    let bot = bot_entries(&api).await;
+    assert_eq!(bot.len(), 1);
+    assert_eq!(bot[0]["name"], "Telegram Néo");
+    assert_eq!(bot[0]["type"], "telegram");
+    assert_eq!(bot[0]["webhookWithdrawn"], true);
     let entries = released_entries(&api).await;
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["companyAuthorizations"], 1);
@@ -174,6 +220,11 @@ async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services()
     assert!(again.servers.is_empty() && again.bots.is_empty());
 
     change(&api, tenant::SLUG, CompanyStatusChange::Reactivate)
+        .await
+        .unwrap();
+    sqlx::query("delete from gateways where id = $1")
+        .bind(slack)
+        .execute(&owner)
         .await
         .unwrap();
     for id in [&company_id, &each_id] {

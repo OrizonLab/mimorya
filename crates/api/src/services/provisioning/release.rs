@@ -5,9 +5,10 @@
 //! granted it (RFC 7009, ADR-172, ADR-174), and each of its Telegram bots
 //! withdrawn, its webhook first (ADR-133). It runs where the master key is
 //! (the `api` service), with the application's role, in the company's
-//! transaction, its row locked: a reactivation waits for it. Audited in the
-//! company's log by the `system` actor, never a token; how each went is
-//! told to the operator. What a server does not revoke stays granted
+//! transaction, its row locked: a reactivation or a deletion waits for it.
+//! Without the master key, it takes nothing. Audited in the company's log
+//! by the `system` actor, each bot as its removal is, never a token; how
+//! each went is told to the operator. What a server does not revoke stays granted
 //! there, to withdraw there; what was taken is gone here all the same.
 //! The accounts its people linked and its Slack and Teams applications are
 //! not the platform's to withdraw: they stay, as at a person's withdrawal
@@ -112,6 +113,14 @@ async fn release(
     slug: &str,
 ) -> anyhow::Result<Released> {
     let slug = slug.trim();
+    // Without it, nothing taken could be revoked: nothing is taken.
+    if !admin.secrets.available() {
+        return Err(DomainError::validation(
+            "MIMORYA_MASTER_KEY est obligatoire : sans elle, les jetons ne peuvent pas être \
+             révoqués ; rien n’a été retiré",
+        )
+        .into());
+    }
     let unknown = || DomainError::not_found("Aucune entreprise ne porte ce sigle");
     let tenant_id = find_tenant_by_slug(admin.db.pool(), slug)
         .await?
@@ -144,14 +153,28 @@ async fn release(
         let Some(gateway) = lock_gateway(&mut tx, listed.id).await? else {
             continue;
         };
-        if let Some(webhook) =
+        let Some(webhook) =
             withdraw_gateway(&mut tx, admin.secrets, telegram, tenant_id, &gateway).await?
-        {
-            bots.push(BotReleased {
-                name: gateway.name,
-                webhook,
-            });
+        else {
+            continue;
+        };
+        // Audited as its administrator's removal is, with how its webhook
+        // went: never its token.
+        let mut entry =
+            system_entry(tenant_id, "gateway.deleted", "gateway", gateway.id).metadata(json!({
+                "name": gateway.name,
+                "type": gateway.kind,
+                "workspaceId": gateway.workspace_id,
+                "webhookWithdrawn": webhook.is_ok(),
+            }));
+        if let Err(reason) = &webhook {
+            entry = entry.reason(reason.clone());
         }
+        append_audit(&mut tx, entry).await?;
+        bots.push(BotReleased {
+            name: gateway.name,
+            webhook,
+        });
     }
     release_everywhere(&mut tx, tenant_id).await?;
     let entry = system_entry(tenant_id, "tenant.released", "tenant", tenant_id).metadata(json!({

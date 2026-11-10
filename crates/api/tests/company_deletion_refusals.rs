@@ -16,6 +16,7 @@ use mimorya_core::{DomainError, ErrorCode};
 use sqlx::PgPool;
 use support::TestApi;
 use support::companies::{create, rows_of};
+use support::llm;
 use support::personal_belongings::{belongings, company_parts};
 use support::retention::owner;
 use support::suspension::change;
@@ -65,7 +66,8 @@ async fn set_evaluation(owner: &PgPool, evaluation: uuid::Uuid, status: &str) {
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn only_a_suspended_company_without_a_living_run_goes_once_confirmed() {
-    let api = TestApi::start().await;
+    // The master key: the release takes nothing without it (ADR-193).
+    let api = TestApi::start_with(&[("MIMORYA_MASTER_KEY", llm::MASTER_KEY)]).await;
     let owner = owner().await;
     let created = create(&api, SLUG, "jeanne.martin@acme-refusee.example").await;
     let parts = company_parts(created.tenant_id, "refus", 3001).await;

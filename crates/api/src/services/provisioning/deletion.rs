@@ -34,9 +34,12 @@ pub struct CompanyRows {
 }
 
 /// What gives access at other services, granted for or by a company, by
-/// the table that keeps it: deleting the company forgets it here, not
-/// there. What it declared there without anyone's grant (clients the
-/// platform registered, applications, identity providers) is not counted.
+/// the table that keeps it. The release withdraws there its OAuth
+/// authorizations and its Telegram bots before any deletion (ADR-193); its
+/// linked accounts and its Slack and Teams applications stay there, to
+/// withdraw there. What it declared there without anyone's grant (clients
+/// the platform registered, applications, identity providers) is not
+/// counted.
 const HELD_OUTSIDE: [(&str, &str); 4] = [
     (
         "connector_authorizations",
@@ -50,10 +53,7 @@ const HELD_OUTSIDE: [(&str, &str); 4] = [
         "account_links",
         "comptes Microsoft 365 ou Google Workspace reliés par ses personnes",
     ),
-    (
-        "gateways",
-        "passerelles de conversation (Slack, Telegram, Teams)",
-    ),
+    ("gateways", "passerelles de conversation"),
 ];
 
 impl CompanyRows {
@@ -161,7 +161,7 @@ mod tests {
                     "comptes Microsoft 365 ou Google Workspace reliés par ses personnes",
                     2
                 ),
-                ("passerelles de conversation (Slack, Telegram, Teams)", 1),
+                ("passerelles de conversation", 1),
             ]
         );
     }
