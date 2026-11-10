@@ -13114,3 +13114,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `crates/api/src/bin/admin/args.rs`, `release.rs` : la commande et ce qu'elle dit ;
     - `infra/docker/production-test.sh` : dans la pile de production de la CI,
       l'entreprise suspendue est libérée par le service `api`, puis supprimée.
+  - suites de l'audit (lot 63) :
+    - le test de course tient la ligne comme une réactivation la tient, par sa seule mise à
+      jour conditionnelle : un verrou plus faible de la libération le ferait échouer ;
+    - une passerelle Teams reste comme une passerelle Slack (`company_release.rs`) ;
+    - une révocation qui s'arrête avant son issue n'est plus tue : ce qu'elle avait pris est
+      dit non révoqué, à retirer chez le serveur d'autorisation (`sending.rs`).

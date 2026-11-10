@@ -87,7 +87,8 @@ pub async fn revoke_all_by(
     let tasks = spawned(admin, tenant_id, by, revocations);
     // Waited for a while only: many tokens at a server that does not answer
     // go on being revoked, and audited, after the answer.
-    if let Ok(ended) = tokio::time::timeout(WAITED, futures::future::join_all(tasks)).await {
+    let ended = futures::future::join_all(tasks.into_iter().map(Sending::ended));
+    if let Ok(ended) = tokio::time::timeout(WAITED, ended).await {
         outcomes(ended);
     }
 }
@@ -101,7 +102,36 @@ pub async fn revoke_all_waited(
     revocations: Vec<Revocation>,
 ) -> Vec<RevocationOutcome> {
     let tasks = spawned(admin, tenant_id, by, revocations);
-    outcomes(futures::future::join_all(tasks).await)
+    outcomes(futures::future::join_all(tasks.into_iter().map(Sending::ended)).await)
+}
+
+/// Said of what a revocation that stopped before its outcome did not revoke.
+const STOPPED: &str = "La révocation s’est arrêtée avant son issue : retirez l’accord chez le \
+                       serveur d’autorisation";
+
+/// One connector's revocation under way, with what it took.
+struct Sending {
+    connector_id: Uuid,
+    company: bool,
+    persons: usize,
+    task: tokio::task::JoinHandle<RevocationOutcome>,
+}
+
+impl Sending {
+    /// Its outcome, or, if its task stopped, what it took said not revoked.
+    async fn ended(self) -> Result<RevocationOutcome, RevocationOutcome> {
+        let stopped = RevocationOutcome {
+            connector_id: self.connector_id,
+            company: self.company.then(|| Err(STOPPED.to_string())),
+            persons_revoked: 0,
+            persons_failed: self.persons,
+            persons_reason: (self.persons > 0).then(|| STOPPED.to_string()),
+        };
+        self.task.await.map_err(|error| {
+            tracing::error!(error = %error, "The revocation of a connector's tokens stopped");
+            stopped
+        })
+    }
 }
 
 /// One task per connector's revocation: the request may be abandoned (by a
@@ -111,10 +141,15 @@ fn spawned(
     tenant_id: Uuid,
     by: Option<Uuid>,
     revocations: Vec<Revocation>,
-) -> Vec<tokio::task::JoinHandle<RevocationOutcome>> {
+) -> Vec<Sending> {
     revocations
         .into_iter()
         .map(|revocation| {
+            let (connector_id, company, persons) = (
+                revocation.connector_id,
+                revocation.company_taken(),
+                revocation.persons_taken(),
+            );
             let revoking = Revoking {
                 db: admin.db.clone(),
                 secrets: admin.secrets.clone(),
@@ -123,25 +158,23 @@ fn spawned(
                 user_id: by,
                 revocation,
             };
-            tokio::spawn(revoking.run())
+            Sending {
+                connector_id,
+                company,
+                persons,
+                task: tokio::spawn(revoking.run()),
+            }
         })
         .collect()
 }
 
-/// The outcomes of the tasks that ended; one that stopped is logged.
-fn outcomes(
-    ended: Vec<Result<RevocationOutcome, tokio::task::JoinError>>,
-) -> Vec<RevocationOutcome> {
-    let mut outcomes = Vec::with_capacity(ended.len());
-    for task in ended {
-        match task {
-            Ok(outcome) => outcomes.push(outcome),
-            Err(error) => {
-                tracing::error!(error = %error, "The revocation of a connector's tokens stopped")
-            }
-        }
-    }
-    outcomes
+/// Each connector's outcome, a revocation that stopped included: what it
+/// took is said not revoked, so that it is withdrawn by hand.
+fn outcomes(ended: Vec<Result<RevocationOutcome, RevocationOutcome>>) -> Vec<RevocationOutcome> {
+    ended
+        .into_iter()
+        .map(|ended| ended.unwrap_or_else(|stopped| stopped))
+        .collect()
 }
 
 impl Revoking {
@@ -303,4 +336,27 @@ impl Revoking {
 /// A reason as the audit keeps it.
 fn bounded(reason: &str) -> String {
     reason.chars().take(300).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_revocation_that_stopped_says_what_it_took_was_not_revoked() {
+        let connector_id = Uuid::new_v4();
+        let sending = Sending {
+            connector_id,
+            company: true,
+            persons: 2,
+            task: tokio::spawn(async { panic!("stopped") }),
+        };
+        let told = outcomes(vec![sending.ended().await]);
+        assert_eq!(told.len(), 1);
+        let outcome = &told[0];
+        assert_eq!(outcome.connector_id, connector_id);
+        assert_eq!(outcome.company, Some(Err(STOPPED.to_string())));
+        assert_eq!((outcome.persons_revoked, outcome.persons_failed), (0, 2));
+        assert_eq!(outcome.persons_reason.as_deref(), Some(STOPPED));
+    }
 }
