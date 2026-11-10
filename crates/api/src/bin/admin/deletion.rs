@@ -28,7 +28,8 @@ pub async fn delete(slug: &str, confirm: Option<&str>) -> anyhow::Result<()> {
             if rows.to_release > 0 {
                 println!(
                     "Avant de la supprimer, retirez chez leurs fournisseurs ses autorisations \
-                     OAuth et ses bots Telegram, dans le service api :\n  \
+                     OAuth, ses bots Telegram et les comptes Google reliés, dans le service \
+                     api :\n  \
                      mimorya-admin release-company --slug {slug}"
                 );
             }
@@ -65,8 +66,9 @@ fn outside(rows: &CompanyRows) {
     }
     if rows.to_release > 0 {
         println!(
-            "Déclarés chez leurs fournisseurs (release-company y retire les autorisations OAuth \
-             et les bots Telegram ; le reste est à retirer là) :"
+            "Déclarés chez leurs fournisseurs (release-company y retire les autorisations \
+             OAuth, les bots Telegram et les comptes Google reliés ; le reste est à retirer \
+             là) :"
         );
     } else {
         println!("Restent déclarés chez leurs fournisseurs, à retirer là :");

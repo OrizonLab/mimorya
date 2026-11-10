@@ -238,4 +238,5 @@ fn only_google_revokes_one_grant_at_the_platform_s_request() {
     // ADR-194: Microsoft revokes no single application's grant.
     assert!(LinkKind::GoogleWorkspace.revokes());
     assert!(!M365.revokes());
+    assert_eq!(LinkKind::revoking_connector_types(), [GOOGLE_WORKSPACE]);
 }

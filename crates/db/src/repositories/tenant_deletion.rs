@@ -39,15 +39,25 @@ pub async fn living_work(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Resu
 
 /// What the company still holds of other services that the platform can
 /// withdraw there, as the operator's release does (ADR-193): its MCP
-/// servers' OAuth authorizations, the company's and its people's, and its
-/// Telegram bots, whose webhook the platform declared.
-pub async fn still_to_release(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Result<i64> {
+/// servers' OAuth authorizations, the company's and its people's, its
+/// Telegram bots, whose webhook the platform declared, and the accounts its
+/// people linked at a connector of one of `revoking_types`, whose provider
+/// revokes a grant (ADR-194).
+pub async fn still_to_release(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    revoking_types: &[&str],
+) -> sqlx::Result<i64> {
     sqlx::query_scalar(
         "select (select count(*) from connector_authorizations where tenant_id = $1) \
               + (select count(*) from connector_person_authorizations where tenant_id = $1) \
-              + (select count(*) from gateways where tenant_id = $1 and kind = 'telegram')",
+              + (select count(*) from gateways where tenant_id = $1 and kind = 'telegram') \
+              + (select count(*) from account_links l join connector_instances c \
+                   on c.tenant_id = l.tenant_id and c.id = l.connector_id \
+                 where l.tenant_id = $1 and c.type = any($2))",
     )
     .bind(tenant_id)
+    .bind(revoking_types)
     .fetch_one(conn)
     .await
 }

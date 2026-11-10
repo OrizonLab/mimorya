@@ -9,12 +9,15 @@
 //! log included, and tells every process to let go of what it keeps of it.
 //! What it held stays in the backups made before, until they are retired.
 //! What the platform declared for it at other services (its MCP servers'
-//! OAuth authorizations, its Telegram bots' webhooks) is withdrawn there
-//! first, by the release (ADR-193): a confirmed deletion is refused while
-//! any is left. What only its people or its own applications can withdraw
-//! (linked accounts, Slack and Teams) stays there, said to the operator.
+//! OAuth authorizations, its Telegram bots' webhooks, the grants of the
+//! accounts its people linked at Google) is withdrawn there first, by the
+//! release (ADR-193, ADR-194): a confirmed deletion is refused while any is
+//! left. What only its people or its own applications can withdraw (the
+//! accounts linked at Microsoft, which revokes no single grant, Slack and
+//! Teams) stays there, said to the operator.
 
 use mimorya_core::DomainError;
+use mimorya_core::account_links::LinkKind;
 use mimorya_db::repositories::tenant_deletion::{
     delete_tenant, living_work, lock_tenant_by_slug, still_to_release, tenant_rows,
 };
@@ -35,9 +38,10 @@ pub struct CompanyRows {
 
 /// What gives access at other services, granted for or by a company, by
 /// the table that keeps it. The release withdraws there its OAuth
-/// authorizations and its Telegram bots before any deletion (ADR-193); its
-/// linked accounts and its Slack and Teams applications stay there, to
-/// withdraw there. What it declared there without anyone's grant (clients
+/// authorizations, its Telegram bots and the grants of the accounts linked
+/// at Google before any deletion (ADR-193, ADR-194); the accounts linked at
+/// Microsoft and its Slack and Teams applications stay there, to withdraw
+/// there. What it declared there without anyone's grant (clients
 /// the platform registered, applications, identity providers) is not
 /// counted.
 const HELD_OUTSIDE: [(&str, &str); 4] = [
@@ -113,7 +117,8 @@ pub async fn delete_company(
     let rows = CompanyRows {
         tenant_id,
         tables: tenant_rows(&mut tx, tenant_id).await?,
-        to_release: still_to_release(&mut tx, tenant_id).await?,
+        to_release: still_to_release(&mut tx, tenant_id, &LinkKind::revoking_connector_types())
+            .await?,
     };
     match confirm.map(str::trim) {
         None => Ok(CompanyDeletion::Shown(rows)),
@@ -122,9 +127,9 @@ pub async fn delete_company(
         )
         .into()),
         Some(_) if rows.to_release > 0 => Err(DomainError::conflict(
-            "Des autorisations OAuth de ses serveurs MCP ou des bots Telegram sont encore \
-             déclarés chez leurs fournisseurs : mimorya-admin release-company --slug <sigle>, \
-             dans le service api, les y retire d’abord",
+            "Des autorisations OAuth de ses serveurs MCP, des bots Telegram ou des comptes \
+             Google reliés sont encore déclarés chez leurs fournisseurs : mimorya-admin \
+             release-company --slug <sigle>, dans le service api, les y retire d’abord",
         )
         .into()),
         Some(_) => {

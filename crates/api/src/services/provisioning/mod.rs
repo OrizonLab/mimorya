@@ -17,7 +17,9 @@ mod suspension;
 pub use company::{CreatedCompany, NewCompany, create_company};
 pub use deletion::{CompanyDeletion, CompanyRows, delete_company};
 pub use invitation::{OperatorInvitation, reinvite};
-pub use release::{BotReleased, Released, ServerReleased, release_company, release_company_with};
+pub use release::{
+    BotReleased, LinksReleased, Released, ServerReleased, release_company, release_company_with,
+};
 pub use suspension::{CompanyStatusChange, change_company_status};
 
 use mimorya_db::repositories::audit::AuditEntry;

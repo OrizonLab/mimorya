@@ -48,7 +48,7 @@ async fn a_google_link_removed_is_revoked_at_google_and_a_microsoft_one_is_not()
             "success".to_string(),
             Some(google.to_string()),
             None,
-            json!({ "revoked": 1, "failed": 0 }),
+            json!({ "revoked": 1, "kept": 0, "failed": 0 }),
         )]
     );
 
@@ -85,7 +85,7 @@ async fn a_grant_google_does_not_revoke_is_said_and_the_link_still_goes() {
     let removed = marc.delete(&format!("{LINKS}/{google}")).await;
     assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());
     assert_eq!(kept_refresh_token(&api, google, user::MARC).await, None);
-    let failed = json!({ "revoked": 0, "failed": 1 });
+    let failed = json!({ "revoked": 0, "kept": 0, "failed": 1 });
     assert_eq!(
         revocations(&api, since).await,
         [
@@ -152,7 +152,7 @@ async fn a_disabled_account_and_a_deleted_connector_revoke_their_google_grants()
             "success".to_string(),
             Some(google.to_string()),
             None,
-            json!({ "revoked": count, "failed": 0 }),
+            json!({ "revoked": count, "kept": 0, "failed": 0 }),
         )
     };
     assert_eq!(entries, [by_paul(1), by_paul(2)]);
@@ -194,7 +194,7 @@ async fn an_account_the_provider_disables_through_scim_has_its_google_grant_revo
             "success".to_string(),
             Some(google.to_string()),
             None,
-            json!({ "revoked": 1, "failed": 0 }),
+            json!({ "revoked": 1, "kept": 0, "failed": 0 }),
         )]
     );
     no_token_audited(&api).await;

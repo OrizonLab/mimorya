@@ -24,7 +24,7 @@ pub use access::PersonAccounts;
 pub use attempt::{LINK_COOKIE, cleared_link_cookie, link_cookie};
 pub use finish::{LinkFailure, LinkRefused};
 pub use renewal::ACCOUNT_LINK_REVOKED;
-pub use revocation::LinksLetGo;
+pub use revocation::{LinksLetGo, LinksOutcome};
 
 use std::sync::Arc;
 

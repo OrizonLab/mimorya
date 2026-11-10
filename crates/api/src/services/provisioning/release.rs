@@ -2,19 +2,19 @@
 //! by the operator before it is deleted (ADR-193), as its administration
 //! would: every OAuth authorization of its MCP servers, the company's and
 //! each person's, taken and revoked at the authorization server that
-//! granted it (RFC 7009, ADR-172, ADR-174), and each of its Telegram bots
-//! withdrawn, its webhook first (ADR-133). It runs where the master key is
-//! (the `api` service), with the application's role, in the company's
-//! transaction, its row locked: a reactivation or a deletion waits for it.
-//! Without the master key, it takes nothing. Audited in the company's log
-//! by the `system` actor, each bot as its removal is, never a token; how
-//! each went is told to the operator. What a server does not revoke stays granted
-//! there, to withdraw there; what was taken is gone here all the same.
-//! The accounts its people linked are not taken here yet, though their
-//! Google grants are revoked when a person removes one (ADR-194;
-//! Microsoft revokes none); its Slack and Teams applications are not the
-//! platform's to withdraw: they stay, as at a gateway's withdrawal
-//! (ADR-125).
+//! granted it (RFC 7009, ADR-172, ADR-174); each of its Telegram bots
+//! withdrawn, its webhook first (ADR-133); and the accounts its people
+//! linked at Google, their grants revoked there (ADR-194). It runs where
+//! the master key is (the `api` service), with the application's role, in
+//! the company's transaction, its row locked: a reactivation or a deletion
+//! waits for it. Without the master key, it takes nothing. Audited in the
+//! company's log by the `system` actor, each bot as its removal is, never
+//! a token; how each went is told to the operator. What a provider does
+//! not revoke stays granted there, to withdraw there; what was taken is
+//! gone here all the same. The accounts linked at Microsoft, which revokes
+//! no single grant, and its Slack and Teams applications are not the
+//! platform's to withdraw: they stay, as at a person's withdrawal (ADR-116)
+//! or a gateway's (ADR-125).
 
 use std::sync::Arc;
 
@@ -54,6 +54,18 @@ pub struct ServerReleased {
     pub persons_reason: Option<String>,
 }
 
+/// How the grants of the accounts linked at a connector went (ADR-194).
+#[derive(Debug)]
+pub struct LinksReleased {
+    pub name: String,
+    pub revoked: usize,
+    /// Not sent: linked again meanwhile, its link still here.
+    pub kept: usize,
+    pub failed: usize,
+    /// Why the first was not revoked, if one was not.
+    pub reason: Option<String>,
+}
+
 /// How a Telegram bot's webhook went: withdrawn, or why not.
 #[derive(Debug)]
 pub struct BotReleased {
@@ -67,6 +79,7 @@ pub struct Released {
     pub tenant_id: Uuid,
     pub servers: Vec<ServerReleased>,
     pub bots: Vec<BotReleased>,
+    pub links: Vec<LinksReleased>,
 }
 
 /// Releases the company whose slug is `slug`, with what a running
@@ -159,6 +172,9 @@ async fn release(
     let revocations = take_company_authorizations(&mut tx, admin, tenant_id).await?;
     let company = revocations.iter().filter(|r| r.company_taken()).count();
     let persons: usize = revocations.iter().map(|r| r.persons_taken()).sum();
+    // The accounts its people linked at Google: their grants revoked there.
+    let links = admin.account_links.take_company_links(&mut tx).await?;
+    let linked: usize = links.iter().map(|links| links.count()).sum();
     let mut bots = Vec::new();
     for listed in list_gateways(&mut tx).await? {
         if GatewayKind::of(&listed.kind) != Some(GatewayKind::Telegram) {
@@ -196,12 +212,16 @@ async fn release(
         "companyAuthorizations": company,
         "personAuthorizations": persons,
         "telegramBots": bots.len(),
+        "accountLinks": linked,
     }));
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
 
     // Sent once nothing is held, each within its bound, every one waited for.
-    let outcomes = revoke_all_waited(admin, tenant_id, None, revocations).await;
+    let (outcomes, linked) = futures::join!(
+        revoke_all_waited(admin, tenant_id, None, revocations),
+        admin.account_links.revoke_waited(tenant_id, None, links),
+    );
     let named = |id: Uuid| {
         names
             .iter()
@@ -218,9 +238,20 @@ async fn release(
             persons_reason: outcome.persons_reason,
         })
         .collect();
+    let links = linked
+        .into_iter()
+        .map(|outcome| LinksReleased {
+            name: named(outcome.connector_id),
+            revoked: outcome.revoked,
+            kept: outcome.kept,
+            failed: outcome.failed,
+            reason: outcome.reason,
+        })
+        .collect();
     Ok(Released {
         tenant_id,
         servers,
         bots,
+        links,
     })
 }

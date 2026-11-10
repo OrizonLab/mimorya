@@ -136,10 +136,12 @@ Gardez sa sortie : le journal d'audit de l'entreprise part avec elle, et ses sau
 gardent jusqu'à leur retrait (après une restauration, supprimez-la de nouveau). Avant elle,
 `release-company`, dans le service `api` qui a la clé maître
 (`docker compose exec api mimorya-admin release-company --slug acme`), révoque chez leur
-serveur d'autorisation les autorisations OAuth de ses serveurs MCP et retire ses bots
-Telegram avec leur webhook ; la suppression est refusée tant qu'il en reste. Elle dit ce
-qui reste chez d'autres services (comptes reliés par ses personnes, applications Slack et
-Teams) : à retirer chez chacun. Le journal d'audit de chaque
+serveur d'autorisation les autorisations OAuth de ses serveurs MCP, retire ses bots
+Telegram avec leur webhook et révoque chez Google les accords des comptes Google Workspace
+reliés par ses personnes (ADR-194) ; la suppression est refusée tant qu'il en reste. Elle
+dit ce qui reste chez d'autres services (comptes Microsoft 365 reliés, dont Microsoft ne
+révoque pas l'accord d'une seule application, applications Slack et Teams) : à retirer chez
+chacun. Le journal d'audit de chaque
 entreprise est scellé chaque minute sous une clé qui en dérive. Le dernier sceau posé dans
 chaque entreprise à chaque passage, et celui trouvé au démarrage, sont journalisés au
 niveau `info` (`LOG_LEVEL=info`, par défaut) avec leur ancre toute écrite (`Audit log

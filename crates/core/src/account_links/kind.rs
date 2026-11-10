@@ -64,6 +64,16 @@ impl LinkKind {
         }
     }
 
+    /// The connector types whose provider revokes a grant: the links a
+    /// company's release takes (ADR-194).
+    pub fn revoking_connector_types() -> Vec<&'static str> {
+        Self::ALL
+            .into_iter()
+            .filter(|kind| kind.revokes())
+            .map(Self::connector_type)
+            .collect()
+    }
+
     /// What every link asks besides `openid`: the person's address, and for
     /// Microsoft the refresh token.
     fn identity(self) -> &'static [&'static str] {

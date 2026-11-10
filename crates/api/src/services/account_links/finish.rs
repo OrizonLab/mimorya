@@ -5,7 +5,10 @@
 //! token is then sealed for this company,
 //! connector and person, and kept in their link. Every refusal says why,
 //! for the audit; the browser learns only whether another account was
-//! chosen.
+//! chosen. A return refused once its code was redeemed leaves a grant no
+//! link keeps: revoked where the provider revokes one (ADR-194).
+
+use std::sync::Arc;
 
 use chrono::Utc;
 use mimorya_core::account_links::{LinkKind, LinkRefusal, sealed_as};
@@ -64,7 +67,7 @@ type Outcome<T> = Result<T, LinkFailure>;
 
 impl AccountLinkService {
     pub async fn finish(
-        &self,
+        self: &Arc<Self>,
         access: &AccessContext,
         back: Return,
         cookie: Option<&str>,
@@ -107,29 +110,46 @@ impl AccountLinkService {
         )
         .await
         .map_err(|failure| at(&failure))?;
-        let claims = verify(metadata, &application, &granted.id_token, &attempt.nonce)
-            .map_err(|unverified| at(&unverified.failure()))?;
-        let identity = app
-            .kind
-            .linked_identity(&token_claims(&claims), &access.profile.email)
-            .map_err(|refusal| match refusal {
-                LinkRefusal::Unidentified => at(unidentified(app.kind)),
-                LinkRefusal::NotTheirs => LinkFailure {
-                    refused: LinkRefused::OtherAccount,
-                    ..at(&format!(
-                        "Compte {} d’une autre adresse",
-                        app.kind.provider()
-                    ))
-                },
-            })?;
-        self.keep(
-            access,
-            connector_id,
-            &identity.subject,
-            &identity.address,
-            &granted,
-        )
-        .await
+        let verified = verify(metadata, &application, &granted.id_token, &attempt.nonce);
+        // The account the grant is of, if its token proves it.
+        let subject = (verified.as_ref().ok()).map(|claims| claims.subject().to_string());
+        let kept: Outcome<()> = async {
+            let claims = verified.map_err(|unverified| at(&unverified.failure()))?;
+            let identity = app
+                .kind
+                .linked_identity(&token_claims(&claims), &access.profile.email)
+                .map_err(|refusal| match refusal {
+                    LinkRefusal::Unidentified => at(unidentified(app.kind)),
+                    LinkRefusal::NotTheirs => LinkFailure {
+                        refused: LinkRefused::OtherAccount,
+                        ..at(&format!(
+                            "Compte {} d’une autre adresse",
+                            app.kind.provider()
+                        ))
+                    },
+                })?;
+            self.keep(
+                access,
+                connector_id,
+                &identity.subject,
+                &identity.address,
+                &granted,
+            )
+            .await
+        }
+        .await;
+        if kept.is_err() {
+            // Granted at the provider, kept by no link: revoked there,
+            // unless the person has a link to the same account at the
+            // connector already, which the same grant serves (ADR-194).
+            let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
+            let fresh = granted.refresh_token.clone();
+            let let_go = self.refused_return(&app, connector_id, user_id, subject, fresh);
+            if let Some(let_go) = let_go {
+                self.revoke(tenant_id, Some(user_id), vec![let_go]).await;
+            }
+        }
+        kept
     }
 
     /// The attempt the browser kept, if it is the signed-in person's own.
