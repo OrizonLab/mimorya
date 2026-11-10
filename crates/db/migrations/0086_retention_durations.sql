@@ -203,6 +203,9 @@ AS $$
                  WHERE e.tenant_id = h.tenant_id
                    AND e.kind = 'episode'
                    AND e.created_at < h.episodes_before
+                 -- Kept a read of its own per company, never flattened
+                 -- into a join the planner may scan whole.
+                OFFSET 0
               ) old) aged_out
      WHERE m.tenant_id = aged_out.tenant_id
        AND m.id = aged_out.id
@@ -286,8 +289,11 @@ AS $$
      LIMIT least(greatest(p_batch, 1), 500)
   ),
   -- Those alone locked, as they were chosen: a conversation a turn holds
-  -- is skipped; one a turn moved meanwhile is read again, found recent and
-  -- left.
+  -- is skipped; one a turn moved meanwhile (its message moves `updated_at`)
+  -- is read again under the lock against its horizon, found recent and
+  -- left. The runs are read as the statement began, as before. One skipped
+  -- or left is not replaced: the batch comes back short, and the next pass
+  -- takes what remains.
   chosen AS (
     SELECT c.tenant_id, c.id
       FROM conversations c

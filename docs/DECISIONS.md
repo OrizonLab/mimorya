@@ -13403,6 +13403,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         celles d'une autre ; l'épisode d'un compte parti est compté une fois, `aged` ;
       - une conversation reste aussitôt qu'une entreprise allonge sa durée, et part
         selon la durée de son entreprise une semaine après un raccourcissement ;
+      - un lot emporte les plus anciennes de toutes les entreprises, jamais un lot par
+        entreprise ;
       - l'application ne peut ni dater un changement, ni écrire ce qui s'appliquait
         avant, ni retirer une durée, ni lire les horizons, ni sortir des bornes, ni
         écrire pour une autre entreprise, ni changer la sorte d'une durée ;
