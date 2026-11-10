@@ -46,15 +46,15 @@ async fn suspended_with_a_bot(api: &TestApi, owner: &PgPool, slug: &str) -> (Uui
     (created.tenant_id, bot)
 }
 
-/// Another command's transaction, holding the company's row and doing
-/// `statement` to it, uncommitted.
+/// Another command's transaction, doing `statements` to the company's row,
+/// uncommitted: holding it with the locks they take, and no other.
 async fn holding(
     owner: &PgPool,
     tenant_id: Uuid,
-    statement: &str,
+    statements: &[&str],
 ) -> sqlx::Transaction<'static, sqlx::Postgres> {
     let mut other = owner.begin().await.unwrap();
-    for statement in ["select id from tenants where id = $1 for update", statement] {
+    for statement in statements {
         sqlx::query(statement)
             .bind(tenant_id)
             .execute(&mut *other)
@@ -105,10 +105,12 @@ async fn a_company_reactivated_meanwhile_is_not_released() {
     let owner = owner().await;
     let (tenant_id, _) = suspended_with_a_bot(&api, &owner, SLUG).await;
 
+    // As a reactivation does: its conditional update alone, which takes no
+    // more than a no key update lock on the row.
     let other = holding(
         &owner,
         tenant_id,
-        "update tenants set status = 'active' where id = $1",
+        &["update tenants set status = 'active' where id = $1 and status = 'suspended'"],
     )
     .await;
     let release = releasing(&api, SLUG).await;
@@ -137,7 +139,16 @@ async fn a_company_deleted_meanwhile_is_not_found() {
     let owner = owner().await;
     let (tenant_id, _) = suspended_with_a_bot(&api, &owner, SLUG).await;
 
-    let deletion = holding(&owner, tenant_id, "delete from tenants where id = $1").await;
+    // As the operator's deletion does: the row locked, then deleted.
+    let deletion = holding(
+        &owner,
+        tenant_id,
+        &[
+            "select id from tenants where id = $1 for update",
+            "delete from tenants where id = $1",
+        ],
+    )
+    .await;
     let release = releasing(&api, SLUG).await;
     assert!(named_waits(&owner, RELEASE).await);
     deletion.commit().await.unwrap();

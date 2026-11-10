@@ -2,7 +2,7 @@
 //! by the operator before it is deleted (ADR-193): every OAuth
 //! authorization of its MCP servers, the company's and its people's,
 //! revoked at the authorization server that granted it, and its Telegram
-//! bot withdrawn with its webhook; its Slack application stays. An active
+//! bot withdrawn with its webhook; its Slack and Teams applications stay. An active
 //! company keeps them; without the master key, nothing is taken; its
 //! deletion is refused while they are declared. Audited by the `system`
 //! actor, never with a token; a second release finds nothing.
@@ -108,14 +108,18 @@ async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services()
         .await
         .unwrap();
     let owner = owner().await;
-    // Its Slack application lives in its own workspace: nothing of it is
-    // the platform's to withdraw, nor does it hold the deletion back.
-    let slack: uuid::Uuid = sqlx::query_scalar(
+    // Its Slack and Teams applications live in its own workspace: nothing
+    // of them is the platform's to withdraw, nor do they hold the deletion
+    // back.
+    let applications: Vec<uuid::Uuid> = sqlx::query_scalar(
         "insert into gateways (tenant_id, kind, name, workspace_id, workspace_name, bot_user_id) \
-         values ($1, 'slack', 'Slack Néo', 'T0LIBRE', 'Néo', 'U0LIBRE') returning id",
+         values ($1, 'slack', 'Slack Néo', 'T0LIBRE', 'Néo', 'U0LIBRE'), \
+                ($1, 'teams', 'Teams Néo', '11111111-2222-4333-8444-555555555555', \
+                 '11111111-2222-4333-8444-555555555555', '66666666-7777-4888-9999-000000000000') \
+         returning id",
     )
     .bind(tenant::ID)
-    .fetch_one(&owner)
+    .fetch_all(&owner)
     .await
     .unwrap();
     let CompanyDeletion::Shown(shown) = delete_company(&owner, tenant::SLUG, None).await.unwrap()
@@ -191,14 +195,17 @@ async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services()
         panic!("deleted without its slug confirmed");
     };
     assert_eq!(shown.to_release, 0);
-    // The Slack application stays, untouched.
-    let gateways: Vec<uuid::Uuid> =
+    // The Slack and Teams applications stay, untouched.
+    let mut gateways: Vec<uuid::Uuid> =
         sqlx::query_scalar("select id from gateways where tenant_id = $1")
             .bind(tenant::ID)
             .fetch_all(&owner)
             .await
             .unwrap();
-    assert_eq!(gateways, [slack]);
+    gateways.sort();
+    let mut kept = applications.clone();
+    kept.sort();
+    assert_eq!(gateways, kept);
     // Audited by the platform, never with a token: the bot as its removal is.
     let bot = bot_entries(&api).await;
     assert_eq!(bot.len(), 1);
@@ -222,8 +229,8 @@ async fn a_suspended_company_s_grants_and_bots_are_withdrawn_at_their_services()
     change(&api, tenant::SLUG, CompanyStatusChange::Reactivate)
         .await
         .unwrap();
-    sqlx::query("delete from gateways where id = $1")
-        .bind(slack)
+    sqlx::query("delete from gateways where id = any($1)")
+        .bind(&applications)
         .execute(&owner)
         .await
         .unwrap();
