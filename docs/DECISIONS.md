@@ -12971,8 +12971,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     suppression est refusée. Elle est refusée aussi tant qu'un run de l'entreprise est
     en file ou en cours (il s'arrête à sa prochaine étape) ou qu'une évaluation de ses
     compétences se joue (une évaluation laissée en cours par un processus arrêté est
-    reprise, même pour une entreprise suspendue) ; un run qui attend une décision ou une
-    évaluation en file part avec elle ;
+    mise en échec par la passe suivante, même pour une entreprise suspendue, et serait à
+    redemander) ; un run qui attend une décision ou une évaluation en file part avec
+    elle ;
   - **sans `--confirm`, rien n'est supprimé** : la commande montre ce que l'entreprise
     garde, table par table, avec le total, et ce qu'elle a déclaré chez d'autres services. Avec `--confirm` égal à son sigle, elle la
     supprime en une transaction, avec chaque ligne de chaque table qui la nomme, son
@@ -12995,7 +12996,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     passerelles de conversation, sans les révoquer chez leur serveur d'autorisation ni
     retirer le webhook de son bot Telegram : la commande passe par le seul rôle
     propriétaire, sans la clé maître qui ouvre leurs jetons. Elle dit combien il y en a,
-    à retirer chez chaque fournisseur ; leur révocation à la suppression est à venir.
+    à retirer chez chaque fournisseur ; leur révocation à la suppression est à venir. Les
+    clients OAuth que la plateforme a enregistrés, les applications et les fournisseurs
+    d'identité déclarés par l'entreprise y restent aussi : ils ne portent l'accord de
+    personne, et la commande ne les compte pas.
 - **Conséquences** :
   - une entreprise peut quitter la plateforme sans qu'il reste d'elle, sur la plateforme,
     autre chose que ses sauvegardes ; ce qu'elle a déclaré chez d'autres services est
@@ -13013,8 +13017,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       de ligne d'elle, sa session et sa connexion sont refusées, chaque processus est
       prévenu, et une autre entreprise garde chacune de ses lignes ;
     - `crates/api/tests/company_deletion_refusals.rs` : un sigle inconnu, une entreprise
-      active, un run en cours ou en file, un sigle confirmé qui n'est pas le sien sont
-      refusés sans rien supprimer ; un run qui attend une décision ne retient rien ;
+      active, un run en cours ou en file, une évaluation en cours, un sigle confirmé qui
+      n'est pas le sien sont refusés sans rien supprimer ; un run qui attend une décision
+      et une évaluation en file ne retiennent rien ;
     - `crates/api/tests/company_deletion_race.rs` : une suppression qui attend la ligne
       qu'une autre commande réactive lit l'entreprise active et est refusée, sans rien
       supprimer ;

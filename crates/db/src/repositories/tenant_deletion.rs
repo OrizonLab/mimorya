@@ -23,8 +23,8 @@ pub async fn lock_tenant_by_slug(
 
 /// The company's work still under way: its runs queued or running, and
 /// its skill evaluations being played (one left running by a stopped
-/// process is played again, wherever; queued ones of a suspended company
-/// wait and go with it).
+/// process is failed by the next pass, even for a suspended company;
+/// queued ones of a suspended company wait, and go with it).
 pub async fn living_work(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Result<i64> {
     sqlx::query_scalar(
         "select (select count(*) from agent_runs \

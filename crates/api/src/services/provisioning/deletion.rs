@@ -28,8 +28,10 @@ pub struct CompanyRows {
     pub tables: Vec<(String, i64)>,
 }
 
-/// What a company declares at other services, by the table that keeps it:
-/// deleting the company forgets it here, not there.
+/// What gives access at other services, granted for or by a company, by
+/// the table that keeps it: deleting the company forgets it here, not
+/// there. What it declared there without anyone's grant (clients the
+/// platform registered, applications, identity providers) is not counted.
 const HELD_OUTSIDE: [(&str, &str); 4] = [
     (
         "connector_authorizations",

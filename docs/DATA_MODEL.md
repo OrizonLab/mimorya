@@ -215,7 +215,8 @@ utilisateur).
 ## 4. Isolation et rôles PostgreSQL
 
 - Rôle **propriétaire** (`DATABASE_URL`) : exécute les migrations (`mimorya-admin migrate`,
-  ADR-033) et le seed de démonstration.
+  ADR-033), le seed de démonstration et la suppression d'une entreprise suspendue par
+  l'exploitant (`mimorya-admin delete-company`, ADR-192).
 - Rôle **applicatif** `mimorya_app` (`DATABASE_APP_URL`) : `NOSUPERUSER NOBYPASSRLS`,
   non propriétaire ; droits DML sur les tables, avec ces restrictions :
   - `audit_log` : **`INSERT`/`SELECT` seulement**, l'`INSERT` limité aux colonnes du
