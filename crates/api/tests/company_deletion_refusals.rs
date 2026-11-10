@@ -1,17 +1,22 @@
 //! What the operator's deletion of a company refuses (ADR-192), deleting
 //! nothing: an unknown slug; a company that is not suspended; a run of it
 //! still queued or under way, which stops at its next step; an evaluation
-//! of its skills being played; a confirmation that is not its slug. Once
-//! nothing stands in the way, confirmed, the company goes, with a run
-//! awaiting a decision and an evaluation still queued.
+//! of its skills being played; a confirmation that is not its slug; what
+//! the platform declared for it at other services, not yet withdrawn by the
+//! release (ADR-193). Once nothing stands in the way, confirmed, the
+//! company goes, with a run awaiting a decision and an evaluation still
+//! queued.
 
 mod support;
 
-use mimorya_api::services::provisioning::{CompanyDeletion, CompanyStatusChange, delete_company};
+use mimorya_api::services::provisioning::{
+    CompanyDeletion, CompanyStatusChange, delete_company, release_company,
+};
 use mimorya_core::{DomainError, ErrorCode};
 use sqlx::PgPool;
 use support::TestApi;
 use support::companies::{create, rows_of};
+use support::llm;
 use support::personal_belongings::{belongings, company_parts};
 use support::retention::owner;
 use support::suspension::change;
@@ -61,7 +66,8 @@ async fn set_evaluation(owner: &PgPool, evaluation: uuid::Uuid, status: &str) {
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn only_a_suspended_company_without_a_living_run_goes_once_confirmed() {
-    let api = TestApi::start().await;
+    // The master key: the release takes nothing without it (ADR-193).
+    let api = TestApi::start_with(&[("MIMORYA_MASTER_KEY", llm::MASTER_KEY)]).await;
     let owner = owner().await;
     let created = create(&api, SLUG, "jeanne.martin@acme-refusee.example").await;
     let parts = company_parts(created.tenant_id, "refus", 3001).await;
@@ -112,6 +118,17 @@ async fn only_a_suspended_company_without_a_living_run_goes_once_confirmed() {
     let mistyped = refused(&owner, SLUG, Some("acme")).await;
     assert_eq!(mistyped.code, ErrorCode::Validation);
     assert_eq!(rows_of(&owner, created.tenant_id).await, suspended);
+
+    // Its person's authorization and its bot are still declared there.
+    let declared = refused(&owner, SLUG, Some(SLUG)).await;
+    assert_eq!(declared.code, ErrorCode::Conflict);
+    assert!(
+        declared.message.contains("release-company"),
+        "{}",
+        declared.message
+    );
+    assert_eq!(rows_of(&owner, created.tenant_id).await, suspended);
+    release_company(&api.app.services, SLUG).await.unwrap();
 
     // A run awaiting a decision and a queued evaluation stop nothing: they
     // go with their company.

@@ -9,9 +9,11 @@
 # administrator opens the invitation link, chooses a password and gets a
 # secure session in a company that is not a demo; the operator suspends the
 # company, whose session is refused at once, then reactivates it, whose
-# session is accepted again (ADR-191); suspended again, the company is shown,
-# then deleted as the database's owner through the `migrate` service, its
-# administrator no longer let in and nothing of it left (ADR-192).
+# session is accepted again (ADR-191); suspended again, what the platform
+# declared for it at other services is withdrawn by the `api` service, which
+# holds the master key (ADR-193), then the company is shown, then deleted as
+# the database's owner through the `migrate` service, its administrator no
+# longer let in and nothing of it left (ADR-192).
 #
 # It creates and deletes a company: for a stack thrown away afterwards only
 # (the CI's), hence DISPOSABLE_STACK=yes. The
@@ -74,11 +76,16 @@ reactivated=$("${compose[@]}" exec -T api mimorya-admin reactivate-company --slu
   fail "company not reactivated: $reactivated"
 check_company_of "$base" "$session" 'Entreprise de vérification'
 
-# The company deleted (ADR-192): suspended first, shown without its slug
-# confirmed (nothing deleted), then deleted as the database's owner, the
-# only role that may, through the service that holds its address.
+# The company deleted (ADR-192): suspended first, released (ADR-193: it
+# declared nothing at other services), shown without its slug confirmed
+# (nothing deleted), then deleted as the database's owner, the only role
+# that may, through the service that holds its address.
 "${compose[@]}" exec -T api mimorya-admin suspend-company --slug "$slug" >/dev/null ||
   fail "company not suspended before its deletion"
+released=$("${compose[@]}" exec -T api mimorya-admin release-company --slug "$slug") ||
+  fail "company not released: $released"
+grep -q 'rien n’était déclaré pour elle' <<<"$released" ||
+  fail "the release found something to withdraw: $released"
 shown=$("${compose[@]}" run --rm --no-deps migrate mimorya-admin delete-company --slug "$slug") ||
   fail "company not shown: $shown"
 grep -q 'Rien n’a été supprimé' <<<"$shown" || fail "deleted without its slug confirmed: $shown"

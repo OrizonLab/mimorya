@@ -34,6 +34,16 @@ pub async fn tenant_status(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Op
         .await
 }
 
+/// The company's status, its row locked until the end of the transaction:
+/// a change of its status, or its deletion, waits for it (ADR-193). Not
+/// the rows that name it: a key share, as each of them takes, goes on.
+pub async fn lock_tenant_status(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Option<String>> {
+    sqlx::query_scalar("select status from tenants where id = $1 for no key update")
+        .bind(id)
+        .fetch_optional(conn)
+        .await
+}
+
 /// The company's slug, as its operator knows it.
 pub async fn tenant_slug(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<Option<String>> {
     sqlx::query_scalar("select slug from tenants where id = $1")

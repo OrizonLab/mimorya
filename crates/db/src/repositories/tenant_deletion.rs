@@ -37,6 +37,21 @@ pub async fn living_work(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Resu
     .await
 }
 
+/// What the company still holds of other services that the platform can
+/// withdraw there, as the operator's release does (ADR-193): its MCP
+/// servers' OAuth authorizations, the company's and its people's, and its
+/// Telegram bots, whose webhook the platform declared.
+pub async fn still_to_release(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Result<i64> {
+    sqlx::query_scalar(
+        "select (select count(*) from connector_authorizations where tenant_id = $1) \
+              + (select count(*) from connector_person_authorizations where tenant_id = $1) \
+              + (select count(*) from gateways where tenant_id = $1 and kind = 'telegram')",
+    )
+    .bind(tenant_id)
+    .fetch_one(conn)
+    .await
+}
+
 /// The tables that name a company, as the catalog lists them.
 async fn tenant_tables(conn: &mut PgConnection) -> sqlx::Result<Vec<String>> {
     sqlx::query_scalar(

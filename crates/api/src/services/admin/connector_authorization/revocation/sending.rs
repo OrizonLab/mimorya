@@ -2,7 +2,9 @@
 //! their own, once the withdrawal is committed: the company's authorization
 //! audited as one as soon as it is sent, the people's (ADR-174) four at a
 //! time and audited together, how many were revoked and how many not, never
-//! who nor a token.
+//! who nor a token. A request waits for them a while; the operator's
+//! release of a company (ADR-193) waits for every one, and says how each
+//! went.
 
 use futures::StreamExt;
 use mimorya_connectors::mcp::oauth::{ClientAuth, NO_REVOCATION_ENDPOINT, OAuthDeclaration};
@@ -44,6 +46,18 @@ struct Revoking {
     revocation: Revocation,
 }
 
+/// How the revocation of one connector's authorizations went: the
+/// company's, if it was taken, and the people's, counted, with the first
+/// reason one was not revoked. Never a token.
+#[derive(Debug)]
+pub struct RevocationOutcome {
+    pub connector_id: Uuid,
+    pub company: Option<Result<(), String>>,
+    pub persons_revoked: usize,
+    pub persons_failed: usize,
+    pub persons_reason: Option<String>,
+}
+
 /// Asks the authorization server to revoke what was taken, once the
 /// withdrawal is committed, and audits how it went, never a token. Never
 /// fails: the withdrawal stands whatever happens.
@@ -70,9 +84,35 @@ pub async fn revoke_all_by(
     by: Option<Uuid>,
     revocations: Vec<Revocation>,
 ) {
-    // Tasks of their own: the request may be abandoned (by a person, or by
-    // the identity provider through SCIM), not the revocation.
-    let tasks: Vec<_> = revocations
+    let tasks = spawned(admin, tenant_id, by, revocations);
+    // Waited for a while only: many tokens at a server that does not answer
+    // go on being revoked, and audited, after the answer.
+    if let Ok(ended) = tokio::time::timeout(WAITED, futures::future::join_all(tasks)).await {
+        outcomes(ended);
+    }
+}
+
+/// `revoke_all_by`, waited for until every revocation has ended, each
+/// within its bound: how each connector's went.
+pub async fn revoke_all_waited(
+    admin: &ConnectorAdmin<'_>,
+    tenant_id: Uuid,
+    by: Option<Uuid>,
+    revocations: Vec<Revocation>,
+) -> Vec<RevocationOutcome> {
+    let tasks = spawned(admin, tenant_id, by, revocations);
+    outcomes(futures::future::join_all(tasks).await)
+}
+
+/// One task per connector's revocation: the request may be abandoned (by a
+/// person, or by the identity provider through SCIM), not the revocation.
+fn spawned(
+    admin: &ConnectorAdmin<'_>,
+    tenant_id: Uuid,
+    by: Option<Uuid>,
+    revocations: Vec<Revocation>,
+) -> Vec<tokio::task::JoinHandle<RevocationOutcome>> {
+    revocations
         .into_iter()
         .map(|revocation| {
             let revoking = Revoking {
@@ -85,19 +125,35 @@ pub async fn revoke_all_by(
             };
             tokio::spawn(revoking.run())
         })
-        .collect();
-    // Waited for a while only: many tokens at a server that does not answer
-    // go on being revoked, and audited, after the answer.
-    if let Ok(ended) = tokio::time::timeout(WAITED, futures::future::join_all(tasks)).await {
-        for error in ended.into_iter().filter_map(Result::err) {
-            tracing::error!(error = %error, "The revocation of a connector's tokens stopped");
+        .collect()
+}
+
+/// The outcomes of the tasks that ended; one that stopped is logged.
+fn outcomes(
+    ended: Vec<Result<RevocationOutcome, tokio::task::JoinError>>,
+) -> Vec<RevocationOutcome> {
+    let mut outcomes = Vec::with_capacity(ended.len());
+    for task in ended {
+        match task {
+            Ok(outcome) => outcomes.push(outcome),
+            Err(error) => {
+                tracing::error!(error = %error, "The revocation of a connector's tokens stopped")
+            }
         }
     }
+    outcomes
 }
 
 impl Revoking {
-    async fn run(self) {
+    async fn run(self) -> RevocationOutcome {
         let id = self.revocation.connector_id;
+        let mut outcome = RevocationOutcome {
+            connector_id: id,
+            company: None,
+            persons_revoked: 0,
+            persons_failed: 0,
+            persons_reason: None,
+        };
         let entry = |action: &'static str, outcome: &'static str| {
             let entry = match self.user_id {
                 Some(user_id) => {
@@ -111,11 +167,13 @@ impl Revoking {
         // people's then take.
         if let Some(company) = &self.revocation.company {
             let names = (access_sealed_as(id), refresh_sealed_as(id));
-            self.audit(match self.send(company, names).await {
+            let sent = self.send(company, names).await;
+            self.audit(match &sent {
                 Ok(()) => entry(AUTHORIZATION_REVOKED, "success"),
-                Err(reason) => entry(AUTHORIZATION_REVOKED, "failure").reason(bounded(&reason)),
+                Err(reason) => entry(AUTHORIZATION_REVOKED, "failure").reason(bounded(reason)),
             })
             .await;
+            outcome.company = Some(sent.map_err(|reason| bounded(&reason)));
         }
         if !self.revocation.persons.is_empty() {
             // The futures made first: a stream's own `map` would ask more of
@@ -144,7 +202,11 @@ impl Revoking {
                     .metadata(counts),
             })
             .await;
+            outcome.persons_revoked = revoked;
+            outcome.persons_failed = failures.len();
+            outcome.persons_reason = failures.first().map(|reason| bounded(reason));
         }
+        outcome
     }
 
     /// Writes `entry`; a failure is logged, never the token.

@@ -25,6 +25,13 @@ pub async fn delete(slug: &str, confirm: Option<&str>) -> anyhow::Result<()> {
             );
             println!("{}", held(&rows));
             outside(&rows);
+            if rows.to_release > 0 {
+                println!(
+                    "Avant de la supprimer, retirez chez leurs fournisseurs ses autorisations \
+                     OAuth et ses bots Telegram, dans le service api :\n  \
+                     mimorya-admin release-company --slug {slug}"
+                );
+            }
             println!(
                 "Rien n’a été supprimé. Pour la supprimer avec tout ce qu’elle garde, son \
                  journal d’audit compris, sans retour :\n  mimorya-admin delete-company \
@@ -48,14 +55,22 @@ pub async fn delete(slug: &str, confirm: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// What the company declared at other services, which its deletion does not
-/// withdraw there, said when there is any.
+/// What the company declared at other services, said when there is any:
+/// before the release, what it withdraws there is among it; after, what
+/// stays there is to withdraw there.
 fn outside(rows: &CompanyRows) {
     let held = rows.held_outside();
     if held.is_empty() {
         return;
     }
-    println!("Restent déclarés chez leurs fournisseurs, à retirer là :");
+    if rows.to_release > 0 {
+        println!(
+            "Déclarés chez leurs fournisseurs (release-company y retire les autorisations OAuth \
+             et les bots Telegram ; le reste est à retirer là) :"
+        );
+    } else {
+        println!("Restent déclarés chez leurs fournisseurs, à retirer là :");
+    }
     for (what, count) in held {
         println!("  {what} : {count}");
     }
@@ -86,6 +101,7 @@ mod tests {
         let rows = CompanyRows {
             tenant_id: Uuid::nil(),
             tables: vec![("audit_log".into(), 12), ("users".into(), 3)],
+            to_release: 0,
         };
         assert_eq!(
             held(&rows),

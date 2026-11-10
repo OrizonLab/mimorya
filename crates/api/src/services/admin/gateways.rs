@@ -16,8 +16,7 @@ use mimorya_core::gateways::slack::{bot_token, signing_secret, slack_application
 use mimorya_core::gateways::{GatewayKind, gateway_name};
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::gateways::{
-    GatewayPatch, NewGateway, create_gateway, delete_gateway, get_gateway, lock_gateway,
-    update_gateway,
+    GatewayPatch, NewGateway, create_gateway, get_gateway, lock_gateway, update_gateway,
 };
 use mimorya_db::{TenantTx, is_unique_violation};
 use serde_json::{Map, Value, json};
@@ -25,14 +24,12 @@ use uuid::Uuid;
 
 use super::connectors::PERMISSION;
 use super::gateway_check::{application_of, other_workspace, scopes_metadata};
+use super::gateway_withdrawal::withdraw_gateway;
 use super::teams_gateway::change_teams_gateway;
 use super::telegram_gateway::change_telegram_gateway;
 use super::{audit_entry, begin_change};
-use crate::secrets::SecretRead;
 use crate::services::AccessContext;
-use crate::services::gateways::{
-    GatewayService, bot_token_name, client_secret_name, signing_secret_name, webhook_secret_name,
-};
+use crate::services::gateways::{GatewayService, bot_token_name, signing_secret_name};
 
 const NOT_FOUND: &str = "Passerelle introuvable";
 
@@ -227,31 +224,14 @@ pub async fn remove_gateway(
     let Some(gateway) = lock_gateway(&mut tx, id).await? else {
         return Err(DomainError::not_found(NOT_FOUND).into());
     };
-    let secrets = gateways.secrets();
-    if GatewayKind::of(&gateway.kind) == Some(GatewayKind::Telegram) {
-        // Told, under the lock, to send its updates nowhere: a bot declared
-        // again meanwhile keeps its own webhook. At best: its updates then
-        // reach an unknown gateway, answered as such.
-        match secrets
-            .read(&mut tx, tenant_id, &bot_token_name(id))
-            .await?
-        {
-            SecretRead::Value(token) => {
-                if let Err(failure) = gateways.telegram().delete_webhook(&token).await {
-                    let reason = failure.message();
-                    tracing::warn!(gateway = %id, %reason, "Telegram webhook not removed");
-                }
-            }
-            _ => {
-                tracing::warn!(gateway = %id, "Telegram bot token unreadable: webhook not removed")
-            }
-        }
-    }
-    delete_gateway(&mut tx, id).await?;
-    secrets.delete(&mut tx, &bot_token_name(id)).await?;
-    secrets.delete(&mut tx, &signing_secret_name(id)).await?;
-    secrets.delete(&mut tx, &webhook_secret_name(id)).await?;
-    secrets.delete(&mut tx, &client_secret_name(id)).await?;
+    withdraw_gateway(
+        &mut tx,
+        gateways.secrets(),
+        gateways.telegram(),
+        tenant_id,
+        &gateway,
+    )
+    .await?;
     let entry = audit_entry(access, "gateway.deleted", "gateway", id).metadata(json!({
         "name": gateway.name,
         "type": gateway.kind,

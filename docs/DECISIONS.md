@@ -13041,3 +13041,76 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       (`company_deletion.rs`), qu'une table renommée ne ferait plus sortir sans bruit ;
     - SECURITY §9 et la feuille de route disent le refus pendant qu'une évaluation se
       joue.
+
+## ADR-193 — Ce qu'une entreprise suspendue a déclaré ailleurs retiré avant sa suppression (lot 62)
+
+- **Statut** : accepté (2026-11-10) · complète ADR-192 (suppression), ADR-172 et ADR-174
+  (révocation des autorisations OAuth) et ADR-133 (bot Telegram) ; modifie ADR-192, dont
+  la suppression confirmée est désormais refusée tant qu'il reste quelque chose à retirer.
+- **Contexte** : la suppression d'une entreprise (ADR-192) passe par le seul rôle
+  propriétaire, sans la clé maître qui ouvre les jetons scellés. Elle effaçait les
+  autorisations OAuth des serveurs MCP de l'entreprise et de ses personnes sans les
+  révoquer chez leur serveur d'autorisation, et ses bots Telegram sans retirer leur
+  webhook : ces accords restaient valables là-bas, et les sauvegardes gardent les jetons
+  scellés.
+- **Décision** :
+  - **`mimorya-admin release-company --slug <sigle>`**, dans le service `api`
+    (`docker compose exec api mimorya-admin release-company --slug …`), qui a la clé
+    maître et les réglages du réseau sortant (mandataire, réseau privé), avec le rôle
+    applicatif, dans la transaction de l'entreprise (RLS) ;
+  - **seule une entreprise suspendue** (ADR-191) est libérée, sa ligne verrouillée le temps
+    de la transaction (`for no key update`) : une réactivation ou une suppression
+    l'attend, et une libération qui l'attend la trouve active ou partie et ne prend rien ;
+    les lignes qui nomment l'entreprise s'écrivent toujours ;
+  - **sans la clé maître, rien n'est pris** : la commande est refusée avant de toucher à
+    l'entreprise, car rien de ce qu'elle prendrait ne pourrait être révoqué ;
+  - **chaque autorisation OAuth de ses serveurs MCP**, celle de l'entreprise et celle de
+    chaque personne, est prise sous la déclaration que tient son connecteur, puis révoquée
+    chez le serveur d'autorisation qui l'a accordée (RFC 7009), comme quand
+    l'administration la laisse (ADR-172, ADR-174) : le jeton de renouvellement d'abord,
+    chacune dans sa borne, chacune attendue jusqu'à son issue ;
+  - **chaque bot Telegram** est retiré comme par son administrateur : son webhook retiré
+    chez Telegram, puis la passerelle, les identités de ses personnes et ses secrets, par
+    le même code (`services/admin/gateway_withdrawal.rs`) ;
+  - **tracée** dans le journal de l'entreprise par l'acteur `system` (`tenant.released`,
+    avec les nombres ; chaque révocation comme à l'administration ; chaque bot comme son
+    retrait, `gateway.deleted`, avec l'issue de son webhook), jamais avec un jeton ;
+    **la sortie dit**, pour chaque serveur et chaque bot, ce qui a été retiré et ce qui ne
+    l'a pas été, avec sa raison. Ce qu'un fournisseur n'a pas retiré est à retirer chez
+    lui ; la plateforme ne le garde plus ;
+  - **la suppression confirmée est refusée** tant que l'entreprise garde une autorisation
+    OAuth ou un bot Telegram ; sans confirmation, la commande dit de lancer
+    `release-company` d'abord. La libération retire toujours ce qu'elle prend, même quand
+    un fournisseur ne répond pas : elle ne bloque jamais la suppression ;
+  - **restent chez leurs fournisseurs**, comptés par la suppression : les comptes
+    Microsoft 365 ou Google Workspace reliés par ses personnes, que la plateforme ne
+    révoque pas non plus quand une personne les retire (ADR-116), et ses applications
+    Slack et Teams, que l'entreprise a déclarées dans son propre espace.
+- **Conséquences** :
+  - l'exploitant supprime une entreprise en trois commandes : `suspend-company` et
+    `release-company` (service `api`), puis `delete-company` (service `migrate`) ;
+  - une entreprise libérée puis réactivée a perdu ses autorisations et ses bots Telegram :
+    elle les autorise et les déclare de nouveau ;
+  - le retrait d'une passerelle par l'administration et par la libération partagent leur
+    code ; l'envoi des révocations dit désormais l'issue de chacune, que la libération
+    attend jusqu'au bout et qu'une requête attend un temps borné, comme avant ;
+  - suites de l'audit du lot 61 : l'attente d'un verrou par le nom d'une connexion est
+    commune aux tests de course (`support/locks.rs`), et l'autorisation de l'entreprise
+    est comptée sur une vraie entreprise (`company_release.rs`) ;
+  - tests :
+    - `crates/api/tests/company_release.rs` : une entreprise active, ou inconnue, est
+      refusée ; suspendue, sa suppression est refusée tant qu'elle garde une autorisation de
+      l'entreprise, celle d'une personne et un bot Telegram, et sa libération sans la clé
+      maître ne prend rien ; libérée, chacune est révoquée chez le serveur d'autorisation,
+      le jeton de renouvellement demandé, le bot retiré avec son webhook, rien n'en reste
+      ici, son application Slack reste ; la libération et le bot sont tracés sans jeton ;
+      une seconde ne trouve rien ;
+    - `crates/api/tests/company_release_race.rs` : une libération qui attend la ligne
+      qu'une réactivation tient est refusée une fois l'entreprise réactivée, et son bot
+      reste ; celle qui attend une suppression ne trouve plus l'entreprise ;
+    - `crates/api/tests/company_deletion.rs`, `company_deletion_refusals.rs` : la
+      suppression confirmée est refusée tant que la libération n'a pas eu lieu, puis
+      l'entreprise est libérée et supprimée, son application Slack avec elle ;
+    - `crates/api/src/bin/admin/args.rs`, `release.rs` : la commande et ce qu'elle dit ;
+    - `infra/docker/production-test.sh` : dans la pile de production de la CI,
+      l'entreprise suspendue est libérée par le service `api`, puis supprimée.

@@ -51,3 +51,25 @@ pub async fn release_after(api: &TestApi, count: i64, hold: TenantTx) {
     wait_for_waiters(api, count).await;
     hold.commit().await.unwrap();
 }
+
+/// Whether the connection named `name` (its `application_name`) waits on a
+/// lock, within five seconds: no other waiting statement of the cluster
+/// passes for it. `pg_locks` and another role's application name are read
+/// by any role.
+pub async fn named_waits(pool: &sqlx::PgPool, name: &str) -> bool {
+    for _ in 0..100 {
+        let waiting: i64 = sqlx::query_scalar(
+            "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid \
+             where not l.granted and a.application_name = $1",
+        )
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        if waiting > 0 {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}

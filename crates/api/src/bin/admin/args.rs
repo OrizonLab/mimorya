@@ -24,6 +24,11 @@ Commandes :
                    réactive une entreprise suspendue, moins ce que ces échéances ont
                    retiré entre-temps
                      --slug <sigle>
+  release-company  retire chez leurs fournisseurs ce que la plateforme y a déclaré pour
+                   une entreprise suspendue : révoque les autorisations OAuth de ses
+                   serveurs MCP, retire ses bots Telegram et leur webhook ; avant
+                   delete-company, dans le service api (MIMORYA_MASTER_KEY)
+                     --slug <sigle>
   delete-company   supprime une entreprise suspendue et tout ce qu’elle garde, son journal
                    d’audit compris, sans retour (DATABASE_URL, rôle propriétaire) ; sans
                    --confirm, montre ce qu’elle garde et ne supprime rien
@@ -37,8 +42,8 @@ Commandes :
                      l’entreprise par son identifiant, tel que journalisé, ou son sigle)
   help             affiche cette aide
 
-create-company, invite, suspend-company, reactivate-company et verify-audit passent par
-DATABASE_APP_URL ; les liens mènent à WEB_ORIGIN.";
+create-company, invite, suspend-company, reactivate-company, release-company et
+verify-audit passent par DATABASE_APP_URL ; les liens mènent à WEB_ORIGIN.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -51,6 +56,9 @@ pub enum Command {
     CompanyStatus {
         slug: String,
         change: CompanyStatusChange,
+    },
+    ReleaseCompany {
+        slug: String,
     },
     DeleteCompany {
         slug: String,
@@ -94,6 +102,9 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
         "reactivate-company" => Command::CompanyStatus {
             slug: options.take("--slug")?,
             change: CompanyStatusChange::Reactivate,
+        },
+        "release-company" => Command::ReleaseCompany {
+            slug: options.take("--slug")?,
         },
         "delete-company" => Command::DeleteCompany {
             slug: options.take("--slug")?,
@@ -238,6 +249,12 @@ mod tests {
             })
         );
         assert_eq!(
+            parse_line(&["release-company", "--slug", "acme"]),
+            Ok(Command::ReleaseCompany {
+                slug: "acme".into()
+            })
+        );
+        assert_eq!(
             parse_line(&["delete-company", "--slug", "acme"]),
             Ok(Command::DeleteCompany {
                 slug: "acme".into(),
@@ -262,7 +279,7 @@ mod tests {
 
     #[test]
     fn refuses_what_it_does_not_understand() {
-        let refused: [&[&str]; 15] = [
+        let refused: [&[&str]; 17] = [
             &["deploy"],
             &["invite"],
             &["invite", "--email"],
@@ -286,6 +303,8 @@ mod tests {
                 "b",
             ],
             &["delete-company", "--slug", "acme", "--force", "yes"],
+            &["release-company"],
+            &["release-company", "--slug", "acme", "--confirm", "acme"],
         ];
         for line in refused {
             assert!(parse_line(line).is_err(), "{line:?}");

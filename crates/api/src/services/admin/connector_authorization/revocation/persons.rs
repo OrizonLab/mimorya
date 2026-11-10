@@ -18,7 +18,7 @@ use super::super::super::connectors::ConnectorAdmin;
 use super::{Revocation, taken};
 
 /// The declaration the connector holds now, if it can be read.
-async fn declared(
+pub(super) async fn declared(
     tx: &mut TenantTx,
     connector_id: Uuid,
 ) -> anyhow::Result<Option<OAuthDeclaration>> {

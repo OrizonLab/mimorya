@@ -1,12 +1,14 @@
 //! Operator commands of a private installation (ADR-033), run with the API's
 //! environment: apply the migrations without any data, create a company with
 //! its first administrator, give an invited account a new link, suspend and
-//! reactivate a company (ADR-191), delete a suspended one (ADR-192), verify
-//! the sealed audit log against the seals logged (ADR-178). The link is
+//! reactivate a company (ADR-191), withdraw what a suspended one declared
+//! at other services (ADR-193) and delete it (ADR-192), verify the sealed
+//! audit log against the seals logged (ADR-178). The link is
 //! printed for the operator to transmit, and nowhere else.
 
 mod args;
 mod deletion;
+mod release;
 mod report;
 mod verify;
 
@@ -17,7 +19,7 @@ use mimorya_api::AppConfig;
 use mimorya_api::mail::expiry_label;
 use mimorya_api::services::provisioning::{
     CompanyStatusChange, NewCompany, OperatorInvitation, change_company_status, create_company,
-    reinvite,
+    reinvite, release_company_with,
 };
 use mimorya_core::DomainError;
 use mimorya_db::{Database, PoolOptions, run_migrations};
@@ -95,6 +97,12 @@ async fn run(command: Command) -> anyhow::Result<()> {
             db.close().await;
             let tenant_id = changed?;
             println!("{}", status_told(slug.trim(), tenant_id, change));
+        }
+        Command::ReleaseCompany { slug } => {
+            let (db, config) = connect().await?;
+            let released = release_company_with(&db, &config, &slug).await;
+            db.close().await;
+            release::told(slug.trim(), &released?);
         }
         Command::DeleteCompany { slug, confirm } => {
             deletion::delete(&slug, confirm.as_deref()).await?;

@@ -357,6 +357,11 @@ Repères à l'intérieur des crates :
   d'elle, `suspension.rs`, ADR-191, entreprise suspendue supprimée par le rôle propriétaire,
   montrée d'abord, `deletion.rs` et `bin/admin/deletion.rs`, lignes de chaque table d'une
   entreprise comptées et supprimées, `db/src/repositories/tenant_deletion.rs`, ADR-192,
+  ce que la plateforme a déclaré pour elle ailleurs retiré avant, dans le service `api`,
+  autorisations OAuth révoquées et bots Telegram retirés, `release.rs` et
+  `bin/admin/release.rs`, toutes ses autorisations prises
+  (`connector_authorization/revocation/company.rs`), passerelle retirée comme par
+  l'administration (`services/admin/gateway_withdrawal.rs`), ADR-193,
   vérification du journal d'audit scellé, `verify.rs`, et ce qu'elle dit à
   l'exploitant, `report.rs`, ADR-178),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
