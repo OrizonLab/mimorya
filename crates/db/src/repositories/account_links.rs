@@ -144,27 +144,88 @@ pub async fn get_account_link(
     }))
 }
 
-/// Returns whether the person had a link at this connector.
-pub async fn delete_account_link(
+/// A link taken away, its sealed refresh token with it: what revoking
+/// its grant at the provider needs, once the removal is committed
+/// (ADR-194).
+pub struct TakenAccountLink {
+    pub connector_id: Uuid,
+    pub user_id: Uuid,
+    pub refresh_token: StoredSecret,
+}
+
+#[derive(sqlx::FromRow)]
+struct TakenRow {
+    connector_id: Uuid,
+    user_id: Uuid,
+    refresh_ciphertext: Vec<u8>,
+    refresh_iv: Vec<u8>,
+    refresh_auth_tag: Vec<u8>,
+    refresh_key_version: i32,
+}
+
+impl From<TakenRow> for TakenAccountLink {
+    fn from(row: TakenRow) -> Self {
+        Self {
+            connector_id: row.connector_id,
+            user_id: row.user_id,
+            refresh_token: StoredSecret {
+                ciphertext: row.refresh_ciphertext,
+                iv: row.refresh_iv,
+                auth_tag: row.refresh_auth_tag,
+                key_version: row.refresh_key_version,
+            },
+        }
+    }
+}
+
+const TAKEN: &str = "returning connector_id, user_id, refresh_ciphertext, refresh_iv, \
+    refresh_auth_tag, refresh_key_version";
+
+/// Removes the person's link at this connector, if they had one, and
+/// returns it.
+pub async fn take_account_link(
     conn: &mut PgConnection,
     connector_id: Uuid,
     user_id: Uuid,
-) -> sqlx::Result<bool> {
-    let result = sqlx::query("delete from account_links where connector_id = $1 and user_id = $2")
-        .bind(connector_id)
-        .bind(user_id)
-        .execute(conn)
-        .await?;
-    Ok(result.rows_affected() > 0)
+) -> sqlx::Result<Option<TakenAccountLink>> {
+    let row: Option<TakenRow> = sqlx::query_as(&format!(
+        "delete from account_links where connector_id = $1 and user_id = $2 {TAKEN}"
+    ))
+    .bind(connector_id)
+    .bind(user_id)
+    .fetch_optional(conn)
+    .await?;
+    Ok(row.map(Into::into))
 }
 
-/// Every link of the person (their account disabled); returns how many.
-pub async fn delete_account_links_of(conn: &mut PgConnection, user_id: Uuid) -> sqlx::Result<u64> {
-    let result = sqlx::query("delete from account_links where user_id = $1")
-        .bind(user_id)
-        .execute(conn)
-        .await?;
-    Ok(result.rows_affected())
+/// Removes every link of the person (their account disabled), and returns
+/// them.
+pub async fn take_account_links_of(
+    conn: &mut PgConnection,
+    user_id: Uuid,
+) -> sqlx::Result<Vec<TakenAccountLink>> {
+    let rows: Vec<TakenRow> = sqlx::query_as(&format!(
+        "delete from account_links where user_id = $1 {TAKEN}"
+    ))
+    .bind(user_id)
+    .fetch_all(conn)
+    .await?;
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
+/// Removes every link made at this connector (the connector deleted), and
+/// returns them.
+pub async fn take_account_links_of_connector(
+    conn: &mut PgConnection,
+    connector_id: Uuid,
+) -> sqlx::Result<Vec<TakenAccountLink>> {
+    let rows: Vec<TakenRow> = sqlx::query_as(&format!(
+        "delete from account_links where connector_id = $1 {TAKEN}"
+    ))
+    .bind(connector_id)
+    .fetch_all(conn)
+    .await?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 /// Keeps the refresh token the provider rotated (ADR-117), if the link is

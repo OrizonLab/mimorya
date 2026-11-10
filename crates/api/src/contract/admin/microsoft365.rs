@@ -50,4 +50,7 @@ pub struct Microsoft365App {
     pub links: i64,
     /// Its tools may send e-mail and create events (ADR-119).
     pub write_tools: bool,
+    /// Whether Microsoft revokes the people's grants when the platform lets
+    /// go of their links: it does not (ADR-194).
+    pub revokes_grants: bool,
 }

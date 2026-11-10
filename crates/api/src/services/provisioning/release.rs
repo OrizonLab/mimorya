@@ -10,9 +10,13 @@
 //! by the `system` actor, each bot as its removal is, never a token; how
 //! each went is told to the operator. What a server does not revoke stays granted
 //! there, to withdraw there; what was taken is gone here all the same.
-//! The accounts its people linked and its Slack and Teams applications are
-//! not the platform's to withdraw: they stay, as at a person's withdrawal
-//! (ADR-116) or a gateway's (ADR-125).
+//! The accounts its people linked are not taken here yet, though their
+//! Google grants are revoked when a person removes one (ADR-194;
+//! Microsoft revokes none); its Slack and Teams applications are not the
+//! platform's to withdraw: they stay, as at a gateway's withdrawal
+//! (ADR-125).
+
+use std::sync::Arc;
 
 use mimorya_connectors::outbound::http_client;
 use mimorya_connectors::telegram::{TELEGRAM_API, TelegramApi};
@@ -31,6 +35,7 @@ use super::system_entry;
 use crate::app::Services;
 use crate::config::AppConfig;
 use crate::secrets::SecretStore;
+use crate::services::account_links::AccountLinkService;
 use crate::services::admin::{
     ConnectorAdmin, revoke_all_waited, take_company_authorizations, withdraw_gateway,
 };
@@ -73,6 +78,7 @@ pub async fn release_company(services: &Services, slug: &str) -> anyhow::Result<
         connectors: &services.connectors,
         secrets: &secrets,
         catalog: &[],
+        account_links: &services.account_links,
     };
     release(&admin, services.gateways.telegram(), slug).await
 }
@@ -97,11 +103,19 @@ pub async fn release_company_with(
         },
         invalidations,
     );
+    let account_links = Arc::new(AccountLinkService::new(
+        db.clone(),
+        config.secrets.clone(),
+        config.mcp_network,
+        &config.web_origin,
+        None,
+    )?);
     let admin = ConnectorAdmin {
         db,
         connectors: &connectors,
         secrets: &secrets,
         catalog: &[],
+        account_links: &account_links,
     };
     let telegram = TelegramApi::new(TELEGRAM_API, http_client(config.mcp_network)?)?;
     release(&admin, &telegram, slug).await

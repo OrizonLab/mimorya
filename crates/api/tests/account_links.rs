@@ -32,7 +32,7 @@ async fn a_person_links_their_own_mailbox_and_removes_it() {
         links(&claire).await,
         json!([{
             "connectorId": connector, "name": "Microsoft 365", "type": "microsoft365",
-            "available": true, "writeTools": false, "linked": null,
+            "available": true, "writeTools": false, "revokesGrants": false, "linked": null,
         }])
     );
 

@@ -13116,7 +13116,120 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       l'entreprise suspendue est libérée par le service `api`, puis supprimée.
   - suites de l'audit (lot 63) :
     - le test de course tient la ligne comme une réactivation la tient, par sa seule mise à
-      jour conditionnelle : un verrou plus faible de la libération le ferait échouer ;
+      jour conditionnelle : un verrou de la libération qui la laisserait passer
+      (`for key share`) le ferait échouer, un verrou partagé (`for share`) l'attendant encore
+      (précisé au lot 64a) ;
     - une passerelle Teams reste comme une passerelle Slack (`company_release.rs`) ;
     - une révocation qui s'arrête avant son issue n'est plus tue : ce qu'elle avait pris est
       dit non révoqué, à retirer chez le serveur d'autorisation (`sending.rs`).
+
+## ADR-194 — Accord d'un compte Google relié révoqué chez Google quand la plateforme le laisse (lot 64a)
+
+- **Statut** : accepté.
+- **Contexte** : une personne relie son compte Microsoft 365 ou Google Workspace
+  (ADR-116, ADR-121). La plateforme garde son jeton de renouvellement scellé. Quand la
+  liaison disparaît, ce jeton est effacé ici. Jusqu'ici, l'accord donné à l'application
+  restait pourtant chez le fournisseur jusqu'à ce que la personne le retire elle-même.
+  La liaison disparaît dans quatre cas :
+  - la personne la retire ;
+  - son compte est désactivé, par l'administration ou par SCIM (ADR-183) ;
+  - le connecteur est supprimé ;
+  - l'entreprise est supprimée (ADR-193).
+
+  Les autorisations OAuth des serveurs MCP sont déjà révoquées chez leur serveur
+  d'autorisation dans ces cas (ADR-172, ADR-174). Les comptes reliés, eux, ne l'étaient
+  pas (feuille de route : « comptes reliés révoqués chez Microsoft ou Google 🔜 »).
+
+- **Décision** :
+  - **Google révoque, Microsoft non** (`LinkKind::revokes`, `crates/core`) :
+    - Google révoque l'accord d'une application à la demande. Le point de révocation est
+      nommé par sa déclaration OpenID Connect (`revocation_endpoint`), et la révocation
+      d'un jeton emporte tout l'accord.
+    - La plateforme d'identité de Microsoft ne révoque pas l'accord d'une seule
+      application. Elle ne sait que révoquer toutes les sessions d'une personne, partout,
+      ce qui n'appartient pas à la plateforme.
+    - Pour Microsoft, rien n'est donc envoyé. L'accord reste chez Microsoft jusqu'à ce que
+      la personne le retire, ou que les administrateurs de son annuaire retirent
+      l'application dans Microsoft Entra. Les deux le lisent dans l'interface.
+  - **Pris dans la transaction qui retire la liaison**, avec son jeton scellé
+    (`take_account_link`, `take_account_links_of`, `take_account_links_of_connector`,
+    `crates/db`) :
+    - le retrait par la personne (`AccountLinkService::unlink`) ;
+    - la désactivation d'un compte (`take_access`, commun à l'administration, à SCIM et à
+      l'effacement) ;
+    - la suppression du connecteur, avant que sa déclaration parte.
+
+    La déclaration dit chez qui ses personnes se sont connectées : elle est lue dans la
+    même transaction. Ce qui est pris est révoqué une fois la transaction validée.
+
+    Le retour d'une liaison prend le verrou d'administration de l'entreprise, comme le
+    retour d'une autorisation MCP. Une liaison qui revient pendant la suppression de son
+    connecteur attend donc la fin de cette suppression, puis trouve le connecteur parti.
+    Sans ce verrou, elle aurait pu être gardée puis emportée par la cascade, sans
+    révocation.
+
+  - **Le point de révocation** est celui que nomme la déclaration de l'émetteur où les
+    personnes se sont connectées (`.well-known/openid-configuration`) :
+    - la déclaration doit nommer cet émetteur ;
+    - elle est atteinte par le client des connexions (`ProviderHttp`) : adresses publiques
+      seulement, échange borné dans le temps et en taille ;
+    - le jeton de renouvellement y est envoyé seul (`token`), comme Google le prend ;
+    - un jeton que Google ne reconnaît plus (`invalid_token`) ne sert plus à rien : il est
+      compté comme révoqué.
+  - **Envoyé par une tâche à part**, que l'abandon de la requête n'arrête pas :
+    - les liaisons d'un connecteur partent quatre à la fois ;
+    - la requête attend au plus 25 secondes, puis la tâche continue jusqu'à son audit ;
+    - ces tâches démarrent dès la validation, avant que les sessions gardées du connecteur
+      ou de la personne soient oubliées : une requête abandonnée à ce moment-là ne les
+      arrête pas. Une tâche qui s'arrête avant son issue est dite dans le journal ;
+    - l'audit (`account.links_revoked`) porte une entrée par connecteur, au nom de qui a
+      laissé les liaisons (la personne, l'administrateur, ou `system` pour SCIM). Elle
+      donne le nombre de révocations réussies et échouées, et la première raison d'un
+      échec.
+  - **Rien de sensible n'est dit** : ni jeton, ni personne, ni ce qu'un fournisseur a
+    écrit autour de son code d'erreur. Un fournisseur peut échouer de trois façons :
+    - il ne répond pas ;
+    - il ne nomme aucun point de révocation ;
+    - il refuse.
+
+    Dans chacun de ces cas, il garde l'accord, à retirer chez lui. La liaison reste retirée
+    ici.
+
+  - **Une liaison remplacée par une nouvelle n'est pas révoquée** : chez Google, l'accord
+    est le même, et révoquer l'ancien jeton emporterait le nouveau.
+  - **Dans l'interface**, qui lit ce que dit le serveur (`revokesGrants`, tiré de
+    `LinkKind::revokes`) :
+    - pour un compte Google, « Mon compte » dit que la plateforme demande à Google de
+      révoquer l'accord, et sinon de le retirer dans son compte Google ;
+    - pour un compte Microsoft 365, il dit que l'accord reste chez Microsoft ;
+    - la suppression d'une application, dans « Connecteurs », dit de même ce que deviennent
+      les accords des personnes.
+- **Conséquences** :
+  - un compte Google relié ne garde plus d'accord chez Google après son retrait, la
+    désactivation de son compte ou la suppression du connecteur, sauf si Google ne répond
+    pas ou refuse : l'audit le dit ;
+  - le lot 64b fera de même à la libération d'une entreprise suspendue (ADR-193), qui
+    garde jusque-là les comptes Google reliés de ses personnes ;
+  - suites de l'audit du lot 63 : l'appel sans effet à `outcomes` est retiré de
+    `revoke_all_by`, et la phrase de l'ADR-193 sur le verrou est précisée ;
+  - tests :
+    - `crates/api/tests/google_workspace_revocations.rs` :
+      - un compte Google retiré est révoqué chez Google avant la réponse, un compte
+        Microsoft ne l'est pas, et l'audit le compte ;
+      - un refus de Google, ou un point de révocation qu'il ne nomme pas, est dit par son
+        seul code, et la liaison part quand même ;
+      - un compte désactivé, puis le connecteur supprimé, révoquent les accords de chacun ;
+      - un compte désactivé par SCIM voit son accord révoqué, audité au nom de `system` ;
+      - aucun jeton n'apparaît dans l'audit ;
+    - `crates/api/tests/google_workspace_revocation_races.rs` :
+      - un retrait dont la requête est abandonnée pendant que Google fait attendre est
+        révoqué quand même, jusqu'à sa borne, et audité ;
+      - une liaison qui revient pendant la suppression de son connecteur n'est jamais
+        gardée ;
+    - `revocation/endpoint.rs` (unitaires) : le point de révocation est celui de la
+      déclaration du même émetteur ; une réponse est lue par son code seul ;
+    - `revocation/sending.rs` (unitaires) : l'issue compte les révocations et borne la
+      raison ;
+    - `crates/core/src/account_links/tests.rs` : seul Google révoque ;
+    - `apps/web/e2e/google-workspace.spec.ts`, `microsoft365.spec.ts` : ce que disent les
+      questions avant un retrait ou une suppression.

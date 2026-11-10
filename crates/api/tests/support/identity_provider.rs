@@ -7,7 +7,8 @@
 //! hints at; the browser, hinted at nobody, is asked who (`sign_in_page`).
 //! Its signing keys are test keys, public: it rolls them over on demand,
 //! and may be unavailable. It renews the refresh tokens it issued
-//! (`refresh`, ADR-117), rotating or revoking them on demand. It plays
+//! (`refresh`, ADR-117), rotating or revoking them on demand, and revokes
+//! a grant at its revocation endpoint (`revocation`, ADR-194). It plays
 //! Google too (ADR-121): a Google OAuth client is accepted, asking offline
 //! access by `access_type`, and names a person's Workspace domain (`hd`).
 
@@ -38,6 +39,8 @@ pub const GOOGLE_CLIENT_ID: &str = "123456789012-mimorya.apps.googleusercontent.
 mod grant;
 #[path = "identity_provider/refresh.rs"]
 mod refresh;
+#[path = "identity_provider/revocation.rs"]
+mod revocation;
 #[path = "identity_provider/sign_in_page.rs"]
 mod sign_in_page;
 #[path = "identity_provider/token.rs"]
@@ -115,6 +118,8 @@ struct Provider {
     unavailable: bool,
     /// Its renewals (`refresh`).
     renewals: refresh::Renewals,
+    /// Its revocations (`revocation`).
+    revocations: revocation::Revocations,
 }
 
 type Shared = Arc<Mutex<Provider>>;
@@ -146,6 +151,7 @@ impl MockIdentityProvider {
             .route("/jwks", get(keys))
             .route("/authorize", get(visit))
             .route("/token", post(token::token))
+            .route("/revoke", post(revocation::revoke))
             .with_state(shared.clone());
         tokio::spawn(async move { axum::serve(listener, router).await });
         Self { issuer, shared }
@@ -241,6 +247,36 @@ impl MockIdentityProvider {
         self.shared.lock().expect("provider").renewals.rotate = true;
     }
 
+    /// The tokens revoked at its revocation endpoint, in order.
+    pub fn revoked(&self) -> Vec<String> {
+        self.shared
+            .lock()
+            .expect("provider")
+            .revocations
+            .revoked
+            .clone()
+    }
+
+    /// How many revocations were asked of it, answered or not.
+    pub fn revocations_asked(&self) -> usize {
+        self.shared.lock().expect("provider").revocations.asked
+    }
+
+    /// Keeps every revocation waiting from now on, beyond any bound.
+    pub fn hold_revocations(&self) {
+        self.shared.lock().expect("provider").revocations.held = true;
+    }
+
+    /// Refuses every revocation from now on.
+    pub fn refuse_revocations(&self) {
+        self.shared.lock().expect("provider").revocations.refused = true;
+    }
+
+    /// Names no revocation endpoint in its discovery from now on.
+    pub fn name_no_revocation_endpoint(&self) {
+        self.shared.lock().expect("provider").revocations.unnamed = true;
+    }
+
     /// The refresh token it issued for this person's subject.
     pub fn refresh_token_of(subject: &str) -> String {
         format!("jeton-de-renouvellement-{subject}")
@@ -277,16 +313,16 @@ fn signing_key(next: bool, with_id: bool) -> CoreRsaPrivateSigningKey {
 }
 
 async fn configuration(State(shared): State<Shared>) -> Response {
-    let issuer = {
+    let (issuer, unnamed) = {
         let mut provider = shared.lock().expect("provider");
         provider.requests += 1;
         provider.discoveries += 1;
         if provider.unavailable {
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
-        provider.issuer.clone()
+        (provider.issuer.clone(), provider.revocations.unnamed)
     };
-    let body = json!({
+    let mut body = json!({
         "issuer": issuer,
         "authorization_endpoint": format!("{issuer}/authorize"),
         "token_endpoint": format!("{issuer}/token"),
@@ -296,6 +332,9 @@ async fn configuration(State(shared): State<Shared>) -> Response {
         "id_token_signing_alg_values_supported": ["RS256"],
         "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
     });
+    if !unnamed {
+        body["revocation_endpoint"] = json!(format!("{issuer}/revoke"));
+    }
     (
         [(header::CONTENT_TYPE, "application/json")],
         body.to_string(),

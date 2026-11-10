@@ -92,7 +92,7 @@ Repères à l'intérieur des crates :
   cas d'évaluation des compétences : `skill_eval_cases.rs`, ADR-103, et leurs
   évaluations : `skill_evaluations.rs`, ADR-104, ce qu'elles ont coûté jour par jour et
   leur limite : `evaluation_spending.rs`, `evaluation_settings.rs`, ADR-154 ; comptes reliés par chacun et leur
-  jeton de renouvellement scellé : `account_links.rs`, ADR-116 ; autorisation OAuth d'un
+  jeton de renouvellement scellé, pris avec lui quand la plateforme les laisse : `account_links.rs`, ADR-116, ADR-194 ; autorisation OAuth d'un
   serveur MCP et ses jetons scellés : `connector_authorizations.rs`, et son renouvellement, réservé par un processus, la raison d'un échec gardée : `connector_renewals.rs`, ADR-171 ; celle que chacun donne pour
   soi : `connector_person_authorizations.rs`, et son renouvellement : `connector_person_renewals.rs`, ADR-174 ; partages de
   connaissances entre unités :
@@ -213,7 +213,10 @@ Repères à l'intérieur des crates :
   le fournisseur, tentative scellée, retour vérifié, jeton scellé, liste et retrait,
   ADR-116 ; jeton
   d'accès de la personne servie lu (`access.rs`), renouvelé avec rotation et liaison
-  révoquée retirée (`renewal.rs`), gardé (`tokens.rs`), ADR-117),
+  révoquée retirée (`renewal.rs`), gardé (`tokens.rs`), ADR-117 ; accord révoqué chez
+  Google quand la plateforme laisse la liaison : liaisons prises dans leur transaction,
+  point de révocation lu dans la déclaration de Google (`revocation/endpoint.rs`),
+  envoi par une tâche à part (`revocation/sending.rs`), ADR-194),
   `api/src/services/gateways/` (passerelles de conversation : événements de Slack reçus
   sur leur signature (`events.rs`), lien de liaison offert dans Slack et confirmé dans
   la session de la personne (`link.rs`), identités listées et retirées

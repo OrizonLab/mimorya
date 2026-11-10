@@ -163,6 +163,7 @@ async fn crossed_revocations_leave_an_administrator() {
         connectors: &services.connectors,
         secrets: &secrets,
         catalog: &catalog,
+        account_links: &services.account_links,
     };
     update_user(&admin, &from_paul, account.id, disable())
         .await

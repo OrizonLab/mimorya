@@ -50,6 +50,20 @@ impl LinkKind {
         }
     }
 
+    /// Whether the provider revokes one link's grant at the platform's
+    /// request, once the platform lets go of it (ADR-194): Google does, at
+    /// the revocation endpoint its discovery names. Microsoft's identity
+    /// platform revokes no single application's grant to a person, only
+    /// all of the person's sessions, everywhere, which is not the
+    /// platform's to do: the grant stays there until the person, or their
+    /// directory's administrators, withdraw it.
+    pub fn revokes(self) -> bool {
+        match self {
+            Self::Microsoft365 => false,
+            Self::GoogleWorkspace => true,
+        }
+    }
+
     /// What every link asks besides `openid`: the person's address, and for
     /// Microsoft the refresh token.
     fn identity(self) -> &'static [&'static str] {

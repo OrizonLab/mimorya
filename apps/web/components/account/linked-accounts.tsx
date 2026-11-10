@@ -127,7 +127,12 @@ function LinkRow({ connector, onChanged }: { connector: AccountLinkView; onChang
   }
 
   async function unlink() {
-    const question = `Retirer la liaison de votre compte ${product} ? L’agent ne pourra plus y lire ni y écrire. L’accord donné à l’application reste chez ${provider} : retirez-le aussi dans votre compte ${provider}.`;
+    // The server says whether the provider revokes the grant when asked
+    // (Google) or keeps it until withdrawn there (Microsoft, ADR-194).
+    const grant = connector.revokesGrants
+      ? `La plateforme demande à ${provider} de révoquer l’accord donné à l’application ; s’il ne le fait pas, retirez-le aussi dans votre compte ${provider}.`
+      : `L’accord donné à l’application reste chez ${provider} : retirez-le aussi dans votre compte ${provider}.`;
+    const question = `Retirer la liaison de votre compte ${product} ? L’agent ne pourra plus y lire ni y écrire. ${grant}`;
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(path))) onChanged();
   }

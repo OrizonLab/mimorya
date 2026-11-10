@@ -12,6 +12,7 @@ use axum::http::header::{LOCATION, SET_COOKIE};
 use axum::response::{AppendHeaders, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use mimorya_core::account_links::LinkKind;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use serde_json::json;
 
@@ -49,6 +50,7 @@ async fn list(
     let connectors = linkables
         .into_iter()
         .map(|linkable| AccountLinkView {
+            revokes_grants: LinkKind::of(&linkable.connector_type).is_some_and(LinkKind::revokes),
             connector_id: linkable.connector_id,
             name: linkable.name,
             connector_type: linkable.connector_type,

@@ -88,9 +88,7 @@ pub async fn revoke_all_by(
     // Waited for a while only: many tokens at a server that does not answer
     // go on being revoked, and audited, after the answer.
     let ended = futures::future::join_all(tasks.into_iter().map(Sending::ended));
-    if let Ok(ended) = tokio::time::timeout(WAITED, ended).await {
-        outcomes(ended);
-    }
+    let _ = tokio::time::timeout(WAITED, ended).await;
 }
 
 /// `revoke_all_by`, waited for until every revocation has ended, each

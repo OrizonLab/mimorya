@@ -110,11 +110,13 @@ test('a client is declared, an account linked with writing then reading only, th
   ).toBeVisible();
   expect((await linkOf(lea))?.linked?.can).toEqual(READING);
 
-  // She removes her link, told her consent stays at Google.
+  // She removes her link, told the platform asks Google to revoke her
+  // consent (ADR-194).
   await section.getByRole('button', { name: 'Retirer la liaison' }).click();
   await expect(section.getByText('Non relié')).toBeVisible();
   expect(leaAsked).toHaveLength(1);
-  expect(leaAsked[0]).toContain('reste chez Google');
+  expect(leaAsked[0]).toContain('La plateforme demande à Google de révoquer l’accord');
+  expect(leaAsked[0]).not.toContain('reste chez Google');
   expect((await linkOf(lea))?.linked ?? null).toBeNull();
 
   // Paul deletes the client, told what goes with it.
@@ -124,5 +126,6 @@ test('a client is declared, an account linked with writing then reading only, th
   await expect(page.getByText(NAME)).toHaveCount(0);
   expect(asked).toHaveLength(1);
   expect(asked[0]).toContain(`le client « ${NAME} »`);
+  expect(asked[0]).toContain('La plateforme demande à Google de révoquer leurs accords.');
   expect((await stored(page)).client).toBeUndefined();
 });
