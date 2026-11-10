@@ -1,10 +1,10 @@
 //! A suspended company deleted by the operator (`mimorya-admin
 //! delete-company`, ADR-192), as the database's owner. The demo company,
 //! its people having something of every kind and its audit log sealed, is
-//! shown first, table by table, and nothing goes; confirmed, it is deleted
-//! whole: no table keeps a row of it, its sessions and sign-ins are gone,
-//! and every process is told to let go of what it kept of it. Another
-//! company keeps every row it had.
+//! shown first, table by table, with what gives access at other services,
+//! and nothing goes; confirmed, it is deleted whole: no table keeps a row
+//! of it, its sessions and sign-ins are gone, and every process is told to
+//! let go of what it kept of it. Another company keeps every row it had.
 
 mod support;
 
@@ -78,6 +78,20 @@ async fn a_suspended_company_is_deleted_whole_and_another_keeps_every_row() {
         assert!(tables.contains(&table), "{table} not in {tables:?}");
     }
     assert_eq!(rows_of(&owner, tenant::ID).await, shown.tables);
+    // What gives access at other services is counted, to withdraw there.
+    let outside = shown.held_outside();
+    for what in [
+        "autorisations OAuth de serveurs MCP données par ses personnes",
+        "comptes Microsoft 365 ou Google Workspace reliés par ses personnes",
+        "passerelles de conversation (Slack, Telegram, Teams)",
+    ] {
+        assert!(
+            outside
+                .iter()
+                .any(|(said, count)| *said == what && *count > 0),
+            "{what} not in {outside:?}"
+        );
+    }
 
     let connectors: Vec<Uuid> =
         sqlx::query_scalar("select id from connector_instances where tenant_id = $1")
