@@ -9,10 +9,12 @@
 //! log included, and tells every process to let go of what it keeps of it.
 //! What it held stays in the backups made before, until they are retired.
 //! What the platform declared for it at other services (its MCP servers'
-//! OAuth authorizations, its Telegram bots' webhooks) is withdrawn there
-//! first, by the release (ADR-193): a confirmed deletion is refused while
-//! any is left. What only its people or its own applications can withdraw
-//! (linked accounts, Slack and Teams) stays there, said to the operator.
+//! OAuth authorizations, its Telegram bots' webhooks, the grants of the
+//! accounts its people linked at Google) is withdrawn there first, by the
+//! release (ADR-193, ADR-194): a confirmed deletion is refused while any is
+//! left. What only its people or its own applications can withdraw (the
+//! accounts linked at Microsoft, which revokes no single grant, Slack and
+//! Teams) stays there, said to the operator.
 
 use mimorya_core::DomainError;
 use mimorya_core::account_links::LinkKind;
@@ -36,9 +38,10 @@ pub struct CompanyRows {
 
 /// What gives access at other services, granted for or by a company, by
 /// the table that keeps it. The release withdraws there its OAuth
-/// authorizations and its Telegram bots before any deletion (ADR-193); its
-/// linked accounts and its Slack and Teams applications stay there, to
-/// withdraw there. What it declared there without anyone's grant (clients
+/// authorizations, its Telegram bots and the grants of the accounts linked
+/// at Google before any deletion (ADR-193, ADR-194); the accounts linked at
+/// Microsoft and its Slack and Teams applications stay there, to withdraw
+/// there. What it declared there without anyone's grant (clients
 /// the platform registered, applications, identity providers) is not
 /// counted.
 const HELD_OUTSIDE: [(&str, &str); 4] = [

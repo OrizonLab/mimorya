@@ -13254,6 +13254,17 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       révoqué quand même. Seule une liaison refaite pendant l'envoi lui-même peut
       encore perdre son accord, et elle est alors retirée à son premier renouvellement
       (ADR-117) ;
+    - **limites connues** :
+      - un jeton d'identité qui ne se vérifie pas ne nomme aucun compte : l'accord de
+        son retour est révoqué, même s'il est celui du compte que la personne a déjà
+        relié. Sa liaison est alors retirée à son prochain renouvellement. La plateforme
+        ne lit jamais un compte dans un jeton qu'elle n'a pas vérifié ;
+      - une réponse d'échange sans jeton d'identité est refusée dans l'échange
+        lui-même, et un jeton de renouvellement qu'elle porterait n'est pas révoqué. Avec
+        `openid`, Google en donne toujours un ;
+      - le compte d'un retour est lu dans le `sub` du jeton, comme Google nomme ses
+        comptes. Un autre fournisseur qui révoque un accord dirait par sa propre règle
+        quel compte une liaison garde ;
     - tests :
       - `crates/api/tests/company_release_links.rs` : la suppression est refusée tant que
         les comptes Google demeurent ; la libération les révoque chez Google et le dit ;
@@ -13262,6 +13273,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         compte, refusé, est révoqué, la liaison de la personne restant ; celui du compte
         qu'une liaison garde est gardé ;
       - `google_workspace_revocation_races.rs` : un retour pendant la suppression de son
-        connecteur révoque l'accord que son code a apporté ;
+        connecteur révoque l'accord que son code a apporté ; une liaison retirée puis
+        refaite au même compte avant l'envoi garde son accord, et l'audit la compte
+        `kept` ;
       - `crates/api/src/bin/admin/release.rs` : ce que la commande dit des comptes
-        reliés.
+        reliés, et de relancer la libération quand des comptes ont été reliés de nouveau
+        entre-temps ;
+      - l'aide de la commande (`args.rs`) nomme les comptes Google reliés.

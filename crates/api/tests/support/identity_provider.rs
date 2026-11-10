@@ -120,6 +120,9 @@ struct Provider {
     renewals: refresh::Renewals,
     /// Its revocations (`revocation`).
     revocations: revocation::Revocations,
+    /// Holds the next read of its declaration until the test lets it
+    /// through, the reads after it answered.
+    held_discovery: Option<Arc<refresh::RenewalGate>>,
 }
 
 type Shared = Arc<Mutex<Provider>>;
@@ -235,6 +238,14 @@ impl MockIdentityProvider {
         self.shared.lock().expect("provider").renewals.revoked = true;
     }
 
+    /// Holds the next read of its declaration until the gate lets it
+    /// through; the reads after it are answered at once.
+    pub fn hold_next_discovery(&self) -> Arc<refresh::RenewalGate> {
+        let gate = Arc::new(refresh::RenewalGate::default());
+        self.shared.lock().expect("provider").held_discovery = Some(gate.clone());
+        gate
+    }
+
     /// Holds the renewals until the gate lets them through.
     pub fn hold_renewals(&self) -> Arc<refresh::RenewalGate> {
         let gate = Arc::new(refresh::RenewalGate::default());
@@ -313,15 +324,19 @@ fn signing_key(next: bool, with_id: bool) -> CoreRsaPrivateSigningKey {
 }
 
 async fn configuration(State(shared): State<Shared>) -> Response {
-    let (issuer, unnamed) = {
+    let (issuer, unnamed, held) = {
         let mut provider = shared.lock().expect("provider");
         provider.requests += 1;
         provider.discoveries += 1;
         if provider.unavailable {
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
-        (provider.issuer.clone(), provider.revocations.unnamed)
+        let held = provider.held_discovery.take();
+        (provider.issuer.clone(), provider.revocations.unnamed, held)
     };
+    if let Some(gate) = held {
+        gate.pass().await;
+    }
     let mut body = json!({
         "issuer": issuer,
         "authorization_endpoint": format!("{issuer}/authorize"),

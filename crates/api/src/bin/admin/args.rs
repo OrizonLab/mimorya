@@ -26,7 +26,9 @@ Commandes :
                      --slug <sigle>
   release-company  retire chez leurs fournisseurs ce que la plateforme y a déclaré pour
                    une entreprise suspendue : révoque les autorisations OAuth de ses
-                   serveurs MCP, retire ses bots Telegram et leur webhook ; avant
+                   serveurs MCP, retire ses bots Telegram et leur webhook, révoque
+                   chez Google les accords des comptes Google reliés par ses
+                   personnes (réactivée, elles les relient de nouveau) ; avant
                    delete-company, dans le service api (MIMORYA_MASTER_KEY)
                      --slug <sigle>
   delete-company   supprime une entreprise suspendue et tout ce qu’elle garde, son journal

@@ -37,9 +37,17 @@ fn said(slug: &str, released: &Released) -> String {
                 .into(),
         );
     }
-    lines.push(format!(
-        "Pour la supprimer : mimorya-admin delete-company --slug {slug} (service migrate)."
-    ));
+    // A link made again meanwhile is still here: its deletion waits for it.
+    if released.links.iter().any(|links| links.kept > 0) {
+        lines.push(format!(
+            "Des comptes ont été reliés de nouveau pendant la libération : relancez \
+             mimorya-admin release-company --slug {slug} avant de la supprimer."
+        ));
+    } else {
+        lines.push(format!(
+            "Pour la supprimer : mimorya-admin delete-company --slug {slug} (service migrate)."
+        ));
+    }
     lines.join("\n")
 }
 
@@ -152,6 +160,32 @@ mod tests {
              plateforme ne le garde plus.\n\
              Pour la supprimer : mimorya-admin delete-company --slug acme (service migrate)."
         );
+    }
+
+    #[test]
+    fn says_to_release_again_when_accounts_were_linked_meanwhile() {
+        let released = Released {
+            tenant_id: Uuid::nil(),
+            servers: Vec::new(),
+            bots: Vec::new(),
+            links: vec![LinksReleased {
+                name: "Google Workspace".into(),
+                revoked: 1,
+                kept: 1,
+                failed: 0,
+                reason: None,
+            }],
+        };
+        let said = said("acme", &released);
+        assert!(
+            said.contains(
+                "comptes reliés à « Google Workspace » : accord révoqué chez Google pour 1 sur 2 \
+                 ; 1 relié(s) de nouveau entre-temps, à libérer encore"
+            ),
+            "{said}"
+        );
+        assert!(said.contains("relancez mimorya-admin release-company --slug acme"));
+        assert!(!said.contains("delete-company"));
     }
 
     #[test]
