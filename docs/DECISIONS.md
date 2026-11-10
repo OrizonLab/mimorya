@@ -13030,4 +13030,14 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       qu'elle dit ;
     - `infra/docker/production-test.sh` : dans la pile de production de la CI,
       l'entreprise créée, suspendue de nouveau, est montrée puis supprimée par le service
-      `migrate` ; il ne reste rien d'elle et sa session est refusée.
+      `migrate` ; il ne reste rien d'elle et sa session est refusée ;
+  - suites de l'audit (lot 61) :
+    - une réactivation qui attendait la ligne d'une entreprise que la suppression tient
+      dit, une fois l'entreprise supprimée, qu'aucune entreprise ne porte ce sigle, et non
+      qu'elle n'est pas suspendue : sa mise à jour conditionnelle n'ayant rien changé,
+      elle relit l'entreprise (`company_deletion_race.rs`) ;
+    - ce qui reste chez les fournisseurs est compté sur une vraie entreprise : ses
+      passerelles, les comptes reliés et les autorisations de ses personnes
+      (`company_deletion.rs`), qu'une table renommée ne ferait plus sortir sans bruit ;
+    - SECURITY §9 et la feuille de route disent le refus pendant qu'une évaluation se
+      joue.

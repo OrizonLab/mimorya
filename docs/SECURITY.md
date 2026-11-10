@@ -872,7 +872,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   rétention s'applique comme à toute entreprise. Une entreprise suspendue est supprimée
   par l'exploitant avec tout ce qu'elle garde, son journal d'audit compris
   (`mimorya-admin delete-company`, ADR-192), par le seul rôle propriétaire de la base, son
-  sigle confirmé, aucun de ses runs en file ni en cours ; la sortie de la commande en
+  sigle confirmé, aucun de ses runs en file ni en cours ni évaluation de ses compétences en
+  cours ; la sortie de la commande en
   est la trace, et les sauvegardes la gardent jusqu'à leur retrait. Ce qu'elle a déclaré chez d'autres services n'y est pas révoqué : la commande compte ce qui y donne accès, autorisations OAuth de serveurs MCP, comptes reliés et bots de messagerie, à retirer chez chacun ; les clients OAuth que la plateforme a enregistrés, les applications et les fournisseurs d'identité déclarés par l'entreprise y restent aussi, sans accord de personne.
   Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après
   (ADR-185) et ses conversations 24 mois après leur dernière activité (ADR-186). Un document

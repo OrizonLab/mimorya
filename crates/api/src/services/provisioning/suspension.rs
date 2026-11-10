@@ -80,9 +80,14 @@ pub async fn change_company_status(
         }
         Some(_) => {}
     }
-    // Changed meanwhile by another command: refused as well.
+    // Changed meanwhile by another command, or deleted by the operator
+    // (ADR-192): refused as well, for what it now is.
     if !change_tenant_status(&mut tx, tenant_id, from, to).await? {
-        return Err(DomainError::conflict(change.already()).into());
+        return Err(match tenant_status(&mut tx, tenant_id).await? {
+            None => unknown(),
+            Some(_) => DomainError::conflict(change.already()),
+        }
+        .into());
     }
     append_audit(
         &mut tx,
