@@ -13087,8 +13087,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     Microsoft 365 ou Google Workspace reliés par ses personnes, que la plateforme ne
     révoque pas non plus quand une personne les retire (ADR-116), et ses applications
     Slack et Teams, que l'entreprise a déclarées dans son propre espace. Depuis
-    l'ADR-194 (lot 64b), seuls les comptes Microsoft 365 restent : les accords des comptes
-    Google Workspace sont révoqués chez Google par la libération.
+    l'ADR-194, seuls les comptes Microsoft 365 restent : les accords des comptes Google
+    Workspace sont révoqués chez Google quand leur personne les retire (lot 64a) comme
+    par la libération (lot 64b), sauf si Google ne répond pas ou refuse, ce qui est dit.
 - **Conséquences** :
   - l'exploitant supprime une entreprise en trois commandes : `suspend-company` et
     `release-company` (service `api`), puis `delete-company` (service `migrate`) ;
@@ -13130,8 +13131,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 - **Statut** : accepté (2026-11-10) · complète ADR-116 et ADR-121 (comptes reliés) ;
   modifie ADR-193 depuis le lot 64b : la libération d'une entreprise suspendue prend aussi
-  les comptes reliés chez Google de ses personnes, dont les accords ne restent plus chez
-  Google, et sa suppression confirmée est refusée tant qu'il en reste.
+  les comptes reliés chez Google de ses personnes et révoque leurs accords chez Google
+  (un échec y est dit à l'exploitant), et sa suppression confirmée est refusée tant qu'il
+  en reste.
 - **Contexte** : une personne relie son compte Microsoft 365 ou Google Workspace
   (ADR-116, ADR-121). La plateforme garde son jeton de renouvellement scellé. Quand la
   liaison disparaît, ce jeton est effacé ici. Jusqu'ici, l'accord donné à l'application
@@ -13290,5 +13292,5 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - le statut dit que cette décision modifie l'ADR-193, et les deux puces de l'ADR-193
       qu'elle change renvoient ici ;
     - `crates/api/tests/account_links.rs` : un retour Microsoft refusé une fois son code
-      échangé (compte d'une autre adresse, compte non vérifié) n'envoie rien à Microsoft
-      et n'est tracé comme aucune révocation.
+      échangé (compte d'une autre adresse, compte non vérifié) n'envoie aucune demande de
+      révocation à Microsoft et n'est tracé comme aucune révocation.

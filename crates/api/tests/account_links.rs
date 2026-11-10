@@ -170,7 +170,7 @@ async fn another_account_than_the_persons_own_is_never_linked() {
     // Each return was refused once its code was redeemed, its grant kept
     // by no link: Microsoft revokes no single grant (ADR-194), so nothing
     // is sent there, nor audited as revoked.
-    assert!(idp.revoked().is_empty());
+    assert_eq!(idp.revocations_asked(), 0);
     assert!(revocations(&api, since).await.is_empty());
 
     // Without offline access, nothing could be read while she is away.
