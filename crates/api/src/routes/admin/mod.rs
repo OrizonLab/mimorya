@@ -25,6 +25,7 @@ mod mission_settings;
 mod organization;
 mod policies;
 mod policy_proposals;
+mod retention;
 mod roles;
 mod scim;
 mod skill_eval_cases;
@@ -134,6 +135,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             get(evaluation_settings::show)
                 .put(evaluation_settings::update)
                 .delete(evaluation_settings::reset),
+        )
+        .route(
+            "/admin/retention",
+            get(retention::show).put(retention::update),
         )
         .route(
             "/admin/connectors",

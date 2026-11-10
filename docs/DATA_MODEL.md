@@ -339,10 +339,14 @@ utilisateur).
 
 ## 5. Rétention
 
-Durées les mêmes pour toutes les entreprises, leur paramétrage par entreprise à venir.
-Une passe horaire, dans un processus à la fois, supprime les sessions, les mémoires
-épisodiques et celles passées leur terme, les mémoires personnelles des comptes partis
-(ADR-185) et les conversations inactives depuis 24 mois, entières (ADR-186). Chaque
+Durées de la plateforme par défaut ; chaque entreprise règle les siennes pour les
+conversations inactives, les mémoires épisodiques et les mémoires personnelles des comptes
+partis, dans des bornes que la base impose (ADR-195, `tenant_retention_durations`) : un
+allongement s'applique aussitôt, un raccourcissement sept jours plus tard, la purge
+appliquant jusque-là la plus longue des deux. Une passe horaire, dans un processus à la
+fois, supprime les sessions, les mémoires épisodiques et celles passées leur terme, les
+mémoires personnelles des comptes partis (ADR-185) et les conversations inactives,
+entières (ADR-186), chacune selon la durée de son entreprise. Chaque
 entreprise qui perd des mémoires ou des conversations le trouve dans son journal d'audit
 (`memory.purged`, `conversation.purged`), avec les nombres seuls. Les durées dites « à
 venir » ne sont pas encore appliquées : le journal d'audit et la consommation sont
@@ -351,9 +355,9 @@ possible, la chaîne et ses sceaux (ADR-178).
 
 | Donnée                                                            | Durée par défaut                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Conversations : messages, runs, événements, validations, missions | 24 mois après la dernière activité de la conversation (message, renommage, archivage), puis entière, sauf un run en file, en cours ou en attente de validation ; ses entrées d'audit restent, nommant le run qui fut (ADR-186)                                                                                                                                             |
-| Mémoire personnelle                                               | Jusqu'à suppression par l'utilisateur ou départ : 30 jours après la désactivation du compte, que la base date elle-même (`users.disabled_at`), oubliée si le compte est réactivé                                                                                                                                                                                           |
-| Mémoire `episode`                                                 | 12 mois après son enregistrement ; toute mémoire passée son propre terme (`expires_at`) aussitôt                                                                                                                                                                                                                                                                           |
+| Conversations : messages, runs, événements, validations, missions | 24 mois (de 1 à 60 selon l'entreprise, ADR-195) après la dernière activité de la conversation (message, renommage, archivage), puis entière, sauf un run en file, en cours ou en attente de validation ; ses entrées d'audit restent, nommant le run qui fut (ADR-186)                                                                                                     |
+| Mémoire personnelle                                               | Jusqu'à suppression par l'utilisateur ou départ : 30 jours (de 7 à 90 selon l'entreprise, ADR-195) après la désactivation du compte, que la base date elle-même (`users.disabled_at`), oubliée si le compte est réactivé                                                                                                                                                   |
+| Mémoire `episode`                                                 | 12 mois (de 1 à 36 selon l'entreprise, ADR-195) après son enregistrement ; toute mémoire passée son propre terme (`expires_at`) aussitôt                                                                                                                                                                                                                                   |
 | Journal d'audit                                                   | 5 ans (conformité), sans contenu de message ; à venir (gardé sans limite en attendant, la chaîne vérifiable)                                                                                                                                                                                                                                                               |
 | Jetons d'export du journal d'audit et SCIM (ADR-181, ADR-183)     | Jusqu'à leur retrait par un administrateur habilité, ou avec l'entreprise ; leur auteur oublié avec son compte                                                                                                                                                                                                                                                             |
 | Identifiant d'un compte chez le fournisseur (ADR-183)             | Avec le compte                                                                                                                                                                                                                                                                                                                                                             |

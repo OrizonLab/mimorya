@@ -13294,3 +13294,103 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `crates/api/tests/account_links.rs` : un retour Microsoft refusé une fois son code
       échangé (compte d'une autre adresse, compte non vérifié) n'envoie aucune demande de
       révocation à Microsoft et n'est tracé comme aucune révocation.
+
+## ADR-195 — Durées de rétention réglées par chaque entreprise, un raccourcissement attendant une semaine (lot 66a)
+
+- **Statut** : accepté (2026-11-10) · modifie ADR-185 et ADR-186, dont les durées étaient
+  les mêmes pour toutes les entreprises.
+- **Contexte** : la plateforme garde les mémoires épisodiques 12 mois, les mémoires
+  personnelles d'un compte désactivé 30 jours et les conversations inactives 24 mois
+  (ADR-185, ADR-186). L'entreprise est responsable de ses traitements : certaines doivent
+  garder moins, d'autres plus. Raccourcir une durée supprime pourtant, à la passe
+  suivante, ce qui n'est plus gardé, sans retour possible. C'est la première voie par
+  laquelle l'administration ferait disparaître d'un coup les conversations de toute
+  l'entreprise.
+- **Décision** :
+  - **trois durées par entreprise**, une par sorte, dans `tenant_retention_durations`
+    (une ligne par sorte, RLS, suivie par la suppression de l'entreprise, auteur oublié
+    avec son compte) :
+    - conversations inactives : de 1 à 60 mois (24 par défaut) ;
+    - mémoires épisodiques : de 1 à 36 mois (12 par défaut) ;
+    - mémoires personnelles d'un compte désactivé : de 7 à 90 jours (30 par défaut) ;
+
+    sans ligne, la durée de la plateforme s'applique. Les sessions finies restent
+    30 jours pour toutes : ce sont des données techniques ;
+
+  - **les bornes et les durées de la plateforme sont celles de la base**
+    (`retention_platform`, `retention_allowed`, contrainte de la table). Le domaine
+    (`core/src/retention.rs`) les répète pour dire un refus en français ; un test vérifie
+    qu'ils concordent ;
+  - **un allongement s'applique aussitôt, un raccourcissement sept jours plus tard** :
+    - la base garde, pour chaque durée, ce qui s'appliquait quand elle a été choisie et la
+      date de ce choix ;
+    - pendant sept jours, la purge applique la plus longue des deux
+      (`retention_in_effect`) ;
+    - un second raccourcissement dans la semaine garde la durée qui s'appliquait encore ;
+    - revenir à la durée de la plateforme est un changement comme un autre, retardé de
+      même s'il raccourcit : une durée ne se retire pas.
+
+    Celui qui règle les durées ne peut donc pas supprimer d'un coup ce que l'entreprise
+    garde ; l'entreprise a une semaine pour le voir dans son journal et revenir en
+    arrière ;
+
+  - **la date d'un changement et ce qui s'appliquait avant lui sont ceux de la base**,
+    jamais ce qu'écrit l'application :
+    - un déclencheur (`tenant_retention_durations_changed`) les fixe, comme
+      `users_disabled_at` (ADR-185) ;
+    - le rôle applicatif n'écrit que la durée et son auteur, et ne retire aucune ligne ;
+    - un changement qui laisse la durée telle qu'elle était ne relance pas la semaine ;
+  - **la purge lit les horizons de chaque entreprise** (`retention_horizons`, réservée
+    aux fonctions de la purge) : `system_purge_retained_memories` et
+    `system_purge_idle_conversations` sont remplacées par des versions qui les
+    appliquent. Elles restent tracées comme avant (`memory.purged`,
+    `conversation.purged`) ;
+  - **une permission à part, `retention:manage`** (« Régler la conservation des
+    données »), non délégable, sur toute l'entreprise seulement, donnée au rôle
+    d'administrateur technique, y compris dans les entreprises déjà là :
+    - un raccourcissement supprime des données, comme l'effacement d'un compte, qui a sa
+      propre permission (ADR-189) ;
+    - qui gère les autres réglages (`settings:manage`) ne règle pas la rétention ;
+  - **`GET /admin/retention`** donne, pour chaque sorte :
+    - la durée choisie et celle que la purge applique maintenant ;
+    - si elle est celle de l'entreprise ;
+    - la date où un raccourcissement s'appliquera, s'il en attend un ;
+    - la durée de la plateforme et les bornes.
+
+    **`PUT /admin/retention`** prend les trois durées : celles qui ne changent pas restent
+    telles quelles, et une durée hors bornes est refusée avec ses bornes ;
+
+  - **chaque changement est tracé** (`retention.configured`, sur l'entreprise) : pour
+    chaque sorte changée, avant, après, et si la purge attend une semaine pour
+    l'appliquer.
+- **Conséquences** :
+  - une entreprise qui raccourcit une durée la voit s'appliquer à la première passe
+    horaire après sept jours ; d'ici là, rien de ce qu'elle gardait ne part ;
+  - la purge compare chaque ligne à l'horizon de son entreprise ; le plus récent des
+    horizons borne la lecture de l'index, comme avant ;
+  - l'écran de ces durées, dans l'administration, vient au lot 66b ;
+  - restent à venir, comme avant :
+    - la purge message par message d'une conversation toujours active ;
+    - celle du journal d'audit, qui devra rester vérifiable (ADR-178) ;
+    - celle de la consommation ;
+  - tests :
+    - `crates/core/src/retention.rs` (unitaires) : chaque durée de la plateforme est dans
+      ses bornes, et une durée hors bornes est refusée avec elles ;
+    - `crates/api/tests/retention_durations.rs` :
+      - les durées de la plateforme et leurs bornes ;
+      - un allongement aussitôt, un raccourcissement retardé ;
+      - une durée demandée telle qu'elle est ne change rien ni ne relance la semaine ;
+      - un second raccourcissement garde la durée qui s'appliquait ;
+      - les refus hors bornes ;
+      - le journal ;
+      - seul qui détient `retention:manage` les règle, ni un membre ni qui gère les
+        autres réglages ;
+    - `crates/api/tests/retention_durations_purge.rs` :
+      - les mémoires d'une entreprise qui raccourcit partent une semaine plus tard, pas
+        celles d'une autre ;
+      - une conversation reste aussitôt qu'une entreprise allonge sa durée, et part
+        selon la durée de son entreprise une semaine après un raccourcissement ;
+      - l'application ne peut ni dater un changement, ni écrire ce qui s'appliquait
+        avant, ni retirer une durée, ni lire les horizons, ni sortir des bornes, ni
+        écrire pour une autre entreprise, ni changer la sorte d'une durée ;
+      - les durées et les bornes de la base sont celles du domaine.

@@ -44,7 +44,7 @@ Repères à l'intérieur des crates :
   d'une version, ADR-106), `core/src/identity_providers/` (fournisseurs d'identité : émetteur de
   chaque type, domaines, ce que prouve un jeton ou une assertion SAML, nom d'un compte
   créé, enregistrement DNS qui prouve un domaine (`domain_proof.rs`), ADR-063, ADR-067,
-  ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080), `core/src/account_erasure.rs` (quand un compte peut être effacé, refus dits en français, ADR-189), `core/src/scim/` (SCIM 2.0 : filtres acceptés, ce qu'un compte envoyé par le fournisseur d'identité peut contenir et ce qui en est gardé, ce qu'un remplacement ou les opérations d'un patch changent, `changes.rs`, ADR-183),
+  ADR-068, ADR-069), `core/src/schedule.rs` (heure d'une tâche planifiée, ADR-080), `core/src/retention.rs` (durées de rétention qu'une entreprise règle : sortes, bornes, durées de la plateforme, refus dits en français, ADR-195), `core/src/account_erasure.rs` (quand un compte peut être effacé, refus dits en français, ADR-189), `core/src/scim/` (SCIM 2.0 : filtres acceptés, ce qu'un compte envoyé par le fournisseur d'identité peut contenir et ce qui en est gardé, ce qu'un remplacement ou les opérations d'un patch changent, `changes.rs`, ADR-183),
   `core/src/conversation_summary.rs` (messages d'une conversation repliés dans son
   résumé, et quand, ADR-145 ; passes enchaînées et messages laissés hors de
   l'historique, ADR-149),
@@ -79,7 +79,7 @@ Repères à l'intérieur des crates :
   l'entreprise, une table par sorte (export du journal vers son SIEM, ADR-181, SCIM,
   ADR-183) : `bearer_tokens.rs` ; comptes tels que SCIM les lit et les crée, et
   l'identifiant que leur donne le fournisseur : `scim_users.rs`, ADR-183 ; fenêtres des
-  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives : `retention.rs`, ADR-185, ADR-186 ; compte effacé, ses liens comptés sous verrou, et sa suppression : `account_erasure.rs`, ADR-189 ; avis à l'auteur
+  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives : `retention.rs`, ADR-185, ADR-186, selon les durées de chaque entreprise, lues avec ce que la purge applique : `retention_durations.rs`, ADR-195 ; compte effacé, ses liens comptés sous verrou, et sa suppression : `account_erasure.rs`, ADR-189 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
@@ -192,7 +192,7 @@ Repères à l'intérieur des crates :
   `api/src/routes/` (un module par ressource, `admin/`), `api/src/contract/` (réponses
   et corps de requêtes typés, un fichier par ressource, dont sont générés les types
   TypeScript, ADR-036, ADR-039),
-  `api/src/services/admin/` (comptes, ce qu'un compte désactivé perd aussitôt, par l'administration ou par SCIM (`account_access.rs`, ADR-183), son effacement (`account_erasure.rs`, ADR-189), et absence d'un collaborateur empêché
+  `api/src/services/admin/` (durées de rétention de l'entreprise, un raccourcissement attendant une semaine (`retention.rs`, ADR-195), comptes, ce qu'un compte désactivé perd aussitôt, par l'administration ou par SCIM (`account_access.rs`, ADR-183), son effacement (`account_erasure.rs`, ADR-189), et absence d'un collaborateur empêché
   (`absences.rs`, ADR-078), organisation, habilitations, connecteurs : ce que
   l'administration change de chacun (`connector_config.rs`), OAuth déclaré sur un serveur
   MCP (`connector_oauth.rs`, sa configuration gardée : `mcp_config.rs`, ADR-171 ; version de ce qu'un administrateur en voit, déclaration, secret écrit et autorisations (celles des personnes par leur date, jamais par qui), que nomme une déclaration pour ne remplacer que cela : `oauth_version.rs`, ADR-176 ; client saisi ou enregistré par la plateforme : `oauth_client.rs`, ADR-173) et son

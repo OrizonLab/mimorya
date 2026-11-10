@@ -111,6 +111,8 @@ pub const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("GET", "/admin/evaluation-settings"),
     ("PUT", "/admin/evaluation-settings"),
     ("DELETE", "/admin/evaluation-settings"),
+    ("GET", "/admin/retention"),
+    ("PUT", "/admin/retention"),
     ("GET", "/admin/connectors"),
     ("POST", "/admin/connectors"),
     ("POST", "/admin/connectors/trial"),

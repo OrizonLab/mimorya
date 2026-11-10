@@ -26,6 +26,7 @@ mod policies;
 mod policy_proposals;
 mod rest_connectors;
 mod rest_import;
+mod retention;
 mod roles;
 mod scim;
 mod skill_eval_cases;
@@ -84,6 +85,9 @@ pub use rest_connectors::{
     RestParameter,
 };
 pub use rest_import::{OpenApiDescription, RestImport};
+pub use retention::{
+    RetentionDurationView, RetentionKindName, RetentionUnitName, RetentionUpdate, RetentionView,
+};
 pub use scim::ScimTokens;
 
 pub use organization::{

@@ -43,6 +43,7 @@ pub const PLATFORM_ROLE_TEMPLATES: &[RoleTemplate] = &[
             "connector:manage",
             "skill:manage",
             "settings:manage",
+            "retention:manage",
             "memory:manage",
             "audit:read",
             "audit:export",
