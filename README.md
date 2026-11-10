@@ -118,6 +118,8 @@ mimorya-admin create-company --name 'Acme Industrie' --slug acme \
 mimorya-admin invite --email jeanne.martin@acme.example   # nouveau lien, si le premier a expiré
 mimorya-admin suspend-company --slug acme      # plus personne ne s'y connecte ; les délais courent toujours (ADR-191)
 mimorya-admin reactivate-company --slug acme   # la rétablit, moins ce que ces délais ont retiré
+mimorya-admin delete-company --slug acme       # DATABASE_URL : montre ce qu'une entreprise suspendue garde (ADR-192)
+mimorya-admin delete-company --slug acme --confirm acme   # la supprime avec tout, son journal d'audit compris
 mimorya-admin verify-audit --anchor <entreprise>:<place>:<sceau>   # journal d'audit scellé (ADR-178)
 ```
 
@@ -125,7 +127,14 @@ mimorya-admin verify-audit --anchor <entreprise>:<place>:<sceau>   # journal d'a
 utilisent `DATABASE_APP_URL` comme l'API, les deux premières `WEB_ORIGIN`, la dernière
 `MIMORYA_MASTER_KEY`. Une suspension est tracée dans le journal d'audit de l'entreprise, et
 annoncée à chaque processus, qui oublie l'accès, le modèle et les embeddings de l'entreprise
-et ferme les instances de ses connecteurs : au mieux, comme toute invalidation (ADR-085). Le journal d'audit de chaque
+et ferme les instances de ses connecteurs : au mieux, comme toute invalidation (ADR-085).
+`delete-company` passe par le rôle propriétaire (`DATABASE_URL`), seul à pouvoir supprimer
+une entreprise : dans la pile de production,
+`docker compose run --rm migrate mimorya-admin delete-company --slug acme --confirm acme`.
+Gardez sa sortie : le journal d'audit de l'entreprise part avec elle, et ses sauvegardes la
+gardent jusqu'à leur retrait (après une restauration, supprimez-la de nouveau). Elle dit aussi
+ce que l'entreprise a déclaré chez d'autres services (autorisations OAuth, comptes reliés,
+passerelles), qui y reste : à retirer chez chacun. Le journal d'audit de chaque
 entreprise est scellé chaque minute sous une clé qui en dérive. Le dernier sceau posé dans
 chaque entreprise à chaque passage, et celui trouvé au démarrage, sont journalisés au
 niveau `info` (`LOG_LEVEL=info`, par défaut) avec leur ancre toute écrite (`Audit log

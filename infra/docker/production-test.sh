@@ -9,10 +9,12 @@
 # administrator opens the invitation link, chooses a password and gets a
 # secure session in a company that is not a demo; the operator suspends the
 # company, whose session is refused at once, then reactivates it, whose
-# session is accepted again (ADR-191).
+# session is accepted again (ADR-191); suspended again, the company is shown,
+# then deleted as the database's owner through the `migrate` service, its
+# administrator no longer let in and nothing of it left (ADR-192).
 #
-# It leaves that company and its active administrator behind: for a stack
-# thrown away afterwards only (the CI's), hence DISPOSABLE_STACK=yes. The
+# It creates and deletes a company: for a stack thrown away afterwards only
+# (the CI's), hence DISPOSABLE_STACK=yes. The
 # stack's variables come from the environment (or COMPOSE_ENV_FILES), its
 # compose files from COMPOSE_FILE (compose.production.yml by default; the CI
 # adds compose.production.build.yml, which builds the images), relative to
@@ -27,7 +29,7 @@ base=${1:-https://localhost}
 export COMPOSE_FILE=${COMPOSE_FILE:-compose.production.yml}
 compose=(docker compose)
 [[ ${DISPOSABLE_STACK:-} == yes ]] ||
-  fail "it leaves a company and an administrator behind: set DISPOSABLE_STACK=yes on a throwaway stack only"
+  fail "it creates and deletes a company: set DISPOSABLE_STACK=yes on a throwaway stack only"
 
 wait_for_stack "$base"
 check_headers_and_health "$base"
@@ -71,5 +73,23 @@ refused=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/auth/
 reactivated=$("${compose[@]}" exec -T api mimorya-admin reactivate-company --slug "$slug") ||
   fail "company not reactivated: $reactivated"
 check_company_of "$base" "$session" 'Entreprise de vérification'
+
+# The company deleted (ADR-192): suspended first, shown without its slug
+# confirmed (nothing deleted), then deleted as the database's owner, the
+# only role that may, through the service that holds its address.
+"${compose[@]}" exec -T api mimorya-admin suspend-company --slug "$slug" >/dev/null ||
+  fail "company not suspended before its deletion"
+shown=$("${compose[@]}" run --rm --no-deps migrate mimorya-admin delete-company --slug "$slug") ||
+  fail "company not shown: $shown"
+grep -q 'Rien n’a été supprimé' <<<"$shown" || fail "deleted without its slug confirmed: $shown"
+deleted=$("${compose[@]}" run --rm --no-deps migrate \
+  mimorya-admin delete-company --slug "$slug" --confirm "$slug") ||
+  fail "company not deleted: $deleted"
+left=$("${compose[@]}" exec -T db psql -U mimorya -d mimorya -tAc \
+  "select count(*) from tenants where slug = '$slug'") || fail "cannot count the companies"
+[[ $left == 0 ]] || fail "the deleted company is still there"
+refused=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/auth/me" \
+  -H "cookie: mimorya_session=$session")
+[[ $refused == 401 ]] || fail "the deleted company's session answered $refused, not 401"
 
 echo "production test passed: $base"

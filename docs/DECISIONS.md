@@ -12948,3 +12948,86 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       l'exploitant suspend l'entreprise qu'il vient de créer, dont la session est
       refusée, puis la réactive, dont la session est acceptée de nouveau ;
   - à venir : la suppression d'une entreprise suspendue (lot 60b).
+
+## ADR-192 — Entreprise suspendue supprimée par l'exploitant (lot 60b)
+
+- **Statut** : accepté (2026-11-09) · complète ADR-191 (suspension) et ADR-033
+  (commandes de l'exploitant) ; modifie `DATA_MODEL.md` §4, qui réservait la suppression
+  d'une entreprise au rôle propriétaire sans chemin pour la faire.
+- **Contexte** : une entreprise qui quitte la plateforme (fin de contrat, demande
+  d'effacement) devait pouvoir être supprimée avec tout ce qu'elle garde. Le rôle
+  applicatif n'a pas de `DELETE` sur `tenants` (migration 0006) : la suppression d'une
+  entreprise efface son journal d'audit, ce qu'aucun processus de l'application ne doit
+  pouvoir faire. Chaque table qui nomme une entreprise la suit déjà par une clé
+  `ON DELETE CASCADE` sur sa colonne `tenant_id`.
+- **Décision** :
+  - **`mimorya-admin delete-company --slug <sigle> [--confirm <sigle>]`**, par le rôle
+    propriétaire (`DATABASE_URL`), comme `migrate` : dans la pile de production, par le
+    service `migrate`, qui seul en a l'adresse
+    (`docker compose run --rm migrate mimorya-admin delete-company …`). Le rôle
+    applicatif ne peut toujours pas supprimer une entreprise, même la sienne ;
+  - **seule une entreprise suspendue** (ADR-191) est supprimée, sa ligne verrouillée le
+    temps de la transaction : une réactivation l'attend, ou passe avant et la
+    suppression est refusée. Elle est refusée aussi tant qu'un run de l'entreprise est
+    en file ou en cours (il s'arrête à sa prochaine étape) ou qu'une évaluation de ses
+    compétences se joue (une évaluation laissée en cours par un processus arrêté est
+    mise en échec par la passe suivante, même pour une entreprise suspendue, et serait à
+    redemander) ; un run qui attend une décision ou une évaluation en file part avec
+    elle ;
+  - **sans `--confirm`, rien n'est supprimé** : la commande montre ce que l'entreprise
+    garde, table par table, avec le total, et ce qu'elle a déclaré chez d'autres services. Avec `--confirm` égal à son sigle, elle la
+    supprime en une transaction, avec chaque ligne de chaque table qui la nomme, son
+    journal d'audit compris, et dit ce qui est parti. Un sigle confirmé qui n'est pas le
+    sien est refusé sans rien supprimer ;
+  - **chaque processus lâche ce qu'il gardait d'elle** (accès, modèle, embeddings,
+    instances de ses connecteurs), comme à la suspension, l'annonce partant avec la
+    transaction ;
+  - **la trace de la suppression est la sortie de la commande**, à garder par
+    l'exploitant : le journal de l'entreprise part avec elle. Ses ancres ne sont plus à
+    donner à `verify-audit`, qui ne trouverait plus sa chaîne ;
+  - **les sauvegardes** faites avant la gardent jusqu'à ce que la conservation fixée par
+    l'exploitant les retire. Restaurée depuis l'une d'elles, l'entreprise reviendrait,
+    active si la sauvegarde précède sa suspension : après une restauration, l'exploitant
+    supprime de nouveau les entreprises supprimées depuis, dont ses sorties gardées
+    donnent la liste ;
+  - **ce qu'elle a déclaré chez d'autres services y reste** : la suppression efface les
+    autorisations OAuth de ses serveurs MCP (de l'entreprise et de ses personnes), les
+    comptes Microsoft 365 ou Google Workspace reliés par ses personnes et ses
+    passerelles de conversation, sans les révoquer chez leur serveur d'autorisation ni
+    retirer le webhook de son bot Telegram : la commande passe par le seul rôle
+    propriétaire, sans la clé maître qui ouvre leurs jetons. Elle dit combien il y en a,
+    à retirer chez chaque fournisseur ; leur révocation à la suppression est à venir. Les
+    clients OAuth que la plateforme a enregistrés, les applications et les fournisseurs
+    d'identité déclarés par l'entreprise y restent aussi : ils ne portent l'accord de
+    personne, et la commande ne les compte pas.
+- **Conséquences** :
+  - une entreprise peut quitter la plateforme sans qu'il reste d'elle, sur la plateforme,
+    autre chose que ses sauvegardes ; ce qu'elle a déclaré chez d'autres services est
+    à retirer chez eux ;
+  - règles du dépôt : CLAUDE.md (règles d'architecture, 2) et REVIEW.md §1 disent cet
+    usage du rôle propriétaire et la clé en cascade de chaque table vers `tenants` ;
+  - suites de l'audit du lot 60a : une tâche planifiée ou un déclencheur d'une entreprise
+    suspendue est refusé avant que son modèle soit chargé (`ready_to_run`), qu'une
+    suspension avait fait lâcher : sans modèle, le refus dit la suspension
+    (`company_suspension.rs`) ; un test renommé (`…_reopened_with_its_sessions`) ;
+  - tests :
+    - `crates/api/tests/company_deletion.rs` : l'entreprise de démonstration, ses
+      personnes ayant quelque chose de chaque sorte et son journal scellé, est montrée
+      sans rien perdre, puis supprimée une fois son sigle confirmé : aucune table ne garde
+      de ligne d'elle, sa session et sa connexion sont refusées, chaque processus est
+      prévenu, et une autre entreprise garde chacune de ses lignes ;
+    - `crates/api/tests/company_deletion_refusals.rs` : un sigle inconnu, une entreprise
+      active, un run en cours ou en file, une évaluation en cours, un sigle confirmé qui
+      n'est pas le sien sont refusés sans rien supprimer ; un run qui attend une décision
+      et une évaluation en file ne retiennent rien ;
+    - `crates/api/tests/company_deletion_race.rs` : une suppression qui attend la ligne
+      qu'une autre commande réactive lit l'entreprise active et est refusée, sans rien
+      supprimer ;
+    - `crates/db/tests/tenant_deletion.rs` : chaque table qui nomme une entreprise la
+      suit par une clé `ON DELETE CASCADE` sur sa colonne `tenant_id` ; le rôle
+      applicatif ne peut pas supprimer une entreprise, même la sienne ;
+    - `crates/api/src/bin/admin/args.rs`, `deletion.rs` : la commande, ses options et ce
+      qu'elle dit ;
+    - `infra/docker/production-test.sh` : dans la pile de production de la CI,
+      l'entreprise créée, suspendue de nouveau, est montrée puis supprimée par le service
+      `migrate` ; il ne reste rien d'elle et sa session est refusée.

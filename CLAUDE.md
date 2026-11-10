@@ -354,7 +354,9 @@ Repères à l'intérieur des crates :
   `api/src/services/provisioning/` et `api/src/bin/admin/` (commandes d'exploitation :
   migrations, création d'une entreprise réelle et de son administrateur, ADR-033,
   entreprise suspendue et réactivée par son sigle, chaque processus lâchant ce qu'il garde
-  d'elle, `suspension.rs`, ADR-191,
+  d'elle, `suspension.rs`, ADR-191, entreprise suspendue supprimée par le rôle propriétaire,
+  montrée d'abord, `deletion.rs` et `bin/admin/deletion.rs`, lignes de chaque table d'une
+  entreprise comptées et supprimées, `db/src/repositories/tenant_deletion.rs`, ADR-192,
   vérification du journal d'audit scellé, `verify.rs`, et ce qu'elle dit à
   l'exploitant, `report.rs`, ADR-178),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
@@ -519,8 +521,13 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
      `(tenant_id, colonne)` vers `(tenant_id, id)`, `ON DELETE SET NULL (colonne)` si
      elle vide sa référence (ADR-167) ; `crates/db/tests/tenant_references.rs` échoue
      sinon.
+   - Toute table métier suit la suppression de son entreprise : une clé de sa colonne
+     `tenant_id` vers `tenants`, `ON DELETE CASCADE` (ADR-192) ;
+     `crates/db/tests/tenant_deletion.rs` échoue sinon.
    - Le runtime utilise exclusivement `DATABASE_APP_URL` (rôle `mimorya_app`, RLS
-     appliquée). Le rôle propriétaire ne sert qu'aux migrations et au seed.
+     appliquée). Le rôle propriétaire ne sert qu'aux migrations, au seed et à la
+     suppression d'une entreprise suspendue par l'exploitant (ADR-192 :
+     `mimorya-admin delete-company`), qu'aucun processus de l'application ne peut faire.
    - Migrations : nouveau fichier SQL numéroté dans `crates/db/migrations/`
      (`NNNN_description.sql`), écrit et relu à la main, appliqué par
      `run_migrations` avec le rôle propriétaire. **Ne jamais modifier une migration
