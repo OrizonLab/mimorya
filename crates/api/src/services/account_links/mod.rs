@@ -16,6 +16,7 @@ mod attempt;
 mod finish;
 mod grant;
 mod renewal;
+mod revocation;
 mod start;
 mod tokens;
 
@@ -23,6 +24,7 @@ pub use access::PersonAccounts;
 pub use attempt::{LINK_COOKIE, cleared_link_cookie, link_cookie};
 pub use finish::{LinkFailure, LinkRefused};
 pub use renewal::ACCOUNT_LINK_REVOKED;
+pub use revocation::{LINKS_REVOKED, LinksLetGo, LinksOutcome};
 
 use std::sync::Arc;
 
@@ -31,7 +33,7 @@ use mimorya_core::DomainError;
 use mimorya_core::account_links::LinkKind;
 use mimorya_db::Database;
 use mimorya_db::repositories::account_links::{
-    AccountLinkRow, delete_account_link, list_account_links_of,
+    AccountLinkRow, list_account_links_of, take_account_link,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::connectors::{ConnectorInstanceRow, list_connector_instances};
@@ -160,14 +162,21 @@ impl AccountLinkService {
     }
 
     /// Removes the person's link at this connector: its refresh token goes
-    /// with it. The grant stays at the provider until the person revokes it
-    /// there; nothing here can use it any more.
-    pub async fn unlink(&self, access: &AccessContext, connector_id: Uuid) -> anyhow::Result<()> {
+    /// with it, and its grant is revoked at a provider that revokes one
+    /// (ADR-194), once the removal is committed; at Microsoft, it stays
+    /// until the person withdraws it there. Nothing here can use it any
+    /// more.
+    pub async fn unlink(
+        self: &Arc<Self>,
+        access: &AccessContext,
+        connector_id: Uuid,
+    ) -> anyhow::Result<()> {
         let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
         let mut tx = self.db.begin(tenant_id).await?;
-        if !delete_account_link(&mut tx, connector_id, user_id).await? {
+        let Some(taken) = take_account_link(&mut tx, connector_id, user_id).await? else {
             return Err(DomainError::not_found("Aucun compte relié à ce connecteur").into());
-        }
+        };
+        let let_go = self.let_go_of(&mut tx, vec![taken]).await?;
         append_audit(
             &mut tx,
             AuditEntry::new(tenant_id, "user", "account.link.removed", "success")
@@ -176,6 +185,7 @@ impl AccountLinkService {
         )
         .await?;
         tx.commit().await?;
+        self.revoke(tenant_id, Some(user_id), let_go).await;
         Ok(())
     }
 }

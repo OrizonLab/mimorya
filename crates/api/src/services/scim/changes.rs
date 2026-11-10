@@ -22,7 +22,7 @@ use super::caller::{ScimCaller, open, refuse};
 use super::users::audited;
 use crate::contract::{ScimUser, scim_operations, scim_user_fields};
 use crate::http::scim::{ScimError, ScimResult};
-use crate::services::admin::{ConnectorAdmin, let_go, take_access};
+use crate::services::admin::{ConnectorAdmin, TakenAccess, let_go, take_access};
 
 /// Replaces the account `id` by what `body` sends, as read at `base`.
 pub async fn replace_scim_user(
@@ -77,7 +77,7 @@ pub async fn remove_scim_user(
     };
     let tenant_id = caller.tenant_id;
     let disabling = row.status != "disabled";
-    let mut revocations = Vec::new();
+    let mut revocations = TakenAccess::default();
     if disabling {
         let status = UserPatch {
             status: Some("disabled"),
@@ -137,7 +137,7 @@ async fn change(
     }
     let revocations = match status {
         Some("disabled") => take_access(&mut tx, admin, tenant_id, row.id).await?,
-        _ => Vec::new(),
+        _ => TakenAccess::default(),
     };
     let action = match status {
         Some("disabled") => "user.disabled",

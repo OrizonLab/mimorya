@@ -137,11 +137,13 @@ test('an application is declared, an account linked and removed, the application
   expect(leaAsked[0]).toContain('reste chez Microsoft');
   expect((await linkOf(lea))?.linked ?? null).toBeNull();
 
-  // Paul deletes the application.
+  // Paul deletes the application, told Microsoft keeps the people's
+  // consents (ADR-194).
   await renamedCard.getByRole('button', { name: 'Supprimer' }).click();
   await expect(page.getByText(RENAMED)).toHaveCount(0);
   expect((await stored(page)).app).toBeUndefined();
   expect(asked).toHaveLength(2);
+  expect(asked[1]).toContain('Leurs accords restent chez Microsoft');
 });
 
 test('a failed return is said on « Mon compte », once', async ({ page }) => {

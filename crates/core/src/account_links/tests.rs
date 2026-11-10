@@ -232,3 +232,10 @@ fn a_link_serves_what_the_company_lets_and_the_person_granted() {
     // Not said: reading, as the tools read.
     assert_eq!(M365.serving_scopes("", true), [MAIL_READ, CALENDARS_READ]);
 }
+
+#[test]
+fn only_google_revokes_one_grant_at_the_platform_s_request() {
+    // ADR-194: Microsoft revokes no single application's grant.
+    assert!(LinkKind::GoogleWorkspace.revokes());
+    assert!(!M365.revokes());
+}

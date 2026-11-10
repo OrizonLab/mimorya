@@ -7,11 +7,13 @@
 //! (`connector_oauth`, ADR-171), which no typed token goes with.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use mimorya_connectors::outbound::{token_problem, url_problem};
 use mimorya_core::DomainError;
 use mimorya_core::account_links::LinkKind;
 use mimorya_core::authz::PermissionInfo;
+use mimorya_db::repositories::account_links::take_account_links_of_connector;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
     ConnectorPatch, NewConnectorInstance, create_connector_instance, delete_connector_instance,
@@ -29,6 +31,7 @@ use super::policy_changes::policy_changes;
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
+use crate::services::account_links::AccountLinkService;
 use crate::services::connectors::{ConnectorService, client_secret_name, token_secret_name};
 
 pub(super) const PERMISSION: &str = "connector:manage";
@@ -47,6 +50,9 @@ pub struct ConnectorAdmin<'a> {
     pub connectors: &'a ConnectorService,
     pub secrets: &'a SecretStore,
     pub catalog: &'a [PermissionInfo],
+    /// Revokes the grants of the accounts linked at a connector deleted,
+    /// or by a person disabled (ADR-194).
+    pub account_links: &'a Arc<AccountLinkService>,
 }
 
 pub async fn create_mcp_connector(
@@ -325,6 +331,10 @@ pub async fn delete_connector(
     let declared = Editable::of(&instance).and_then(|editable| editable.oauth().cloned());
     let tenant_id = access.subject.tenant_id;
     let taken = take_authorizations(&mut tx, admin, tenant_id, id, declared.as_ref()).await?;
+    // The accounts linked there, taken while it is read, their grants
+    // revoked once committed where its provider revokes one (ADR-194).
+    let links = take_account_links_of_connector(&mut tx, id).await?;
+    let links = admin.account_links.let_go_of(&mut tx, links).await?;
     delete_connector_instance(&mut tx, id).await?;
     for secret in [token_secret_name(id), client_secret_name(id)] {
         admin.secrets.delete(&mut tx, &secret).await?;
@@ -339,9 +349,14 @@ pub async fn delete_connector(
     .await?;
     tx.commit().await?;
     admin.connectors.invalidate(id).await;
-    if let Some(taken) = taken {
-        revoke(admin, access, taken).await;
-    }
+    let servers = async {
+        if let Some(taken) = taken {
+            revoke(admin, access, taken).await;
+        }
+    };
+    let by = Some(access.subject.user_id);
+    let accounts = admin.account_links.revoke(tenant_id, by, links);
+    futures::join!(servers, accounts);
     Ok(())
 }
 

@@ -24,7 +24,7 @@ use mimorya_db::{Database, TenantTx, is_unique_violation};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
-use super::account_access::{let_go, take_access};
+use super::account_access::{TakenAccess, let_go, take_access};
 use super::connectors::ConnectorAdmin;
 use super::{audit_entry, begin_change, current_tree, refuse_self};
 use crate::auth::credentials::{generate_temporary_password, hash_password_async};
@@ -204,7 +204,7 @@ pub async fn update_user(
     if let Some(unit) = changes.org_unit_id {
         set_primary_unit(&mut tx, tenant_id, user_id, unit).await?;
     }
-    let mut revocations = Vec::new();
+    let mut revocations = TakenAccess::default();
     match changes.active {
         Some(false) => revocations = take_access(&mut tx, admin, tenant_id, user_id).await?,
         // Enabled again, an account the identity provider removed is its

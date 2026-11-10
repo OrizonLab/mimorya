@@ -139,6 +139,7 @@ pub(crate) fn admin<'a>(
         connectors: &state.connectors,
         secrets: store,
         catalog,
+        account_links: &state.account_links,
     }
 }
 
