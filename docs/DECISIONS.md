@@ -13208,8 +13208,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - un compte Google relié ne garde plus d'accord chez Google après son retrait, la
     désactivation de son compte ou la suppression du connecteur, sauf si Google ne répond
     pas ou refuse : l'audit le dit ;
-  - le lot 64b fera de même à la libération d'une entreprise suspendue (ADR-193), qui
-    garde jusque-là les comptes Google reliés de ses personnes ;
+  - la libération d'une entreprise suspendue (ADR-193) fait de même depuis le lot 64b
+    (voir ses suites ci-dessous) ;
   - suites de l'audit du lot 63 : l'appel sans effet à `outcomes` est retiré de
     `revoke_all_by`, et la phrase de l'ADR-193 sur le verrou est précisée ;
   - tests :
@@ -13233,3 +13233,35 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `crates/core/src/account_links/tests.rs` : seul Google révoque ;
     - `apps/web/e2e/google-workspace.spec.ts`, `microsoft365.spec.ts` : ce que disent les
       questions avant un retrait ou une suppression.
+  - suites (lot 64b) :
+    - **la libération d'une entreprise suspendue** (`release-company`, ADR-193) prend
+      les comptes reliés chez Google de ses personnes, dans sa transaction, et révoque
+      leurs accords chez Google une fois validée. Elle attend chaque issue, la dit à
+      l'exploitant par connecteur (révoqués, gardés, non révoqués et pourquoi) et la
+      trace (`accountLinks` dans `tenant.released`, puis `account.links_revoked` au nom
+      de `system`). Sa suppression confirmée est refusée tant qu'il en reste. Les comptes
+      reliés chez Microsoft restent, comptés dans ce que l'entreprise garde, et partent
+      avec elle ;
+    - **un retour refusé une fois son code échangé** (compte d'une autre adresse, compte
+      non vérifié, connecteur supprimé ou désactivé, compte désactivé pendant
+      l'aller-retour) laisse chez Google un accord qu'aucune liaison ne garde : son jeton
+      de renouvellement y est révoqué comme une liaison laissée, au nom de la personne.
+      Un retour refusé avant l'échange n'a reçu aucun jeton, donc rien n'est à révoquer ;
+    - **une liaison refaite n'est pas révoquée** : juste avant d'envoyer un jeton, la
+      plateforme relit si la personne a, à ce connecteur, une liaison au même compte
+      (`subject`). Si oui, l'accord, le même chez Google, est gardé (`kept` dans
+      l'audit) au lieu d'emporter la nouvelle liaison. L'accord d'un autre compte est
+      révoqué quand même. Seule une liaison refaite pendant l'envoi lui-même peut
+      encore perdre son accord, et elle est alors retirée à son premier renouvellement
+      (ADR-117) ;
+    - tests :
+      - `crates/api/tests/company_release_links.rs` : la suppression est refusée tant que
+        les comptes Google demeurent ; la libération les révoque chez Google et le dit ;
+        le compte Microsoft reste ; une seconde libération ne trouve rien ;
+      - `crates/api/tests/google_workspace_refused_returns.rs` : l'accord d'un autre
+        compte, refusé, est révoqué, la liaison de la personne restant ; celui du compte
+        qu'une liaison garde est gardé ;
+      - `google_workspace_revocation_races.rs` : un retour pendant la suppression de son
+        connecteur révoque l'accord que son code a apporté ;
+      - `crates/api/src/bin/admin/release.rs` : ce que la commande dit des comptes
+        reliés.

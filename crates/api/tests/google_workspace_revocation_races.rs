@@ -2,7 +2,8 @@
 //! the request that let it go abandoned while Google keeps the revocation
 //! waiting, the revocation going on to its bound and its audit all the
 //! same; and a link returning from Google while its connector is being
-//! deleted, never kept behind the deletion's back.
+//! deleted, never kept behind the deletion's back, the grant its code
+//! brought revoked.
 
 mod support;
 
@@ -56,7 +57,10 @@ async fn a_removal_its_request_abandons_is_revoked_and_audited_all_the_same() {
         reason.as_deref().unwrap_or_default().contains("à temps"),
         "{reason:?}"
     );
-    assert_eq!(*counts, serde_json::json!({ "revoked": 0, "failed": 1 }));
+    assert_eq!(
+        *counts,
+        serde_json::json!({ "revoked": 0, "kept": 0, "failed": 1 })
+    );
     no_token_audited(&api).await;
     remove_connectors(&api, &[google]).await;
 }
@@ -100,4 +104,6 @@ async fn a_link_returning_while_its_connector_is_deleted_is_never_kept() {
     let (returned, ()) = tokio::join!(returned, deleted);
     assert_eq!(location(&returned), FAILED);
     assert_eq!(kept_refresh_token(&api, google, user::CLAIRE).await, None);
+    // The grant its code brought, kept by no link, revoked at Google.
+    assert_eq!(idp.revoked(), ["jeton-de-renouvellement-g-claire"]);
 }

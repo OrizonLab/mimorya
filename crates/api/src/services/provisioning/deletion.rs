@@ -15,6 +15,7 @@
 //! (linked accounts, Slack and Teams) stays there, said to the operator.
 
 use mimorya_core::DomainError;
+use mimorya_core::account_links::LinkKind;
 use mimorya_db::repositories::tenant_deletion::{
     delete_tenant, living_work, lock_tenant_by_slug, still_to_release, tenant_rows,
 };
@@ -113,7 +114,8 @@ pub async fn delete_company(
     let rows = CompanyRows {
         tenant_id,
         tables: tenant_rows(&mut tx, tenant_id).await?,
-        to_release: still_to_release(&mut tx, tenant_id).await?,
+        to_release: still_to_release(&mut tx, tenant_id, &LinkKind::revoking_connector_types())
+            .await?,
     };
     match confirm.map(str::trim) {
         None => Ok(CompanyDeletion::Shown(rows)),
@@ -122,9 +124,9 @@ pub async fn delete_company(
         )
         .into()),
         Some(_) if rows.to_release > 0 => Err(DomainError::conflict(
-            "Des autorisations OAuth de ses serveurs MCP ou des bots Telegram sont encore \
-             déclarés chez leurs fournisseurs : mimorya-admin release-company --slug <sigle>, \
-             dans le service api, les y retire d’abord",
+            "Des autorisations OAuth de ses serveurs MCP, des bots Telegram ou des comptes \
+             Google reliés sont encore déclarés chez leurs fournisseurs : mimorya-admin \
+             release-company --slug <sigle>, dans le service api, les y retire d’abord",
         )
         .into()),
         Some(_) => {

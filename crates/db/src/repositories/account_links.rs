@@ -98,6 +98,26 @@ pub async fn list_account_links_of(
         .await
 }
 
+/// Whether the person has a link at this connector to the provider's
+/// account `subject`: one made again since a grant of that account was let
+/// go of keeps it, the grant being the same (ADR-194).
+pub async fn has_account_link_to(
+    conn: &mut PgConnection,
+    connector_id: Uuid,
+    user_id: Uuid,
+    subject: &str,
+) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        "select exists(select 1 from account_links \
+         where connector_id = $1 and user_id = $2 and subject = $3)",
+    )
+    .bind(connector_id)
+    .bind(user_id)
+    .bind(subject)
+    .fetch_one(conn)
+    .await
+}
+
 /// How many people linked an account at this connector.
 pub async fn count_account_links(conn: &mut PgConnection, connector_id: Uuid) -> sqlx::Result<i64> {
     sqlx::query_scalar("select count(*) from account_links where connector_id = $1")
@@ -150,6 +170,8 @@ pub async fn get_account_link(
 pub struct TakenAccountLink {
     pub connector_id: Uuid,
     pub user_id: Uuid,
+    /// The provider's account, as its token named it.
+    pub subject: String,
     pub refresh_token: StoredSecret,
 }
 
@@ -157,6 +179,7 @@ pub struct TakenAccountLink {
 struct TakenRow {
     connector_id: Uuid,
     user_id: Uuid,
+    subject: String,
     refresh_ciphertext: Vec<u8>,
     refresh_iv: Vec<u8>,
     refresh_auth_tag: Vec<u8>,
@@ -168,6 +191,7 @@ impl From<TakenRow> for TakenAccountLink {
         Self {
             connector_id: row.connector_id,
             user_id: row.user_id,
+            subject: row.subject,
             refresh_token: StoredSecret {
                 ciphertext: row.refresh_ciphertext,
                 iv: row.refresh_iv,
@@ -178,7 +202,7 @@ impl From<TakenRow> for TakenAccountLink {
     }
 }
 
-const TAKEN: &str = "returning connector_id, user_id, refresh_ciphertext, refresh_iv, \
+const TAKEN: &str = "returning connector_id, user_id, subject, refresh_ciphertext, refresh_iv, \
     refresh_auth_tag, refresh_key_version";
 
 /// Removes the person's link at this connector, if they had one, and

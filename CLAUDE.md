@@ -216,7 +216,8 @@ Repères à l'intérieur des crates :
   révoquée retirée (`renewal.rs`), gardé (`tokens.rs`), ADR-117 ; accord révoqué chez
   Google quand la plateforme laisse la liaison : liaisons prises dans leur transaction,
   point de révocation lu dans la déclaration de Google (`revocation/endpoint.rs`),
-  envoi par une tâche à part (`revocation/sending.rs`), ADR-194),
+  envoi par une tâche à part, rien pour une liaison refaite au même compte, et l'accord
+  d'un retour refusé une fois son code échangé (`revocation/sending.rs`), ADR-194),
   `api/src/services/gateways/` (passerelles de conversation : événements de Slack reçus
   sur leur signature (`events.rs`), lien de liaison offert dans Slack et confirmé dans
   la session de la personne (`link.rs`), identités listées et retirées
@@ -361,7 +362,8 @@ Repères à l'intérieur des crates :
   montrée d'abord, `deletion.rs` et `bin/admin/deletion.rs`, lignes de chaque table d'une
   entreprise comptées et supprimées, `db/src/repositories/tenant_deletion.rs`, ADR-192,
   ce que la plateforme a déclaré pour elle ailleurs retiré avant, dans le service `api`,
-  autorisations OAuth révoquées et bots Telegram retirés, `release.rs` et
+  autorisations OAuth révoquées, bots Telegram retirés et accords des comptes Google
+  reliés révoqués (ADR-194), `release.rs` et
   `bin/admin/release.rs`, toutes ses autorisations prises
   (`connector_authorization/revocation/company.rs`), passerelle retirée comme par
   l'administration (`services/admin/gateway_withdrawal.rs`), ADR-193,
