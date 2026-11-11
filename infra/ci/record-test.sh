@@ -23,3 +23,5 @@ comm -z -13 <(sort -z "$parent") <(env -0 | sort -z) |
 printf '%s\t%s\n' "$binary" "$PWD" >> "$out/runs.tsv"
 "$binary" --list --format terse < /dev/null > "$out/runs/$name.all"
 "$binary" --list --format terse --ignored < /dev/null > "$out/runs/$name.ignored"
+# Its own count, which the lists are checked against (`N tests, M benchmarks`).
+"$binary" --list < /dev/null | tail -n 1 > "$out/runs/$name.count"

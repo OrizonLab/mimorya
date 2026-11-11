@@ -39,6 +39,10 @@ async function nadiaAsks(page: Page, newContext: () => Promise<BrowserContext>) 
   people.marc = await (await newContext()).newPage();
   await signIn(people.paul, demo.paul);
   await signIn(people.marc, demo.marc);
+  // Marc has Nadia's request alone to decide: what waited for him before,
+  // such as the run a start of the server leaves interrupted when no test
+  // of this shard took it up (`interrupted-run.spec.ts`), is refused first.
+  await refuseWaiting(people.marc);
   await routeToManagers(people.paul, ['write']);
   await signIn(page, demo.nadia);
   await page.getByLabel('Votre message').fill(REFERENCE_REQUEST);

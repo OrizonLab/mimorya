@@ -35,6 +35,7 @@ node infra/ci/tests.mjs plan "$out" "$shards"
 
 # Many binaries hold mostly the same code: a long window finds it again.
 pack() {
+  set -o pipefail
   local list=$1
   local name
   name=$(basename "$list" .files)

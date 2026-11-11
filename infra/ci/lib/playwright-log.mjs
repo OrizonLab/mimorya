@@ -19,9 +19,14 @@ function rows(text, pattern) {
   return found;
 }
 
-/** The tests a `playwright test --list` output names. */
+/** The tests a `playwright test --list` output names, as many as its total says. */
 export function listed(text) {
-  return rows(text, LISTED);
+  const found = rows(text, LISTED);
+  const total = /^Total: (\d+) tests? in \d+ files?$/m.exec(text);
+  if (!total || Number(total[1]) !== found.length) {
+    throw new Error(`${found.length} tests read, not the total Playwright gives`);
+  }
+  return found;
 }
 
 /** The tests a `list` reporter's output shows passed. */

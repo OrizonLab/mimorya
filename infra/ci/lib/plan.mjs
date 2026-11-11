@@ -42,6 +42,13 @@ function tests(file) {
     .map((text) => text.slice(0, -': test'.length));
 }
 
+/** The number of tests a `--list` output's last line says (`N tests, M benchmarks`). */
+function counted(file) {
+  const said = /^(\d+) tests?, \d+ benchmarks?$/.exec(readFileSync(file, 'utf8').trim());
+  if (!said) throw new Error(`${file}: no count of tests`);
+  return Number(said[1]);
+}
+
 /** `file` relative to `root`, which it must be under. */
 function inside(root, file) {
   const relative = path.relative(root, file);
@@ -70,6 +77,9 @@ function binaries(dir, root) {
       .filter(([key]) => key.startsWith('CARGO_BIN_EXE_'))
       .map(([, value]) => inside(root, value));
     const all = tests(`${dir}/runs/${name}.all`);
+    if (all.length !== counted(`${dir}/runs/${name}.count`)) {
+      throw new Error(`${binary}: ${all.length} tests read, not as many as it counts`);
+    }
     const ignored = new Set(tests(`${dir}/runs/${name}.ignored`));
     found.push({
       binary: inside(root, binary),
@@ -83,6 +93,7 @@ function binaries(dir, root) {
     });
   }
   if (targets.size > 0) throw new Error(`built but never run: ${[...targets.keys()].join(', ')}`);
+  if (found.every((b) => b.unit.length + b.int.length === 0)) throw new Error('no test listed');
   return found;
 }
 

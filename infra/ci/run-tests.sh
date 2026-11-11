@@ -39,10 +39,19 @@ while IFS=$'\t' read -r binary cwd env pkg target; do
     echo "::error::$pkg $target: exit status $status"
     failed=1
   fi
-  sed -nE 's/^test (.+) \.\.\. ok$/\1/p' "$output" | sed -E 's/ - should panic$//' |
-    while IFS= read -r test; do
+  passed=$(sed -nE 's/^test (.+) \.\.\. ok$/\1/p' "$output" | sed -E 's/ - should panic$//')
+  if [ -n "$passed" ]; then
+    printf '%s\n' "$passed" | while IFS= read -r test; do
       printf '%s\t%s\t%s\t%s\n' "$pkg" "$target" "$test" "$class"
     done >> "$rows"
+  fi
+  # A line broken by output the test did not capture would go unread: said
+  # here, where it happened, rather than only as a test missing at the end.
+  said=$(sed -nE 's/^test result: [a-zA-Z]+\. ([0-9]+) passed;.*/\1/p' "$output")
+  read_count=$(printf '%s' "$passed" | grep -c '^' || true)
+  if [ "${said:-0}" != "$read_count" ]; then
+    echo "::warning::$pkg $target: $said tests passed, $read_count read from the output"
+  fi
 done < "$plan"
 rm -f "$output"
 exit "$failed"

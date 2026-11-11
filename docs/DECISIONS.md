@@ -13707,8 +13707,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     il passe alors à 9 h, 15 h ou 11 h. `e2e-build` construit les programmes comme avant,
     ainsi que l'application web, et liste les tests (`playwright test --list`). Chaque
     lot Playwright (`--shard=k/3`) démarre sa propre API, avec ses programmes déjà
-    construits (`E2E_PREBUILT`). En local, la suite passe en trois lots, chacun contre
-    son propre démarrage ;
+    construits (`E2E_PREBUILT`).
+
+    Ce que le démarrage laisse pour un fichier précis (le run interrompu de Marc,
+    qui attend sa validation, le run en file, la tâche planifiée manquée) reste là
+    jusqu'à ce fichier, ou tout le lot s'il n'y est pas. Un parcours qui lit toute une
+    liste règle donc d'abord ce qui l'attend : `manager-approvals.spec.ts` fait
+    refuser par Marc ce qui l'attendait avant la demande de Nadia. Vérifié en local :
+    - chacun des 63 fichiers passe seul, contre un démarrage neuf ;
+    - la suite passe entière, et en deux, trois et quatre lots ;
+
   - **un dernier job, `CI result`, seul contrôle à exiger** dans la protection de
     branche :
     - il échoue si un job a échoué, a été annulé ou sauté ;
@@ -13728,13 +13736,17 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   `pnpm test:int`, `pnpm test:e2e`).
 - **Conséquences** :
   - un nouveau binaire de test est inventorié et réparti sans rien changer ;
-  - le nombre de lots PostgreSQL figure deux fois : dans la matrice d'`integration` et
-    dans l'argument de `build-tests.sh`. Un écart laisse des tests sans job, et
-    `CI result` échoue ;
+  - le nombre de lots PostgreSQL figure dans l'argument de `build-tests.sh`, dans les
+    envois d'archives (un par lot), dans la matrice d'`integration` et dans le nom de
+    ses jobs. Un écart laisse une archive sans envoi (`if-no-files-found: error`) ou
+    des tests sans job, et `CI result` échoue ;
+  - un nouveau job doit être ajouté aux `needs` de `CI result`, sans quoi son échec
+    ne bloquerait rien ;
   - une vingtaine de jobs tournent en même temps ;
   - le journal de la CI garde l'ancien format de cargo (`Running …`, `test … ok`) ;
-  - mesuré sur la PR #248 : **21,6 minutes** de bout en bout, contre 54,5 pour le run
-    de `main` juste avant (46,9 en médiane sur les douze derniers runs réussis). Les
+  - mesuré sur la PR #248 : **21,6 et 22,3 minutes** de bout en bout pour ses deux
+    premiers commits, contre 54,5 pour le run de `main` juste avant, 48,1 en médiane
+    sur les douze runs réussis qui précèdent la PR (de 32,4 à 55,3). Les
     mêmes 2150 tests ont tourné et réussi, chacun dans sa passe : 1030 unitaires,
     1001 PostgreSQL et 119 de bout en bout, sans doctest. Les deux listes sont
     identiques (empreinte `e4bea6bc…`). Le chemin critique se décompose ainsi :

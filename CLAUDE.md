@@ -632,8 +632,10 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
   modifié s'accompagne de son test. Les tests partagent l'entreprise de démonstration
   (recréée à chaque démarrage) et s'exécutent dans l'ordre des fichiers : chacun la
   laisse sans effet sur les suivants. En CI, la suite est répartie en lots
-  (`--shard`), chacun contre son propre démarrage (ADR-199) : un test ne compte sur
-  aucun fichier joué avant lui. Ce qu'il crée, il le supprime quand l'API le
+  (`--shard`), chacun contre son propre démarrage (ADR-199) : chaque fichier passe
+  seul, sans compter sur aucun fichier joué avant lui ; ce que le démarrage laisse en
+  attente (le run interrompu de Marc…) et qu'un parcours lit en entier, ce parcours le
+  règle d'abord. Ce qu'il crée, il le supprime quand l'API le
   permet, même s'il échoue quand l'effet serait gênant (`afterEach`) ; un compte porte une
   adresse propre au test, et il est désactivé puis effacé (ADR-189).
   Une assertion vérifie ce que l'API a enregistré (relu après rechargement), pas l'état

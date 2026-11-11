@@ -22,6 +22,10 @@ export function verify(expected, ran, names = ['expected', 'ran']) {
     const { count, sha256 } = digest(rows);
     say(`${name}: ${count} tests, sha256 ${sha256}`);
   }
+  if (expected.length === 0) {
+    say(`${left}: no test listed`);
+    return false;
+  }
   const expectedSet = new Set(expected);
   const ranSet = new Set(ran);
   const problems = [
