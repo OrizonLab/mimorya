@@ -13677,11 +13677,13 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **les tests Rust compilés une seule fois** (`infra/ci/build-tests.sh`), avec le
     profil d'avant (`line-tables-only`) :
     - `cargo test --workspace --no-run` les construit ;
-    - `cargo test --workspace` les « lance » ensuite avec un _runner_ de cargo
-      (`infra/ci/record-test.sh`). Au lieu d'exécuter un binaire, celui-ci note son
-      dossier, les variables que cargo lui donne et ses tests (`--list`,
-      `--list --ignored`). Seuls les doctests tournent alors, ignorés compris : les
-      deux passes d'avant en une ;
+    - les doctests tournent là (`--doc -- --include-ignored`) : les deux passes d'avant
+      en une ;
+    - `cargo test --workspace --lib --bins --tests` « lance » ensuite les binaires de
+      test avec un _runner_ de cargo (`infra/ci/record-test.sh`). Au lieu d'exécuter un
+      binaire, celui-ci note son dossier, les variables que cargo lui donne et ses tests
+      (`--list`, `--list --ignored`). Le plan vérifie que ce sont exactement les
+      binaires construits ;
     - `infra/ci/tests.mjs plan` en tire l'inventaire, une ligne par test (paquet, cible,
       test, passe), et une archive par job. L'archive `unit` porte les binaires qui ont
       un test non ignoré. Les huit archives `int-k` se partagent les binaires qui ont
@@ -13714,7 +13716,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       dans sa passe, ou si un test non inventorié a tourné. La même règle vaut pour les
       tests de bout en bout ;
     - il imprime le nombre et l'empreinte (SHA-256) de tous les tests passés, doctests
-      compris, puis leur liste : un changement de la CI se compare au run d'avant ;
+      compris, puis leur liste : un changement de la CI se compare au run d'avant.
+      Dans un journal de cargo, les cibles (sortie d'erreur) et leurs tests (sortie
+      standard) peuvent se croiser : le k-ième bloc de résultats (`running N tests` …
+      `test result:`) est rattaché à la k-ième cible (`tests.mjs from-cargo-log`) ;
   - **les caches** de `build` et de `e2e-build` ne sont sauvés que sur `main` : leur
     sauvegarde, en fin de job, retarderait les jobs qui les attendent.
 - **Ce qui ne change pas** : les tests eux-mêmes, aucun n'étant retiré, ignoré, rendu
@@ -13727,7 +13732,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     dans l'argument de `build-tests.sh`. Un écart laisse des tests sans job, et
     `CI result` échoue ;
   - une vingtaine de jobs tournent en même temps ;
-  - le journal de la CI garde l'ancien format de cargo (`Running …`, `test … ok`).
+  - le journal de la CI garde l'ancien format de cargo (`Running …`, `test … ok`) ;
+  - mesuré sur la PR #248 : **21,6 minutes** de bout en bout, contre 54,5 pour le run
+    de `main` juste avant (46,9 en médiane sur les douze derniers runs réussis). Les
+    mêmes 2150 tests ont tourné et réussi, chacun dans sa passe : 1030 unitaires,
+    1001 PostgreSQL et 119 de bout en bout, sans doctest. Les deux listes sont
+    identiques (empreinte `e4bea6bc…`). Le chemin critique se décompose ainsi :
+    - compilation des tests : 10,5 minutes ;
+    - archives et envois : 4,5 minutes ;
+    - lot PostgreSQL le plus long : 5,5 minutes, dont environ 1 minute de mise en
+      place.
 - **Écartés** :
   - cargo-nextest, pour l'état partagé de chaque binaire ;
   - compiler dans chaque lot ;
