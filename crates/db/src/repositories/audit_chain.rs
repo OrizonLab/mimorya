@@ -1,6 +1,7 @@
 //! The audit log chained by company (ADR-178): the entries still to seal,
-//! the chain's last place, the seals set, and the sealed entries read back
-//! in the chain's order to verify them. An entry's content is read as the
+//! the chain's last place, the seals set, the sealed entries read back in
+//! the chain's order to verify them, and where the chain starts once its
+//! oldest places were deleted (ADR-198). An entry's content is read as the
 //! database writes it as text, so that its seal never depends on how a
 //! client decodes a value: identifiers and addresses as their text, the
 //! time in microseconds since 1970, the metadata as its canonical `jsonb`
@@ -42,6 +43,23 @@ const CONTENT: &str = "id, chain_seq, chain_hash, tenant_id::text as tenant_id, 
 pub struct ChainHead {
     pub chain_seq: i64,
     pub chain_hash: Vec<u8>,
+}
+
+/// Where a company's chain starts once its oldest places were deleted
+/// (ADR-198): its first place, and the seal of the place before it.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct ChainStart {
+    pub first_seq: i64,
+    pub previous_hash: Vec<u8>,
+    /// How many places were deleted in all.
+    pub purged_entries: i64,
+}
+
+/// Where the company's chain starts, if its oldest places were deleted.
+pub async fn audit_chain_start(conn: &mut PgConnection) -> sqlx::Result<Option<ChainStart>> {
+    sqlx::query_as("select first_seq, previous_hash, purged_entries from audit_chain_starts")
+        .fetch_optional(conn)
+        .await
 }
 
 /// The companies whose audit log has entries, or, with `unsealed`, entries

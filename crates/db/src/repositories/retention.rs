@@ -4,8 +4,9 @@
 //! the platform's without its choice: a year, thirty days, twenty-four
 //! months) the episodes and the memories past their own term, the personal
 //! memories of an account disabled, the conversations idle, whole
-//! (ADR-186); and the consumption past the platform's five years, which no
-//! company sets (ADR-197). What each company lost is counted, never read.
+//! (ADR-186); and the consumption and the oldest places of each audit chain
+//! past the platform's five years, which no company sets (ADR-197,
+//! ADR-198). What each company lost is counted, never read.
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -37,6 +38,15 @@ pub struct PurgedConversations {
 pub struct PurgedUsage {
     pub tenant_id: Uuid,
     pub records: i32,
+}
+
+/// The oldest places of its audit chain a company lost to a statement,
+/// five years old, and the last of them.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct PurgedAudit {
+    pub tenant_id: Uuid,
+    pub entries: i32,
+    pub through_seq: i64,
 }
 
 /// Deletes the sessions ended thirty days ago; how many.
@@ -73,6 +83,16 @@ pub async fn purge_idle_conversations(
 /// to 5000); what each company lost.
 pub async fn purge_old_usage(pool: &PgPool, batch: i32) -> sqlx::Result<Vec<PurgedUsage>> {
     sqlx::query_as("select tenant_id, records from system_purge_old_usage($1)")
+        .bind(batch)
+        .fetch_all(pool)
+        .await
+}
+
+/// Deletes the oldest places of each company's audit chain five years old,
+/// a prefix of it, never its last sealed place, `batch` at most in all (the
+/// database keeps it from 1 to 5000); what each company lost.
+pub async fn purge_old_audit_entries(pool: &PgPool, batch: i32) -> sqlx::Result<Vec<PurgedAudit>> {
+    sqlx::query_as("select tenant_id, entries, through_seq from system_purge_old_audit_entries($1)")
         .bind(batch)
         .fetch_all(pool)
         .await

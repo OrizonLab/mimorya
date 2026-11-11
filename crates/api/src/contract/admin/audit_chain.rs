@@ -61,6 +61,9 @@ pub enum AuditAnchorFound {
     Differs,
     /// Nothing: the chain ends before that place, or it is missing.
     Missing,
+    /// Before the chain's start: the place went with the entries five
+    /// years old (ADR-198).
+    Purged,
 }
 
 /// An anchor given, and what the chain holds at its place.
@@ -84,6 +87,11 @@ pub struct AuditChainVerification {
     pub unsealed: i64,
     /// The last sealed place: the anchor to keep.
     pub last: Option<AuditChainPlace>,
+    /// The chain's first place: after 1 once the entries five years old
+    /// went (ADR-198).
+    pub first_place: i64,
+    /// The places deleted with them, in all.
+    pub purged: i64,
     /// Every break: each altered entry, each missing place.
     pub broken: i64,
     /// The first breaks.
@@ -105,6 +113,11 @@ impl AuditChainVerification {
                 seal: hex(&head.chain_hash),
                 anchor: anchor_text(check.tenant_id, head),
             }),
+            first_place: report.start.as_ref().map_or(1, |start| start.first_seq),
+            purged: report
+                .start
+                .as_ref()
+                .map_or(0, |start| start.purged_entries),
             broken: report.broken,
             breaks: report
                 .breaks
@@ -128,6 +141,7 @@ impl AuditChainVerification {
                         AnchorFound::Held => AuditAnchorFound::Held,
                         AnchorFound::Differs => AuditAnchorFound::Differs,
                         AnchorFound::Missing => AuditAnchorFound::Missing,
+                        AnchorFound::Purged => AuditAnchorFound::Purged,
                     },
                 })
                 .collect(),

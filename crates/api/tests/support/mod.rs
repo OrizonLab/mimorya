@@ -44,6 +44,7 @@ pub mod mcp;
 pub mod mission_notices;
 pub mod missions;
 pub mod notification_choices;
+pub mod old_audit;
 pub mod owner;
 pub mod person_authorizations;
 pub mod person_identity;

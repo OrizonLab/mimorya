@@ -17,7 +17,7 @@ use mimorya_db::repositories::tenants::tenant_slug;
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{Anchor, AnchorFound, ChainChecks, ChainKey, ChainReport, verify_company};
+use super::{Anchor, ChainChecks, ChainKey, ChainReport, verify_company};
 use crate::config::AppConfig;
 use crate::services::AccessContext;
 
@@ -111,11 +111,7 @@ fn own_anchor(text: &str, tenant_id: Uuid, slug: &str) -> Result<Anchor, DomainE
 }
 
 fn missed(report: &ChainReport) -> usize {
-    report
-        .anchors
-        .iter()
-        .filter(|found| **found != AnchorFound::Held)
-        .count()
+    report.anchors.iter().filter(|found| !found.holds()).count()
 }
 
 /// The verification traced in the company's audit log: who asked, what it

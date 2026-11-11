@@ -6,7 +6,12 @@ const FOUND: Record<AuditAnchorFound, string> = {
   held: 'tenue',
   differs: 'sceau différent : la chaîne a été scellée à nouveau depuis cette place',
   missing: 'absente : la chaîne s’arrête avant cette place, ou elle y manque',
+  purged: 'avant le début de la chaîne : supprimée avec les entrées de plus de cinq ans',
 };
+
+/** What an anchor found that the chain still holds, or let go with its
+ * oldest places (ADR-198). */
+const HOLDS: readonly AuditAnchorFound[] = ['held', 'purged'];
 
 function told(at: AuditChainBreak): string {
   switch (at.kind) {
@@ -70,7 +75,7 @@ export function ChainReport({ report }: { report: AuditChainVerification }) {
       {report.anchors.length > 0 && (
         <ul className="list-disc pl-5">
           {report.anchors.map((anchor, index) => (
-            <li key={index} className={anchor.found === 'held' ? '' : 'text-danger'}>
+            <li key={index} className={HOLDS.includes(anchor.found) ? '' : 'text-danger'}>
               Ancre de la place {anchor.place} : {FOUND[anchor.found]}.
             </li>
           ))}

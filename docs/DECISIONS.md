@@ -13534,3 +13534,64 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - le test des deux changements croisés de l'ADR-196 n'attend que les verrous
       consultatifs (`release_after_advisory`) ;
     - chaque test des durées de rétention part de celles de la plateforme.
+
+## ADR-198 — Journal d'audit gardé cinq ans, sa vérification avec (lot 67b)
+
+- **Statut** : accepté (2026-11-11) · complète ADR-178, ADR-185 et ADR-197.
+- **Contexte** : DATA_MODEL §5 garde le journal d'audit cinq ans (conformité), mais rien
+  ne l'appliquait. Sa chaîne (ADR-178) se vérifie de place en place depuis la première, et
+  la vérification à la demande (ADR-179), celle de l'exploitant (ADR-180), le scellement
+  et ses ancres en dépendent : supprimer des entrées sans plus ne laissait de la chaîne
+  qu'une suite de places manquantes.
+- **Décision** :
+  - **cinq ans, durée de la plateforme**, comme la consommation (ADR-197) : une
+    entreprise ne raccourcit pas sa propre trace, et personne ne la garde au-delà ;
+  - **un préfixe de la chaîne seul** part : depuis sa première place, tant que chaque
+    place est scellée, a plus de cinq ans et suit la précédente sans trou. Jamais la
+    dernière place scellée, qui reste la tête du scellement ; jamais une entrée à sceller.
+    Une entrée récente arrête la purge ; une place manquante (une entrée retirée) aussi,
+    pour que la vérification continue de la montrer ;
+  - **son début gardé** dans `audit_chain_starts` : sa première place et le sceau de la
+    place d'avant, la dernière supprimée, avec le nombre de places parties. La table est
+    lue par l'application (RLS) et écrite par la seule purge ; un déclencheur ne la laisse
+    qu'avancer ;
+  - **`system_purge_old_audit_entries(lot)`**, fonction `SECURITY DEFINER` dont la base
+    fixe l'horizon et borne le lot (de 1 à 5 000). Elle tient la chaîne de chaque
+    entreprise comme le scellement la tient (même verrou), et écrit dans son journal une
+    entrée `audit.purged` (`entries`, `throughPlace`), scellée à son tour. La passe
+    horaire de rétention l'appelle par lots de 5 000, vingt au plus ;
+  - **la vérification part de ce début** : la première place attendue est la sienne, son
+    sceau calculé depuis le sceau gardé. Une ancre à la place d'avant est vérifiée contre
+    ce sceau ; une ancre plus ancienne est dite partie avec ses places (`purged`), ce qui
+    ne fait pas échouer la vérification. Le rapport donne la première place et le nombre
+    de places parties ;
+  - **le scellement continue** : une place qu'un processus se rappelait (ADR-178), partie
+    depuis avec les plus anciennes, n'est pas un recul de la chaîne ; à la place d'avant le
+    début, elle doit porter le sceau gardé.
+- **Conséquences** :
+  - ce que la base ne peut pas dire d'une place supprimée (une entrée altérée avant son
+    départ) part avec elle : la vérification régulière de la chaîne le dit tant qu'elle
+    est gardée ;
+  - un SIEM qui reprendrait après une place partie (ADR-181) est refusé comme pour une
+    place que la chaîne ne compte plus ; il lui faut alors repartir de la dernière place
+    que l'API lui donne ;
+  - l'onglet « Journal d'audit » nomme l'ancre partie (`purged`) ; il ne montre pas
+    encore le début de la chaîne, qui vient avec son test de bout en bout ;
+  - tests : `crates/api/tests/audit_retention.rs` :
+    - les places de plus de cinq ans partent, l'entreprise informée ; la chaîne, scellée
+      à nouveau, tient depuis son début ; ancres partie, à la veille du début et après,
+      tenues ; une ancre à la veille avec un autre sceau ne tient pas ;
+    - une entrée récente, une place manquante, la dernière place scellée et une entrée à
+      sceller arrêtent la purge, la place manquante toujours montrée ;
+    - un processus qui se rappelait une place partie scelle encore ;
+    - l'application n'écrit, ne change ni ne retire aucun début ; une entreprise ne lit
+      pas celui d'une autre ;
+    - contre-épreuves : sans la condition de contiguïté, sans l'exclusion de la dernière
+      place scellée, sans l'acceptation d'une place partie par le scellement, le test
+      correspondant échoue ;
+    - `services/audit_chain/verify.rs`, `heads.rs`, `bin/admin/report.rs` : ancres et
+      places d'avant le début.
+  - suites de l'audit de la PR #246 : une passe purge un arriéré de consommation en
+    plusieurs instructions (`a_pass_takes_a_backlog_over_several_statements`), ce qui
+    échouerait si le lot de l'application dépassait la borne de la base ; la carte du
+    dépôt nomme `retention_batches.rs`.

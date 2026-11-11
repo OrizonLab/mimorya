@@ -917,12 +917,22 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   ceux de la base, jamais ce qu'écrit l'application, qui n'écrit que la durée et son
   auteur et ne retire aucune durée : elle ne peut ni sauter la semaine ni sortir des
   bornes. Chaque changement est tracé (`retention.configured`), avant et après. À venir :
-  la purge message par message d'une conversation toujours active et celle du journal
-  d'audit (qui devra rester vérifiable, ADR-178), gardé sans limite en attendant.
+  la purge message par message d'une conversation toujours active.
 - **Consommation** (ADR-197) : gardée cinq ans, pour la facturation, puis supprimée par la
   passe horaire, les plus anciennes de toutes les entreprises d'abord ; la durée est celle
   de la plateforme, qu'aucune entreprise ne règle. Chaque entreprise qui perd des
   enregistrements le trouve dans son journal d'audit (`usage.purged`), le nombre seul.
+- **Journal d'audit** (ADR-198) : gardé cinq ans, sans contenu de message ; ses places plus
+  anciennes partent, un préfixe de la chaîne seul : jamais sa dernière place scellée ni une
+  entrée à sceller, et une entrée récente ou une place manquante (une entrée retirée)
+  arrête la purge avant elle, pour que la vérification la montre encore. Le sceau de la
+  dernière place supprimée est gardé (`audit_chain_starts`, que l'application lit sans
+  pouvoir l'écrire) : la chaîne est vérifiée depuis son nouveau début, une ancre d'avant
+  dite partie avec ses places, une ancre à la place d'avant vérifiée contre ce sceau. Ce
+  que la base ne peut pas dire d'une place supprimée (une entrée altérée avant son départ)
+  part avec elle : la vérification régulière de la chaîne (ADR-179, ADR-180) le dit tant
+  qu'elle est gardée. L'entreprise trouve chaque purge dans son journal
+  (`audit.purged`), scellée à son tour.
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.
 - **Hébergement** : SaaS en UE ; installation privée possible.

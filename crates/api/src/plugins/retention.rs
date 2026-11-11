@@ -4,17 +4,18 @@
 //! choice: a year, thirty days, twenty-four months), the episodes and the
 //! memories past their own term, the personal memories of the accounts
 //! disabled, and the conversations idle, whole; and, past the platform's
-//! five years, the consumption (ADR-197). Each company that lost memories,
-//! conversations or consumption finds it in its audit log, written by the
-//! platform in the deletion's own statement: how many, and why, never what
-//! they said.
+//! five years, the consumption (ADR-197) and the oldest places of each
+//! audit chain, its verification kept (ADR-198). Each company that lost
+//! memories, conversations, consumption or audit entries finds it in its
+//! audit log, written by the platform in the deletion's own statement: how
+//! many, and why, never what they said.
 
 use std::time::Duration;
 
 use mimorya_db::Database;
 use mimorya_db::repositories::retention::{
-    PurgedConversations, PurgedMemories, PurgedUsage, purge_ended_sessions,
-    purge_idle_conversations, purge_old_usage, purge_retained_memories,
+    PurgedAudit, PurgedConversations, PurgedMemories, PurgedUsage, purge_ended_sessions,
+    purge_idle_conversations, purge_old_audit_entries, purge_old_usage, purge_retained_memories,
 };
 use tokio::time::Instant;
 
@@ -35,6 +36,10 @@ const CONVERSATION_BATCHES: usize = 25;
 pub const USAGE_BATCH: i32 = 5000;
 /// The statements a pass gives them, at most.
 const USAGE_BATCHES: usize = 20;
+/// The audit entries one statement deletes, at most, the database's bound.
+pub const AUDIT_BATCH: i32 = 5000;
+/// The statements a pass gives them, at most.
+const AUDIT_BATCHES: usize = 20;
 
 /// What a pass deleted.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -46,6 +51,8 @@ pub struct Retained {
     pub conversations: Vec<PurgedConversations>,
     /// The companies that lost consumption records, and how many.
     pub usage: Vec<PurgedUsage>,
+    /// The companies whose audit chain lost its oldest places, and how many.
+    pub audit: Vec<PurgedAudit>,
 }
 
 /// When this process last ran the pass.
@@ -72,11 +79,13 @@ impl Retention {
                     .sum();
                 let conversations: i32 = retained.conversations.iter().map(Lost::count).sum();
                 let usage: i32 = retained.usage.iter().map(Lost::count).sum();
+                let audit: i32 = retained.audit.iter().map(Lost::count).sum();
                 tracing::info!(
                     sessions = retained.sessions,
                     memories,
                     conversations,
                     usage,
+                    audit,
                     "Retention applied"
                 );
             }
@@ -132,12 +141,17 @@ pub async fn apply_retention(db: &Database) -> anyhow::Result<Option<Retained>> 
         purge_old_usage(db.pool(), USAGE_BATCH)
     })
     .await;
+    let audit = in_batches("Old audit entries", AUDIT_BATCHES, AUDIT_BATCH, || {
+        purge_old_audit_entries(db.pool(), AUDIT_BATCH)
+    })
+    .await;
     sweep.release().await;
     Ok(Some(Retained {
         sessions,
         memories,
         conversations,
         usage,
+        audit,
     }))
 }
 

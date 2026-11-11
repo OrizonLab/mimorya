@@ -5,14 +5,16 @@
 //! go on for that company, and says so, rather than seal again from what
 //! the database now shows. A process remembers from its start only; the
 //! seals it logs are the anchors that outlive it, checked by
-//! `mimorya-admin verify-audit --anchor`.
+//! `mimorya-admin verify-audit --anchor`. A place remembered that went
+//! with the chain's oldest places, five years old (ADR-198), is no move:
+//! the seal the purge kept stands for it at the place before the start.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use mimorya_db::Database;
 use mimorya_db::repositories::audit_chain::{
-    ChainHead, audit_chain_head, audit_log_tenants, audit_seal_at,
+    ChainHead, ChainStart, audit_chain_head, audit_chain_start, audit_log_tenants, audit_seal_at,
 };
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -98,17 +100,62 @@ impl SealedHeads {
             return Ok(());
         };
         let held = audit_seal_at(conn, known.chain_seq).await?;
-        if held.as_deref() != Some(known.chain_hash.as_slice()) {
-            return Err(ChainMoved {
-                seq: known.chain_seq,
-            }
-            .into());
+        if held.as_deref() == Some(known.chain_hash.as_slice()) {
+            return Ok(());
         }
-        Ok(())
+        let start = match held {
+            Some(_) => None,
+            None => audit_chain_start(conn).await?,
+        };
+        if purged_as_known(&known, start.as_ref()) {
+            return Ok(());
+        }
+        Err(ChainMoved {
+            seq: known.chain_seq,
+        }
+        .into())
+    }
+}
+
+/// Whether the place remembered, no longer in the chain, went with its
+/// oldest places: at the place before its start, with the seal the purge
+/// kept; before that, gone with them.
+fn purged_as_known(known: &ChainHead, start: Option<&ChainStart>) -> bool {
+    let Some(start) = start else {
+        return false;
+    };
+    if known.chain_seq == start.first_seq - 1 {
+        known.chain_hash == start.previous_hash
+    } else {
+        known.chain_seq < start.first_seq
     }
 }
 
 async fn last_seal(db: &Database, tenant_id: Uuid) -> anyhow::Result<Option<ChainHead>> {
     let mut tx = db.begin(tenant_id).await?;
     Ok(audit_chain_head(&mut tx).await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_place_gone_with_the_oldest_ones_is_no_move() {
+        let start = ChainStart {
+            first_seq: 10,
+            previous_hash: vec![9; 32],
+            purged_entries: 9,
+        };
+        let known = |seq, byte| ChainHead {
+            chain_seq: seq,
+            chain_hash: vec![byte; 32],
+        };
+        assert!(purged_as_known(&known(4, 4), Some(&start)));
+        assert!(purged_as_known(&known(9, 9), Some(&start)));
+        // At the start's eve with another seal, after it, or no purge: moved.
+        assert!(!purged_as_known(&known(9, 1), Some(&start)));
+        assert!(!purged_as_known(&known(12, 1), Some(&start)));
+        assert!(!purged_as_known(&known(4, 4), None));
+    }
 }

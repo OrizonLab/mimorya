@@ -6,7 +6,7 @@
 
 use std::future::Future;
 
-use mimorya_db::repositories::retention::{PurgedConversations, PurgedUsage};
+use mimorya_db::repositories::retention::{PurgedAudit, PurgedConversations, PurgedUsage};
 use uuid::Uuid;
 
 /// What a company lost to a purge that goes a batch at a time.
@@ -44,6 +44,21 @@ impl Lost for PurgedUsage {
 
     fn add(&mut self, other: &Self) {
         self.records += other.records;
+    }
+}
+
+impl Lost for PurgedAudit {
+    fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    fn count(&self) -> i32 {
+        self.entries
+    }
+
+    fn add(&mut self, other: &Self) {
+        self.entries += other.entries;
+        self.through_seq = self.through_seq.max(other.through_seq);
     }
 }
 
