@@ -3,14 +3,17 @@
 import { Field, Input } from '@/components/ui';
 import type { RetentionDurationView } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { RETENTION_UNITS } from '@/lib/labels';
 
 /** A duration in its unit, as people read it. */
 export function inUnit(duration: RetentionDurationView, value: number): string {
-  return `${value} ${duration.unit === 'months' ? 'mois' : value > 1 ? 'jours' : 'jour'}`;
+  const unit = RETENTION_UNITS[duration.unit];
+  return `${value} ${value > 1 ? unit.many : unit.one}`;
 }
 
-/** One kind's duration: its field within its bounds, what the purge applies
- * now and, while a shortening waits, when it applies. */
+/** One kind's duration: its field within its bounds, whose it is, and,
+ * while a shortening waits, when the purge applies it and what it keeps
+ * meanwhile. */
 export function DurationField({
   duration,
   value,
@@ -20,10 +23,9 @@ export function DurationField({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const unit = duration.unit === 'months' ? 'mois' : 'jours';
   return (
     <div className="flex flex-col gap-1">
-      <Field label={`${duration.label} (${unit})`}>
+      <Field label={`${duration.label} (${RETENTION_UNITS[duration.unit].many})`}>
         <Input
           type="number"
           required
@@ -34,6 +36,11 @@ export function DurationField({
           onChange={(e) => onChange(e.target.value)}
         />
       </Field>
+      <p className="text-xs text-muted">
+        {duration.own
+          ? 'Durée choisie par votre entreprise.'
+          : 'Durée de la plateforme, faute d’un choix de votre entreprise.'}
+      </p>
       <p className="text-xs text-muted">
         De {duration.min} à {inUnit(duration, duration.max)} ; plateforme :{' '}
         {inUnit(duration, duration.platform)}.

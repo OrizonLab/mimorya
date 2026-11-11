@@ -17,10 +17,17 @@ function draftOf(data: RetentionView): Draft {
   return draft;
 }
 
-/** The durations asked shorter than what the purge applies now, said. */
+/**
+ * The durations changed to shorter than what the purge applies now, said:
+ * one asked as it already is changes nothing, a shortening that waits
+ * included, as the API leaves it.
+ */
 function shortenings(data: RetentionView, draft: Draft): string[] {
   return data.durations
-    .filter((duration) => Number(draft[duration.kind]) < duration.inEffect)
+    .filter((duration) => {
+      const asked = Number(draft[duration.kind]);
+      return asked !== duration.duration && asked < duration.inEffect;
+    })
     .map((duration) => `${duration.label} : ${inUnit(duration, Number(draft[duration.kind]))}`);
 }
 
@@ -32,7 +39,6 @@ export function RetentionForm({ data, onSaved }: { data: RetentionView; onSaved:
   const unchanged = data.durations.every(
     (duration) => Number(draft[duration.kind]) === duration.duration,
   );
-  const own = data.durations.some((duration) => duration.own);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -69,9 +75,6 @@ export function RetentionForm({ data, onSaved }: { data: RetentionView; onSaved:
           ))}
         </div>
         <p className="text-xs text-muted">
-          {own
-            ? 'Durées propres à votre entreprise.'
-            : 'Durées de la plateforme, faute de durées propres à votre entreprise.'}{' '}
           Une purge passe chaque heure. Un allongement s’applique aussitôt ; un raccourcissement{' '}
           {data.shorteningDelayDays} jours plus tard, pour laisser le temps de revenir en arrière.
           Chaque changement est tracé dans le journal d’audit.

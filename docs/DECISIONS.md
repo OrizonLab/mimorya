@@ -13373,7 +13373,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     autres. Les conversations choisies, les plus anciennes de toutes, sont seules
     verrouillées. Les mémoires passées leur propre terme sont supprimées à part, sans
     recouvrir les épisodes, et comptées avec eux (`aged`) ;
-  - l'écran de ces durées, dans l'administration, vient au lot 66b ;
+  - l'écran de ces durées, dans l'administration, est venu au lot 66b (ADR-196) ;
   - restent à venir, comme avant :
     - la purge message par message d'une conversation toujours active ;
     - celle du journal d'audit, qui devra rester vérifiable (ADR-178) ;
@@ -13428,13 +13428,15 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     détient `retention:manage` (`lib/admin-sections.ts`), distinct de « Modèle d'IA » que
     `settings:manage` ouvre ;
   - **un formulaire des trois durées**, chacune dans son unité et ses bornes, avec la
-    durée de la plateforme ; il dit si les durées sont celles de l'entreprise ou de la
-    plateforme, qu'une purge passe chaque heure, qu'un allongement s'applique aussitôt et
+    durée de la plateforme ; il dit de chaque durée si l'entreprise l'a choisie ou si elle
+    est celle de la plateforme, qu'une purge passe chaque heure, qu'un allongement s'applique aussitôt et
     un raccourcissement une semaine plus tard ; une durée écrite autrement mais égale
     (`012`) n'enregistre rien ;
   - **un raccourcissement est demandé d'abord** : la confirmation nomme chaque durée
-    raccourcie et dit que la purge supprimera, dans sept jours, ce qui n'est plus gardé,
-    sans retour possible ; refusée, rien n'est envoyé. Un allongement ne demande rien ;
+    changée pour moins que ce que la purge applique, et dit qu'elle supprimera, dans sept
+    jours, ce qui n'est plus gardé, sans retour possible ; refusée, rien n'est envoyé. Une
+    durée laissée telle qu'elle est n'est pas nommée, un raccourcissement qui attend
+    compris : l'API la laisse, son délai avec. Un allongement ne demande rien ;
   - **ce qui attend est dit sous sa durée** : la durée choisie, la date à laquelle la
     purge l'applique et ce qu'elle garde d'ici là, tels que l'API les donne
     (`shorteningAppliesAt`, `inEffect`) ;
@@ -13447,7 +13449,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     une autre, qui attend sa semaine si elle raccourcit (ADR-195) ;
   - tests :
     - `apps/web/e2e/retention.spec.ts` : les durées de la plateforme et leurs champs ; une
-      durée écrite autrement n'enregistre rien ; un raccourcissement refusé n'enregistre
-      rien, accepté il dit sa date et ce que la purge garde d'ici là, relu après
-      rechargement ; un allongement s'applique sans rien demander ;
+      durée écrite autrement n'enregistre rien ; un raccourcissement refusé n'envoie rien,
+      accepté il dit le jour où la purge l'applique, une semaine plus tard, et ce qu'elle
+      garde d'ici là, relu après rechargement ; seule la durée choisie se dit celle de
+      l'entreprise ; une autre durée raccourcie, seule elle est nommée, pas celle qui
+      attend ; un allongement s'applique sans rien demander ;
+    - `apps/web/e2e/retention-access.spec.ts` : un compte qui ne détient que
+      `retention:manage` ouvre l'onglet et lit les durées ; avec `settings:manage` seul, il
+      ouvre « Modèle d'IA », jamais les durées ;
     - `apps/web/e2e/navigation.spec.ts` : l'onglet se charge sans erreur.
