@@ -4,22 +4,26 @@
 //! statement told. A start the database's owner writes or moves without
 //! the key holds nothing: the verification finds the places before it
 //! missing, the anchors there too; the sealing refuses to go on past a
-//! place it remembered; the purge deletes nothing more. The database moves
-//! no start back, and refuses a purge it would not make, the seals left to
-//! the process that holds the key. The tests start a process without
+//! place it remembered; the purge deletes nothing more. The age is judged
+//! by the purging process's clock as much as the database's: neither takes
+//! a place for older than the other does. The database moves no start
+//! back, and refuses a purge it would not make, or made in another
+//! company's transaction, the seals left to the process that holds the key. The tests start a process without
 //! maintenance: they run the purges and the sealing themselves.
 
 mod support;
 
+use chrono::{Months, Utc};
 use mimorya_api::services::audit_chain::{
-    AnchorFound, ChainBreak, ChainMoved, SealedHeads, hex, verify_company,
+    AnchorFound, ChainBreak, ChainMoved, MAX_PURGE_BATCH, SealedHeads, hex, verify_company,
 };
+use mimorya_core::demo::tenant;
 use mimorya_db::repositories::audit_chain::{PlacesPurged, purge_audit_places};
 use serde_json::json;
 use support::TestApi;
 use support::audit_chain::{key, seal, verify};
 use support::old_audit::{
-    empty_chain, entries, owner_runs, place, places, purged_with, purges, start_of,
+    empty_chain, entries, owner_runs, place, places, purged_at, purged_with, purges, start_of,
 };
 use support::queue::API;
 
@@ -205,7 +209,7 @@ async fn the_database_refuses_a_purge_it_would_not_make() {
         asked(1, 2, seal_at(1).await, 2),
         asked(1, 2, seal_at(2).await, 5),
         // More than a statement deletes, or none.
-        asked(1, 5001, seal_at(3).await, 5001),
+        asked(1, i64::from(MAX_PURGE_BATCH) + 1, seal_at(3).await, 5001),
         asked(3, 2, seal_at(2).await, 0),
     ];
     for places_asked in refusals {
@@ -217,6 +221,24 @@ async fn the_database_refuses_a_purge_it_would_not_make() {
         assert_eq!(code.as_deref(), Some("P0001"), "{places_asked:?}");
     }
     assert_eq!(places(db, acme).await, [1, 2, 3, 4, 5]);
+
+    // Asked from another company's transaction, or from none: refused, as
+    // the sealing is.
+    let fair = asked(1, 2, seal_at(2).await, 2);
+    let mut other = db.begin(tenant::ID).await.unwrap();
+    let foreign = purge_audit_places(&mut other, acme, &fair)
+        .await
+        .unwrap_err();
+    assert!(foreign.to_string().contains("own company"), "{foreign}");
+    drop(other);
+    let mut bare = db.pool().acquire().await.unwrap();
+    let unset = purge_audit_places(&mut bare, acme, &fair)
+        .await
+        .unwrap_err();
+    assert!(unset.to_string().contains("own company"), "{unset}");
+    drop(bare);
+    assert_eq!(places(db, acme).await, [1, 2, 3, 4, 5]);
+    assert_eq!(start_of(db, acme).await, None);
 
     // A gap among the places asked.
     owner_runs(&format!(
@@ -239,4 +261,27 @@ async fn the_database_refuses_a_purge_it_would_not_make() {
     let report = verify(db, acme).await;
     assert_eq!(report.start, None);
     assert_eq!(report.breaks[0], ChainBreak::Missing { from: 1, to: 2 });
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn neither_clock_takes_a_place_for_older_than_the_other_does() {
+    let api = TestApi::start_with(API).await;
+    let db = &api.app.services.db;
+    let acme = empty_chain(&api, "acme-journal-horloges").await;
+    entries(db, acme, "ancienne", 2, 6).await;
+    entries(db, acme, "quatre-ans", 2, 4).await;
+    entries(db, acme, "recente", 1, 0).await;
+    seal(db, &SealedHeads::default(), acme).await.unwrap();
+    let years = |count: u32| Months::new(12 * count);
+
+    // The process's clock two years behind the database's: the places six
+    // years old are four to it, and stay.
+    let behind = Utc::now().checked_sub_months(years(2)).unwrap();
+    assert_eq!(purged_at(db, acme, 5000, behind).await, None);
+    // Two years ahead: the places four years old are six to it, but not
+    // to the database, whose horizon holds the purge to the oldest ones.
+    let ahead = Utc::now().checked_add_months(years(2)).unwrap();
+    assert_eq!(purged_at(db, acme, 5000, ahead).await, Some((2, 2)));
+    assert_eq!(places(db, acme).await, [3, 4, 5]);
 }

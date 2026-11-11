@@ -13563,11 +13563,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     (`services/audit_chain/purge.rs`) prend les entreprises dont la première place a cinq
     ans (`system_audit_purge_candidates`, la plus ancienne d'abord). Pour chacune, dans sa
     transaction et sous le verrou de sa chaîne (celui du scellement), elle vérifie les
-    sceaux. Elle confie ensuite la suppression à `system_purge_old_audit_entries`,
-    fonction `SECURITY DEFINER`. Celle-ci revérifie sous le même verrou ce que la base peut
-    voir : la position du début, la contiguïté, l'âge, la tête après les places, le sceau
-    gardé, le décompte, au plus 5 000 places. Elle refuse et ne supprime rien si l'un de
-    ces points ne tient pas. Elle écrit ensuite dans le journal de l'entreprise une entrée
+    sceaux. Elle juge l'âge à sa propre horloge et à celle de la base, en prenant
+    l'horizon le plus ancien des deux : le propriétaire de la base, qui tient son horloge
+    et peut masquer son `now()`, peut retenir la purge, jamais l'étendre à des places
+    récentes. Elle confie ensuite la suppression à `system_purge_old_audit_entries`,
+    fonction `SECURITY DEFINER`. Celle-ci refuse d'agir hors de la transaction de
+    l'entreprise nommée, comme le scellement. Elle revérifie sous le même verrou ce que
+    la base peut voir : la position du début, la contiguïté, l'âge, la tête après les
+    places, le sceau gardé, le décompte, au plus 5 000 places (une seule constante côté
+    Rust, `MAX_PURGE_BATCH`, que les tests confrontent à la borne de la base). Elle refuse
+    et ne supprime rien si l'un de ces points ne tient pas. Elle écrit ensuite dans le journal de l'entreprise une entrée
     `audit.purged` (`entries`, `throughPlace`), scellée à son tour. La passe procède par
     lots de 5 000, vingt au plus ; une entreprise en échec n'arrête pas les autres. Sans
     clé maître, rien n'est scellé, ni purgé ;
@@ -13629,14 +13634,17 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       - un début écrit ou déplacé par le propriétaire sans la clé ne tient pas : places et
         ancres manquantes, scellement refusé, purge arrêtée ;
       - le propriétaire ne fait pas reculer un début ;
-      - la base refuse une purge qu'elle ne ferait pas ;
+      - la base refuse une purge qu'elle ne ferait pas, ou demandée hors de la transaction
+        de l'entreprise ;
+      - aucune des deux horloges ne fait partir une place que l'autre juge récente ;
     - `audit_retention_export.rs` : le SIEM lit au-delà d'une purge depuis la veille, est
       refusé avant elle avec le début donné, puis reprend depuis le début ;
     - tests unitaires : `purge/tests.rs` (le préfixe qui part), `start.rs`, `digest.rs`
       (sceau du début épinglé), `verify.rs`, `heads.rs`, `audit_export/reading.rs`,
       `bin/admin/report.rs` ;
-    - contre-épreuves : sans contrôle du sceau du début, ou sans vérification des sceaux
-      par la purge, les tests correspondants échouent ;
+    - contre-épreuves : sans contrôle du sceau du début, sans vérification des sceaux par
+      la purge, avec l'horloge de la base seule ou sans le contrôle de l'entreprise de la
+      transaction, les tests correspondants échouent ;
   - suites de l'audit de la PR #246 :
     - une passe purge un arriéré de consommation en plusieurs instructions
       (`a_pass_takes_a_backlog_over_several_statements`). Le test échouerait si le lot de

@@ -927,14 +927,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   chaîne, un préfixe de la chaîne seul. Chaque place doit porter son sceau, recalculé
   depuis le début courant, et ni la dernière place scellée ni une entrée à sceller ne
   partent. Une entrée récente, une place manquante ou une entrée altérée arrête la purge
-  avant elle, pour que la vérification la montre encore. La base revérifie, sous le
-  verrou de la chaîne, ce qu'elle peut voir. Le début de la chaîne est gardé
+  avant elle, pour que la vérification la montre encore. L'âge des places se juge à
+  l'horloge du processus et à celle de la base, la plus prudente des deux : une horloge
+  ou un `now()` de la base avancés ne font jamais partir une place récente. La base
+  revérifie, sous le verrou de la chaîne et dans la transaction de l'entreprise elle-même
+  (une autre est refusée), ce qu'elle peut voir. Le début de la chaîne est gardé
   (`audit_chain_starts`, que l'application lit sans pouvoir l'écrire) : la première place
   et le sceau de la dernière place supprimée, sous un sceau propre fait avec la clé de la
   chaîne. Un début que le propriétaire de la base écrit ou déplace sans la clé ne porte
   pas ce sceau ; il est tenu pour absent : la vérification compte manquantes les places
-  d'avant, le scellement refuse de continuer, la purge s'arrête, l'export le traite comme
-  une chaîne restaurée en deçà. Avec un début scellé, la chaîne est vérifiée depuis son
+  d'avant, le scellement refuse de continuer après une place qu'il se rappelait, la purge
+  s'arrête, l'export le traite comme une chaîne restaurée en deçà. Avec un début scellé, la chaîne est vérifiée depuis son
   nouveau début : une ancre d'avant est dite partie avec ses places, une ancre à la place
   d'avant est vérifiée contre le sceau gardé, et un SIEM qui la donne lit la suite. Ce
   que la base ne peut pas dire d'une place supprimée part avec elle, mais seules partent

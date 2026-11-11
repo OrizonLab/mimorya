@@ -10,10 +10,13 @@
 -- own audit trail, nor keeps it longer.
 --
 -- The seals are checked, and the start sealed, by the process that holds
--- the master key (the retention pass): the database has no key. What it
--- checks again here is what it can: the places' age, that they follow one
--- another from the start, that the last sealed place stays, that the seal
--- kept is the one at the last place deleted. A start the database owner
+-- the master key (the retention pass): the database has no key. That
+-- process judges the places' age by its own clock as much as the
+-- database's, the earlier of the two horizons: a database whose clock, or
+-- `now()`, was moved forward never makes it take recent places for old.
+-- What the database checks again here is what it can: the places' age,
+-- that they follow one another from the start, that the last sealed place
+-- stays, that the seal kept is the one at the last place deleted. A start the database owner
 -- writes, or moves, without the key holds no seal: the verification, the
 -- sealing and the export take it for none (ADR-198).
 
@@ -91,8 +94,9 @@ REVOKE ALL ON FUNCTION system_audit_purge_candidates() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION system_audit_purge_candidates() TO mimorya_app;
 
 -- Deletes the places `p_first` to `p_through` of the company `p_tenant`'s
--- chain, called in that company's transaction by the process that checked
--- their seals, and keeps where the chain then starts: `p_previous_hash`,
+-- chain, called in that company's transaction (anything else raises) by
+-- the process that checked their seals, and judged their age by its own
+-- clock as much as the database's, and keeps where the chain then starts: `p_previous_hash`,
 -- the seal at `p_through`, `p_purged_entries` places gone in all, and the
 -- start's seal `p_seal`. Raises, and deletes nothing, unless `p_first` is
 -- where the chain starts, the places follow one another to `p_through`,
@@ -120,7 +124,10 @@ DECLARE
   v_hash bytea;
   v_deleted integer;
 BEGIN
-  IF p_tenant IS NULL OR p_first IS NULL OR p_through IS NULL OR v_count < 1 OR v_count > 5000 THEN
+  IF p_tenant IS DISTINCT FROM nullif(current_setting('app.tenant_id', true), '')::uuid THEN
+    RAISE EXCEPTION 'audit chain: purged in its own company''s transaction only';
+  END IF;
+  IF p_first IS NULL OR p_through IS NULL OR v_count < 1 OR v_count > 5000 THEN
     RAISE EXCEPTION 'audit chain: % places asked, from 1 to 5000', v_count;
   END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended('mimorya.audit_chain:' || p_tenant::text, 0));

@@ -22,7 +22,7 @@ use mimorya_db::repositories::retention::{
 use tokio::time::Instant;
 
 use super::retention_batches::{Lost, in_batches};
-use crate::services::audit_chain::{ChainKey, purge_old_places};
+use crate::services::audit_chain::{ChainKey, MAX_PURGE_BATCH, purge_old_places};
 
 /// The name of the pass's lock: one process at a time (ADR-086).
 pub const RETENTION_SWEEP: &str = "retention";
@@ -41,7 +41,7 @@ pub const USAGE_BATCH: i32 = 5000;
 const USAGE_BATCHES: usize = 20;
 /// The audit entries one company's transactions delete in a statement, at
 /// most, the database's bound.
-pub const AUDIT_BATCH: i32 = 5000;
+pub const AUDIT_BATCH: i32 = MAX_PURGE_BATCH;
 /// The statements a pass gives them, at most.
 const AUDIT_BATCHES: usize = 20;
 
@@ -159,7 +159,7 @@ pub async fn apply_retention(
     let audit = match key {
         Some(key) => {
             in_batches("Old audit entries", AUDIT_BATCHES, AUDIT_BATCH, || {
-                purge_old_places(db, key, AUDIT_BATCH)
+                purge_old_places(db, key, AUDIT_BATCH, chrono::Utc::now())
             })
             .await
         }

@@ -26,7 +26,7 @@ pub use digest::ChainKey;
 pub use heads::{ChainMoved, SealedHeads};
 pub use on_demand::{MAX_ANCHORS, OwnChainCheck, verify_own_chain};
 pub use places::{CHECKS_AT_ONCE, ChainChecks, CheckPlace};
-pub use purge::purge_old_places;
+pub use purge::{MAX_PURGE_BATCH, purge_old_places};
 pub use seal::{AUDIT_CHAIN_SWEEP, seal_audit_log, seal_company};
 pub use start::{Place, Start, chain_start};
 pub use sweep::AuditSealing;

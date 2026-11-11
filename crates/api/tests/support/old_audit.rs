@@ -4,6 +4,7 @@
 //! the purge as the retention pass makes it, with the tests' key, and
 //! statements of the database's owner.
 
+use chrono::{DateTime, Utc};
 use mimorya_api::services::audit_chain::purge_old_places;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit_chain::{ChainHead, ChainStart, audit_chain_start};
@@ -41,7 +42,17 @@ pub async fn owner_runs(statement: &str) -> sqlx::Result<()> {
 /// What the purge deleted of the company `tenant_id`, `batch` places at
 /// most in all, with the tests' key: entries, through.
 pub async fn purged_with(db: &Database, tenant_id: Uuid, batch: i32) -> Option<(i32, i64)> {
-    let lost = purge_old_places(db, &key(0), batch).await.unwrap();
+    purged_at(db, tenant_id, batch, Utc::now()).await
+}
+
+/// The same, the process's clock at `now`.
+pub async fn purged_at(
+    db: &Database,
+    tenant_id: Uuid,
+    batch: i32,
+    now: DateTime<Utc>,
+) -> Option<(i32, i64)> {
+    let lost = purge_old_places(db, &key(0), batch, now).await.unwrap();
     lost.iter()
         .find(|company| company.tenant_id == tenant_id)
         .map(|company| (company.entries, company.through_seq))
