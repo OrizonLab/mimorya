@@ -22,6 +22,7 @@ use mimorya_db::repositories::personal_data::{
     exported_absences, exported_authorizations, exported_identities, exported_leads,
     exported_links, exported_profile, exported_roles, exported_units,
 };
+use mimorya_db::repositories::second_factors::second_factor_state;
 use uuid::Uuid;
 
 use crate::contract::{
@@ -68,6 +69,7 @@ pub(super) async fn read_export(
         },
         sessions: into_all(exported_sessions(snapshot, user_id).await?),
         sign_ins: into_all(exported_sign_ins(snapshot, user_id).await?),
+        second_factor: second_factor_state(snapshot, user_id).await?.into(),
         provisioning: into_all(exported_provisioning(snapshot, user_id).await?),
         invitation: exported_invitation(snapshot, user_id)
             .await?

@@ -26,6 +26,7 @@ pub mod retention;
 pub mod roles;
 pub mod schedule;
 pub mod scim;
+pub mod second_factor;
 pub mod skill_eval_cases;
 pub mod skill_evaluations;
 pub mod skill_proposals;

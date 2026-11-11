@@ -69,6 +69,7 @@ pub mod saml_provider;
 pub mod scheduled;
 pub mod scheduled_notices;
 pub mod scim;
+pub mod second_factor;
 mod sign_in;
 pub mod skill_evaluations;
 pub mod skill_proposal_notices;

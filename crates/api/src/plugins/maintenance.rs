@@ -1,5 +1,7 @@
 //! Periodic maintenance, at startup and then every minute, in each process
 //! that executes runs: expired password reset links are deleted (ADR-028),
+//! with the sign-ins and enrolments left waiting for a second factor's code
+//! (ADR-200),
 //! ended absences (ADR-071), the shared rate limit windows long over
 //! (ADR-088), the evaluations of skills ended ninety days ago (ADR-104),
 //! the events a gateway took a day ago (ADR-125), the proposals of allow
@@ -41,6 +43,7 @@ use mimorya_db::repositories::approval_delegations::purge_ended_approval_delegat
 use mimorya_db::repositories::gateway_cards::purge_notice_cards;
 use mimorya_db::repositories::gateway_link_codes::purge_link_codes;
 use mimorya_db::repositories::gateways::purge_gateway_events;
+use mimorya_db::repositories::login_challenges::purge_second_factor_leftovers;
 use mimorya_db::repositories::password_resets::purge_expired_password_resets;
 use mimorya_db::repositories::policy_proposals::purge_policy_proposals;
 use mimorya_db::repositories::rate_limits::purge_rate_limits;
@@ -124,6 +127,9 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
             }
             if let Err(error) = purge_expired_password_resets(db.pool()).await {
                 tracing::warn!(error = %error, "Expired reset link purge failed");
+            }
+            if let Err(error) = purge_second_factor_leftovers(db.pool()).await {
+                tracing::warn!(error = %error, "Second factor leftover purge failed");
             }
             if let Err(error) = purge_ended_approval_delegations(db.pool()).await {
                 tracing::warn!(error = %error, "Ended absence purge failed");
@@ -232,14 +238,20 @@ mod tests {
 
     #[test]
     fn keeps_the_rate_limit_windows_past_the_longest() {
-        use crate::plugins::rate_limit::{FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW};
+        use crate::plugins::rate_limit::{
+            FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW, SECOND_FACTOR_WINDOW,
+        };
         let kept = RATE_LIMITS_KEPT.to_std().unwrap();
         // The purge itself keeps two hours, whatever it is asked (ADR-152).
         let purge = include_str!("../../../db/migrations/0067_rate_limit_purge_horizon.sql");
         assert!(purge.contains("least(p_before, now() - interval '2 hours')"));
         assert_eq!(kept, std::time::Duration::from_secs(2 * 60 * 60));
         // Logins and sign-in steps count by the minute.
-        for window in [FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW] {
+        for window in [
+            FAILED_LOGIN_WINDOW,
+            RESET_REQUEST_WINDOW,
+            SECOND_FACTOR_WINDOW,
+        ] {
             assert!(kept > window, "{window:?}");
         }
     }
