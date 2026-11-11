@@ -14,14 +14,146 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
+# The jobs run side by side (ADR-199). The Rust tests are built once, by
+# « Rust (build the tests) », which lists every test and packs the binaries
+# for the jobs that run them: the unit tests in one, the PostgreSQL tests
+# in eight shards, each with its own database. The end-to-end programs are
+# built once too, for three Playwright shards, each against its own start
+# of the API. « CI result », last, fails unless every job passed and every
+# test listed ran once and passed: the one check a merge needs.
+
 jobs:
-  rust:
-    name: Rust (format, lint, tests)
+  lint:
+    name: Rust (format, lint)
     runs-on: ubuntu-latest
-    # Over two hundred PostgreSQL test binaries: about 43 minutes now on a
-    # pull request, more with a cold cache; a job cancelled saves no cache,
-    # so the next one starts cold too.
-    timeout-minutes: 60
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  build:
+    name: Rust (build the tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TERM_COLOR: always
+      # Line tables only: three hundred test binaries with full debug
+      # information fill the runner's disk (the linker then dies of a bus
+      # error); a failing test still names its file and line.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # The cache of the former single job, which built the same tests
+          # with the same variables.
+          shared-key: rust
+          # Saving takes minutes the jobs waiting on this one would lose:
+          # main's runs save it, pull requests start from it.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # As many shards as the matrix of « integration » below.
+      - name: Build the tests, list them, run the doctests, pack them
+        run: infra/ci/build-tests.sh 8
+      - name: Keep the lists of tests
+        run: |
+          mkdir -p target/ci/lists
+          cp target/ci/inventory.tsv target/ci/lists/listed-rust.tsv
+          cp target/ci/ran-doc.tsv target/ci/lists/ran-doc.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tests-listed-rust
+          path: target/ci/lists/
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-unit
+          path: target/ci/archives/unit.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-int-1
+          path: target/ci/archives/int-1.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-int-2
+          path: target/ci/archives/int-2.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-int-3
+          path: target/ci/archives/int-3.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-int-4
+          path: target/ci/archives/int-4.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-int-5
+          path: target/ci/archives/int-5.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-int-6
+          path: target/ci/archives/int-6.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-int-7
+          path: target/ci/archives/int-7.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-tests-int-8
+          path: target/ci/archives/int-8.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      # Out of the cache main's runs save.
+      - name: Leave the archives out of the cache
+        run: rm -rf target/ci
+
+  unit:
+    # The tests `cargo test --workspace` runs: those not ignored.
+    name: Rust (unit tests)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    # As the former single job had it: a test not ignored may reach it too.
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -37,28 +169,79 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      CARGO_TERM_COLOR: always
-      # Line tables only: two hundred test binaries with full debug
-      # information fill the runner's disk (the linker then dies of a bus
-      # error); a failing test still names its file and line.
-      CARGO_PROFILE_DEV_DEBUG: line-tables-only
-      CARGO_PROFILE_TEST_DEBUG: line-tables-only
       TEST_DATABASE_URL: postgres://mimorya:mimorya@localhost:5432/mimorya_test
       TEST_DATABASE_APP_URL: postgres://mimorya_app:mimorya_app@localhost:5432/mimorya_test
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
       - name: Create the application database role
         run: psql postgres://mimorya:mimorya@localhost:5432/mimorya -f infra/postgres/init.sql
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - uses: actions/download-artifact@v4
+        with:
+          name: rust-tests-unit
+          path: target/ci/archives
+      - name: Unpack the tests
+        run: zstd -dc --long=30 target/ci/archives/unit.tar.zst | tar -xf -
       - name: Unit tests
-        run: cargo test --workspace
+        run: infra/ci/run-tests.sh target/ci/plans/unit.tsv unit target/ci/lists/ran-unit.tsv
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tests-ran-unit
+          path: target/ci/lists/
+          retention-days: 7
+
+  integration:
+    # The tests `cargo test-int` runs: the ignored ones, which need
+    # PostgreSQL, one at a time. Each binary recreates the test database:
+    # each shard has its own (ADR-199).
+    name: Rust (PostgreSQL tests ${{ matrix.shard }}/8)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    defaults:
+      run:
+        shell: bash
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: mimorya
+          POSTGRES_PASSWORD: mimorya
+          POSTGRES_DB: mimorya
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mimorya"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://mimorya:mimorya@localhost:5432/mimorya_test
+      TEST_DATABASE_APP_URL: postgres://mimorya_app:mimorya_app@localhost:5432/mimorya_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the application database role
+        run: psql postgres://mimorya:mimorya@localhost:5432/mimorya -f infra/postgres/init.sql
+      - uses: actions/download-artifact@v4
+        with:
+          name: rust-tests-int-${{ matrix.shard }}
+          path: target/ci/archives
+      - name: Unpack the tests
+        run: zstd -dc --long=30 target/ci/archives/int-${{ matrix.shard }}.tar.zst | tar -xf -
       - name: Integration tests (PostgreSQL)
-        run: cargo test-int
+        run: >-
+          infra/ci/run-tests.sh target/ci/plans/int-${{ matrix.shard }}.tsv int
+          target/ci/lists/ran-int-${{ matrix.shard }}.tsv
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tests-ran-int-${{ matrix.shard }}
+          path: target/ci/lists/
+          retention-days: 7
 
   msrv:
     # The Rust version Cargo.toml promises (rust-version): what compiles on
@@ -95,12 +278,80 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: '1'
 
-  e2e:
-    name: End-to-end (Playwright)
+  e2e-build:
+    name: End-to-end (build)
     # A system Playwright supports: `ubuntu-latest` may move to one whose
     # browser and libraries it cannot install yet.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TERM_COLOR: always
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # The cache of the former end-to-end job, which built the same
+          # programs.
+          shared-key: e2e
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # As the tests run them: built together, the seed would take the
+      # example's development features and be built again.
+      - name: Build the seed, the end-to-end API and the document reader
+        run: |
+          cargo build --bin mimorya-seed
+          cargo build -p mimorya-api --example e2e_server
+          cargo build -p mimorya-api --bin mimorya-extract
+      - run: pnpm install --frozen-lockfile
+      - name: Build the web application
+        run: pnpm --filter @mimorya/web build
+      - name: List the tests
+        run: |
+          mkdir -p target/ci/lists
+          pnpm --filter @mimorya/web exec playwright test --list | tee target/ci/e2e-list.txt
+          node infra/ci/tests.mjs e2e-listed target/ci/e2e-list.txt > target/ci/lists/listed-e2e.tsv
+      - name: Pack the programs and the web application
+        run: >-
+          tar --exclude=apps/web/.next/cache -cf - target/debug/mimorya-seed
+          target/debug/mimorya-extract target/debug/examples/e2e_server apps/web/.next
+          | zstd -q -3 -T0 -o target/ci/e2e-build.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tests-listed-e2e
+          path: target/ci/lists/
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e2e-build
+          path: target/ci/e2e-build.tar.zst
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - name: Leave the archive out of the cache
+        run: rm -rf target/ci
+
+  e2e:
+    name: End-to-end (Playwright ${{ matrix.shard }}/3)
+    needs: e2e-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    defaults:
+      run:
+        shell: bash
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -116,14 +367,13 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      CARGO_TERM_COLOR: always
       NEXT_TELEMETRY_DISABLED: '1'
       E2E_DATABASE_URL: postgres://mimorya:mimorya@localhost:5432/mimorya
       E2E_DATABASE_APP_URL: postgres://mimorya_app:mimorya_app@localhost:5432/mimorya
+      # The API's programs and the web application come built (e2e-build).
+      E2E_PREBUILT: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -131,13 +381,6 @@ jobs:
           cache: pnpm
       - name: Create the application database role
         run: psql postgres://mimorya:mimorya@localhost:5432/mimorya -f infra/postgres/init.sql
-      # As the tests run them: built together, the seed would take the
-      # example's development features and be built again.
-      - name: Build the seed, the end-to-end API and the document reader
-        run: |
-          cargo build --bin mimorya-seed
-          cargo build -p mimorya-api --example e2e_server
-          cargo build -p mimorya-api --bin mimorya-extract
       - run: pnpm install --frozen-lockfile
       - name: Cache Chromium
         id: chromium
@@ -151,15 +394,33 @@ jobs:
       - name: Install Chromium's system libraries
         if: steps.chromium.outputs.cache-hit == 'true'
         run: pnpm --filter @mimorya/web exec playwright install-deps chromium
-      - name: Build the web application
-        run: pnpm --filter @mimorya/web build
+      - uses: actions/download-artifact@v4
+        with:
+          name: e2e-build
+          path: target/ci
+      - name: Unpack the programs and the web application
+        run: zstd -dc target/ci/e2e-build.tar.zst | tar -xf -
       - name: End-to-end tests
-        run: pnpm --filter @mimorya/web e2e
+        run: >-
+          pnpm --filter @mimorya/web e2e --shard=${{ matrix.shard }}/3 2>&1
+          | tee target/ci/e2e-${{ matrix.shard }}.log
+      - name: Keep the tests that passed
+        if: always()
+        run: |
+          mkdir -p target/ci/lists
+          node infra/ci/tests.mjs e2e-passed target/ci/e2e-${{ matrix.shard }}.log \
+            > target/ci/lists/ran-e2e-${{ matrix.shard }}.tsv
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tests-ran-e2e-${{ matrix.shard }}
+          path: target/ci/lists/
+          retention-days: 7
       - name: Keep the traces of failed tests
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.shard }}
           path: apps/web/test-results
           retention-days: 7
 
@@ -247,3 +508,45 @@ jobs:
       - name: Logs of the production stack
         if: always()
         run: docker compose -f compose.production.yml -f compose.production.build.yml logs --no-color | tail -n 200
+
+  result:
+    # The check a merge requires (ADR-199): it fails if any job failed, was
+    # cancelled or skipped, or if a test listed did not run once and pass.
+    name: CI result
+    if: always()
+    needs: [lint, build, unit, integration, msrv, web, e2e-build, e2e, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Every job passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS"
+          jq -e 'all(.[]; .result == "success")' <<<"$NEEDS" > /dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tests-*
+          path: target/ci/lists
+          merge-multiple: true
+      - name: Every Rust test listed ran once, in its pass, and passed
+        run: >-
+          node infra/ci/tests.mjs verify target/ci/lists/listed-rust.tsv --
+          target/ci/lists/ran-unit.tsv target/ci/lists/ran-int-*.tsv
+      - name: Every end-to-end test listed ran once, and passed
+        run: >-
+          node infra/ci/tests.mjs verify target/ci/lists/listed-e2e.tsv --
+          target/ci/lists/ran-e2e-*.tsv
+      # Their count and digest, then the list: what a change of the CI
+      # compares with the run before it.
+      - name: Every test that ran, doctests included
+        run: |
+          node infra/ci/tests.mjs digest target/ci/lists/ran-*.tsv > target/ci/ran-all.txt
+          head -n 1 target/ci/ran-all.txt
+          echo "::group::The tests that ran"
+          tail -n +2 target/ci/ran-all.txt
+          echo "::endgroup::"

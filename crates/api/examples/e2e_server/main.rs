@@ -38,9 +38,11 @@
 //! sub-agent (`sub_agents`, ADR-099), a skill the agent proposes
 //! (`skill_proposals`, ADR-101), a skill's version tried on its case
 //! (`skill_evaluations`, ADR-105), and what an inbound hook sends (`hooks`,
-//! ADR-110). One pass of the tests
-//! per start: the model's script and the demo company are used up, and the
-//! rate limit windows a former start left are forgotten (ADR-088). Like
+//! ADR-110). Every other conversation plays the reference scenario, each
+//! run from its own history, whatever ran before it (`scenario`, ADR-199).
+//! One pass of the tests, or of a shard of them, per start: the demo
+//! company is used up, and the rate limit windows a former start left are
+//! forgotten (ADR-088). Like
 //! `mimorya-api`, once listening it takes up the runs whose executor
 //! stopped, among them the one it leaves itself without a lease
 //! (`interrupted`, ADR-053, ADR-086); then fires the scheduled tasks due every
@@ -101,18 +103,6 @@ use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::testing::{FakeSlack, FakeTeams, FakeTelegram};
 
-/// Reference scenarios queued for the platform model, by the hour of their
-/// follow-up: one per run that converses, in the order they run (the
-/// interrupted run taken up at startup, which `interrupted-run.spec.ts`
-/// refuses, then the one of `lessons.spec.ts`, that of
-/// `manager-absence.spec.ts`, the two of `manager-approvals.spec.ts`, that
-/// of `mcp-person-oauth.spec.ts`, `reference-scenario.spec.ts`, the three of
-/// `timeouts.spec.ts` and `unavailable-connectors.spec.ts`). Only the one of
-/// `reference-scenario.spec.ts` is validated: the others are refused (or
-/// withdrawn), so their slots, which may overlap (two hours each, within
-/// the working day, 8 h – 17 h), are never taken.
-const SCENARIO_HOURS: [u32; 11] = [10, 10, 12, 14, 12, 10, 13, 15, 9, 11, 8];
-
 /// Where the identity provider listens: `single-sign-on.spec.ts` declares it.
 const IDP_ADDRESS: &str = "127.0.0.1:4100";
 
@@ -156,11 +146,11 @@ async fn main() -> anyhow::Result<()> {
     );
     mailbox::empty(&mail_dir)?;
 
-    let model = Arc::new(ScriptedProvider::new(Vec::new()));
-    for hour in SCENARIO_HOURS {
-        model.push(scenario::reference(hour));
-    }
-    let conversations = Arc::new(queued::WithQueued::new(model));
+    // Every conversation no other script answers plays the reference
+    // scenario, each run from its own history (ADR-199).
+    let conversations = Arc::new(queued::WithQueued::new(
+        Arc::new(scenario::Reference::new()),
+    ));
     let documents = Arc::new(documents::WithDocuments::new(conversations));
     let received = Arc::new(hooks::WithHooks::new(documents));
     let written = Arc::new(slack::WithSlack::new(received));

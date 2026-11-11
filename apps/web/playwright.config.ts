@@ -6,11 +6,19 @@ import { defineConfig, devices } from '@playwright/test';
  * End-to-end tests (ADR-031): the real API, started with a scripted model
  * (`cargo run --example e2e_server`) on a freshly seeded database, behind the
  * production build of the web application. One worker and one pass per
- * start, without retry: the tests share the demo company and the model's
- * script, which a pass uses up.
+ * start, without retry: the tests share the demo company, which a pass uses
+ * up. A shard of the suite (`--shard`) has a start of its own, whatever ran
+ * in the others (ADR-199). With `E2E_PREBUILT` set, the API's programs are
+ * the ones already built (`cargo build`, as the command below builds them):
+ * the CI builds them once for all its shards.
  */
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const MAIL_DIR = path.join(root, 'target/e2e/mail');
+
+/** The seed, then the API: built here, or already built (`E2E_PREBUILT`). */
+const apiCommand = process.env.E2E_PREBUILT
+  ? 'target/debug/mimorya-seed --reset && target/debug/examples/e2e_server'
+  : 'cargo build -p mimorya-api --bin mimorya-extract && cargo run --bin mimorya-seed -- --reset && cargo run -p mimorya-api --example e2e_server';
 
 const databaseUrl =
   process.env.E2E_DATABASE_URL ?? 'postgres://mimorya:mimorya@localhost:5432/mimorya';
@@ -36,8 +44,7 @@ export default defineConfig({
       // The demo company is recreated, then the API starts (it deletes the
       // e-mails of a former start), its documents read by the extraction
       // process (ADR-095).
-      command:
-        'cargo build -p mimorya-api --bin mimorya-extract && cargo run --bin mimorya-seed -- --reset && cargo run -p mimorya-api --example e2e_server',
+      command: apiCommand,
       cwd: root,
       url: 'http://localhost:4000/health',
       timeout: 900_000,

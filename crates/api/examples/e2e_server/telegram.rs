@@ -1,7 +1,7 @@
 //! What a person writes to the company's Telegram bot (ADR-135), as the
 //! end-to-end model plays it: recognised by their first question, the
-//! conversation is answered apart, so that the reference scenarios queued
-//! for conversations keep their order (`telegram-conversations.spec.ts`).
+//! conversation is answered apart, not with the reference scenario
+//! (`telegram-conversations.spec.ts`).
 //! Its follow-up is answered from what came before; the question that opens
 //! the next conversation, after `/nouvelle`, apart too.
 

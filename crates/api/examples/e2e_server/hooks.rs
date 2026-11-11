@@ -1,7 +1,7 @@
 //! What an inbound hook sends (ADR-109, ADR-110), as the end-to-end model
 //! plays it: recognised by the envelope of the data it received, it is
-//! answered apart, so that the reference scenarios queued for
-//! conversations keep their order (`inbound-hooks.spec.ts`).
+//! answered apart, not with the reference scenario
+//! (`inbound-hooks.spec.ts`).
 
 use std::sync::Arc;
 

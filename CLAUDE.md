@@ -415,7 +415,8 @@ Repères à l'intérieur des crates :
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en
   bout, un fichier par parcours, `support/`, dont les comptes qu'un test fait pour lui et retire, `support/accounts.ts`) et `api/examples/e2e_server/` (l'API qu'ils
   pilotent, avec un fournisseur OpenID Connect et un fournisseur SAML simulés, ADR-031,
-  ADR-063, ADR-068, une relecture des leçons à part, `lessons.rs`, ADR-077, une tâche
+  ADR-063, ADR-068, le scénario de référence que chaque run joue depuis son propre
+  historique, quel que soit l'ordre des tests, `scenario.rs`, ADR-199, une relecture des leçons à part, `lessons.rs`, ADR-077, une tâche
   planifiée dont l'occurrence est manquée au démarrage, `scheduled.rs`, ADR-081, et des
   missions jouées à part, `missions.rs`, ADR-090, une question sur les documents,
   `documents.rs`, ADR-097, lus par `mimorya-extract` qu'ils construisent, une question
@@ -451,7 +452,13 @@ Repères à l'intérieur des crates :
   ADR-034) et `compose.demo.yml` (pile de démonstration,
   ADR-032), chacune avec un service `api` et un service `worker` de la même image
   (ADR-087), qui téléchargent les images publiées (`.github/workflows/images.yml`,
-  ADR-051) ; `compose.*.build.yml` les construisent depuis le dépôt (CI).
+  ADR-051) ; `compose.*.build.yml` les construisent depuis le dépôt (CI) ; `ci/` (CI en
+  jobs parallèles, `.github/workflows/ci.yml`, ADR-199 : tests Rust construits une fois,
+  chaque binaire noté avec son dossier et les variables que cargo lui donne
+  (`build-tests.sh`, `record-test.sh`, _runner_ de cargo), lancé comme cargo le lance dans
+  le job de son lot (`run-tests.sh`) ; inventaire des tests, répartition des binaires en
+  lots, tests passés lus des journaux et comparés à l'inventaire par le job final
+  `CI result` (`tests.mjs`, `lib/`)).
 
 ## Commandes
 
@@ -624,7 +631,11 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
   échoue sur une violation de la CSP ou une erreur de page. Un parcours web nouveau ou
   modifié s'accompagne de son test. Les tests partagent l'entreprise de démonstration
   (recréée à chaque démarrage) et s'exécutent dans l'ordre des fichiers : chacun la
-  laisse sans effet sur les suivants. Ce qu'il crée, il le supprime quand l'API le
+  laisse sans effet sur les suivants. En CI, la suite est répartie en lots
+  (`--shard`), chacun contre son propre démarrage (ADR-199) : chaque fichier passe
+  seul, sans compter sur aucun fichier joué avant lui ; ce que le démarrage laisse en
+  attente (le run interrompu de Marc…) et qu'un parcours lit en entier, ce parcours le
+  règle d'abord. Ce qu'il crée, il le supprime quand l'API le
   permet, même s'il échoue quand l'effet serait gênant (`afterEach`) ; un compte porte une
   adresse propre au test, et il est désactivé puis effacé (ADR-189).
   Une assertion vérifie ce que l'API a enregistré (relu après rechargement), pas l'état

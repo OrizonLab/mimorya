@@ -1,6 +1,6 @@
 //! Missions (ADR-089), as the end-to-end model plays them: recognised by
-//! their brief, they are answered apart, so that the reference scenarios
-//! queued for conversations keep their order (`missions.spec.ts`). A
+//! their brief, they are answered apart, not with the reference scenario
+//! (`missions.spec.ts`). A
 //! mission's first stage searches this week's interventions until its
 //! budget is spent, then writes its progress note; the next stage gives the
 //! final answer, which the review passes. A mission whose title asks to be

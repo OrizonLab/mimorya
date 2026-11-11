@@ -1,7 +1,6 @@
 //! A skill the agent proposes (ADR-100, ADR-101), as the end-to-end model plays it:
-//! recognised by its question, it is answered apart, so that the reference
-//! scenarios queued for conversations keep their order
-//! (`skill-proposals.spec.ts`). The model proposes a new skill; once the
+//! recognised by its question, it is answered apart, not with the reference
+//! scenario (`skill-proposals.spec.ts`). The model proposes a new skill; once the
 //! person validated its text, it says the proposal went to the skills'
 //! administrators.
 

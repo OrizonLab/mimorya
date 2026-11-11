@@ -13650,3 +13650,112 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       (`a_pass_takes_a_backlog_over_several_statements`). Le test échouerait si le lot de
       l'application dépassait la borne de la base ;
     - la carte du dépôt nomme `retention_batches.rs`.
+
+## ADR-199 — CI en jobs parallèles, tests construits une fois puis répartis (chantier 1)
+
+- **Statut** : accepté (2026-11-11) · complète ADR-031 (tests de bout en bout) et ADR-051
+  (workflow `CI` dont dépend la publication des images).
+- **Contexte** : un seul job « Rust » enchaînait format, clippy, tests unitaires et
+  `cargo test-int`. Ce dernier lance l'un après l'autre près de 280 binaires PostgreSQL.
+  Le job durait de 46 à 55 minutes ; Playwright tournait en un seul job d'environ
+  11 minutes. Deux contraintes pesaient sur la répartition :
+  - **les tests d'un même binaire partagent un état**. La base de test est recréée une
+    fois par binaire (`OnceLock` dans `crates/api/tests/support/fixtures.rs` et
+    `crates/db/tests/support/mod.rs`), puis ses tests s'y suivent. cargo-nextest, qui
+    lance chaque test dans son propre processus, recréerait la base à chaque test et
+    briserait cet enchaînement : la répartition se fait **par binaire** ;
+  - **les tests de bout en bout dépendaient de l'ordre des fichiers**. Le modèle
+    scénarisé tenait une file de onze scénarios de référence, consommés dans l'ordre
+    des runs (`SCENARIO_HOURS`). Un lot Playwright (`--shard`) qui n'aurait pas joué les
+    mêmes fichiers avant aurait reçu un autre scénario, voire la fin de celui du run
+    interrompu.
+- **Décision** :
+  - **des jobs côte à côte** : format et clippy (`lint`) ; compilation des tests
+    (`build`) ; tests unitaires (`unit`) ; tests PostgreSQL en huit lots
+    (`integration`), chacun avec sa base ; compilation de bout en bout (`e2e-build`) ;
+    trois lots Playwright (`e2e`) ; `msrv`, `web` et `docker` inchangés ;
+  - **les tests Rust compilés une seule fois** (`infra/ci/build-tests.sh`), avec le
+    profil d'avant (`line-tables-only`) :
+    - `cargo test --workspace --no-run` les construit ;
+    - les doctests tournent là (`--doc -- --include-ignored`) : les deux passes d'avant
+      en une ;
+    - `cargo test --workspace --lib --bins --tests` « lance » ensuite les binaires de
+      test avec un _runner_ de cargo (`infra/ci/record-test.sh`). Au lieu d'exécuter un
+      binaire, celui-ci note son dossier, les variables que cargo lui donne et ses tests
+      (`--list`, `--list --ignored`). Le plan vérifie que ce sont exactement les
+      binaires construits ;
+    - `infra/ci/tests.mjs plan` en tire l'inventaire, une ligne par test (paquet, cible,
+      test, passe), et une archive par job. L'archive `unit` porte les binaires qui ont
+      un test non ignoré. Les huit archives `int-k` se partagent les binaires qui ont
+      des tests ignorés, par nombre de tests ignorés, le plus chargé d'abord, chacun au
+      lot le moins chargé ;
+    - les archives sont compressées par zstd avec une longue fenêtre (`--long=30`).
+      Les binaires partagent l'essentiel de leur code : mesuré en local, un binaire de
+      l'API pèse 15,8 Mo compressé seul, et un second n'ajoute que 1,8 Mo ;
+  - **chaque binaire lancé comme cargo le lance** (`infra/ci/run-tests.sh`), depuis le
+    dossier de son paquet, avec les variables notées :
+    - sans argument pour les tests unitaires, comme `cargo test --workspace` ;
+    - avec `--ignored --test-threads=1` pour les tests PostgreSQL, comme
+      `cargo test-int` ;
+    - les chemins compilés dans les binaires sont absolus (`env!`) : le script refuse un
+      dossier de travail différent ;
+    - chaque binaire tourne, même après un échec ;
+  - **les tests de bout en bout indépendants de l'ordre**. Le modèle scénarisé ne tient
+    plus de file : chaque run joue le scénario de référence depuis son propre historique
+    (`e2e_server/scenario.rs`). Son étape suivante découle du dernier outil appelé. Son
+    créneau est à 13 h, sauf si un run du même démarrage y a fait appliquer un planning ;
+    il passe alors à 9 h, 15 h ou 11 h. `e2e-build` construit les programmes comme avant,
+    ainsi que l'application web, et liste les tests (`playwright test --list`). Chaque
+    lot Playwright (`--shard=k/3`) démarre sa propre API, avec ses programmes déjà
+    construits (`E2E_PREBUILT`).
+
+    Ce que le démarrage laisse pour un fichier précis (le run interrompu de Marc,
+    qui attend sa validation, le run en file, la tâche planifiée manquée) reste là
+    jusqu'à ce fichier, ou tout le lot s'il n'y est pas. Un parcours qui lit toute une
+    liste règle donc d'abord ce qui l'attend : `manager-approvals.spec.ts` fait
+    refuser par Marc ce qui l'attendait avant la demande de Nadia. Vérifié en local :
+    - chacun des 63 fichiers passe seul, contre un démarrage neuf ;
+    - la suite passe entière, et en deux, trois et quatre lots ;
+
+  - **un dernier job, `CI result`, seul contrôle à exiger** dans la protection de
+    branche :
+    - il échoue si un job a échoué, a été annulé ou sauté ;
+    - il échoue si un test de l'inventaire n'a pas tourné et réussi exactement une fois,
+      dans sa passe, ou si un test non inventorié a tourné. La même règle vaut pour les
+      tests de bout en bout ;
+    - il imprime le nombre et l'empreinte (SHA-256) de tous les tests passés, doctests
+      compris, puis leur liste : un changement de la CI se compare au run d'avant.
+      Dans un journal de cargo, les cibles (sortie d'erreur) et leurs tests (sortie
+      standard) peuvent se croiser : le k-ième bloc de résultats (`running N tests` …
+      `test result:`) est rattaché à la k-ième cible (`tests.mjs from-cargo-log`) ;
+  - **les caches** de `build` et de `e2e-build` ne sont sauvés que sur `main` : leur
+    sauvegarde, en fin de job, retarderait les jobs qui les attendent.
+- **Ce qui ne change pas** : les tests eux-mêmes, aucun n'étant retiré, ignoré, rendu
+  facultatif ni relancé ; leur profil de compilation ; leurs arguments ; leurs variables ;
+  la base PostgreSQL (pgvector 16) ; les commandes locales (`pnpm check`,
+  `pnpm test:int`, `pnpm test:e2e`).
+- **Conséquences** :
+  - un nouveau binaire de test est inventorié et réparti sans rien changer ;
+  - le nombre de lots PostgreSQL figure dans l'argument de `build-tests.sh`, dans les
+    envois d'archives (un par lot), dans la matrice d'`integration` et dans le nom de
+    ses jobs. Un écart laisse une archive sans envoi (`if-no-files-found: error`) ou
+    des tests sans job, et `CI result` échoue ;
+  - un nouveau job doit être ajouté aux `needs` de `CI result`, sans quoi son échec
+    ne bloquerait rien ;
+  - une vingtaine de jobs tournent en même temps ;
+  - le journal de la CI garde l'ancien format de cargo (`Running …`, `test … ok`) ;
+  - mesuré sur la PR #248 : **21,6 et 22,3 minutes** de bout en bout pour ses deux
+    premiers commits, contre 54,5 pour le run de `main` juste avant, 48,1 en médiane
+    sur les douze runs réussis qui précèdent la PR (de 32,4 à 55,3). Les
+    mêmes 2150 tests ont tourné et réussi, chacun dans sa passe : 1030 unitaires,
+    1001 PostgreSQL et 119 de bout en bout, sans doctest. Les deux listes sont
+    identiques (empreinte `e4bea6bc…`). Le chemin critique se décompose ainsi :
+    - compilation des tests : 10,5 minutes ;
+    - archives et envois : 4,5 minutes ;
+    - lot PostgreSQL le plus long : 5,5 minutes, dont environ 1 minute de mise en
+      place.
+- **Écartés** :
+  - cargo-nextest, pour l'état partagé de chaque binaire ;
+  - compiler dans chaque lot ;
+  - une archive unique, que chaque lot téléchargerait en entier ;
+  - partager le dossier `target` par le cache, qui ne garde que les dépendances.
