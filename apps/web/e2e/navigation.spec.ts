@@ -26,6 +26,7 @@ const ADMIN_TABS = [
   'Journal d’audit',
   'Consommation',
   'Modèle d’IA',
+  'Conservation des données',
   'Connecteurs',
   'Compétences',
 ];

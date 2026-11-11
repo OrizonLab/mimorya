@@ -154,10 +154,12 @@ async fn a_batch_takes_the_oldest_of_every_company() {
     let neo = tenant::ID;
     let acme = companies::create(&api, "acme-lots", "admin@acme-lots.example").await;
     let (acme_id, jeanne) = (acme.tenant_id, acme.admin_id);
-    conversation(neo, user::MARC, "lot Néo 40 mois", 40).await;
-    conversation(acme_id, jeanne, "lot Acme 35 mois", 35).await;
-    conversation(neo, user::MARC, "lot Néo 30 mois", 30).await;
-    conversation(acme_id, jeanne, "lot Acme 26 mois", 26).await;
+    // The oldest of all in the company read second: a batch in the
+    // companies' order would take Néo's first.
+    conversation(acme_id, jeanne, "lot Acme 40 mois", 40).await;
+    conversation(neo, user::MARC, "lot Néo 35 mois", 35).await;
+    conversation(acme_id, jeanne, "lot Acme 30 mois", 30).await;
+    conversation(neo, user::MARC, "lot Néo 26 mois", 26).await;
     let lost = |batch: &[PurgedConversations]| -> Vec<(Uuid, i32)> {
         let mut lost: Vec<_> = (batch.iter())
             .map(|lost| (lost.tenant_id, lost.conversations))
@@ -170,13 +172,13 @@ async fn a_batch_takes_the_oldest_of_every_company() {
 
     // One: the oldest of all, whichever company holds it.
     let one = purge_idle_conversations(db.pool(), 1).await.unwrap();
-    assert_eq!(lost(&one), [(neo, 1)]);
+    assert_eq!(lost(&one), [(acme_id, 1)]);
     // Two: the next two of all, one of each, never two per company.
     let two = purge_idle_conversations(db.pool(), 2).await.unwrap();
     assert_eq!(lost(&two), both);
-    assert_eq!(conversations_left("lot ").await.0, ["lot Acme 26 mois"]);
+    assert_eq!(conversations_left("lot ").await.0, ["lot Néo 26 mois"]);
     let last = purge_idle_conversations(db.pool(), 2).await.unwrap();
-    assert_eq!(lost(&last), [(acme_id, 1)]);
+    assert_eq!(lost(&last), [(neo, 1)]);
 }
 
 /// The SQL state of a statement of the application in its company's

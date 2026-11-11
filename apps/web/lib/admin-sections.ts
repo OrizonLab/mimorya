@@ -13,6 +13,7 @@ export const ADMIN_SECTIONS = [
   { key: 'usage', label: 'Consommation', permissions: ['usage:read'] },
   { key: 'llm', label: 'Modèle d’IA', permissions: ['settings:manage'] },
   { key: 'identityProviders', label: 'Connexion', permissions: ['settings:manage'] },
+  { key: 'retention', label: 'Conservation des données', permissions: ['retention:manage'] },
   { key: 'connectors', label: 'Connecteurs', permissions: ['connector:manage'] },
   { key: 'skills', label: 'Compétences', permissions: ['skill:manage'] },
 ] as const;

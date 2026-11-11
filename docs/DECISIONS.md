@@ -13409,3 +13409,45 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         avant, ni retirer une durée, ni lire les horizons, ni sortir des bornes, ni
         écrire pour une autre entreprise, ni changer la sorte d'une durée ;
       - les durées et les bornes de la base sont celles du domaine.
+  - suites de l'audit de la PR #242 (lot 66b) :
+    - un lot qui revient incomplet arrête la passe, et la passe suivante reprend : une
+      conversation qu'un tour tient, ou qu'un tour a rendue récente entre-temps, n'est
+      pas remplacée dans son lot ;
+    - le test du lot partagé entre entreprises place la conversation la plus ancienne
+      dans l'entreprise lue en second : un lot qui suivrait l'ordre des entreprises le
+      ferait échouer.
+
+## ADR-196 — Écran des durées de rétention dans l'administration (lot 66b)
+
+- **Statut** : accepté (2026-11-11) · complète ADR-195.
+- **Contexte** : chaque entreprise règle ses durées de rétention par l'API (ADR-195). Un
+  raccourcissement supprime, une semaine plus tard, ce qui n'est plus gardé : celui qui le
+  choisit doit le voir avant d'enregistrer, et l'entreprise doit voir ce qui attend.
+- **Décision** :
+  - **un onglet « Conservation des données »** dans l'administration, ouvert à qui
+    détient `retention:manage` (`lib/admin-sections.ts`), distinct de « Modèle d'IA » que
+    `settings:manage` ouvre ;
+  - **un formulaire des trois durées**, chacune dans son unité et ses bornes, avec la
+    durée de la plateforme ; il dit si les durées sont celles de l'entreprise ou de la
+    plateforme, qu'une purge passe chaque heure, qu'un allongement s'applique aussitôt et
+    un raccourcissement une semaine plus tard ; une durée écrite autrement mais égale
+    (`012`) n'enregistre rien ;
+  - **un raccourcissement est demandé d'abord** : la confirmation nomme chaque durée
+    raccourcie et dit que la purge supprimera, dans sept jours, ce qui n'est plus gardé,
+    sans retour possible ; refusée, rien n'est envoyé. Un allongement ne demande rien ;
+  - **ce qui attend est dit sous sa durée** : la durée choisie, la date à laquelle la
+    purge l'applique et ce qu'elle garde d'ici là, tels que l'API les donne
+    (`shorteningAppliesAt`, `inEffect`) ;
+  - **le serveur reste seul juge** : bornes, délai et permission sont ceux de l'API ;
+    l'écran ne fait que les montrer, et un refus est dit tel que le serveur le dit.
+- **Conséquences** :
+  - un administrateur technique voit, à côté de chaque durée, ce que la purge applique
+    vraiment pendant la semaine d'attente ;
+  - il n'y a pas de bouton « revenir aux durées de la plateforme » : c'est une durée comme
+    une autre, qui attend sa semaine si elle raccourcit (ADR-195) ;
+  - tests :
+    - `apps/web/e2e/retention.spec.ts` : les durées de la plateforme et leurs champs ; une
+      durée écrite autrement n'enregistre rien ; un raccourcissement refusé n'enregistre
+      rien, accepté il dit sa date et ce que la purge garde d'ici là, relu après
+      rechargement ; un allongement s'applique sans rien demander ;
+    - `apps/web/e2e/navigation.spec.ts` : l'onglet se charge sans erreur.
