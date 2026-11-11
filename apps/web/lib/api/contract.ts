@@ -2603,7 +2603,12 @@ export type RetentionUnitName = "months" | "days";
  * the platform's bounds by the service, which says them in its refusal.
  * One unchanged is left as it is, a shortening that waits with it.
  */
-export type RetentionUpdate = { conversationMonths: number, episodeMonths: number, departedDays: number, };
+export type RetentionUpdate = { conversationMonths: number, episodeMonths: number, departedDays: number,
+/**
+ * The `version` the durations were read at: refused once they changed
+ * since, what the change was asked on no longer being there.
+ */
+replaces: string, };
 
 /**
  * `GET /admin/retention`.
@@ -2612,7 +2617,12 @@ export type RetentionView = { durations: Array<RetentionDurationView>,
 /**
  * How many days a shortening waits before it applies.
  */
-shorteningDelayDays: number, };
+shorteningDelayDays: number,
+/**
+ * The version of the durations the company set, which a change names
+ * (`RetentionUpdate::replaces`, ADR-196).
+ */
+version: string, };
 
 /**
  * What becomes of a proposed memory: kept as active, or archived.

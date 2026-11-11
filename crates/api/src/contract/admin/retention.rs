@@ -78,6 +78,9 @@ pub struct RetentionView {
     pub durations: Vec<RetentionDurationView>,
     /// How many days a shortening waits before it applies.
     pub shortening_delay_days: i32,
+    /// The version of the durations the company set, which a change names
+    /// (`RetentionUpdate::replaces`, ADR-196).
+    pub version: String,
 }
 
 /// Body of `PUT /admin/retention`: every kind's duration, checked against
@@ -89,6 +92,10 @@ pub struct RetentionUpdate {
     pub conversation_months: i32,
     pub episode_months: i32,
     pub departed_days: i32,
+    /// The `version` the durations were read at: refused once they changed
+    /// since, what the change was asked on no longer being there.
+    #[validate(length(max = 64))]
+    pub replaces: String,
 }
 
 impl RetentionUpdate {

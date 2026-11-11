@@ -3,7 +3,8 @@
 //! `retention:manage` company-wide, not who manages its other settings. A
 //! lengthening applies at once, a shortening a week later; a duration asked
 //! as it already is changes nothing, its delay included. Each change is
-//! audited, what it was and what it is.
+//! audited, what it was and what it is. A change names the version of the
+//! durations it was asked on, refused once another changed them (ADR-196).
 
 mod support;
 
@@ -11,19 +12,38 @@ use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
-use support::TestApi;
 use support::accounts::{activate, create_partial_admin, holder_of};
 use support::refusals::latest_entry;
 use support::retention::{clear_retention, retention_changed_days_ago};
+use support::{Client, TestApi, TestResponse};
 
 const RETENTION: &str = "/admin/retention";
 
-fn asked(conversations: i32, episodes: i32, departed: i32) -> Value {
+fn asked(replaces: &str, conversations: i32, episodes: i32, departed: i32) -> Value {
     json!({
         "conversationMonths": conversations,
         "episodeMonths": episodes,
         "departedDays": departed,
+        "replaces": replaces,
     })
+}
+
+/// The version of the durations as `client` reads them.
+async fn version(client: &Client<'_>) -> String {
+    let view = client.get(RETENTION).await.json();
+    view["version"].as_str().unwrap().to_string()
+}
+
+/// `client` sets the durations on the version it reads first.
+async fn set(
+    client: &Client<'_>,
+    conversations: i32,
+    episodes: i32,
+    departed: i32,
+) -> TestResponse {
+    let replaces = version(client).await;
+    let body = asked(&replaces, conversations, episodes, departed);
+    client.put(RETENTION, body).await
 }
 
 /// Each kind's (duration, in effect, own, whether a shortening waits).
@@ -90,8 +110,8 @@ async fn a_company_sets_its_retention_within_the_platform_s_bounds() {
 
     // Longer conversations apply at once; shorter episodes and departed
     // memories wait a week, the platform's applied meanwhile.
-    let set = paul.put(RETENTION, asked(36, 6, 14)).await;
-    assert_eq!(set.status, StatusCode::OK, "{}", set.text());
+    let first = set(&paul, 36, 6, 14).await;
+    assert_eq!(first.status, StatusCode::OK, "{}", first.text());
     let own = paul.get(RETENTION).await.json();
     assert_eq!(
         durations(&own),
@@ -113,7 +133,7 @@ async fn a_company_sets_its_retention_within_the_platform_s_bounds() {
     // Asked again as they are: nothing changes, the delay goes on, its
     // shortening a day away.
     retention_changed_days_ago(tenant::ID, "episodes", 6).await;
-    let again = paul.put(RETENTION, asked(36, 6, 14)).await;
+    let again = set(&paul, 36, 6, 14).await;
     assert_eq!(again.status, StatusCode::OK, "{}", again.text());
     assert_eq!(changes(&api, since).await.len(), 1);
     let waiting = paul.get(RETENTION).await.json();
@@ -137,7 +157,7 @@ async fn a_company_sets_its_retention_within_the_platform_s_bounds() {
 
     // Shortened again within the week: what applied until then still
     // applies for a week, the platform's longer one.
-    let shorter = paul.put(RETENTION, asked(36, 6, 10)).await;
+    let shorter = set(&paul, 36, 6, 10).await;
     assert_eq!(shorter.status, StatusCode::OK, "{}", shorter.text());
     let view = paul.get(RETENTION).await.json();
     assert_eq!(durations(&view)[2], ("departed".into(), 10, 30, true, true));
@@ -147,11 +167,18 @@ async fn a_company_sets_its_retention_within_the_platform_s_bounds() {
     );
 
     // Out of the bounds: refused with them, nothing changed.
+    let read = version(&paul).await;
     for (body, said) in [
-        (asked(0, 6, 10), "Conversations inactives : de 1 à 60 mois"),
-        (asked(36, 37, 10), "Mémoires épisodiques : de 1 à 36 mois"),
         (
-            asked(36, 6, 6),
+            asked(&read, 0, 6, 10),
+            "Conversations inactives : de 1 à 60 mois",
+        ),
+        (
+            asked(&read, 36, 37, 10),
+            "Mémoires épisodiques : de 1 à 36 mois",
+        ),
+        (
+            asked(&read, 36, 6, 6),
             "Mémoires personnelles d’un compte désactivé : de 7 à 90 jours",
         ),
     ] {
@@ -185,10 +212,11 @@ async fn only_who_holds_retention_manage_company_wide_sets_it() {
 
     // Neither a member, nor who manages the other settings, nor who holds
     // it on one team.
+    let read = version(&paul).await;
     for refused in [&claire, &settings, &partial] {
         assert_eq!(refused.get(RETENTION).await.status, StatusCode::FORBIDDEN);
-        let set = refused.put(RETENTION, asked(1, 1, 7)).await;
-        assert_eq!(set.status, StatusCode::FORBIDDEN, "{}", set.text());
+        let put = refused.put(RETENTION, asked(&read, 1, 1, 7)).await;
+        assert_eq!(put.status, StatusCode::FORBIDDEN, "{}", put.text());
     }
     assert!(changes(&api, since).await.is_empty());
     let platform = paul.get(RETENTION).await.json();
@@ -198,11 +226,71 @@ async fn only_who_holds_retention_manage_company_wide_sets_it() {
     );
 
     // Who holds it company-wide does.
-    let set = keeper.put(RETENTION, asked(12, 12, 30)).await;
-    assert_eq!(set.status, StatusCode::OK, "{}", set.text());
+    let kept = set(&keeper, 12, 12, 30).await;
+    assert_eq!(kept.status, StatusCode::OK, "{}", kept.text());
     assert_eq!(
         changes(&api, since).await,
         [json!({ "conversations": { "from": 24, "to": 12, "delayed": true } })]
     );
+    clear_retention(tenant::ID).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_change_asked_on_durations_changed_since_is_refused() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let keeper = holder_of(&api, &paul, "second.retention", &["retention:manage"]).await;
+    let since = latest_entry(&api).await;
+
+    // Both read the platform's; the keeper lengthens the conversations.
+    let opened = version(&paul).await;
+    assert_eq!(version(&keeper).await, opened);
+    let lengthened = keeper.put(RETENTION, asked(&opened, 36, 12, 30)).await;
+    assert_eq!(lengthened.status, StatusCode::OK, "{}", lengthened.text());
+    let read = version(&paul).await;
+    assert_ne!(read, opened);
+
+    // Paul, on what he read before, shortens the episodes: his page would
+    // shorten the conversations back to 24 months without asking. Refused,
+    // nothing changes.
+    let stale = paul.put(RETENTION, asked(&opened, 24, 6, 30)).await;
+    assert_eq!(stale.status, StatusCode::CONFLICT, "{}", stale.text());
+    assert_eq!(
+        stale.error_message(),
+        "Les durées de conservation ont changé depuis l’ouverture de cette page : \
+         rechargez-la pour voir les durées actuelles"
+    );
+    let unchanged = paul.get(RETENTION).await.json();
+    assert_eq!(unchanged["version"], read.as_str());
+    assert_eq!(
+        durations(&unchanged)[..2],
+        [
+            ("conversations".into(), 36, 36, true, false),
+            ("episodes".into(), 12, 12, false, false),
+        ]
+    );
+    assert_eq!(changes(&api, since).await.len(), 1);
+
+    // On what he reads now, it is done; asked again as it is, nothing
+    // changes, the version neither.
+    let done = paul.put(RETENTION, asked(&read, 36, 6, 30)).await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.text());
+    let after = version(&paul).await;
+    assert_ne!(after, read);
+    let again = paul.put(RETENTION, asked(&after, 36, 6, 30)).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.text());
+    assert_eq!(version(&paul).await, after);
+    assert_eq!(changes(&api, since).await.len(), 2);
+
+    // A version longer than any is refused as such; none, as a body
+    // missing a field.
+    let long = paul.put(RETENTION, asked(&"0".repeat(65), 36, 6, 30)).await;
+    assert_eq!(long.status, StatusCode::BAD_REQUEST, "{}", long.text());
+    let mut without = asked(&after, 36, 6, 30);
+    without.as_object_mut().unwrap().remove("replaces");
+    let missing = paul.put(RETENTION, without).await;
+    assert!(missing.status.is_client_error(), "{}", missing.text());
+    assert_ne!(missing.status, StatusCode::CONFLICT, "{}", missing.text());
     clear_retention(tenant::ID).await;
 }
