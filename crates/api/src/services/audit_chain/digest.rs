@@ -5,9 +5,15 @@
 //! bytes: a value moved from one field to the next, or an empty one taken
 //! for an absent one, changes the seal. The encoding is fixed: changing it
 //! would break every chain sealed before (the test below pins it).
+//!
+//! Where a chain starts once its oldest places went (ADR-198) is sealed
+//! too, apart: the company, its first place, the seal before it and how
+//! many places went, under the same key, in another domain, so that the
+//! database owner, without the key, can neither write a start nor move one.
 
-use mimorya_db::repositories::audit_chain::ChainEntry;
+use mimorya_db::repositories::audit_chain::{ChainEntry, ChainStart};
 use ring::hmac;
+use uuid::Uuid;
 
 use crate::secrets::SecretCipher;
 
@@ -15,8 +21,11 @@ use crate::secrets::SecretCipher;
 const PURPOSE: &[u8] = b"audit-chain";
 /// Opens what is sealed: a later encoding would be told apart.
 const DOMAIN: &[u8] = b"mimorya.audit-chain.v1";
+/// Opens a chain's start as sealed: never taken for an entry.
+const START_DOMAIN: &[u8] = b"mimorya.audit-chain-start.v1";
 
 /// The key that seals the audit log, derived from the master key.
+#[derive(Clone)]
 pub struct ChainKey(hmac::Key);
 
 impl ChainKey {
@@ -29,6 +38,30 @@ impl ChainKey {
     pub fn seal(&self, previous: Option<&[u8]>, seq: i64, entry: &ChainEntry) -> [u8; 32] {
         let mut seal = [0; 32];
         seal.copy_from_slice(hmac::sign(&self.0, &encode(previous, seq, entry)).as_ref());
+        seal
+    }
+
+    /// The seal of where the company `tenant_id`'s chain starts: its first
+    /// place, the seal before it and how many places went (`start.seal` is
+    /// not part of it).
+    pub fn seal_start(&self, tenant_id: Uuid, start: &ChainStart) -> [u8; 32] {
+        let (tenant, first, purged) = (
+            tenant_id.to_string(),
+            start.first_seq.to_be_bytes(),
+            start.purged_entries.to_be_bytes(),
+        );
+        let mut bytes = START_DOMAIN.to_vec();
+        write(
+            &mut bytes,
+            &[
+                Some(tenant.as_bytes()),
+                Some(&first),
+                Some(&start.previous_hash),
+                Some(&purged),
+            ],
+        );
+        let mut seal = [0; 32];
+        seal.copy_from_slice(hmac::sign(&self.0, &bytes).as_ref());
         seal
     }
 }
@@ -68,6 +101,12 @@ fn encode(previous: Option<&[u8]>, seq: i64, entry: &ChainEntry) -> Vec<u8> {
         text(&entry.ip),
         text(&entry.request_id),
     ];
+    write(&mut bytes, &parts);
+    bytes
+}
+
+/// Writes each part with whether it is there and, if so, its length.
+fn write(bytes: &mut Vec<u8>, parts: &[Option<&[u8]>]) {
     for part in parts {
         match part {
             None => bytes.push(0),
@@ -78,7 +117,6 @@ fn encode(previous: Option<&[u8]>, seq: i64, entry: &ChainEntry) -> Vec<u8> {
             }
         }
     }
-    bytes
 }
 
 #[cfg(test)]
@@ -131,6 +169,51 @@ mod tests {
             hex(&second),
             "c4f5bcd4873c347aa92167890b4d84c19f8af684e5b69380a077b33b191430b5"
         );
+    }
+
+    fn start() -> ChainStart {
+        ChainStart {
+            first_seq: 10,
+            previous_hash: vec![9; 32],
+            purged_entries: 9,
+            seal: Vec::new(),
+        }
+    }
+
+    const COMPANY: Uuid = Uuid::from_u128(0x0000_0000_0000_4000_8000_0000_0000_0001);
+
+    #[test]
+    fn a_start_s_encoding_is_pinned() {
+        // Computed apart from this code, as the entry's above: the domain,
+        // then the company as its text, the first place, the seal before
+        // it and the count, each with its length.
+        assert_eq!(
+            hex(&key(0).seal_start(COMPANY, &start())),
+            "a614c22996d008746a30b2718101d42e1a09a87e787128fe2e9e0376640a4fd0"
+        );
+    }
+
+    #[test]
+    fn every_part_of_a_start_changes_its_seal() {
+        let chain = key(0);
+        let sealed = chain.seal_start(COMPANY, &start());
+        let other = Uuid::from_u128(2);
+        assert_ne!(chain.seal_start(other, &start()), sealed);
+        let changes: [fn(&mut ChainStart); 3] = [
+            |s| s.first_seq += 1,
+            |s| s.previous_hash[0] = 8,
+            |s| s.purged_entries += 1,
+        ];
+        for change in changes {
+            let mut moved = start();
+            change(&mut moved);
+            assert_ne!(chain.seal_start(COMPANY, &moved), sealed);
+        }
+        // Its own seal is not part of it; another key seals otherwise.
+        let mut resealed = start();
+        resealed.seal = sealed.to_vec();
+        assert_eq!(chain.seal_start(COMPANY, &resealed), sealed);
+        assert_ne!(key(1).seal_start(COMPANY, &start()), sealed);
     }
 
     #[test]

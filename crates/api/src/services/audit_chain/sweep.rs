@@ -31,6 +31,12 @@ impl AuditSealing {
         }
     }
 
+    /// The key it seals with, which the retention pass purges with too
+    /// (ADR-198).
+    pub fn key(&self) -> ChainKey {
+        self.key.clone()
+    }
+
     /// Whether every company's chain was read since the process started.
     pub fn has_read_the_chains(&self) -> bool {
         self.read

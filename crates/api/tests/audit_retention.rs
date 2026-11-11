@@ -1,36 +1,32 @@
 //! The audit log kept five years, its verification with it (DATA_MODEL §5,
-//! ADR-198). A pass deletes the oldest places of each company's chain, a
-//! prefix of it alone: five years old each, one after the other, never its
-//! last sealed place nor an entry still to seal; a recent entry or a
-//! missing place stops it. The chain is then verified from where it
-//! starts, from the seal the purge kept; an anchor before it is said to be
-//! gone with it, one at its eve checked against that seal. The company
-//! finds the purge in its audit log, sealed in turn; the sealing goes on,
-//! a process that remembered a place gone with the purge too. The
-//! application writes no chain start. The tests start a process without
-//! maintenance: they run the passes and the sealing themselves.
+//! ADR-198). A pass, with the key that seals the log, deletes the oldest
+//! places of each company's chain, a prefix of it alone: five years old
+//! each, one after the other, each holding its seal, never its last sealed
+//! place nor an entry still to seal; a recent entry, a missing place or an
+//! altered one stops it, and a pass without the key deletes none. The
+//! chain is then verified from where it starts, from the seal the purge
+//! kept; an anchor before it is said to be gone with it, one at its eve
+//! checked against that seal. The company finds the purge in its audit
+//! log, sealed in turn; the sealing goes on, a process that remembered a
+//! place gone with the purge too. The application writes no chain start.
+//! The tests start a process without maintenance: they run the passes and
+//! the sealing themselves.
 
 mod support;
 
 use mimorya_api::plugins::retention::apply_retention;
 use mimorya_api::services::audit_chain::{AnchorFound, ChainBreak, SealedHeads, verify_company};
 use mimorya_core::demo::tenant;
-use mimorya_db::repositories::retention::purge_old_audit_entries;
 use serde_json::json;
 use support::TestApi;
 use support::audit_chain::{as_owner, key, seal, verify};
-use support::old_audit::{empty_chain, entries, place, places, purges};
+use support::old_audit::{empty_chain, entries, place, places, purged_with, purges};
 use support::queue::API;
 use uuid::Uuid;
 
 /// What the purge deleted of the company `tenant_id`: entries, through.
 async fn purged(api: &TestApi, tenant_id: Uuid) -> Option<(i32, i64)> {
-    let lost = purge_old_audit_entries(api.app.services.db.pool(), 5000)
-        .await
-        .unwrap();
-    lost.iter()
-        .find(|company| company.tenant_id == tenant_id)
-        .map(|company| (company.entries, company.through_seq))
+    purged_with(&api.app.services.db, tenant_id, 5000).await
 }
 
 #[tokio::test]
@@ -49,8 +45,13 @@ async fn the_oldest_places_go_the_chain_verified_from_its_start() {
         place(db, acme, 7).await,
     ];
 
-    // The five entries six years old go; the company is told.
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    // Without the key that seals the log, none goes.
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
+    assert!(retained.audit.is_empty(), "{:?}", retained.audit);
+    assert_eq!(places(db, acme).await, [1, 2, 3, 4, 5, 6, 7, 8]);
+
+    // With it, the five entries six years old go; the company is told.
+    let retained = apply_retention(db, Some(&key(0))).await.unwrap().unwrap();
     let lost = retained.audit.iter().find(|lost| lost.tenant_id == acme);
     assert_eq!(
         lost.map(|lost| (lost.entries, lost.through_seq)),
@@ -118,6 +119,29 @@ async fn a_recent_entry_a_missing_place_and_the_last_sealed_one_stop_it() {
     assert_eq!(purged(&api, gap).await, None);
     let report = verify(db, gap).await;
     assert_eq!(report.breaks, [ChainBreak::Missing { from: 3, to: 3 }]);
+
+    // An old entry altered among old ones: only those before it go, and
+    // the verification still shows it.
+    let altered = empty_chain(&api, "acme-journal-altere").await;
+    entries(db, altered, "ancienne", 5, 6).await;
+    seal(db, &heads, altered).await.unwrap();
+    let third = entry_at(db, altered, 3).await;
+    as_owner(
+        "update audit_log set metadata = '{\"modifie\": true}' where id = $1",
+        third,
+    )
+    .await
+    .unwrap();
+    assert_eq!(purged(&api, altered).await, Some((2, 2)));
+    assert_eq!(purged(&api, altered).await, None);
+    let report = verify(db, altered).await;
+    assert_eq!(
+        report.breaks,
+        [ChainBreak::Altered {
+            seq: 3,
+            entry_id: third
+        }]
+    );
 
     // All old: the last sealed place stays, and an entry still to seal.
     let old = empty_chain(&api, "acme-journal-vieux").await;

@@ -922,16 +922,23 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   passe horaire, les plus anciennes de toutes les entreprises d'abord ; la durée est celle
   de la plateforme, qu'aucune entreprise ne règle. Chaque entreprise qui perd des
   enregistrements le trouve dans son journal d'audit (`usage.purged`), le nombre seul.
-- **Journal d'audit** (ADR-198) : gardé cinq ans, sans contenu de message ; ses places plus
-  anciennes partent, un préfixe de la chaîne seul : jamais sa dernière place scellée ni une
-  entrée à sceller, et une entrée récente ou une place manquante (une entrée retirée)
-  arrête la purge avant elle, pour que la vérification la montre encore. Le sceau de la
-  dernière place supprimée est gardé (`audit_chain_starts`, que l'application lit sans
-  pouvoir l'écrire) : la chaîne est vérifiée depuis son nouveau début, une ancre d'avant
-  dite partie avec ses places, une ancre à la place d'avant vérifiée contre ce sceau. Ce
-  que la base ne peut pas dire d'une place supprimée (une entrée altérée avant son départ)
-  part avec elle : la vérification régulière de la chaîne (ADR-179, ADR-180) le dit tant
-  qu'elle est gardée. L'entreprise trouve chaque purge dans son journal
+- **Journal d'audit** (ADR-198) : gardé cinq ans, sans contenu de message. Ses places
+  plus anciennes partent par la passe de rétention du processus qui détient la clé de la
+  chaîne, un préfixe de la chaîne seul. Chaque place doit porter son sceau, recalculé
+  depuis le début courant, et ni la dernière place scellée ni une entrée à sceller ne
+  partent. Une entrée récente, une place manquante ou une entrée altérée arrête la purge
+  avant elle, pour que la vérification la montre encore. La base revérifie, sous le
+  verrou de la chaîne, ce qu'elle peut voir. Le début de la chaîne est gardé
+  (`audit_chain_starts`, que l'application lit sans pouvoir l'écrire) : la première place
+  et le sceau de la dernière place supprimée, sous un sceau propre fait avec la clé de la
+  chaîne. Un début que le propriétaire de la base écrit ou déplace sans la clé ne porte
+  pas ce sceau ; il est tenu pour absent : la vérification compte manquantes les places
+  d'avant, le scellement refuse de continuer, la purge s'arrête, l'export le traite comme
+  une chaîne restaurée en deçà. Avec un début scellé, la chaîne est vérifiée depuis son
+  nouveau début : une ancre d'avant est dite partie avec ses places, une ancre à la place
+  d'avant est vérifiée contre le sceau gardé, et un SIEM qui la donne lit la suite. Ce
+  que la base ne peut pas dire d'une place supprimée part avec elle, mais seules partent
+  des places dont le sceau tenait. L'entreprise trouve chaque purge dans son journal
   (`audit.purged`), scellée à son tour.
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.

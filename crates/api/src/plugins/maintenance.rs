@@ -79,8 +79,9 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
         let (db, bus) = (&services.db, &services.bus);
         // Each company's last seal, remembered and logged from the start.
         let mut audit_sealing = AuditSealing::of(&services.config);
-        // Retention applied once an hour, from the start (ADR-185).
-        let mut retention = Retention::default();
+        // Retention applied once an hour, from the start (ADR-185); the
+        // audit chains' oldest places with the sealing's key (ADR-198).
+        let mut retention = Retention::new(audit_sealing.as_ref().map(AuditSealing::key));
         // Ticks at startup, then every `SWEEP_INTERVAL` from it: the uptimes
         // the sweeps wait for fall on ticks.
         let started = tokio::time::Instant::now();

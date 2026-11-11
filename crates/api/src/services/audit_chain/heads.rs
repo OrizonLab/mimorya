@@ -7,19 +7,21 @@
 //! seals it logs are the anchors that outlive it, checked by
 //! `mimorya-admin verify-audit --anchor`. A place remembered that went
 //! with the chain's oldest places, five years old (ADR-198), is no move:
-//! the seal the purge kept stands for it at the place before the start.
+//! the seal the purge kept stands for it at the place before the start,
+//! if that start holds its seal (`start.rs`).
 
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
 use mimorya_db::Database;
 use mimorya_db::repositories::audit_chain::{
-    ChainHead, ChainStart, audit_chain_head, audit_chain_start, audit_log_tenants, audit_seal_at,
+    ChainHead, audit_chain_head, audit_log_tenants, audit_seal_at,
 };
 use sqlx::PgConnection;
 use uuid::Uuid;
 
-use super::anchor_text;
+use super::start::{Place, Start, chain_start};
+use super::{ChainKey, anchor_text};
 
 /// The chain of a company no longer holds, at the place `seq`, the seal the
 /// sealing set or found there.
@@ -94,6 +96,7 @@ impl SealedHeads {
     pub(super) async fn check(
         &self,
         conn: &mut PgConnection,
+        key: &ChainKey,
         tenant_id: Uuid,
     ) -> anyhow::Result<()> {
         let Some(known) = self.get(tenant_id) else {
@@ -105,7 +108,7 @@ impl SealedHeads {
         }
         let start = match held {
             Some(_) => None,
-            None => audit_chain_start(conn).await?,
+            None => chain_start(conn, key, tenant_id).await?,
         };
         if purged_as_known(&known, start.as_ref()) {
             return Ok(());
@@ -120,14 +123,12 @@ impl SealedHeads {
 /// Whether the place remembered, no longer in the chain, went with its
 /// oldest places: at the place before its start, with the seal the purge
 /// kept; before that, gone with them.
-fn purged_as_known(known: &ChainHead, start: Option<&ChainStart>) -> bool {
-    let Some(start) = start else {
-        return false;
-    };
-    if known.chain_seq == start.first_seq - 1 {
-        known.chain_hash == start.previous_hash
-    } else {
-        known.chain_seq < start.first_seq
+fn purged_as_known(known: &ChainHead, start: Option<&Start>) -> bool {
+    let place = start.map(|start| start.place(known.chain_seq, |kept| kept == known.chain_hash));
+    match place {
+        Some(Place::Eve { held }) => held,
+        Some(Place::Purged) => true,
+        Some(Place::InChain) | None => false,
     }
 }
 
@@ -142,7 +143,7 @@ mod tests {
 
     #[test]
     fn a_place_gone_with_the_oldest_ones_is_no_move() {
-        let start = ChainStart {
+        let start = Start {
             first_seq: 10,
             previous_hash: vec![9; 32],
             purged_entries: 9,

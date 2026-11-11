@@ -5,7 +5,7 @@
 
 mod support;
 
-const EXPECTED: [&str; 47] = [
+const EXPECTED: [&str; 48] = [
     "auth_audit_export_token",
     "auth_domain_held_elsewhere",
     "auth_find_identity_provider",
@@ -19,6 +19,7 @@ const EXPECTED: [&str; 47] = [
     "auth_scim_token",
     "system_approval_reminder_runs",
     "system_audit_log_tenants",
+    "system_audit_purge_candidates",
     "system_due_scheduled_tasks",
     "system_expired_run_leases",
     "system_fail_stale_runs",

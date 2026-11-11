@@ -90,14 +90,14 @@ async fn a_shortening_applies_to_memories_once_its_week_has_passed() {
     // for a week, the platform's still apply.
     set(db, neo, RetentionKind::Episodes, 3).await;
     set(db, neo, RetentionKind::Departed, 7).await;
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     assert_eq!(memories_lost(&retained, neo), None);
     assert_eq!(titles("durée").await.len(), 5);
 
     // A week later, Néo's go; Acme's, under the platform's, stay.
     retention_changed_days_ago(neo, "episodes", 8).await;
     retention_changed_days_ago(neo, "departed", 8).await;
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     assert_eq!(memories_lost(&retained, neo), Some((2, 1)));
     assert_eq!(memories_lost(&retained, acme.tenant_id), None);
     assert_eq!(
@@ -131,17 +131,17 @@ async fn conversations_go_by_their_company_s_own_duration() {
     // Néo keeps them 36 months, at once: its 30 months old one stays,
     // Acme's goes under the platform's 24.
     set(db, neo, RetentionKind::Conversations, 36).await;
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     assert_eq!(conversations_lost(&retained, neo), None);
     assert_eq!(conversations_lost(&retained, acme.tenant_id), Some(1));
 
     // Shortened to 6 months: the longer still applies for a week, then the
     // shorter, to Néo's alone.
     set(db, neo, RetentionKind::Conversations, 6).await;
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     assert_eq!(conversations_lost(&retained, neo), None);
     retention_changed_days_ago(neo, "conversations", 8).await;
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     assert_eq!(conversations_lost(&retained, neo), Some(2));
     assert_eq!(
         conversations_left("conservation").await.0,

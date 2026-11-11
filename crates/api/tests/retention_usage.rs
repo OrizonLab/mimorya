@@ -51,7 +51,7 @@ async fn consumption_older_than_five_years_goes_each_company_told() {
     let before_neo = purged_entries(neo, PURGED).await.len();
 
     // Past five years, every company's; within, none.
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     let mut both = [(neo, 2), (acme.tenant_id, 1)];
     both.sort();
     assert_eq!(lost(&retained.usage), both);
@@ -70,7 +70,7 @@ async fn consumption_older_than_five_years_goes_each_company_told() {
     );
 
     // Nothing more to delete: no one told again.
-    let again = apply_retention(db).await.unwrap().unwrap();
+    let again = apply_retention(db, None).await.unwrap().unwrap();
     assert!(again.usage.is_empty(), "{:?}", again.usage);
     assert_eq!(purged_entries(neo, PURGED).await.len(), before_neo + 1);
     assert_eq!(purged_entries(acme.tenant_id, PURGED).await.len(), 1);
@@ -159,7 +159,7 @@ async fn a_pass_takes_a_backlog_over_several_statements() {
     // More than a statement takes: the pass goes on while one comes back
     // full, which a batch the database cuts short would end.
     usage_records(tenant::ID, "arriere-conso", 7000, 61).await;
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     assert_eq!(lost(&retained.usage), [(tenant::ID, 7000)]);
     assert!(usage_left("arriere-conso").await.is_empty());
 }

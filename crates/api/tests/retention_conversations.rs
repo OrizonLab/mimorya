@@ -65,7 +65,7 @@ async fn conversations_idle_two_years_go_whole_each_company_told() {
     let sealed = chain(db, neo).await.len() as i64;
     assert!(chain(db, neo).await.iter().any(|(id, _)| *id == entry));
 
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     let lost = |tenant_id: Uuid| {
         retained
             .conversations
@@ -116,7 +116,7 @@ async fn conversations_idle_two_years_go_whole_each_company_told() {
     );
 
     // Nothing more to delete: nothing more told.
-    let again = apply_retention(db).await.unwrap().unwrap();
+    let again = apply_retention(db, None).await.unwrap().unwrap();
     assert!(again.conversations.is_empty(), "{again:?}");
     assert_eq!(purged_entries(neo, PURGED).await.len(), 1);
     assert_eq!(purged_entries(acme.tenant_id, PURGED).await.len(), 1);
@@ -184,7 +184,7 @@ async fn a_backlog_goes_over_several_statements_of_one_pass() {
     )
     .await;
 
-    let retained = apply_retention(&api.app.services.db)
+    let retained = apply_retention(&api.app.services.db, None)
         .await
         .unwrap()
         .unwrap();

@@ -75,12 +75,12 @@ Repères à l'intérieur des crates :
   qu'il ne couvre pas : `conversation_summaries.rs`, ADR-145 ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; journal d'audit
   chaîné : entrées à sceller, dernière place, sceaux posés, entrées relues dans l'ordre de
-  la chaîne, son début une fois ses plus vieilles places supprimées : `audit_chain.rs`,
-  ADR-178, ADR-198 ; jetons que d'autres systèmes détiennent de
+  la chaîne, son début une fois ses plus vieilles places supprimées, et leur suppression
+  par le processus qui en a vérifié les sceaux : `audit_chain.rs`, ADR-178, ADR-198 ; jetons que d'autres systèmes détiennent de
   l'entreprise, une table par sorte (export du journal vers son SIEM, ADR-181, SCIM,
   ADR-183) : `bearer_tokens.rs` ; comptes tels que SCIM les lit et les crée, et
   l'identifiant que leur donne le fournisseur : `scim_users.rs`, ADR-183 ; fenêtres des
-  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives, et consommation et places du journal d'audit de plus de cinq ans : `retention.rs`, ADR-185, ADR-186, ADR-197, ADR-198, selon les durées de chaque entreprise, lues avec ce que la purge applique : `retention_durations.rs`, ADR-195 ; compte effacé, ses liens comptés sous verrou, et sa suppression : `account_erasure.rs`, ADR-189 ; avis à l'auteur
+  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives, et consommation de plus de cinq ans : `retention.rs`, ADR-185, ADR-186, ADR-197, selon les durées de chaque entreprise, lues avec ce que la purge applique : `retention_durations.rs`, ADR-195 ; compte effacé, ses liens comptés sous verrou, et sa suppression : `account_erasure.rs`, ADR-189 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
@@ -268,7 +268,10 @@ Repères à l'intérieur des crates :
   derrière le dernier sceau posé ou trouvé au démarrage (`heads.rs`), passage de la
   maintenance : chaînes lues jusqu'à les avoir toutes, puis scellées (`sweep.rs`),
   vérification de chaque chaîne depuis son début, ses places de plus de cinq ans parties
-  (ADR-198), et des ancres journalisées (`verify.rs`), ancre lue (`anchor.rs`), ADR-178 ; vérification demandée par qui lit le
+  (ADR-198), et des ancres journalisées (`verify.rs`), ancre lue (`anchor.rs`), ADR-178 ;
+  places de plus de cinq ans supprimées par la passe de rétention, leurs sceaux vérifiés
+  (`purge.rs`), début de la chaîne pris pour le sien sous son sceau seul, et ce qu'elle
+  tient avant lui, pour la vérification, le scellement et l'export (`start.rs`), ADR-198 ; vérification demandée par qui lit le
   journal de toute l'entreprise, contre ses ancres, tracée (`on_demand.rs`, ADR-179),
   deux à la fois par processus, une par entreprise (`places.rs`, ADR-180)),
   `api/src/services/audit_export/` (journal d'audit lu par le SIEM de l'entreprise avec un

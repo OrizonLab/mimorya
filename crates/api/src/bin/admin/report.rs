@@ -95,7 +95,8 @@ pub fn told(company: &str, report: &ChainReport, anchors: &[&Anchor]) -> String 
 
 #[cfg(test)]
 mod tests {
-    use mimorya_db::repositories::audit_chain::{ChainHead, ChainStart};
+    use mimorya_api::services::audit_chain::Start;
+    use mimorya_db::repositories::audit_chain::ChainHead;
 
     use super::*;
 
@@ -153,7 +154,7 @@ mod tests {
     #[test]
     fn tells_where_a_purged_chain_starts_and_its_anchors_gone_with_it() {
         let mut purged = report(Vec::new(), vec![AnchorFound::Purged]);
-        purged.start = Some(ChainStart {
+        purged.start = Some(Start {
             first_seq: 41,
             previous_hash: vec![0xef; 32],
             purged_entries: 40,

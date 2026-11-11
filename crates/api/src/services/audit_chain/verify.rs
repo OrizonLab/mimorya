@@ -15,18 +15,21 @@
 //! are counted, not verified.
 //!
 //! A chain whose oldest places were deleted, five years old (ADR-198), is
-//! verified from where it starts now: its first place, from the seal of
-//! the one before it, which the purge kept. An anchor at that place is
-//! checked against that seal; one before it, gone with what it sealed, is
-//! said to be so.
+//! verified from where it starts now, if that start holds its seal
+//! (`start.rs`): its first place, from the seal of the one before it,
+//! which the purge kept. An anchor at that place is checked against that
+//! seal; one before it, gone with what it sealed, is said to be so. A
+//! start that does not hold its seal is none: the places before it are
+//! missing, the anchors there too.
 
 use mimorya_db::Database;
 use mimorya_db::repositories::audit_chain::{
-    ChainHead, ChainStart, audit_chain_start, count_unsealed_audit_entries, sealed_audit_entries,
+    ChainHead, count_unsealed_audit_entries, sealed_audit_entries,
 };
 use uuid::Uuid;
 
 use super::ChainKey;
+use super::start::{Place, Start, chain_start};
 
 /// Sealed entries read at a time.
 const PAGE: usize = 1_000;
@@ -72,8 +75,9 @@ pub struct ChainReport {
     pub unsealed: i64,
     /// The last place read and its seal.
     pub head: Option<ChainHead>,
-    /// Where the chain starts, if its oldest places were deleted.
-    pub start: Option<ChainStart>,
+    /// Where the chain starts, if its oldest places were deleted and that
+    /// start holds its seal.
+    pub start: Option<Start>,
     /// The first breaks, at most `LISTED_BREAKS`.
     pub breaks: Vec<ChainBreak>,
     /// Every break: each altered entry, each missing place.
@@ -107,7 +111,7 @@ pub async fn verify_company(
     anchors: &[ChainHead],
 ) -> anyhow::Result<ChainReport> {
     let mut tx = db.begin_snapshot(tenant_id).await?;
-    let start = audit_chain_start(&mut tx).await?;
+    let start = chain_start(&mut tx, key, tenant_id).await?;
     let mut report = ChainReport {
         verified: 0,
         unsealed: count_unsealed_audit_entries(&mut tx).await?,
@@ -186,20 +190,13 @@ pub async fn verify_company(
 /// What the chain holds at an anchor's place before reading its entries:
 /// at the place before its start, the seal the purge kept; before that,
 /// nothing any more. Otherwise missing, until an entry is read there.
-fn before_start(anchor: &ChainHead, start: Option<&ChainStart>) -> AnchorFound {
-    let Some(start) = start else {
-        return AnchorFound::Missing;
-    };
-    if anchor.chain_seq == start.first_seq - 1 {
-        if anchor.chain_hash == start.previous_hash {
-            AnchorFound::Held
-        } else {
-            AnchorFound::Differs
-        }
-    } else if anchor.chain_seq < start.first_seq {
-        AnchorFound::Purged
-    } else {
-        AnchorFound::Missing
+fn before_start(anchor: &ChainHead, start: Option<&Start>) -> AnchorFound {
+    let place = start.map(|start| start.place(anchor.chain_seq, |kept| kept == anchor.chain_hash));
+    match place {
+        Some(Place::Eve { held: true }) => AnchorFound::Held,
+        Some(Place::Eve { held: false }) => AnchorFound::Differs,
+        Some(Place::Purged) => AnchorFound::Purged,
+        Some(Place::InChain) | None => AnchorFound::Missing,
     }
 }
 
@@ -216,7 +213,7 @@ mod tests {
 
     #[test]
     fn an_anchor_before_the_start_is_purged_at_its_eve_checked() {
-        let start = ChainStart {
+        let start = Start {
             first_seq: 10,
             previous_hash: vec![9; 32],
             purged_entries: 9,

@@ -1,26 +1,58 @@
 //! The audit retention tests' data (ADR-198): a company whose chain starts
 //! empty, entries of any age written as the application writes them, the
-//! seal a place holds, and where the chain starts once its oldest places
-//! went.
+//! seal a place holds, where the chain starts once its oldest places went,
+//! the purge as the retention pass makes it, with the tests' key, and
+//! statements of the database's owner.
 
+use mimorya_api::services::audit_chain::purge_old_places;
 use mimorya_db::Database;
-use mimorya_db::repositories::audit_chain::ChainHead;
+use mimorya_db::repositories::audit_chain::{ChainHead, ChainStart, audit_chain_start};
 use uuid::Uuid;
 
+use super::audit_chain::key;
 use super::{TestApi, companies, owner_url};
 
 /// A company made for the test, its audit log emptied of what its making
 /// wrote, still unsealed: its chain starts with what the test writes.
 pub async fn empty_chain(api: &TestApi, slug: &str) -> Uuid {
     let company = companies::create(api, slug, &format!("admin@{slug}.example")).await;
-    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
-    sqlx::query("delete from audit_log where tenant_id = $1 and chain_seq is null")
-        .bind(company.tenant_id)
-        .execute(&owner)
-        .await
-        .unwrap();
-    owner.close().await;
+    unsealed_gone(company.tenant_id).await;
     company.tenant_id
+}
+
+/// Deletes the company's entries still to seal, as the database's owner.
+pub async fn unsealed_gone(tenant_id: Uuid) {
+    owner_runs(&format!(
+        "delete from audit_log where tenant_id = '{tenant_id}' and chain_seq is null"
+    ))
+    .await
+    .unwrap();
+}
+
+/// Runs `statement` as the database's owner, who is not held by the
+/// application's rights.
+pub async fn owner_runs(statement: &str) -> sqlx::Result<()> {
+    let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
+    let done = sqlx::query(statement).execute(&owner).await;
+    owner.close().await;
+    done.map(|_| ())
+}
+
+/// What the purge deleted of the company `tenant_id`, `batch` places at
+/// most in all, with the tests' key: entries, through.
+pub async fn purged_with(db: &Database, tenant_id: Uuid, batch: i32) -> Option<(i32, i64)> {
+    let lost = purge_old_places(db, &key(0), batch).await.unwrap();
+    lost.iter()
+        .find(|company| company.tenant_id == tenant_id)
+        .map(|company| (company.entries, company.through_seq))
+}
+
+/// Where the company's chain starts, as the database holds it.
+pub async fn start_of(db: &Database, tenant_id: Uuid) -> Option<ChainStart> {
+    let mut tx = db.begin(tenant_id).await.unwrap();
+    let start = audit_chain_start(&mut tx).await.unwrap();
+    tx.commit().await.unwrap();
+    start
 }
 
 /// `count` entries of the company, `action`, that occurred `years` ago.
