@@ -15,7 +15,7 @@ use mimorya_api::services::admin::DURATIONS_CHANGED;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::accounts::{activate, create_partial_admin, holder_of};
-use support::locks::release_after;
+use support::locks::release_after_advisory;
 use support::refusals::latest_entry;
 use support::retention::{clear_retention, retention_changed_days_ago};
 use support::{Client, TestApi, TestResponse};
@@ -86,6 +86,8 @@ async fn changes(api: &TestApi, since: i64) -> Vec<Value> {
 #[ignore = "requires PostgreSQL"]
 async fn a_company_sets_its_retention_within_the_platform_s_bounds() {
     let api = TestApi::start().await;
+    // Whatever a test before left, the platform's durations.
+    clear_retention(tenant::ID).await;
     let paul = api.sign_in(user::PAUL).await;
     let since = latest_entry(&api).await;
 
@@ -203,6 +205,8 @@ async fn a_company_sets_its_retention_within_the_platform_s_bounds() {
 #[ignore = "requires PostgreSQL"]
 async fn only_who_holds_retention_manage_company_wide_sets_it() {
     let api = TestApi::start().await;
+    // Whatever a test before left, the platform's durations.
+    clear_retention(tenant::ID).await;
     let paul = api.sign_in(user::PAUL).await;
     let claire = api.sign_in(user::CLAIRE).await;
     let settings = holder_of(&api, &paul, "reglages.retention", &["settings:manage"]).await;
@@ -242,6 +246,8 @@ async fn only_who_holds_retention_manage_company_wide_sets_it() {
 #[ignore = "requires PostgreSQL"]
 async fn a_change_asked_on_durations_changed_since_is_refused() {
     let api = TestApi::start().await;
+    // Whatever a test before left, the platform's durations.
+    clear_retention(tenant::ID).await;
     let paul = api.sign_in(user::PAUL).await;
     let keeper = holder_of(&api, &paul, "second.retention", &["retention:manage"]).await;
     let since = latest_entry(&api).await;
@@ -309,6 +315,8 @@ async fn a_change_asked_on_durations_changed_since_is_refused() {
 #[ignore = "requires PostgreSQL"]
 async fn of_two_changes_crossing_on_the_same_version_one_passes() {
     let api = TestApi::start().await;
+    // Whatever a test before left, the platform's durations.
+    clear_retention(tenant::ID).await;
     let paul = api.sign_in(user::PAUL).await;
     let keeper = holder_of(&api, &paul, "croise.retention", &["retention:manage"]).await;
     let since = latest_entry(&api).await;
@@ -321,7 +329,7 @@ async fn of_two_changes_crossing_on_the_same_version_one_passes() {
     let (longer, shorter, ()) = tokio::join!(
         paul.put(RETENTION, asked(&read, 36, 12, 30)),
         keeper.put(RETENTION, asked(&read, 24, 6, 30)),
-        release_after(&api, 2, hold),
+        release_after_advisory(&api, 2, hold),
     );
 
     // The first to take the lock passes; the other, asked on what the first

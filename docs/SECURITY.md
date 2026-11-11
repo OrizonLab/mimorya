@@ -917,9 +917,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   ceux de la base, jamais ce qu'écrit l'application, qui n'écrit que la durée et son
   auteur et ne retire aucune durée : elle ne peut ni sauter la semaine ni sortir des
   bornes. Chaque changement est tracé (`retention.configured`), avant et après. À venir :
-  la purge message par message d'une conversation toujours active, celle du journal
-  d'audit (qui devra rester vérifiable, ADR-178) et de la consommation, gardés sans limite
-  en attendant.
+  la purge message par message d'une conversation toujours active et celle du journal
+  d'audit (qui devra rester vérifiable, ADR-178), gardé sans limite en attendant.
+- **Consommation** (ADR-197) : gardée cinq ans, pour la facturation, puis supprimée par la
+  passe horaire, les plus anciennes de toutes les entreprises d'abord ; la durée est celle
+  de la plateforme, qu'aucune entreprise ne règle. Chaque entreprise qui perd des
+  enregistrements le trouve dans son journal d'audit (`usage.purged`), le nombre seul.
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.
 - **Hébergement** : SaaS en UE ; installation privée possible.

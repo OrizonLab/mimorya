@@ -3,19 +3,22 @@
 //! past each company's own durations (ADR-195; the platform's without its
 //! choice: a year, thirty days, twenty-four months), the episodes and the
 //! memories past their own term, the personal memories of the accounts
-//! disabled, and the conversations idle, whole. Each company that lost
-//! memories or conversations finds it in its audit log, written by the
+//! disabled, and the conversations idle, whole; and, past the platform's
+//! five years, the consumption (ADR-197). Each company that lost memories,
+//! conversations or consumption finds it in its audit log, written by the
 //! platform in the deletion's own statement: how many, and why, never what
 //! they said.
 
+use std::future::Future;
 use std::time::Duration;
 
 use mimorya_db::Database;
 use mimorya_db::repositories::retention::{
-    PurgedConversations, PurgedMemories, purge_ended_sessions, purge_idle_conversations,
-    purge_retained_memories,
+    PurgedConversations, PurgedMemories, PurgedUsage, purge_ended_sessions,
+    purge_idle_conversations, purge_old_usage, purge_retained_memories,
 };
 use tokio::time::Instant;
+use uuid::Uuid;
 
 /// The name of the pass's lock: one process at a time (ADR-086).
 pub const RETENTION_SWEEP: &str = "retention";
@@ -27,6 +30,11 @@ pub const CONVERSATION_BATCH: i32 = 200;
 /// The statements a pass gives them, at most: a backlog goes over several
 /// passes, and the maintenance gets on with the rest meanwhile.
 const CONVERSATION_BATCHES: usize = 25;
+/// The consumption records one statement deletes, at most: small rows, a
+/// short statement still.
+pub const USAGE_BATCH: i32 = 5000;
+/// The statements a pass gives them, at most.
+const USAGE_BATCHES: usize = 20;
 
 /// What a pass deleted.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -36,6 +44,8 @@ pub struct Retained {
     pub memories: Vec<PurgedMemories>,
     /// The companies that lost conversations, and how many.
     pub conversations: Vec<PurgedConversations>,
+    /// The companies that lost consumption records, and how many.
+    pub usage: Vec<PurgedUsage>,
 }
 
 /// When this process last ran the pass.
@@ -60,15 +70,13 @@ impl Retention {
                     .iter()
                     .map(|lost| lost.aged + lost.departed)
                     .sum();
-                let conversations: i32 = retained
-                    .conversations
-                    .iter()
-                    .map(|lost| lost.conversations)
-                    .sum();
+                let conversations: i32 = retained.conversations.iter().map(Lost::count).sum();
+                let usage: i32 = retained.usage.iter().map(Lost::count).sum();
                 tracing::info!(
                     sessions = retained.sessions,
                     memories,
                     conversations,
+                    usage,
                     "Retention applied"
                 );
             }
@@ -113,41 +121,93 @@ pub async fn apply_retention(db: &Database) -> anyhow::Result<Option<Retained>> 
             tracing::warn!(error = %error, "Retained memory purge failed");
             Vec::new()
         });
-    let conversations = purge_conversations(db).await;
+    let conversations = in_batches(
+        "Idle conversation",
+        CONVERSATION_BATCHES,
+        CONVERSATION_BATCH,
+        || purge_idle_conversations(db.pool(), CONVERSATION_BATCH),
+    )
+    .await;
+    let usage = in_batches("Old usage", USAGE_BATCHES, USAGE_BATCH, || {
+        purge_old_usage(db.pool(), USAGE_BATCH)
+    })
+    .await;
     sweep.release().await;
     Ok(Some(Retained {
         sessions,
         memories,
         conversations,
+        usage,
     }))
 }
 
-/// The idle conversations deleted a batch at a time, while a batch comes
-/// back full and the pass has statements left; what each company lost.
-async fn purge_conversations(db: &Database) -> Vec<PurgedConversations> {
-    let mut lost: Vec<PurgedConversations> = Vec::new();
-    for _ in 0..CONVERSATION_BATCHES {
-        let batch = match purge_idle_conversations(db.pool(), CONVERSATION_BATCH).await {
+/// What a company lost to a purge that goes a batch at a time.
+trait Lost {
+    fn tenant_id(&self) -> Uuid;
+    /// What the batch size counts.
+    fn count(&self) -> i32;
+    /// Adds what the same company lost to another statement.
+    fn add(&mut self, other: &Self);
+}
+
+impl Lost for PurgedConversations {
+    fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    fn count(&self) -> i32 {
+        self.conversations
+    }
+
+    fn add(&mut self, other: &Self) {
+        self.conversations += other.conversations;
+        self.messages += other.messages;
+    }
+}
+
+impl Lost for PurgedUsage {
+    fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    fn count(&self) -> i32 {
+        self.records
+    }
+
+    fn add(&mut self, other: &Self) {
+        self.records += other.records;
+    }
+}
+
+/// What `purge` deleted a batch of `size` at a time, while a batch comes
+/// back full and the pass has `batches` statements left: each company
+/// once, what it lost in all. A failed statement ends it, logged as `what`.
+async fn in_batches<T, F, Fut>(what: &str, batches: usize, size: i32, mut purge: F) -> Vec<T>
+where
+    T: Lost,
+    F: FnMut() -> Fut,
+    Fut: Future<Output = sqlx::Result<Vec<T>>>,
+{
+    let mut lost: Vec<T> = Vec::new();
+    for _ in 0..batches {
+        let batch = match purge().await {
             Ok(batch) => batch,
             Err(error) => {
-                tracing::warn!(error = %error, "Idle conversation purge failed");
+                tracing::warn!(error = %error, "{what} purge failed");
                 break;
             }
         };
-        let deleted: i32 = batch.iter().map(|company| company.conversations).sum();
+        let deleted: i32 = batch.iter().map(Lost::count).sum();
         for company in batch {
             match lost
                 .iter_mut()
-                .find(|known| known.tenant_id == company.tenant_id)
+                .find(|known| known.tenant_id() == company.tenant_id())
             {
-                Some(known) => {
-                    known.conversations += company.conversations;
-                    known.messages += company.messages;
-                }
+                Some(known) => known.add(&company),
                 None => lost.push(company),
             }
         }
-        if deleted < CONVERSATION_BATCH {
+        if deleted < size {
             break;
         }
     }
