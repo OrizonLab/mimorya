@@ -13479,3 +13479,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     (`a_change_asked_on_durations_changed_since_is_refused`, et la version de chaque
     changement des autres tests), `services/admin/retention.rs` (ce qui change la version),
     `apps/web/e2e/retention.spec.ts` (une page restée ouverte n'enregistre rien et le dit).
+- **Suites (lot 66d, audit de la PR #244)** :
+  - deux changements faits sur la même version et croisés, le verrou d'administration tenu
+    par le test jusqu'à ce que tous deux l'attendent : l'un passe, l'autre est refusé en
+    conflit, une seule entrée d'audit (`of_two_changes_crossing_on_the_same_version_one_passes`,
+    qui échoue si la version est lue avant le verrou) ;
+  - une version vide est refusée comme malformée (400), plus en conflit ;
+  - les aides liées à chaque champ sont vérifiées par le test de bout en bout
+    (`toHaveAccessibleDescription`), avant et pendant un raccourcissement qui attend.

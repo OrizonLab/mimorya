@@ -4,15 +4,18 @@
 //! lengthening applies at once, a shortening a week later; a duration asked
 //! as it already is changes nothing, its delay included. Each change is
 //! audited, what it was and what it is. A change names the version of the
-//! durations it was asked on, refused once another changed them (ADR-196).
+//! durations it was asked on, refused once another changed them, two
+//! crossing on the same version included (ADR-196).
 
 mod support;
 
 use axum::http::StatusCode;
 use chrono::{DateTime, Duration, Utc};
+use mimorya_api::services::admin::DURATIONS_CHANGED;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::accounts::{activate, create_partial_admin, holder_of};
+use support::locks::release_after;
 use support::refusals::latest_entry;
 use support::retention::{clear_retention, retention_changed_days_ago};
 use support::{Client, TestApi, TestResponse};
@@ -283,14 +286,68 @@ async fn a_change_asked_on_durations_changed_since_is_refused() {
     assert_eq!(version(&paul).await, after);
     assert_eq!(changes(&api, since).await.len(), 2);
 
-    // A version longer than any is refused as such; none, as a body
-    // missing a field.
-    let long = paul.put(RETENTION, asked(&"0".repeat(65), 36, 6, 30)).await;
-    assert_eq!(long.status, StatusCode::BAD_REQUEST, "{}", long.text());
+    // A version longer than any, or empty, is refused as such; none, as a
+    // body missing a field.
+    for replaces in ["0".repeat(65), String::new()] {
+        let malformed = paul.put(RETENTION, asked(&replaces, 36, 6, 30)).await;
+        assert_eq!(
+            malformed.status,
+            StatusCode::BAD_REQUEST,
+            "{}",
+            malformed.text()
+        );
+    }
     let mut without = asked(&after, 36, 6, 30);
     without.as_object_mut().unwrap().remove("replaces");
     let missing = paul.put(RETENTION, without).await;
     assert!(missing.status.is_client_error(), "{}", missing.text());
     assert_ne!(missing.status, StatusCode::CONFLICT, "{}", missing.text());
+    clear_retention(tenant::ID).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn of_two_changes_crossing_on_the_same_version_one_passes() {
+    let api = TestApi::start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let keeper = holder_of(&api, &paul, "croise.retention", &["retention:manage"]).await;
+    let since = latest_entry(&api).await;
+
+    // Both read the same version; the test holds the company's
+    // administration lock until both changes wait behind it.
+    let read = version(&paul).await;
+    let mut hold = api.app.services.db.begin(tenant::ID).await.unwrap();
+    hold.lock_administration().await.unwrap();
+    let (longer, shorter, ()) = tokio::join!(
+        paul.put(RETENTION, asked(&read, 36, 12, 30)),
+        keeper.put(RETENTION, asked(&read, 24, 6, 30)),
+        release_after(&api, 2, hold),
+    );
+
+    // The first to take the lock passes; the other, asked on what the first
+    // changed, is refused.
+    let mut statuses = [longer.status, shorter.status];
+    statuses.sort();
+    assert_eq!(statuses, [StatusCode::OK, StatusCode::CONFLICT]);
+    let refused = [&longer, &shorter]
+        .into_iter()
+        .find(|answer| answer.status == StatusCode::CONFLICT)
+        .unwrap();
+    assert_eq!(refused.error_message(), DURATIONS_CHANGED);
+    let view = paul.get(RETENTION).await.json();
+    let set = &durations(&view)[..2];
+    let expected = if longer.status == StatusCode::OK {
+        [
+            ("conversations".into(), 36, 36, true, false),
+            ("episodes".into(), 12, 12, false, false),
+        ]
+    } else {
+        [
+            ("conversations".into(), 24, 24, false, false),
+            ("episodes".into(), 6, 12, true, true),
+        ]
+    };
+    assert_eq!(set, expected);
+    assert_eq!(changes(&api, since).await.len(), 1);
     clear_retention(tenant::ID).await;
 }
