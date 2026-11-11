@@ -31,6 +31,16 @@ impl App {
     }
 }
 
+/// Six digits the app of `secret` shows at no step near now.
+pub fn not_its_code(secret: &[u8]) -> String {
+    let now = step_at(Utc::now().timestamp());
+    let near: Vec<u32> = (now - 2..=now + 2)
+        .map(|step| code_at(secret, step, DIGITS))
+        .collect();
+    let code = (0..).find(|code| !near.contains(code)).unwrap();
+    format!("{code:06}")
+}
+
 /// Enrols `person`, a demo account with its password: what the enrolment
 /// showed, the app that read it, and the recovery codes given.
 pub async fn enrol(person: &Client<'_>) -> (Value, App, Vec<String>) {

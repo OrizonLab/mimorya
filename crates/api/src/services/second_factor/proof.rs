@@ -54,6 +54,12 @@ pub enum Refusal {
 }
 
 impl Refusal {
+    /// Whether a code was checked and refused: it counts against the
+    /// account. The others checked none.
+    pub fn counts(self) -> bool {
+        self == Self::Wrong
+    }
+
     fn reason(self) -> &'static str {
         match self {
             Self::Wrong => "code refusé",
@@ -134,7 +140,7 @@ pub async fn prove(
         }
         Ok(Proof::App) => {}
         Err(refusal) => {
-            if refusal == Refusal::Wrong {
+            if refusal.counts() {
                 count_refusal(tx, user_id).await?;
             }
             let entry = attempt

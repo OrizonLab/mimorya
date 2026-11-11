@@ -13820,12 +13820,15 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **les tentatives limitées par compte, quel que soit le nombre de défis ouverts** :
     - cinq codes refusés par quart d'heure (`second_factor_failures`, limite partagée
       par tous les processus, ADR-088), la place rendue quand un code est accepté ;
-    - au-delà de cent codes de l'application refusés à la suite (NIST SP 800-63B
-      §5.2.2), seuls les codes de secours sont acceptés ; un code accepté remet la
-      série à zéro. À cinq essais par quart d'heure, cent refus prennent cinq heures,
+    - au-delà de cent codes refusés à la suite, de l'application ou de secours
+      (NIST SP 800-63B §5.2.2), seuls les codes de secours sont acceptés ; un code
+      accepté remet la série à zéro. Seul un code vérifié et refusé compte : un refus
+      sans vérification (série atteinte, secret illisible sur ce serveur, aucun second
+      facteur actif) rend sa place ; À cinq essais par quart d'heure, cent refus prennent cinq heures,
       et cent essais ont environ trois chances sur dix mille de tomber sur un code valable ;
     - un défi n'a donc pas son propre compteur : en ouvrir plusieurs ne donne pas plus
-      d'essais ;
+      d'essais. Le premier code de l'activation, le renouvellement des codes de secours
+      et la désactivation partagent la même limite, chaque refus tracé ;
   - **depuis « Mon compte »** (`/account/second-factor…`) :
     - état : applicable (le compte a un mot de passe), disponible (clé maîtresse),
       actif, depuis quand, codes de secours restants ;
@@ -13833,7 +13836,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       faux, car une session volée ne doit pas pouvoir lier le compte à l'application
       d'un autre et en exclure son titulaire. Puis un nouveau secret, qui remplace un
       enrôlement en attente mais jamais un second facteur actif, et l'activation par le
-      premier code de l'application, qui donne les codes de secours ;
+      premier code de l'application, qui donne les codes de secours et ferme les autres
+      sessions du compte (une session ouverte avant peut être celle d'un autre) ;
     - nouveaux codes de secours, et désactivation, chacun sur un code valable ;
     - un compte sans mot de passe (ADR-064) est refusé : son second facteur est celui
       de son fournisseur ;

@@ -8,28 +8,18 @@
 mod support;
 
 use axum::http::StatusCode;
-use chrono::Utc;
 use mimorya_core::demo::{tenant, user};
-use mimorya_core::second_factor::{DIGITS, code_at, read_base32, step_at};
+use mimorya_core::second_factor::read_base32;
 use serde_json::json;
 use support::llm::MASTER_KEY;
 use support::second_factor::{
-    challenge_of, enrol, kept_factor, opens_a_session, password_step, second_step, traced,
+    challenge_of, enrol, kept_factor, not_its_code, opens_a_session, password_step, second_step,
+    traced,
 };
 use support::{PASSWORD, TestApi, email};
 
 async fn api() -> TestApi {
     TestApi::start_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await
-}
-
-/// Six digits the app of `secret` shows at no step near now.
-fn not_its_code(secret: &[u8]) -> String {
-    let now = step_at(Utc::now().timestamp());
-    let near: Vec<u32> = (now - 2..=now + 2)
-        .map(|step| code_at(secret, step, DIGITS))
-        .collect();
-    let code = (0..).find(|code| !near.contains(code)).unwrap();
-    format!("{code:06}")
 }
 
 #[tokio::test]
@@ -79,8 +69,19 @@ async fn an_enrolled_account_signs_in_with_its_app_once_per_code() {
         .await;
     assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
     assert_eq!(kept_factor(user::LUCAS).await, Some((false, 0)));
+    let failed = traced(&api, tenant::ID, user::LUCAS, "auth.second_factor_failed").await;
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].1.as_deref(), Some("Activation : code refusé"));
 
+    // Turned on, it ends the account's other sessions: one opened before
+    // may be someone else's.
+    let elsewhere = api.sign_in(user::LUCAS).await;
     let (shown, mut app, codes) = enrol(&lucas).await;
+    assert_eq!(
+        elsewhere.get("/auth/me").await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(lucas.get("/auth/me").await.status, StatusCode::OK);
     let uri = shown["uri"].as_str().unwrap();
     assert!(uri.starts_with("otpauth://totp/Mimorya:lucas.petit%40neo-maintenance.example?"));
     assert!(uri.contains(&format!("secret={}", shown["secret"].as_str().unwrap())));
@@ -152,9 +153,9 @@ async fn an_enrolled_account_signs_in_with_its_app_once_per_code() {
     assert!(!opens_a_session(&replayed));
     assert_eq!(kept_factor(user::LUCAS).await, Some((true, 1)));
     let failed = traced(&api, tenant::ID, user::LUCAS, "auth.second_factor_failed").await;
-    assert_eq!(failed.len(), 1);
-    assert_eq!(failed[0].0, "denied");
-    assert_eq!(failed[0].1.as_deref(), Some("Connexion : code refusé"));
+    assert_eq!(failed.len(), 2);
+    assert_eq!(failed[1].0, "denied");
+    assert_eq!(failed[1].1.as_deref(), Some("Connexion : code refusé"));
     // A recovery code passes, and the refusals in a row end.
     let completed = second_step(&api, &challenge, &codes[1]).await;
     assert_eq!(completed.status, StatusCode::OK, "{}", completed.text());

@@ -153,6 +153,9 @@ pub async fn complete_challenge(
         Err(refusal) => {
             // Counted and traced before the refusal is said.
             tx.commit().await?;
+            if !refusal.counts() {
+                completion.refusals.release(&account).await;
+            }
             return Err(refusal.error(true).into());
         }
     };

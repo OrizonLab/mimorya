@@ -1,7 +1,8 @@
 //! The second factor (ADR-200): one's own, from « Mon compte », and the
-//! code that completes a sign-in waiting for it. Every code checked against
-//! a second factor on counts against the account when refused, shared by
-//! every process; it is given back once a code is accepted.
+//! code that completes a sign-in waiting for it. Every code checked and
+//! refused, at sign-in, at activation or later, counts against the account,
+//! shared by every process; a slot is given back when the code is accepted
+//! or none was checked.
 
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -30,6 +31,8 @@ use crate::services::second_factor::{
 const NOT_A_CODE: &str = "Saisissez les six chiffres de votre application ou l’un de vos codes \
      de secours";
 const NOT_SIX_DIGITS: &str = "Saisissez les six chiffres affichés par votre application";
+const WRONG_FIRST_CODE: &str = "Code incorrect : vérifiez que l’heure de votre téléphone est \
+     juste et saisissez le code affiché maintenant";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -108,7 +111,25 @@ async fn confirm(
         return Err(DomainError::validation(NOT_SIX_DIGITS).into());
     };
     let access = state.access.context(identity).await?;
-    let codes = confirm_enrolment(&state.db, &secrets(&state), &access, code, &context).await?;
+    let account = access.subject.user_id.to_string();
+    take_slot(&state, &account).await?;
+    let confirmed = confirm_enrolment(
+        &state.db,
+        &secrets(&state),
+        &access,
+        identity.session_id,
+        code,
+        &context,
+    )
+    .await;
+    // Only a wrong first code counts; a refusal before it (no enrolment)
+    // checked none.
+    if !matches!(confirmed, Ok(None)) {
+        state.limits.second_factor_failures.release(&account).await;
+    }
+    let Some(codes) = confirmed? else {
+        return Err(DomainError::forbidden(WRONG_FIRST_CODE).into());
+    };
     Ok(Json(RecoveryCodes { codes }))
 }
 
@@ -121,15 +142,16 @@ async fn take_slot(state: &AppState, account: &str) -> Result<(), ApiError> {
     }
 }
 
-/// Gives the slot back once the code was accepted; a refusal keeps it.
+/// Gives the slot back unless a code was checked and refused.
 async fn settle<T>(state: &AppState, account: &str, outcome: Result<T, Refusal>) -> ApiResult<T> {
-    match outcome {
-        Ok(value) => {
-            state.limits.second_factor_failures.release(account).await;
-            Ok(value)
-        }
-        Err(refusal) => Err(refusal.error(false).into()),
+    if outcome
+        .as_ref()
+        .err()
+        .is_none_or(|refusal| !refusal.counts())
+    {
+        state.limits.second_factor_failures.release(account).await;
     }
+    outcome.map_err(|refusal| refusal.error(false).into())
 }
 
 async fn renew_codes(

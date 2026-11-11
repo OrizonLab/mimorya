@@ -115,7 +115,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   minutes, à usage unique, retiré avec un changement de mot de passe ou de statut du
   compte. Chaque code ne sert qu'une fois : un code de l'application n'est accepté que
   pour un pas postérieur au dernier accepté, la ligne verrouillée. Cinq codes refusés
-  par quart d'heure et par compte, quel que soit le nombre de défis (limite partagée) ;
+  par quart d'heure et par compte, quel que soit le nombre de défis et la route (connexion,
+  activation, codes de secours, désactivation : limite partagée) ; l'activation ferme les
+  autres sessions du compte ;
   après cent refus de suite (NIST SP 800-63B), seuls les codes de secours passent. La
   fin d'un mot de passe oublié demande aussi le second facteur avant d'ouvrir une
   session. Les comptes sans mot de passe (fournisseur d'identité) en sont exemptés :

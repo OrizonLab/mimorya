@@ -1,7 +1,7 @@
 //! One's own second factor, from « Mon compte » (ADR-200): its state; its
 //! enrolment, started with a new secret once the password is typed again,
 //! and turned on by the first code of the app, which gives the recovery
-//! codes; new recovery codes and its
+//! codes and ends the account's other sessions; new recovery codes and its
 //! disabling, each proven by a current code. An account that signs in
 //! through its company's identity provider has none here: its second
 //! factor is the provider's. Without a master key, nothing is enrolled.
@@ -15,7 +15,8 @@ use mimorya_db::repositories::second_factors::{
     delete_second_factor, enable_second_factor, lock_second_factor, put_pending_second_factor,
     replace_recovery_codes, second_factor_state,
 };
-use mimorya_db::repositories::users::get_password_hash;
+use mimorya_db::repositories::users::{get_password_hash, revoke_user_sessions};
+use uuid::Uuid;
 
 use super::proof::{Attempt, Proof, Refusal, prove};
 use super::secret::{new_recovery_codes, new_secret, open_secret};
@@ -29,8 +30,6 @@ const NO_PASSWORD: &str = "Votre compte se connecte par le fournisseur d’ident
 const ALREADY_ON: &str = "Le second facteur est déjà actif : désactivez-le d’abord pour en \
      changer";
 const NO_ENROLMENT: &str = "Aucun enrôlement n’est en cours : recommencez depuis le début";
-const WRONG_FIRST_CODE: &str = "Code incorrect : vérifiez que l’heure de votre téléphone est \
-     juste et saisissez le code affiché maintenant";
 
 /// One's own second factor, as « Mon compte » shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,9 +47,14 @@ pub struct Enrolment {
     pub uri: String,
 }
 
-fn entry(access: &AccessContext, action: &str, context: &RequestContext) -> AuditEntry {
+fn entry(
+    access: &AccessContext,
+    action: &str,
+    outcome: &'static str,
+    context: &RequestContext,
+) -> AuditEntry {
     let user_id = access.subject.user_id;
-    let mut entry = AuditEntry::new(access.subject.tenant_id, "user", action, "success")
+    let mut entry = AuditEntry::new(access.subject.tenant_id, "user", action, outcome)
         .by_user(user_id)
         .resource("user", user_id)
         .ip(context.ip_string());
@@ -114,14 +118,17 @@ pub async fn start_enrolment(
 }
 
 /// Turns the enrolment on with the first code of the app: the recovery
-/// codes, shown this once.
+/// codes, shown this once, the account's other sessions ended (one opened
+/// before may be someone else's); `None` when the code is not the app's,
+/// the refusal traced.
 pub async fn confirm_enrolment(
     db: &Database,
     secrets: &SecretStore,
     access: &AccessContext,
+    session_id: Uuid,
     code: u32,
     context: &RequestContext,
-) -> anyhow::Result<Vec<String>> {
+) -> anyhow::Result<Option<Vec<String>>> {
     let cipher = secrets.cipher()?;
     let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
     let mut tx = db.begin(tenant_id).await?;
@@ -133,20 +140,25 @@ pub async fn confirm_enrolment(
         .map_err(|_| DomainError::conflict(NO_ENROLMENT))?;
     let now = step_at(Utc::now().timestamp());
     let Some(step) = accepted_step(&secret, code, now, pending.last_step) else {
-        return Err(DomainError::forbidden(WRONG_FIRST_CODE).into());
+        let refused = entry(access, "auth.second_factor_failed", "denied", context)
+            .reason("Activation : code refusé");
+        append_audit(&mut tx, refused).await?;
+        tx.commit().await?;
+        return Ok(None);
     };
     if !enable_second_factor(&mut tx, user_id, step).await? {
         return Err(DomainError::conflict(NO_ENROLMENT).into());
     }
     let (codes, digests) = new_recovery_codes();
     replace_recovery_codes(&mut tx, tenant_id, user_id, &digests).await?;
+    revoke_user_sessions(&mut tx, user_id, Some(session_id)).await?;
     append_audit(
         &mut tx,
-        entry(access, "account.second_factor_enabled", context),
+        entry(access, "account.second_factor_enabled", "success", context),
     )
     .await?;
     tx.commit().await?;
-    Ok(codes)
+    Ok(Some(codes))
 }
 
 /// New recovery codes, the former ones dropped, proven by a current code:
@@ -173,7 +185,7 @@ pub async fn renew_recovery_codes(
     replace_recovery_codes(&mut tx, tenant_id, user_id, &digests).await?;
     append_audit(
         &mut tx,
-        entry(access, "account.recovery_codes_renewed", context),
+        entry(access, "account.recovery_codes_renewed", "success", context),
     )
     .await?;
     tx.commit().await?;
@@ -181,7 +193,8 @@ pub async fn renew_recovery_codes(
 }
 
 /// Turns the second factor off, proven by a current code: how, or why the
-/// code was refused. An enrolment that waits is simply dropped.
+/// code was refused. Without one on, there is nothing to turn off: an
+/// enrolment that waits stays until replaced or purged.
 pub async fn disable_second_factor(
     db: &Database,
     secrets: &SecretStore,
@@ -206,7 +219,7 @@ pub async fn disable_second_factor(
     delete_second_factor(&mut tx, user_id).await?;
     append_audit(
         &mut tx,
-        entry(access, "account.second_factor_disabled", context)
+        entry(access, "account.second_factor_disabled", "success", context)
             .metadata(serde_json::json!({ "proof": proof.as_str() })),
     )
     .await?;

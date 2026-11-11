@@ -3,13 +3,16 @@
 //! hundred in a row only a recovery code; a reset link asks for it too; a
 //! server without its master key enrols nothing, its recovery codes still
 //! signing in; an account without a password has its second factor at its
-//! provider; one account's codes prove nothing for another. The export
+//! provider; one account's codes prove nothing for another; a session's
+//! attempts (password to enrol, codes) count as a sign-in's. The export
 //! says it is on, never its secret; the account's end takes it.
 
 mod support;
 
 use axum::http::StatusCode;
+use chrono::Utc;
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::second_factor::{DIGITS, code_at, read_base32, step_at};
 use serde_json::json;
 use support::erasure::rows_naming;
 use support::limits::forget_counts;
@@ -17,7 +20,8 @@ use support::llm::MASTER_KEY;
 use support::owner::owner_runs;
 use support::resets::{RESET_PASSWORD, complete_reset, new_reset_token};
 use support::second_factor::{
-    challenge_of, enrol, kept_factor, opens_a_session, password_step, second_step, traced,
+    challenge_of, enrol, kept_factor, not_its_code, opens_a_session, password_step, second_step,
+    traced,
 };
 use support::{PASSWORD, TestApi, email};
 
@@ -131,9 +135,13 @@ async fn without_its_master_key_a_server_enrols_nothing_and_takes_recovery_codes
 
     // The app's codes cannot be checked here: said so, not counted.
     let challenge = password_step(&api, &email(user::LEA), PASSWORD).await;
-    let unreadable = second_step(&api, &challenge, &app.next_code()).await;
-    assert_eq!(unreadable.status, StatusCode::UNAUTHORIZED);
-    assert!(unreadable.error_message().contains("clé maîtresse"));
+    // More often than the limit: none was checked, none counts.
+    let code = app.next_code();
+    for _ in 0..6 {
+        let unreadable = second_step(&api, &challenge, &code).await;
+        assert_eq!(unreadable.status, StatusCode::UNAUTHORIZED);
+        assert!(unreadable.error_message().contains("clé maîtresse"));
+    }
     assert_eq!(kept_factor(user::LEA).await, Some((true, 0)));
     let recovered = second_step(&api, &challenge, &codes[1]).await;
     assert_eq!(recovered.status, StatusCode::OK, "{}", recovered.text());
@@ -254,4 +262,78 @@ async fn challenges_of(person: uuid::Uuid) -> i64 {
         .unwrap();
     owner.close().await;
     count
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_session_s_attempts_count_against_the_account_as_a_sign_in_s() {
+    let api = TestApi::start_with(&KEYED).await;
+    let hugo = api.sign_in(user::HUGO).await;
+    let address = email(user::HUGO);
+    let enrolment = "/account/second-factor/enrolment";
+
+    // A wrong password to enrol counts as a failed login: after ten, the
+    // right one waits, and so does a sign-in.
+    for _ in 0..10 {
+        let refused = hugo
+            .post(enrolment, json!({ "password": "pas-le-bon" }))
+            .await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
+    }
+    let throttled = hugo.post(enrolment, json!({ "password": PASSWORD })).await;
+    assert_eq!(throttled.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        api.try_login(&address, PASSWORD).await.status,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+
+    // A wrong first code counts as a refused code, traced.
+    forget_counts().await;
+    let started = hugo.post(enrolment, json!({ "password": PASSWORD })).await;
+    let secret = read_base32(started.json()["secret"].as_str().unwrap()).unwrap();
+    let wrong = not_its_code(&secret);
+    let confirmation = "/account/second-factor/confirmation";
+    for _ in 0..5 {
+        let refused = hugo.post(confirmation, json!({ "code": wrong })).await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
+    }
+    let right = format!(
+        "{:06}",
+        code_at(&secret, step_at(Utc::now().timestamp()), DIGITS)
+    );
+    let throttled = hugo.post(confirmation, json!({ "code": right })).await;
+    assert_eq!(throttled.status, StatusCode::TOO_MANY_REQUESTS);
+    let failed = traced(&api, tenant::ID, user::HUGO, "auth.second_factor_failed").await;
+    assert_eq!(failed.len(), 5);
+    assert!(
+        failed
+            .iter()
+            .all(|entry| entry.1.as_deref() == Some("Activation : code refusé"))
+    );
+
+    // New recovery codes and turning it off share the sign-in's limit.
+    forget_counts().await;
+    let (_, _, codes) = enrol(&hugo).await;
+    for (route, times) in [("recovery-codes", 3), ("deactivation", 2)] {
+        for _ in 0..times {
+            let refused = hugo
+                .post(
+                    &format!("/account/second-factor/{route}"),
+                    json!({ "code": NOBODY_S }),
+                )
+                .await;
+            assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
+        }
+    }
+    let throttled = hugo
+        .post(
+            "/account/second-factor/deactivation",
+            json!({ "code": codes[0] }),
+        )
+        .await;
+    assert_eq!(throttled.status, StatusCode::TOO_MANY_REQUESTS);
+    let challenge = password_step(&api, &address, PASSWORD).await;
+    let throttled = second_step(&api, &challenge, &codes[0]).await;
+    assert_eq!(throttled.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(kept_factor(user::HUGO).await, Some((true, 5)));
 }

@@ -13,9 +13,9 @@ pub use recovery::{
 };
 pub use totp::{DIGITS, SECRET_LEN, STEP_SECONDS, accepted_step, code_at, read_code, step_at};
 
-/// App codes refused in a row after which only a recovery code is
-/// accepted: NIST SP 800-63B limits an account's failed attempts to a
-/// hundred.
+/// Codes refused in a row, of the app or recovery codes, after which only
+/// a recovery code is accepted: NIST SP 800-63B limits an account's failed
+/// attempts to a hundred.
 pub const REFUSALS_BEFORE_LOCK: i32 = 100;
 
 /// What a person typed to prove their second factor.
