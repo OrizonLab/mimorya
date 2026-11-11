@@ -724,7 +724,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 - Table `audit_log` en **ajout seul** : le rôle applicatif n'a que `INSERT` et `SELECT`,
   et l'`INSERT` ne porte que sur les colonnes du contenu d'une entrée, jamais sur sa place
-  ni sur son sceau (ADR-178).
+  ni sur son sceau (ADR-178). Il n'en supprime que par `system_purge_old_audit_entries`
+  (ADR-198), dans la transaction de l'entreprise, des places de plus de cinq ans en tête
+  de sa chaîne, jamais la dernière scellée. Comme pour un sceau, la base ne peut pas
+  empêcher un début faux ; mais un début qui ne porte pas le sceau de la clé est tenu
+  pour absent, et la vérification montre alors les places parties comme manquantes.
 - **Chaînée par entreprise** (ADR-178) : chaque minute, la maintenance scelle les
   nouvelles entrées de chaque entreprise, dans l'ordre, chacune par le HMAC-SHA256, sous
   une clé dérivée de la clé maître, du sceau précédent, de sa place et de son contenu.

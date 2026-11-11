@@ -199,26 +199,36 @@ async fn the_database_refuses_a_purge_it_would_not_make() {
             seal: vec![7; 32],
         };
 
+    let most = i64::from(MAX_PURGE_BATCH);
     let refusals = [
         // Its last sealed place, and a recent one.
-        asked(1, 5, seal_at(5).await, 5),
-        asked(1, 4, seal_at(4).await, 4),
+        (asked(1, 5, seal_at(5).await, 5), "last sealed place stays"),
+        (asked(1, 4, seal_at(4).await, 4), "not five years old"),
         // Not from where it starts.
-        asked(2, 3, seal_at(3).await, 2),
+        (asked(2, 3, seal_at(3).await, 2), "starts at place 1"),
         // Another seal kept, another count.
-        asked(1, 2, seal_at(1).await, 2),
-        asked(1, 2, seal_at(2).await, 5),
-        // More than a statement deletes, or none.
-        asked(1, i64::from(MAX_PURGE_BATCH) + 1, seal_at(3).await, 5001),
-        asked(3, 2, seal_at(2).await, 0),
+        (asked(1, 2, seal_at(1).await, 2), "seal kept"),
+        (asked(1, 2, seal_at(2).await, 5), "places gone in all"),
+        // A statement's most passes the database's bound, one more does
+        // not, nor none: the platform's constant is the database's.
+        (
+            asked(1, most, seal_at(3).await, most),
+            "last sealed place stays",
+        ),
+        (
+            asked(1, most + 1, seal_at(3).await, most + 1),
+            "places asked",
+        ),
+        (asked(3, 2, seal_at(2).await, 0), "places asked"),
     ];
-    for places_asked in refusals {
+    for (places_asked, why) in refusals {
         let mut tx = db.begin(acme).await.unwrap();
         let refused = purge_audit_places(&mut tx, acme, &places_asked)
             .await
             .unwrap_err();
         let code = refused.as_database_error().and_then(|error| error.code());
         assert_eq!(code.as_deref(), Some("P0001"), "{places_asked:?}");
+        assert!(refused.to_string().contains(why), "{why}: {refused}");
     }
     assert_eq!(places(db, acme).await, [1, 2, 3, 4, 5]);
 

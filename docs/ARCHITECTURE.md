@@ -449,7 +449,8 @@ qu'au-delà de ce que PostgreSQL tient.
 
 - Logs structurés (`tracing`) avec `request_id` et `run_id` ; **jamais** d'en-têtes,
   de secrets, de mots de passe, de jetons ni de contenu de message.
-- Journal d'audit métier séparé (table `audit_log`, en ajout seul), chaîné par entreprise :
+- Journal d'audit métier séparé (table `audit_log`, en ajout seul, ses places de plus de
+  cinq ans seules supprimées en tête de chaîne, ADR-198), chaîné par entreprise :
   chaque entrée scellée après coup sous une clé dérivée de la clé maître, la chaîne
   vérifiée par `mimorya-admin verify-audit` (ADR-178) ou, pour la sienne, par qui lit le
   journal de toute l'entreprise, depuis l'administration (ADR-179) ; lu par le SIEM de
