@@ -218,15 +218,20 @@ async fn refusal_for_marc(api: &TestApi) -> String {
 async fn a_suspended_company_is_refused_before_its_model_is_loaded() {
     // No model at all: what refuses comes first.
     let api = TestApi::without_llm().await;
+    // The change reaches the process as it reaches any other, by the
+    // invalidation it hears: the refusal is read once it holds the status.
+    listening(&api).await;
     let _active = DemoActiveOnDrop;
     change(&api, tenant::SLUG, CompanyStatusChange::Suspend)
         .await
         .unwrap();
+    assert!(holds_at_once(&api, "suspended").await);
     assert_eq!(refusal_for_marc(&api).await, COMPANY_NOT_ACTIVE);
 
     change(&api, tenant::SLUG, CompanyStatusChange::Reactivate)
         .await
         .unwrap();
+    assert!(holds_at_once(&api, "active").await);
     let unavailable = refusal_for_marc(&api).await;
     assert!(unavailable.starts_with("Aucun modèle"), "{unavailable}");
 }
