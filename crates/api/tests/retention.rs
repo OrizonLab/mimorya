@@ -80,7 +80,7 @@ async fn ended_sessions_are_forgotten_thirty_days_on() {
         session(tenant::ID, user::PAUL, agent, revoked, expires, absolute).await;
     }
 
-    let retained = apply_retention(&api.app.services.db)
+    let retained = apply_retention(&api.app.services.db, None)
         .await
         .unwrap()
         .unwrap();
@@ -95,7 +95,7 @@ async fn ended_sessions_are_forgotten_thirty_days_on() {
     // Another process running the pass: this one runs none.
     let db = &api.app.services.db;
     let held = db.try_sweep_lock(RETENTION_SWEEP).await.unwrap().unwrap();
-    assert!(apply_retention(db).await.unwrap().is_none());
+    assert!(apply_retention(db, None).await.unwrap().is_none());
     held.release().await;
 }
 

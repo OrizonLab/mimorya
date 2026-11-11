@@ -2,9 +2,9 @@
 //! deletes the records older than five years, of every company, the oldest
 //! of them all first, a batch at a time; younger ones stay. Each company
 //! that lost records finds how many in its own audit log, by the platform;
-//! a pass with nothing to delete tells no one. The horizon is the
-//! database's: the application names none, and the database bounds the
-//! batch. A record another write holds (its account erased, its run
+//! a pass with nothing to delete tells no one; a backlog goes over several
+//! statements of one pass. The horizon is the database's: the application
+//! names none, and the database bounds the batch. A record another write holds (its account erased, its run
 //! deleted) is skipped, never waited on, and taken by the next pass. The
 //! tests start a process without maintenance: they run the passes
 //! themselves.
@@ -51,7 +51,7 @@ async fn consumption_older_than_five_years_goes_each_company_told() {
     let before_neo = purged_entries(neo, PURGED).await.len();
 
     // Past five years, every company's; within, none.
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     let mut both = [(neo, 2), (acme.tenant_id, 1)];
     both.sort();
     assert_eq!(lost(&retained.usage), both);
@@ -70,7 +70,7 @@ async fn consumption_older_than_five_years_goes_each_company_told() {
     );
 
     // Nothing more to delete: no one told again.
-    let again = apply_retention(db).await.unwrap().unwrap();
+    let again = apply_retention(db, None).await.unwrap().unwrap();
     assert!(again.usage.is_empty(), "{:?}", again.usage);
     assert_eq!(purged_entries(neo, PURGED).await.len(), before_neo + 1);
     assert_eq!(purged_entries(acme.tenant_id, PURGED).await.len(), 1);
@@ -149,4 +149,17 @@ async fn a_record_another_write_holds_is_skipped_then_taken() {
     assert_eq!(lost(&next), [(tenant::ID, 1)]);
     assert!(usage_left("verrou-conso").await.is_empty());
     owner.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_pass_takes_a_backlog_over_several_statements() {
+    let api = TestApi::start_with(API).await;
+    let db = &api.app.services.db;
+    // More than a statement takes: the pass goes on while one comes back
+    // full, which a batch the database cuts short would end.
+    usage_records(tenant::ID, "arriere-conso", 7000, 61).await;
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
+    assert_eq!(lost(&retained.usage), [(tenant::ID, 7000)]);
+    assert!(usage_left("arriere-conso").await.is_empty());
 }

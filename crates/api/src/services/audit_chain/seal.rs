@@ -142,7 +142,7 @@ async fn seal_batch(
 ) -> anyhow::Result<Option<(ChainHead, usize)>> {
     let mut tx = db.begin(tenant_id).await?;
     lock_audit_chain(&mut tx, tenant_id).await?;
-    heads.check(&mut tx, tenant_id).await?;
+    heads.check(&mut tx, key, tenant_id).await?;
     let last = audit_chain_head(&mut tx).await?;
     let entries = unsealed_audit_entries(&mut tx, BATCH as i64).await?;
     let Some(seals) = seals_after(key, last.map(|h| (h.chain_seq, h.chain_hash)), &entries) else {

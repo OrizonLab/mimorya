@@ -6,7 +6,7 @@
 
 use std::future::Future;
 
-use mimorya_db::repositories::retention::{PurgedConversations, PurgedUsage};
+use mimorya_db::repositories::retention::{PurgedAudit, PurgedConversations, PurgedUsage};
 use uuid::Uuid;
 
 /// What a company lost to a purge that goes a batch at a time.
@@ -47,10 +47,25 @@ impl Lost for PurgedUsage {
     }
 }
 
+impl Lost for PurgedAudit {
+    fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    fn count(&self) -> i32 {
+        self.entries
+    }
+
+    fn add(&mut self, other: &Self) {
+        self.entries += other.entries;
+        self.through_seq = self.through_seq.max(other.through_seq);
+    }
+}
+
 /// What `purge` deleted a batch of `size` at a time, while a batch comes
 /// back full and the pass has `batches` statements left: each company
 /// once, what it lost in all. A failed statement ends it, logged as `what`.
-pub(crate) async fn in_batches<T, F, Fut>(
+pub(crate) async fn in_batches<T, E, F, Fut>(
     what: &str,
     batches: usize,
     size: i32,
@@ -58,15 +73,17 @@ pub(crate) async fn in_batches<T, F, Fut>(
 ) -> Vec<T>
 where
     T: Lost,
+    E: Into<anyhow::Error>,
     F: FnMut() -> Fut,
-    Fut: Future<Output = sqlx::Result<Vec<T>>>,
+    Fut: Future<Output = Result<Vec<T>, E>>,
 {
     let mut lost: Vec<T> = Vec::new();
     for _ in 0..batches {
         let batch = match purge().await {
             Ok(batch) => batch,
             Err(error) => {
-                tracing::warn!(error = %error, "{what} purge failed");
+                let error: anyhow::Error = error.into();
+                tracing::warn!(error = format!("{error:#}"), "{what} purge failed");
                 break;
             }
         };

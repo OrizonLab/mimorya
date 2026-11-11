@@ -4,21 +4,25 @@
 //! choice: a year, thirty days, twenty-four months), the episodes and the
 //! memories past their own term, the personal memories of the accounts
 //! disabled, and the conversations idle, whole; and, past the platform's
-//! five years, the consumption (ADR-197). Each company that lost memories,
-//! conversations or consumption finds it in its audit log, written by the
-//! platform in the deletion's own statement: how many, and why, never what
-//! they said.
+//! five years, the consumption (ADR-197) and, with the key that seals the
+//! audit log, the oldest places of each audit chain, their seals checked
+//! and its verification kept (ADR-198; none without a master key, which
+//! seals nothing either). Each company that lost
+//! memories, conversations, consumption or audit entries finds it in its
+//! audit log, written by the platform in the deletion's own statement: how
+//! many, and why, never what they said.
 
 use std::time::Duration;
 
 use mimorya_db::Database;
 use mimorya_db::repositories::retention::{
-    PurgedConversations, PurgedMemories, PurgedUsage, purge_ended_sessions,
+    PurgedAudit, PurgedConversations, PurgedMemories, PurgedUsage, purge_ended_sessions,
     purge_idle_conversations, purge_old_usage, purge_retained_memories,
 };
 use tokio::time::Instant;
 
 use super::retention_batches::{Lost, in_batches};
+use crate::services::audit_chain::{ChainKey, MAX_PURGE_BATCH, purge_old_places};
 
 /// The name of the pass's lock: one process at a time (ADR-086).
 pub const RETENTION_SWEEP: &str = "retention";
@@ -35,6 +39,11 @@ const CONVERSATION_BATCHES: usize = 25;
 pub const USAGE_BATCH: i32 = 5000;
 /// The statements a pass gives them, at most.
 const USAGE_BATCHES: usize = 20;
+/// The audit entries one company's transactions delete in a statement, at
+/// most, the database's bound.
+pub const AUDIT_BATCH: i32 = MAX_PURGE_BATCH;
+/// The statements a pass gives them, at most.
+const AUDIT_BATCHES: usize = 20;
 
 /// What a pass deleted.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -46,22 +55,31 @@ pub struct Retained {
     pub conversations: Vec<PurgedConversations>,
     /// The companies that lost consumption records, and how many.
     pub usage: Vec<PurgedUsage>,
+    /// The companies whose audit chain lost its oldest places, and how many.
+    pub audit: Vec<PurgedAudit>,
 }
 
-/// When this process last ran the pass.
-#[derive(Debug, Default)]
+/// When this process last ran the pass, and the key it purges the audit
+/// chains with.
+#[derive(Default)]
 pub struct Retention {
     last: Option<Instant>,
+    key: Option<ChainKey>,
 }
 
 impl Retention {
+    /// The pass of a process that seals the audit log with `key`, or none.
+    pub fn new(key: Option<ChainKey>) -> Self {
+        Self { last: None, key }
+    }
+
     /// The pass, at the first call and then once an hour.
     pub async fn pass(&mut self, db: &Database) {
         let now = Instant::now();
         if !due(self.last, now) {
             return;
         }
-        let outcome = apply_retention(db).await;
+        let outcome = apply_retention(db, self.key.as_ref()).await;
         self.last = settled(self.last, now, &outcome);
         match outcome {
             Ok(Some(retained)) if retained != Retained::default() => {
@@ -72,11 +90,13 @@ impl Retention {
                     .sum();
                 let conversations: i32 = retained.conversations.iter().map(Lost::count).sum();
                 let usage: i32 = retained.usage.iter().map(Lost::count).sum();
+                let audit: i32 = retained.audit.iter().map(Lost::count).sum();
                 tracing::info!(
                     sessions = retained.sessions,
                     memories,
                     conversations,
                     usage,
+                    audit,
                     "Retention applied"
                 );
             }
@@ -104,8 +124,12 @@ fn settled<T>(last: Option<Instant>, now: Instant, outcome: &anyhow::Result<T>) 
 }
 
 /// One pass, unless another process runs one: nothing then. Each purge is
-/// tried whatever the others did, its failure logged.
-pub async fn apply_retention(db: &Database) -> anyhow::Result<Option<Retained>> {
+/// tried whatever the others did, its failure logged. The audit chains lose
+/// their oldest places only with `key`, the one that seals them.
+pub async fn apply_retention(
+    db: &Database,
+    key: Option<&ChainKey>,
+) -> anyhow::Result<Option<Retained>> {
     let Some(sweep) = db.try_sweep_lock(RETENTION_SWEEP).await? else {
         return Ok(None);
     };
@@ -132,12 +156,22 @@ pub async fn apply_retention(db: &Database) -> anyhow::Result<Option<Retained>> 
         purge_old_usage(db.pool(), USAGE_BATCH)
     })
     .await;
+    let audit = match key {
+        Some(key) => {
+            in_batches("Old audit entries", AUDIT_BATCHES, AUDIT_BATCH, || {
+                purge_old_places(db, key, AUDIT_BATCH, chrono::Utc::now())
+            })
+            .await
+        }
+        None => Vec::new(),
+    };
     sweep.release().await;
     Ok(Some(Retained {
         sessions,
         memories,
         conversations,
         usage,
+        audit,
     }))
 }
 

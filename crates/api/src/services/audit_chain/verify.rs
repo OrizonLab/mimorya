@@ -13,6 +13,14 @@
 //! an anchor does: a place and its seal logged by the sealing, outside the
 //! database, which the chain must still hold. The entries still to seal
 //! are counted, not verified.
+//!
+//! A chain whose oldest places were deleted, five years old (ADR-198), is
+//! verified from where it starts now, if that start holds its seal
+//! (`start.rs`): its first place, from the seal of the one before it,
+//! which the purge kept. An anchor at that place is checked against that
+//! seal; one before it, gone with what it sealed, is said to be so. A
+//! start that does not hold its seal is none: the places before it are
+//! missing, the anchors there too.
 
 use mimorya_db::Database;
 use mimorya_db::repositories::audit_chain::{
@@ -21,6 +29,7 @@ use mimorya_db::repositories::audit_chain::{
 use uuid::Uuid;
 
 use super::ChainKey;
+use super::start::{Place, Start, chain_start};
 
 /// Sealed entries read at a time.
 const PAGE: usize = 1_000;
@@ -45,6 +54,16 @@ pub enum AnchorFound {
     Differs,
     /// Nothing: the chain ends before that place, or it is missing.
     Missing,
+    /// Before the chain's start: the place went with the entries five
+    /// years old (ADR-198).
+    Purged,
+}
+
+impl AnchorFound {
+    /// Whether the chain holds it, or let it go with its oldest places.
+    pub fn holds(self) -> bool {
+        matches!(self, Self::Held | Self::Purged)
+    }
 }
 
 /// What a company's audit chain is found to be.
@@ -56,6 +75,9 @@ pub struct ChainReport {
     pub unsealed: i64,
     /// The last place read and its seal.
     pub head: Option<ChainHead>,
+    /// Where the chain starts, if its oldest places were deleted and that
+    /// start holds its seal.
+    pub start: Option<Start>,
     /// The first breaks, at most `LISTED_BREAKS`.
     pub breaks: Vec<ChainBreak>,
     /// Every break: each altered entry, each missing place.
@@ -67,7 +89,7 @@ pub struct ChainReport {
 impl ChainReport {
     /// Whether the chain breaks nowhere and holds every anchor.
     pub fn holds(&self) -> bool {
-        self.broken == 0 && self.anchors.iter().all(|found| *found == AnchorFound::Held)
+        self.broken == 0 && self.anchors.iter().all(|found| found.holds())
     }
 
     fn breaks_at(&mut self, at: ChainBreak) {
@@ -89,17 +111,26 @@ pub async fn verify_company(
     anchors: &[ChainHead],
 ) -> anyhow::Result<ChainReport> {
     let mut tx = db.begin_snapshot(tenant_id).await?;
+    let start = chain_start(&mut tx, key, tenant_id).await?;
     let mut report = ChainReport {
         verified: 0,
         unsealed: count_unsealed_audit_entries(&mut tx).await?,
         head: None,
+        start: start.clone(),
         breaks: Vec::new(),
         broken: 0,
-        anchors: vec![AnchorFound::Missing; anchors.len()],
+        anchors: anchors
+            .iter()
+            .map(|anchor| before_start(anchor, start.as_ref()))
+            .collect(),
     };
     // The next place expected, and the seal recorded before it (unknown
-    // after a missing place).
-    let (mut expected, mut previous) = (1, Some(Vec::new()));
+    // after a missing place): the chain's first place, from the seal the
+    // purge kept, if its oldest places went.
+    let (mut expected, mut previous) = match &start {
+        Some(start) => (start.first_seq, Some(start.previous_hash.clone())),
+        None => (1, Some(Vec::new())),
+    };
     let mut after = (0, 0);
     loop {
         let page = sealed_audit_entries(&mut tx, after, PAGE as i64).await?;
@@ -153,5 +184,52 @@ pub async fn verify_company(
         if page.len() < PAGE {
             return Ok(report);
         }
+    }
+}
+
+/// What the chain holds at an anchor's place before reading its entries:
+/// at the place before its start, the seal the purge kept; before that,
+/// nothing any more. Otherwise missing, until an entry is read there.
+fn before_start(anchor: &ChainHead, start: Option<&Start>) -> AnchorFound {
+    let place = start.map(|start| start.place(anchor.chain_seq, |kept| kept == anchor.chain_hash));
+    match place {
+        Some(Place::Eve { held: true }) => AnchorFound::Held,
+        Some(Place::Eve { held: false }) => AnchorFound::Differs,
+        Some(Place::Purged) => AnchorFound::Purged,
+        Some(Place::InChain) | None => AnchorFound::Missing,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn head(seq: i64, byte: u8) -> ChainHead {
+        ChainHead {
+            chain_seq: seq,
+            chain_hash: vec![byte; 32],
+        }
+    }
+
+    #[test]
+    fn an_anchor_before_the_start_is_purged_at_its_eve_checked() {
+        let start = Start {
+            first_seq: 10,
+            previous_hash: vec![9; 32],
+            purged_entries: 9,
+        };
+        assert_eq!(before_start(&head(3, 3), Some(&start)), AnchorFound::Purged);
+        assert_eq!(before_start(&head(9, 9), Some(&start)), AnchorFound::Held);
+        assert_eq!(
+            before_start(&head(9, 1), Some(&start)),
+            AnchorFound::Differs
+        );
+        assert_eq!(
+            before_start(&head(10, 1), Some(&start)),
+            AnchorFound::Missing
+        );
+        assert_eq!(before_start(&head(3, 3), None), AnchorFound::Missing);
+        assert!(AnchorFound::Purged.holds() && AnchorFound::Held.holds());
+        assert!(!AnchorFound::Differs.holds() && !AnchorFound::Missing.holds());
     }
 }

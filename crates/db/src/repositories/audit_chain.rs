@@ -1,6 +1,8 @@
 //! The audit log chained by company (ADR-178): the entries still to seal,
-//! the chain's last place, the seals set, and the sealed entries read back
-//! in the chain's order to verify them. An entry's content is read as the
+//! the chain's last place, the seals set, the sealed entries read back in
+//! the chain's order to verify them, and where the chain starts once its
+//! oldest places, five years old, were deleted, and their deletion by the
+//! process that checked their seals (ADR-198). An entry's content is read as the
 //! database writes it as text, so that its seal never depends on how a
 //! client decodes a value: identifiers and addresses as their text, the
 //! time in microseconds since 1970, the metadata as its canonical `jsonb`
@@ -42,6 +44,77 @@ const CONTENT: &str = "id, chain_seq, chain_hash, tenant_id::text as tenant_id, 
 pub struct ChainHead {
     pub chain_seq: i64,
     pub chain_hash: Vec<u8>,
+}
+
+/// Where a company's chain starts once its oldest places were deleted
+/// (ADR-198): its first place, the seal of the place before it, how many
+/// places went, and the start's own seal under the chain's key, which the
+/// reader checks before taking it for the chain's.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct ChainStart {
+    pub first_seq: i64,
+    pub previous_hash: Vec<u8>,
+    /// How many places were deleted in all.
+    pub purged_entries: i64,
+    pub seal: Vec<u8>,
+}
+
+/// Where the company's chain starts, as the database holds it, if its
+/// oldest places were deleted.
+pub async fn audit_chain_start(conn: &mut PgConnection) -> sqlx::Result<Option<ChainStart>> {
+    sqlx::query_as("select first_seq, previous_hash, purged_entries, seal from audit_chain_starts")
+        .fetch_optional(conn)
+        .await
+}
+
+/// The companies whose chain's first place is five years old, the oldest
+/// first, through a narrowly scoped database function.
+pub async fn audit_purge_candidates(pool: &PgPool) -> sqlx::Result<Vec<Uuid>> {
+    sqlx::query_scalar("select tenant_id from system_audit_purge_candidates()")
+        .fetch_all(pool)
+        .await
+}
+
+/// Five years before the transaction's time, in microseconds since 1970,
+/// as an entry's time is read: the horizon the database checks again.
+pub async fn five_years_ago_us(conn: &mut PgConnection) -> sqlx::Result<i64> {
+    sqlx::query_scalar("select (extract(epoch from now() - interval '5 years') * 1000000)::bigint")
+        .fetch_one(conn)
+        .await
+}
+
+/// The oldest places of a company's chain to delete, `first` to `through`,
+/// and where it then starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlacesPurged {
+    pub first: i64,
+    pub through: i64,
+    /// The seal at `through`, kept.
+    pub previous_hash: Vec<u8>,
+    /// The places gone in all, these with them.
+    pub purged_entries: i64,
+    /// The new start's seal.
+    pub seal: Vec<u8>,
+}
+
+/// Deletes the places of the company `tenant_id`, called in its
+/// transaction once their seals were checked, and keeps where its chain
+/// then starts; how many. Fails, and deletes nothing, unless the database
+/// finds them as said (ADR-198).
+pub async fn purge_audit_places(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    places: &PlacesPurged,
+) -> sqlx::Result<i32> {
+    sqlx::query_scalar("select system_purge_old_audit_entries($1, $2, $3, $4, $5, $6)")
+        .bind(tenant_id)
+        .bind(places.first)
+        .bind(places.through)
+        .bind(&places.previous_hash)
+        .bind(places.purged_entries)
+        .bind(&places.seal)
+        .fetch_one(conn)
+        .await
 }
 
 /// The companies whose audit log has entries, or, with `unsealed`, entries

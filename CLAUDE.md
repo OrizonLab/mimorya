@@ -75,7 +75,8 @@ Repères à l'intérieur des crates :
   qu'il ne couvre pas : `conversation_summaries.rs`, ADR-145 ; la mémoire : `memory.rs`, recherche
   hybride `memory_search.rs`, vecteurs `memory_embeddings.rs`, ADR-074 ; journal d'audit
   chaîné : entrées à sceller, dernière place, sceaux posés, entrées relues dans l'ordre de
-  la chaîne : `audit_chain.rs`, ADR-178 ; jetons que d'autres systèmes détiennent de
+  la chaîne, son début une fois ses plus vieilles places supprimées, et leur suppression
+  par le processus qui en a vérifié les sceaux : `audit_chain.rs`, ADR-178, ADR-198 ; jetons que d'autres systèmes détiennent de
   l'entreprise, une table par sorte (export du journal vers son SIEM, ADR-181, SCIM,
   ADR-183) : `bearer_tokens.rs` ; comptes tels que SCIM les lit et les crée, et
   l'identifiant que leur donne le fournisseur : `scim_users.rs`, ADR-183 ; fenêtres des
@@ -175,7 +176,7 @@ Repères à l'intérieur des crates :
   maintenance périodique : runs bloqués, liens expirés, absences terminées, demandes de
   validation échues et relances avant échéance, ADR-061, ADR-062, cartes des avis Teams
   oubliées, ADR-142, propositions de politiques décidées ou expirées, ADR-168, journal d'audit
-  scellé, ADR-178 ; rétention appliquée chaque heure, `retention.rs`, ADR-185, ADR-186, ADR-197 ; indexation de la
+  scellé, ADR-178 ; rétention appliquée chaque heure, `retention.rs`, sa boucle par lots `retention_batches.rs`, ADR-185, ADR-186, ADR-197, ADR-198 ; indexation de la
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
   ADR-096 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
@@ -266,8 +267,11 @@ Repères à l'intérieur des crates :
   par la maintenance, un processus à la fois (`seal.rs`), refusé là où la chaîne a reculé
   derrière le dernier sceau posé ou trouvé au démarrage (`heads.rs`), passage de la
   maintenance : chaînes lues jusqu'à les avoir toutes, puis scellées (`sweep.rs`),
-  vérification de chaque chaîne depuis sa première place et des ancres journalisées
-  (`verify.rs`), ancre lue (`anchor.rs`), ADR-178 ; vérification demandée par qui lit le
+  vérification de chaque chaîne depuis son début, ses places de plus de cinq ans parties
+  (ADR-198), et des ancres journalisées (`verify.rs`), ancre lue (`anchor.rs`), ADR-178 ;
+  places de plus de cinq ans supprimées par la passe de rétention, leurs sceaux vérifiés
+  (`purge.rs`), début de la chaîne pris pour le sien sous son sceau seul, et ce qu'elle
+  tient avant lui, pour la vérification, le scellement et l'export (`start.rs`), ADR-198 ; vérification demandée par qui lit le
   journal de toute l'entreprise, contre ses ancres, tracée (`on_demand.rs`, ADR-179),
   deux à la fois par processus, une par entreprise (`places.rs`, ADR-180)),
   `api/src/services/audit_export/` (journal d'audit lu par le SIEM de l'entreprise avec un

@@ -6,6 +6,8 @@
 //! memories of an account disabled, the conversations idle, whole
 //! (ADR-186); and the consumption past the platform's five years, which no
 //! company sets (ADR-197). What each company lost is counted, never read.
+//! The oldest places of each audit chain, five years old too, go by the
+//! process that holds the chain's key (`audit_chain.rs`, ADR-198).
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -37,6 +39,15 @@ pub struct PurgedConversations {
 pub struct PurgedUsage {
     pub tenant_id: Uuid,
     pub records: i32,
+}
+
+/// The oldest places of its audit chain a company lost to a statement,
+/// five years old, and the last of them (ADR-198).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PurgedAudit {
+    pub tenant_id: Uuid,
+    pub entries: i32,
+    pub through_seq: i64,
 }
 
 /// Deletes the sessions ended thirty days ago; how many.

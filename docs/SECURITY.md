@@ -724,7 +724,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
 
 - Table `audit_log` en **ajout seul** : le rôle applicatif n'a que `INSERT` et `SELECT`,
   et l'`INSERT` ne porte que sur les colonnes du contenu d'une entrée, jamais sur sa place
-  ni sur son sceau (ADR-178).
+  ni sur son sceau (ADR-178). Il n'en supprime que par `system_purge_old_audit_entries`
+  (ADR-198), dans la transaction de l'entreprise, des places de plus de cinq ans en tête
+  de sa chaîne, jamais la dernière scellée. Comme pour un sceau, la base ne peut pas
+  empêcher un début faux ; mais un début qui ne porte pas le sceau de la clé est tenu
+  pour absent, et la vérification montre alors les places parties comme manquantes.
 - **Chaînée par entreprise** (ADR-178) : chaque minute, la maintenance scelle les
   nouvelles entrées de chaque entreprise, dans l'ordre, chacune par le HMAC-SHA256, sous
   une clé dérivée de la clé maître, du sceau précédent, de sa place et de son contenu.
@@ -917,12 +921,32 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   ceux de la base, jamais ce qu'écrit l'application, qui n'écrit que la durée et son
   auteur et ne retire aucune durée : elle ne peut ni sauter la semaine ni sortir des
   bornes. Chaque changement est tracé (`retention.configured`), avant et après. À venir :
-  la purge message par message d'une conversation toujours active et celle du journal
-  d'audit (qui devra rester vérifiable, ADR-178), gardé sans limite en attendant.
+  la purge message par message d'une conversation toujours active.
 - **Consommation** (ADR-197) : gardée cinq ans, pour la facturation, puis supprimée par la
   passe horaire, les plus anciennes de toutes les entreprises d'abord ; la durée est celle
   de la plateforme, qu'aucune entreprise ne règle. Chaque entreprise qui perd des
   enregistrements le trouve dans son journal d'audit (`usage.purged`), le nombre seul.
+- **Journal d'audit** (ADR-198) : gardé cinq ans, sans contenu de message. Ses places
+  plus anciennes partent par la passe de rétention du processus qui détient la clé de la
+  chaîne, un préfixe de la chaîne seul. Chaque place doit porter son sceau, recalculé
+  depuis le début courant, et ni la dernière place scellée ni une entrée à sceller ne
+  partent. Une entrée récente, une place manquante ou une entrée altérée arrête la purge
+  avant elle, pour que la vérification la montre encore. L'âge des places se juge à
+  l'horloge du processus et à celle de la base, la plus prudente des deux : une horloge
+  ou un `now()` de la base avancés ne font jamais partir une place récente. La base
+  revérifie, sous le verrou de la chaîne et dans la transaction de l'entreprise elle-même
+  (une autre est refusée), ce qu'elle peut voir. Le début de la chaîne est gardé
+  (`audit_chain_starts`, que l'application lit sans pouvoir l'écrire) : la première place
+  et le sceau de la dernière place supprimée, sous un sceau propre fait avec la clé de la
+  chaîne. Un début que le propriétaire de la base écrit ou déplace sans la clé ne porte
+  pas ce sceau ; il est tenu pour absent : la vérification compte manquantes les places
+  d'avant, le scellement refuse de continuer après une place qu'il se rappelait, la purge
+  s'arrête, l'export le traite comme une chaîne restaurée en deçà. Avec un début scellé, la chaîne est vérifiée depuis son
+  nouveau début : une ancre d'avant est dite partie avec ses places, une ancre à la place
+  d'avant est vérifiée contre le sceau gardé, et un SIEM qui la donne lit la suite. Ce
+  que la base ne peut pas dire d'une place supprimée part avec elle, mais seules partent
+  des places dont le sceau tenait. L'entreprise trouve chaque purge dans son journal
+  (`audit.purged`), scellée à son tour.
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.
 - **Hébergement** : SaaS en UE ; installation privée possible.

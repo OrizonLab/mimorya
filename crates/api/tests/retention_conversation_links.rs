@@ -40,7 +40,7 @@ async fn a_purged_conversation_takes_what_it_held_and_is_forgotten_by_what_named
         }
     );
 
-    let retained = apply_retention(&api.app.services.db)
+    let retained = apply_retention(&api.app.services.db, None)
         .await
         .unwrap()
         .unwrap();

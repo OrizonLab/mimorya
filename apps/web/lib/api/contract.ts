@@ -259,7 +259,7 @@ export type AuditAnchorCheck = { place: number, seal: string, found: AuditAnchor
 /**
  * What the chain holds at an anchor's place.
  */
-export type AuditAnchorFound = "held" | "differs" | "missing";
+export type AuditAnchorFound = "held" | "differs" | "missing" | "purged";
 
 /**
  * Where the chain breaks.
@@ -310,6 +310,15 @@ unsealed: number,
  * The last sealed place: the anchor to keep.
  */
 last: AuditChainPlace | null,
+/**
+ * The chain's first place: after 1 once the entries five years old
+ * went (ADR-198).
+ */
+firstPlace: number,
+/**
+ * The places deleted with them, in all.
+ */
+purged: number,
 /**
  * Every break: each altered entry, each missing place.
  */

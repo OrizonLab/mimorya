@@ -101,7 +101,7 @@ async fn memories_past_their_retention_go_each_company_told() {
     )
     .await;
 
-    let retained = apply_retention(db).await.unwrap().unwrap();
+    let retained = apply_retention(db, None).await.unwrap().unwrap();
     let lost = |tenant_id: Uuid| {
         retained
             .memories
@@ -137,7 +137,7 @@ async fn memories_past_their_retention_go_each_company_told() {
     );
 
     // Nothing more to delete: nothing more told.
-    let again = apply_retention(db).await.unwrap().unwrap();
+    let again = apply_retention(db, None).await.unwrap().unwrap();
     assert!(again.memories.is_empty(), "{again:?}");
     assert_eq!(purged_entries(neo, PURGED).await.len(), 1);
     assert_eq!(purged_entries(acme.tenant_id, PURGED).await.len(), 1);

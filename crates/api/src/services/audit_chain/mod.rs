@@ -5,15 +5,19 @@
 //! chain verified from its first place, and against anchors logged by the
 //! sealing (`anchor.rs`, `verify.rs`), by `mimorya-admin verify-audit` or
 //! by an administrator of the company (`on_demand.rs`, ADR-179), two at
-//! once in a process, one for a company (`places.rs`, ADR-180). Without a
-//! master key, nothing is sealed.
+//! once in a process, one for a company (`places.rs`, ADR-180). Its oldest
+//! places, five years old, go with the retention pass, their seals checked
+//! first, and where it then starts is sealed too (`purge.rs`, `start.rs`,
+//! ADR-198). Without a master key, nothing is sealed, nor purged.
 
 mod anchor;
 mod digest;
 mod heads;
 mod on_demand;
 mod places;
+mod purge;
 mod seal;
+mod start;
 mod sweep;
 mod verify;
 
@@ -22,7 +26,9 @@ pub use digest::ChainKey;
 pub use heads::{ChainMoved, SealedHeads};
 pub use on_demand::{MAX_ANCHORS, OwnChainCheck, verify_own_chain};
 pub use places::{CHECKS_AT_ONCE, ChainChecks, CheckPlace};
+pub use purge::{MAX_PURGE_BATCH, purge_old_places};
 pub use seal::{AUDIT_CHAIN_SWEEP, seal_audit_log, seal_company};
+pub use start::{Place, Start, chain_start};
 pub use sweep::AuditSealing;
 pub use verify::{AnchorFound, ChainBreak, ChainReport, LISTED_BREAKS, verify_company};
 

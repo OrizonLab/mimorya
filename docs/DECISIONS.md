@@ -13534,3 +13534,119 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - le test des deux changements croisés de l'ADR-196 n'attend que les verrous
       consultatifs (`release_after_advisory`) ;
     - chaque test des durées de rétention part de celles de la plateforme.
+
+## ADR-198 — Journal d'audit gardé cinq ans, sa vérification avec (lot 67b)
+
+- **Statut** : accepté (2026-11-11) · complète ADR-178, ADR-181, ADR-185 et ADR-197.
+- **Contexte** : DATA_MODEL §5 garde le journal d'audit cinq ans (conformité), mais rien
+  ne l'appliquait. Sa chaîne (ADR-178) se vérifie de place en place depuis la première.
+  En dépendent : la vérification à la demande (ADR-179), celle de l'exploitant (ADR-180),
+  le scellement et ses ancres, l'export vers le SIEM (ADR-181). Supprimer simplement des
+  entrées ne laisserait de la chaîne qu'une suite de places manquantes. L'adversaire de
+  l'ADR-178 est celui qui a la base sans la clé (propriétaire, DBA, sauvegarde modifiée).
+  Il ne doit pas pouvoir faire passer une suppression pour une purge.
+- **Décision** :
+  - **cinq ans, durée de la plateforme**, comme pour la consommation (ADR-197) : une
+    entreprise ne raccourcit pas sa propre trace, et personne ne la garde au-delà ;
+  - **seul un préfixe de la chaîne part**, depuis sa première place, tant que chaque
+    place :
+    - a plus de cinq ans, à la date que scelle son sceau ;
+    - suit la précédente, sans trou ni doublon ;
+    - porte son sceau, recalculé depuis le début courant.
+
+    La dernière place scellée ne part jamais : elle reste la tête du scellement. Une
+    entrée encore à sceller ne part jamais non plus. Une entrée récente, une place
+    manquante ou une entrée altérée arrête la purge, et la vérification continue de les
+    montrer ;
+
+  - **la purge revient au processus qui a la clé**. La passe horaire de rétention
+    (`services/audit_chain/purge.rs`) prend les entreprises dont la première place a cinq
+    ans (`system_audit_purge_candidates`, la plus ancienne d'abord). Pour chacune, dans sa
+    transaction et sous le verrou de sa chaîne (celui du scellement), elle vérifie les
+    sceaux. Elle juge l'âge à sa propre horloge et à celle de la base, en prenant
+    l'horizon le plus ancien des deux : le propriétaire de la base, qui tient son horloge
+    et peut masquer son `now()`, peut retenir la purge, jamais l'étendre à des places
+    récentes. Elle confie ensuite la suppression à `system_purge_old_audit_entries`,
+    fonction `SECURITY DEFINER`. Celle-ci refuse d'agir hors de la transaction de
+    l'entreprise nommée, comme le scellement. Elle revérifie sous le même verrou ce que
+    la base peut voir : la position du début, la contiguïté, l'âge, la tête après les
+    places, le sceau gardé, le décompte, au plus 5 000 places (une seule constante côté
+    Rust, `MAX_PURGE_BATCH`, que les tests confrontent à la borne de la base). Elle refuse
+    et ne supprime rien si l'un de ces points ne tient pas. Elle écrit ensuite dans le journal de l'entreprise une entrée
+    `audit.purged` (`entries`, `throughPlace`), scellée à son tour. La passe procède par
+    lots de 5 000, vingt au plus ; une entreprise en échec n'arrête pas les autres. Sans
+    clé maître, rien n'est scellé, ni purgé ;
+  - **son début, gardé et scellé** dans `audit_chain_starts` :
+    - ce qui est gardé : la première place, le sceau de la place d'avant (la dernière
+      supprimée) et le nombre de places parties ;
+    - le sceau du début : un HMAC sous la clé de la chaîne, dans un domaine à part,
+      couvrant l'entreprise et ces trois valeurs. L'encodage est épinglé par un vecteur de
+      test calculé hors du code ;
+    - la table est lue par l'application (RLS) et écrite par la seule fonction de purge ;
+      un déclencheur ne laisse le début qu'avancer.
+
+    Un début dont le sceau ne tient pas, écrit ou déplacé sans la clé, est **tenu pour
+    absent**, et c'est journalisé. La vérification compte alors manquantes les places
+    d'avant, comme les ancres qui s'y trouvent. Le scellement refuse de continuer après
+    une place qu'il se rappelait. La purge ne supprime plus rien ;
+
+  - **la vérification part de ce début** : la première place attendue est la sienne, et
+    son sceau se calcule depuis le sceau gardé. Une ancre à la place d'avant (la veille)
+    est vérifiée contre ce sceau. Une ancre plus ancienne est dite partie avec ses places
+    (`purged`), sans faire échouer la vérification. Une seule règle, `Start::place`
+    (`start.rs`), en décide pour la vérification, le scellement et l'export. Le rapport
+    donne la première place et le nombre de places parties ;
+  - **le scellement continue** : une place qu'un processus se rappelait (ADR-178), partie
+    depuis avec les plus anciennes, n'est pas un recul de la chaîne. Si elle est à la
+    veille du début, elle doit porter le sceau gardé ;
+  - **l'export vers le SIEM suit le début** :
+    - la veille du début reste partagée par le sceau gardé : le SIEM qui la donne lit à
+      partir du début ;
+    - une place plus ancienne est refusée (409) comme partie avec les plus anciennes, le
+      refus donnant le début (`firstPlace`) et la dernière place (`lastPlace`). Le SIEM
+      reprend alors depuis le début du journal, qui est sa première place ;
+    - un début non scellé reste absent : le refus est celui d'une chaîne restaurée en
+      deçà.
+- **Conséquences** :
+  - ce qu'on ne saurait plus dire d'une place supprimée part avec elle. La purge
+    n'emporte pourtant que des places dont le sceau tient au moment de partir. Une
+    altération plus ancienne arrête la purge au lieu de disparaître ;
+  - qui a la base sans la clé ne peut plus faire passer une suppression pour une purge :
+    il ne sait ni écrire un début, ni en déplacer un. La seule purge qu'il obtienne de la
+    fonction est celle de places de plus de cinq ans sous un sceau qu'aucune clé n'a
+    fait, et la vérification la montre comme des places manquantes ;
+  - l'onglet « Journal d'audit » nomme l'ancre partie (`purged`). Il ne montre pas encore
+    le début de la chaîne, qui viendra avec son test de bout en bout ;
+  - tests :
+    - `crates/api/tests/audit_retention.rs` :
+      - sans la clé, rien ne part ;
+      - avec elle, les places de plus de cinq ans partent et l'entreprise en est informée ;
+      - la chaîne, scellée à nouveau, tient depuis son début ;
+      - ancres : celle d'une place partie est dite partie ; celles de la veille du début et
+        d'après sont tenues ; une ancre à la veille avec un autre sceau ne tient pas ;
+      - une entrée récente, une place manquante, une entrée altérée, la dernière place
+        scellée et une entrée à sceller arrêtent la purge ;
+      - un processus qui se rappelait une place partie scelle encore ;
+      - l'application n'écrit aucun début ;
+    - `audit_retention_trust.rs` :
+      - une purge en plusieurs instructions fait avancer le début, avec un nouveau sceau,
+        le décompte cumulé et chaque instruction annoncée ;
+      - un début écrit ou déplacé par le propriétaire sans la clé ne tient pas : places et
+        ancres manquantes, scellement refusé, purge arrêtée ;
+      - le propriétaire ne fait pas reculer un début ;
+      - la base refuse une purge qu'elle ne ferait pas, ou demandée hors de la transaction
+        de l'entreprise ;
+      - aucune des deux horloges ne fait partir une place que l'autre juge récente ;
+    - `audit_retention_export.rs` : le SIEM lit au-delà d'une purge depuis la veille, est
+      refusé avant elle avec le début donné, puis reprend depuis le début ;
+    - tests unitaires : `purge/tests.rs` (le préfixe qui part), `start.rs`, `digest.rs`
+      (sceau du début épinglé), `verify.rs`, `heads.rs`, `audit_export/reading.rs`,
+      `bin/admin/report.rs` ;
+    - contre-épreuves : sans contrôle du sceau du début, sans vérification des sceaux par
+      la purge, avec l'horloge de la base seule ou sans le contrôle de l'entreprise de la
+      transaction, les tests correspondants échouent ;
+  - suites de l'audit de la PR #246 :
+    - une passe purge un arriéré de consommation en plusieurs instructions
+      (`a_pass_takes_a_backlog_over_several_statements`). Le test échouerait si le lot de
+      l'application dépassait la borne de la base ;
+    - la carte du dépôt nomme `retention_batches.rs`.

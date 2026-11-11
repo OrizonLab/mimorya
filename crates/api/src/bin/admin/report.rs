@@ -1,8 +1,9 @@
 //! What `mimorya-admin verify-audit` tells the operator of each company's
 //! audit chain (ADR-178): entries verified, entries still to seal, the last
-//! place and its seal, the breaks (missing places as ranges) and what each
-//! anchor finds; and what it found wrong over all companies, which fails
-//! the command.
+//! place and its seal, where the chain starts once its oldest places went
+//! (ADR-198), the breaks (missing places as ranges) and what each anchor
+//! finds; and what it found wrong over all companies, which fails the
+//! command.
 
 use anyhow::bail;
 use mimorya_api::services::audit_chain::{
@@ -20,10 +21,7 @@ pub struct Tally {
 impl Tally {
     pub fn count(&mut self, report: &ChainReport) {
         self.broken += usize::from(report.broken > 0);
-        let missed = report
-            .anchors
-            .iter()
-            .filter(|found| **found != AnchorFound::Held);
+        let missed = report.anchors.iter().filter(|found| !found.holds());
         self.unanchored += missed.count();
     }
 
@@ -50,6 +48,12 @@ pub fn told(company: &str, report: &ChainReport, anchors: &[&Anchor]) -> String 
         "{company} : {} entrée(s) vérifiée(s), {} à sceller",
         report.verified, report.unsealed
     );
+    if let Some(start) = &report.start {
+        line.push_str(&format!(
+            " ; chaîne commencée au n° {} ({} entrée(s) de plus de cinq ans supprimée(s))",
+            start.first_seq, start.purged_entries
+        ));
+    }
     if let Some(head) = &report.head {
         line.push_str(&format!(
             " ; dernier sceau, n° {} : {}",
@@ -81,6 +85,9 @@ pub fn told(company: &str, report: &ChainReport, anchors: &[&Anchor]) -> String 
             AnchorFound::Held => "retrouvée",
             AnchorFound::Differs => "AUTRE SCEAU à cette place (chaîne scellée à nouveau)",
             AnchorFound::Missing => "ABSENTE (fin de chaîne retirée, ou sceaux retirés)",
+            AnchorFound::Purged => {
+                "avant le début de la chaîne (entrées de plus de cinq ans supprimées)"
+            }
         });
     }
     line
@@ -88,6 +95,7 @@ pub fn told(company: &str, report: &ChainReport, anchors: &[&Anchor]) -> String 
 
 #[cfg(test)]
 mod tests {
+    use mimorya_api::services::audit_chain::Start;
     use mimorya_db::repositories::audit_chain::ChainHead;
 
     use super::*;
@@ -100,6 +108,7 @@ mod tests {
                 chain_seq: 2,
                 chain_hash: vec![0xab; 32],
             }),
+            start: None,
             broken: broken.len() as i64,
             breaks: broken,
             anchors,
@@ -140,6 +149,23 @@ mod tests {
         assert!(anchored.contains("ancre n° 1 : retrouvée"));
         assert!(anchored.contains("ancre n° 2 : AUTRE SCEAU"));
         assert!(anchored.contains("ancre n° 9 : ABSENTE"));
+    }
+
+    #[test]
+    fn tells_where_a_purged_chain_starts_and_its_anchors_gone_with_it() {
+        let mut purged = report(Vec::new(), vec![AnchorFound::Purged]);
+        purged.start = Some(Start {
+            first_seq: 41,
+            previous_hash: vec![0xef; 32],
+            purged_entries: 40,
+        });
+        let line = told("acme", &purged, &[&anchor(7)]);
+        assert!(line.contains("chaîne commencée au n° 41 (40 entrée(s) de plus de cinq ans"));
+        assert!(line.contains("ancre n° 7 : avant le début de la chaîne"));
+        // Gone with the oldest places, it fails nothing.
+        let mut tally = Tally::default();
+        tally.count(&purged);
+        assert!(tally.finish().is_ok());
     }
 
     #[test]

@@ -10,7 +10,11 @@
 //! no longer the one given, is refused (409) with the chain's last place
 //! (`lastPlace` in its details), the token's use noted all the same. The chain
 //! was restored behind the SIEM, which resumes from a place it still shares
-//! with it rather than miss what was sealed again.
+//! with it rather than miss what was sealed again. Once the chain's oldest
+//! places went, five years old (ADR-198), the place before its start (its
+//! start holding its seal) is still shared, by the seal kept there; a place
+//! before that is refused as gone with them (`firstPlace` in the details),
+//! and the SIEM resumes from the start, the chain's first place now.
 //! Reading is noted on the token (when it was last used), not in the audit
 //! log, which each read would otherwise grow. A server without a master key
 //! seals nothing, and exports nothing.
@@ -26,7 +30,7 @@ use uuid::Uuid;
 
 use crate::config::AppConfig;
 use crate::contract::{AuditExport, ExportedAuditEntry};
-use crate::services::audit_chain::hex;
+use crate::services::audit_chain::{ChainKey, Place, Start, chain_start, hex};
 
 use super::tokens::EXPORT_TOKENS;
 
@@ -65,9 +69,10 @@ pub async fn export_audit_log(
     now: DateTime<Utc>,
 ) -> anyhow::Result<AuditExport> {
     let (tenant_id, token_id) = token_company(db, token).await?;
-    if config.secrets.is_none() {
+    let Some(cipher) = config.secrets.as_deref() else {
         return Err(DomainError::unavailable(UNSEALED).into());
-    }
+    };
+    let key = ChainKey::of(cipher)?;
     let limit = page.limit.clamp(1, MAX_PAGE);
     let mut tx = db.begin(tenant_id).await?;
     // Removed meanwhile, the token reads nothing.
@@ -78,7 +83,12 @@ pub async fn export_audit_log(
         Resume::Start => 0,
         Resume::After { place, seal } => {
             let held = audit_seal_at(&mut tx, place).await?;
-            if let Some(unshared) = unshared(held.as_deref(), seal) {
+            // Not held: perhaps gone with the oldest places.
+            let start = match held {
+                Some(_) => None,
+                None => chain_start(&mut tx, &key, tenant_id).await?,
+            };
+            if let Some(unshared) = unshared(held.as_deref(), start.as_ref(), place, seal) {
                 let last = audit_chain_head(&mut tx)
                     .await?
                     .map_or(0, |head| head.chain_seq);
@@ -118,25 +128,52 @@ enum Unshared {
     Gone,
     /// It holds another seal there.
     Changed,
+    /// It went with the oldest places: the chain starts at `first`.
+    Purged { first: i64 },
 }
 
-/// Whether the chain, holding `held` at the place the SIEM resumes after,
-/// still shares it with the SIEM, which gives `given` (any case).
-fn unshared(held: Option<&[u8]>, given: &str) -> Option<Unshared> {
-    match held {
-        None => Some(Unshared::Gone),
-        Some(held) if !given.eq_ignore_ascii_case(&hex(held)) => Some(Unshared::Changed),
-        Some(_) => None,
+/// Whether the chain, holding `held` at the place `place` the SIEM resumes
+/// after, or starting at `start`, still shares it with the SIEM, which
+/// gives `given` (any case).
+fn unshared(
+    held: Option<&[u8]>,
+    start: Option<&Start>,
+    place: i64,
+    given: &str,
+) -> Option<Unshared> {
+    let same = |seal: &[u8]| given.eq_ignore_ascii_case(&hex(seal));
+    if let Some(held) = held {
+        return (!same(held)).then_some(Unshared::Changed);
+    }
+    let Some(start) = start else {
+        return Some(Unshared::Gone);
+    };
+    match start.place(place, same) {
+        Place::Eve { held: true } => None,
+        Place::Eve { held: false } => Some(Unshared::Changed),
+        Place::Purged => Some(Unshared::Purged {
+            first: start.first_seq,
+        }),
+        Place::InChain => Some(Unshared::Gone),
     }
 }
 
 impl Unshared {
     /// The refusal of a read after `after`, the chain counting `last` places,
-    /// which its details give the SIEM (`lastPlace`).
+    /// which its details give the SIEM (`lastPlace`), and where it starts
+    /// once its oldest places went (`firstPlace`).
     fn refusal(self, after: i64, last: i64) -> DomainError {
         let what = match self {
             Unshared::Gone => format!("ne compte plus la place {after}"),
             Unshared::Changed => format!("ne porte plus ce sceau à la place {after}"),
+            Unshared::Purged { first } => {
+                return DomainError::conflict(format!(
+                    "Le journal d’audit ne garde plus la place {after} : ses entrées de plus de \
+                     cinq ans ont été supprimées et il commence aujourd’hui à la place {first}. \
+                     Reprenez depuis son début."
+                ))
+                .with_details(json!({ "lastPlace": last, "firstPlace": first }));
+            }
         };
         DomainError::conflict(format!(
             "Le journal d’audit {what} : il a été restauré en deçà et compte aujourd’hui \
@@ -154,11 +191,12 @@ mod tests {
     #[test]
     fn a_place_the_chain_no_longer_shares_is_refused_with_its_last_place() {
         let seal = [0xab_u8; 32];
-        assert_eq!(unshared(Some(&seal), &"ab".repeat(32)), None);
-        assert_eq!(unshared(Some(&seal), &"AB".repeat(32)), None);
-        let changed = unshared(Some(&seal), &"cd".repeat(32));
+        let given = "ab".repeat(32);
+        assert_eq!(unshared(Some(&seal), None, 4, &given), None);
+        assert_eq!(unshared(Some(&seal), None, 4, &"AB".repeat(32)), None);
+        let changed = unshared(Some(&seal), None, 4, &"cd".repeat(32));
         assert_eq!(changed, Some(Unshared::Changed));
-        assert_eq!(unshared(None, &"ab".repeat(32)), Some(Unshared::Gone));
+        assert_eq!(unshared(None, None, 9, &given), Some(Unshared::Gone));
         let refusal = Unshared::Changed.refusal(4, 3);
         assert_eq!(refusal.details, Some(json!({ "lastPlace": 3 })));
         let refused = refusal.message;
@@ -172,5 +210,39 @@ mod tests {
         );
         let gone = Unshared::Gone.refusal(9, 3).message;
         assert!(gone.contains("ne compte plus la place 9"), "{gone}");
+    }
+
+    #[test]
+    fn past_a_purge_the_eve_of_the_start_is_shared_an_earlier_place_gone_with_it() {
+        let start = Start {
+            first_seq: 10,
+            previous_hash: vec![0xab; 32],
+            purged_entries: 9,
+        };
+        let kept = "AB".repeat(32);
+        assert_eq!(unshared(None, Some(&start), 9, &kept), None);
+        let other = "cd".repeat(32);
+        assert_eq!(
+            unshared(None, Some(&start), 9, &other),
+            Some(Unshared::Changed)
+        );
+        let purged = unshared(None, Some(&start), 4, &kept);
+        assert_eq!(purged, Some(Unshared::Purged { first: 10 }));
+        // A place after the start the chain does not hold: gone as before.
+        assert_eq!(
+            unshared(None, Some(&start), 12, &kept),
+            Some(Unshared::Gone)
+        );
+        let refusal = Unshared::Purged { first: 10 }.refusal(4, 30);
+        assert_eq!(
+            refusal.details,
+            Some(json!({ "lastPlace": 30, "firstPlace": 10 }))
+        );
+        let refused = refusal.message;
+        assert!(refused.contains("ne garde plus la place 4"), "{refused}");
+        assert!(
+            refused.contains("commence aujourd’hui à la place 10"),
+            "{refused}"
+        );
     }
 }
