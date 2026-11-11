@@ -1,7 +1,7 @@
 //! How long the company keeps its idle conversations, its episodes and the
 //! personal memories of its accounts gone (`retention:manage`,
 //! company-wide, ADR-195): read with what the purge applies now and the
-//! platform's bounds, set within them.
+//! platform's bounds, set within them on the version read (ADR-196).
 
 use axum::Json;
 use axum::extract::State;
@@ -19,10 +19,11 @@ pub async fn show(
     Auth(identity): Auth,
 ) -> ApiResult<Json<RetentionView>> {
     let access = state.access.context(identity).await?;
-    let durations = company_retention(&state.db, &access).await?;
+    let retention = company_retention(&state.db, &access).await?;
     Ok(Json(RetentionView {
-        durations: durations.into_iter().map(view).collect(),
+        durations: retention.durations.into_iter().map(view).collect(),
         shortening_delay_days: SHORTENING_DELAY_DAYS,
+        version: retention.version,
     }))
 }
 
@@ -32,7 +33,7 @@ pub async fn update(
     Body(body): Body<RetentionUpdate>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    set_company_retention(&state.db, &access, body.durations()).await?;
+    set_company_retention(&state.db, &access, body.durations(), &body.replaces).await?;
     Ok(Json(Done::OK))
 }
 

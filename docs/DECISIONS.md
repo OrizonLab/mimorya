@@ -13458,3 +13458,24 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       `retention:manage` ouvre l'onglet et lit les durées ; avec `settings:manage` seul, il
       ouvre « Modèle d'IA », jamais les durées ;
     - `apps/web/e2e/navigation.spec.ts` : l'onglet se charge sans erreur.
+- **Suites (lot 66c, audit de la PR #243)** :
+  - **un changement nomme la version des durées qu'il a lues** : `GET /admin/retention`
+    donne `version`, l'empreinte de ce que l'entreprise a choisi (chaque durée et la date de
+    son choix) ; `PUT` l'exige (`replaces`) et refuse, en conflit (409), un changement fait
+    sur une autre, sous le verrou d'administration de l'entreprise, rien n'étant changé.
+    Sans cela, une page restée ouverte pendant qu'un autre administrateur changeait une
+    durée renvoyait l'ancienne avec les autres : un raccourcissement que la confirmation
+    n'avait pas nommé. La page dit le refus : les durées ont changé, la recharger. Ce que la
+    purge applique au fil des jours n'est pas dans la version : il ne fait que raccourcir, et
+    une page lue avant demande alors plus de confirmations qu'il n'en faut, jamais moins.
+    `replaces` est exigé, contrairement à celui d'une déclaration OAuth (ADR-176) : seul ce
+    formulaire écrit ces durées ;
+  - **les aides de chaque durée sont liées à son champ** (`aria-describedby`) : à qui elle
+    est, ses bornes et, s'il attend, le raccourcissement ;
+  - **l'onglet n'est ouvert qu'à qui détient `retention:manage` sur toute l'entreprise** :
+    c'est déjà le cas, la permission étant de celles qui ne valent que sur toute
+    l'entreprise (`TENANT_WIDE_PERMISSIONS`), que `/me` ne liste que détenues ainsi ;
+  - tests : `crates/api/tests/retention_durations.rs`
+    (`a_change_asked_on_durations_changed_since_is_refused`, et la version de chaque
+    changement des autres tests), `services/admin/retention.rs` (ce qui change la version),
+    `apps/web/e2e/retention.spec.ts` (une page restée ouverte n'enregistre rien et le dit).

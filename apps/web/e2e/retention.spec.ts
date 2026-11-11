@@ -4,12 +4,15 @@
 // shorter one, the day the purge applies it and what it keeps meanwhile,
 // read back once the page is reloaded. Another duration shortened, only
 // that one is asked about, not the one waiting. Back to the platform's, a
-// lengthening, it applies at once without asking. Whatever happens, the
-// platform's durations are set again. The rules themselves are tested on
-// the API (`crates/api/tests/retention_durations.rs`); who opens the tab,
-// in `retention-access.spec.ts`.
+// lengthening, it applies at once without asking. A page left open while
+// the durations change elsewhere saves nothing, and says so. Whatever
+// happens, the platform's durations are set again: their values, not their
+// origin, a duration the company chose staying its own (the API removes
+// none, ADR-196). The rules themselves are tested on the API
+// (`crates/api/tests/retention_durations.rs`); who opens the tab, in
+// `retention-access.spec.ts`.
 import type { Page } from '@playwright/test';
-import type { RetentionUpdate } from '../lib/api/contract';
+import type { RetentionUpdate, RetentionView } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 
@@ -19,23 +22,34 @@ const TAB = 'Conservation des données';
 const DELAY_DAYS = 7;
 const OWN = 'Durée choisie par votre entreprise.';
 const PLATFORM_OWN = 'Durée de la plateforme, faute d’un choix de votre entreprise.';
-const PLATFORM = {
-  conversationMonths: 24,
-  episodeMonths: 12,
-  departedDays: 30,
-} satisfies RetentionUpdate;
+const CHANGED =
+  'Les durées de conservation ont changé depuis l’ouverture de cette page : ' +
+  'rechargez-la pour voir les durées actuelles';
+
+/** Durations, as a change asks them. */
+type Durations = Omit<RetentionUpdate, 'replaces'>;
+const PLATFORM: Durations = { conversationMonths: 24, episodeMonths: 12, departedDays: 30 };
 
 /** Who the test signed in, for its cleanup. */
 const left: { paul?: Page } = {};
 
+/** `page` sets `durations` through the API, on the version it reads first. */
+async function setDurations(page: Page, durations: Durations) {
+  const read = (await (await page.request.get('/api/admin/retention')).json()) as RetentionView;
+  const set = await page.request.put('/api/admin/retention', {
+    headers: WRITE,
+    data: {
+      conversationMonths: durations.conversationMonths,
+      episodeMonths: durations.episodeMonths,
+      departedDays: durations.departedDays,
+      replaces: read.version,
+    } satisfies RetentionUpdate,
+  });
+  expect(set.status()).toBe(200);
+}
+
 test.afterEach(async () => {
-  if (left.paul) {
-    const reset = await left.paul.request.put('/api/admin/retention', {
-      headers: WRITE,
-      data: PLATFORM,
-    });
-    expect(reset.status()).toBe(200);
-  }
+  if (left.paul) await setDurations(left.paul, PLATFORM);
   left.paul = undefined;
 });
 
@@ -139,5 +153,30 @@ test('a shortening is asked first, then waits its week', async ({ page }) => {
   await expect(episodes).toHaveValue('12');
   await expect(waiting).toHaveCount(0);
   expect(sent).toHaveLength(2);
+  await noError(page);
+});
+
+test('a page left open saves nothing once the durations changed', async ({ page }) => {
+  await openAdmin(page, TAB);
+  left.paul = page;
+  const form = page.getByRole('form', { name: 'Durées de conservation' });
+  const episodes = form.getByLabel('Mémoires épisodiques (mois)');
+  const departed = form.getByLabel('Mémoires personnelles d’un compte désactivé (jours)');
+  await expect(departed).toHaveValue('30');
+
+  // Meanwhile, the departed accounts' memories are shortened elsewhere.
+  await setDurations(page, { ...PLATFORM, departedDays: 20 });
+
+  // On what it read, the page shortens the episodes: it would send the
+  // departed accounts' 30 days back. Refused and said; nothing changes.
+  await episodes.fill('6');
+  page.once('dialog', (dialog) => void dialog.accept());
+  await form.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(form.getByText(CHANGED)).toBeVisible();
+  await page.reload();
+  await page.getByRole('tab', { name: TAB }).click();
+  await expect(episodes).toHaveValue('12');
+  await expect(departed).toHaveValue('20');
+  await expect(form.getByText(/^Raccourcie à 20 jours : la purge l’applique/)).toBeVisible();
   await noError(page);
 });

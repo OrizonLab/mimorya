@@ -124,7 +124,10 @@ pub use policy_proposals::{
 };
 pub use reset_links::send_reset_link;
 pub use rest_connectors::{NewRestConnector, create_rest_connector, read_openapi};
-pub use retention::{RetentionDuration, company_retention, set_company_retention};
+pub use retention::{
+    CompanyRetention, DURATIONS_CHANGED, RetentionDuration, company_retention,
+    set_company_retention,
+};
 pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};
 pub use skill_eval_cases::{EvalCaseInput, change_eval_case, create_eval_case, remove_eval_case};
 pub use skill_evaluations::launch_evaluation;

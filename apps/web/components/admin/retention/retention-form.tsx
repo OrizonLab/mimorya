@@ -56,6 +56,8 @@ export function RetentionForm({ data, onSaved }: { data: RetentionView; onSaved:
       conversationMonths: Number(draft.conversations),
       episodeMonths: Number(draft.episodes),
       departedDays: Number(draft.departed),
+      // What was read: refused once another changed the durations since.
+      replaces: data.version,
     } satisfies RetentionUpdate;
     if (await action.run(() => api.put(RETENTION, body))) onSaved();
   }
