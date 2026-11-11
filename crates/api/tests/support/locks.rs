@@ -28,12 +28,26 @@ pub async fn hold_rows(api: &TestApi, table: &str, ids: &[Uuid]) -> TenantTx {
 /// Waits until at least `count` lock requests are queued by connections to
 /// this test database (other databases of the cluster are ignored).
 pub async fn wait_for_waiters(api: &TestApi, count: i64) {
+    wait_for(api, count, false).await;
+}
+
+/// Waits until at least `count` advisory lock requests are queued by
+/// connections to this test database: a row some other work waits on is
+/// not counted, so the test's own waiters are.
+pub async fn wait_for_advisory_waiters(api: &TestApi, count: i64) {
+    wait_for(api, count, true).await;
+}
+
+/// Waits for `count` queued requests, advisory ones alone if `advisory`.
+async fn wait_for(api: &TestApi, count: i64, advisory: bool) {
     for _ in 0..600 {
         let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
         let waiting: i64 = sqlx::query_scalar(
             "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid \
-             where not l.granted and a.datname = current_database()",
+             where not l.granted and a.datname = current_database() \
+             and (not $1 or l.locktype = 'advisory')",
         )
+        .bind(advisory)
         .fetch_one(&mut *tx)
         .await
         .unwrap();
@@ -49,6 +63,13 @@ pub async fn wait_for_waiters(api: &TestApi, count: i64) {
 /// Waits for `count` queued requests, then releases the held rows.
 pub async fn release_after(api: &TestApi, count: i64, hold: TenantTx) {
     wait_for_waiters(api, count).await;
+    hold.commit().await.unwrap();
+}
+
+/// Waits for `count` queued advisory lock requests, then releases the
+/// held lock.
+pub async fn release_after_advisory(api: &TestApi, count: i64, hold: TenantTx) {
+    wait_for_advisory_waiters(api, count).await;
     hold.commit().await.unwrap();
 }
 

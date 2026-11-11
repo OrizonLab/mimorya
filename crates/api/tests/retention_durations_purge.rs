@@ -46,6 +46,8 @@ fn conversations_lost(retained: &Retained, tenant_id: Uuid) -> Option<i32> {
 #[ignore = "requires PostgreSQL"]
 async fn a_shortening_applies_to_memories_once_its_week_has_passed() {
     let api = TestApi::start_with(API).await;
+    // Whatever a test before left, the platform's durations.
+    clear_retention(tenant::ID).await;
     let db = &api.app.services.db;
     let neo = tenant::ID;
     let acme = companies::create(&api, "acme-durees", "admin@acme-durees.example").await;
@@ -109,6 +111,8 @@ async fn a_shortening_applies_to_memories_once_its_week_has_passed() {
 #[ignore = "requires PostgreSQL"]
 async fn conversations_go_by_their_company_s_own_duration() {
     let api = TestApi::start_with(API).await;
+    // Whatever a test before left, the platform's durations.
+    clear_retention(tenant::ID).await;
     let db = &api.app.services.db;
     let neo = tenant::ID;
     let acme =
@@ -150,6 +154,8 @@ async fn conversations_go_by_their_company_s_own_duration() {
 #[ignore = "requires PostgreSQL"]
 async fn a_batch_takes_the_oldest_of_every_company() {
     let api = TestApi::start_with(API).await;
+    // Whatever a test before left, the platform's durations.
+    clear_retention(tenant::ID).await;
     let db = &api.app.services.db;
     let neo = tenant::ID;
     let acme = companies::create(&api, "acme-lots", "admin@acme-lots.example").await;
@@ -197,6 +203,8 @@ async fn refused(db: &Database, statement: &str) -> String {
 #[ignore = "requires PostgreSQL"]
 async fn the_application_skips_neither_the_week_nor_the_bounds() {
     let api = TestApi::start_with(API).await;
+    // Whatever a test before left, the platform's durations.
+    clear_retention(tenant::ID).await;
     let db = &api.app.services.db;
     let neo = tenant::ID;
     let acme = companies::create(

@@ -4,7 +4,8 @@
 //! the platform's without its choice: a year, thirty days, twenty-four
 //! months) the episodes and the memories past their own term, the personal
 //! memories of an account disabled, the conversations idle, whole
-//! (ADR-186). What each company lost is counted, never read.
+//! (ADR-186); and the consumption past the platform's five years, which no
+//! company sets (ADR-197). What each company lost is counted, never read.
 
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -28,6 +29,14 @@ pub struct PurgedConversations {
     pub tenant_id: Uuid,
     pub conversations: i32,
     pub messages: i32,
+}
+
+/// The consumption records a company lost to a statement, older than five
+/// years.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct PurgedUsage {
+    pub tenant_id: Uuid,
+    pub records: i32,
 }
 
 /// Deletes the sessions ended thirty days ago; how many.
@@ -57,4 +66,14 @@ pub async fn purge_idle_conversations(
     .bind(batch)
     .fetch_all(pool)
     .await
+}
+
+/// Deletes the consumption records older than five years, the oldest of
+/// all the companies first, `batch` at most (the database keeps it from 1
+/// to 5000); what each company lost.
+pub async fn purge_old_usage(pool: &PgPool, batch: i32) -> sqlx::Result<Vec<PurgedUsage>> {
+    sqlx::query_as("select tenant_id, records from system_purge_old_usage($1)")
+        .bind(batch)
+        .fetch_all(pool)
+        .await
 }

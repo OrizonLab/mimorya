@@ -13487,3 +13487,50 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - une version vide est refusée comme malformée (400), plus en conflit ;
   - les aides liées à chaque champ sont vérifiées par le test de bout en bout
     (`toHaveAccessibleDescription`), avant et pendant un raccourcissement qui attend.
+
+## ADR-197 — Consommation gardée cinq ans, puis supprimée (lot 67a)
+
+- **Statut** : accepté (2026-11-11) · complète ADR-185, ADR-186 et ADR-195.
+- **Contexte** : la consommation (`usage_records`) dit, appel par appel, ce que les
+  modèles et les outils ont coûté : la facturation la lit, l'onglet « Consommation »
+  et l'export de chacun aussi (ADR-187). DATA_MODEL §5 la garde cinq ans, mais rien ne
+  l'appliquait : elle s'accumulait sans limite, contre la règle de minimisation.
+- **Décision** :
+  - **cinq ans, durée de la plateforme** : une entreprise ne règle pas celle-ci, à la
+    différence des durées de l'ADR-195. C'est une preuve de facturation : celui qui est
+    facturé ne la raccourcit pas, et personne ne la garde au-delà ;
+  - **`system_purge_old_usage(lot)`**, fonction `SECURITY DEFINER` dont la base fixe
+    l'horizon (`now() - 5 ans`) : l'application n'en nomme aucun. Elle prend les plus
+    anciennes de chaque entreprise par son propre index `(tenant_id, created_at)`, puis
+    les plus anciennes de toutes, un lot au plus (de 1 à 5 000, la base le borne). Celles
+    qu'elle choisit, elle les verrouille sans attendre (`FOR UPDATE SKIP LOCKED`) : un
+    enregistrement ne change que lorsque ce qu'il nomme part (son compte effacé, son run
+    supprimé : `user_id`, `run_id` vidés), jamais son âge ; une ligne qu'une telle écriture
+    tient est sautée, sans que l'une attende l'autre ni qu'elles se bloquent, et la passe
+    suivante la prend ;
+  - **la passe horaire de rétention** (ADR-185) l'appelle après les conversations, par
+    lots de 5 000, vingt au plus par passe ; un lot incomplet termine la purge, et la
+    passe suivante reprend un arriéré. La boucle par lots est commune aux conversations
+    et à la consommation (`in_batches`) ;
+  - **chaque entreprise informée** dans son journal d'audit, par la plateforme, dans
+    l'instruction même qui supprime : `usage.purged`, le nombre seul (`records`).
+- **Conséquences** :
+  - l'onglet « Consommation » et l'export ne montrent rien de plus de cinq ans ;
+  - la ligne « Consommation » de DATA_MODEL §5 est appliquée ; reste à venir la purge du
+    journal d'audit, qui devra garder sa vérification (ADR-178) ;
+  - tests : `crates/api/tests/retention_usage.rs` :
+    - au-delà de cinq ans, la consommation de chaque entreprise part, celle de moins de
+      cinq ans reste ;
+    - chaque entreprise est informée de son nombre ; une passe sans rien à supprimer
+      n'informe personne ;
+    - un lot prend les plus anciennes de toutes les entreprises, la plus ancienne dans
+      l'entreprise lue en second ;
+    - un lot demandé à zéro en prend un, à dix mille en prend cinq mille ;
+    - une ligne qu'une autre écriture tient est sautée sans attente, puis prise une fois
+      libérée ;
+    - la boucle par lots s'arrête sur un lot incomplet ou un échec, gardant ce que les
+      lots d'avant ont supprimé (`plugins/retention_batches.rs`).
+  - suites de l'audit de la PR #245 :
+    - le test des deux changements croisés de l'ADR-196 n'attend que les verrous
+      consultatifs (`release_after_advisory`) ;
+    - chaque test des durées de rétention part de celles de la plateforme.
