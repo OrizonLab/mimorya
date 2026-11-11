@@ -81,6 +81,10 @@ test('a shortening is asked first, then waits its week', async ({ page }) => {
     '30',
   );
   await expect(form.getByText(PLATFORM_OWN, { exact: true })).toHaveCount(3);
+  // Who reaches a field hears its help: whose it is and its bounds.
+  await expect(episodes).toHaveAccessibleDescription(
+    `${PLATFORM_OWN} De 1 à 36 mois ; plateforme : 12 mois.`,
+  );
   // The duration saved, written otherwise: nothing to save.
   await episodes.fill('012');
   await expect(save).toBeDisabled();
@@ -115,6 +119,12 @@ test('a shortening is asked first, then waits its week', async ({ page }) => {
   // Episodes alone are the company's; the others still the platform's.
   await expect(form.getByText(OWN, { exact: true })).toHaveCount(1);
   await expect(form.getByText(PLATFORM_OWN, { exact: true })).toHaveCount(2);
+  // The field's help says the waiting shortening too.
+  await expect(episodes).toHaveAccessibleDescription(
+    new RegExp(
+      `^${OWN.replace('.', '\\.')} De 1 à 36 mois ; plateforme : 12 mois\\. Raccourcie à 6 mois : `,
+    ),
+  );
 
   // Read back from the API once the page is reloaded.
   await page.reload();

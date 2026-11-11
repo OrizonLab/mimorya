@@ -94,7 +94,7 @@ pub struct RetentionUpdate {
     pub departed_days: i32,
     /// The `version` the durations were read at: refused once they changed
     /// since, what the change was asked on no longer being there.
-    #[validate(length(max = 64))]
+    #[validate(length(min = 1, max = 64))]
     pub replaces: String,
 }
 
