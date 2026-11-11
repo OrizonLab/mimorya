@@ -7,6 +7,7 @@ export { KnowledgeSharesTab } from './knowledge-shares/knowledge-shares-tab';
 export { LlmTab } from './llm/llm-tab';
 export { OrganizationTab } from './organization/organization-tab';
 export { PoliciesTab } from './policies/policies-tab';
+export { RetentionTab } from './retention/retention-tab';
 export { RolesTab } from './roles/roles-tab';
 export { SkillsTab } from './skills/skills-tab';
 export { TabBar } from './tab-bar';

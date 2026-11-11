@@ -11,6 +11,7 @@ import type {
   OccurrenceOutcome,
   OrgUnitType,
   ProposalStatus,
+  RetentionUnitName,
   Sensitivity,
   SkillStatus,
   SkillVersionStatus,
@@ -243,3 +244,9 @@ export const GATEWAY_LABELS: Record<string, string> = {
 export function gatewayLabel(gateway: string): string {
   return GATEWAY_LABELS[gateway] ?? gateway;
 }
+
+/** The units of a retention duration (ADR-196): one, and more than one. */
+export const RETENTION_UNITS: Record<RetentionUnitName, { one: string; many: string }> = {
+  months: { one: 'mois', many: 'mois' },
+  days: { one: 'jour', many: 'jours' },
+};
