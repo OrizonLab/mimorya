@@ -22,7 +22,7 @@ function rows(text, pattern) {
 /** The tests a `playwright test --list` output names, as many as its total says. */
 export function listed(text) {
   const found = rows(text, LISTED);
-  const total = /^Total: (\d+) tests? in \d+ files?$/m.exec(text);
+  const total = /^Total: (\d+) tests? in \d+ files?$/m.exec(text.split('\n').map(clean).join('\n'));
   if (!total || Number(total[1]) !== found.length) {
     throw new Error(`${found.length} tests read, not the total Playwright gives`);
   }
