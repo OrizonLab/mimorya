@@ -14,8 +14,7 @@ SET search_path = public, pg_temp
 AS $$
   WITH candidates AS (
     -- Each company's oldest, through its own index (tenant, time), then
-    -- the oldest of them all, a batch at most. Records are only ever
-    -- added: none to lock against a writer.
+    -- the oldest of them all, a batch at most, unlocked.
     SELECT picked.tenant_id, picked.id
       FROM tenants t
       CROSS JOIN LATERAL (
@@ -29,10 +28,21 @@ AS $$
      ORDER BY picked.created_at
      LIMIT least(greatest(p_batch, 1), 5000)
   ),
+  -- Those alone locked, as they were chosen. A record is changed only when
+  -- what it names goes (its account erased, its run deleted: `user_id`,
+  -- `run_id` emptied), its age never; one such a change holds is skipped,
+  -- never waited on, so that neither waits for the other: the batch comes
+  -- back short, and the next pass takes it.
+  chosen AS (
+    SELECT u.tenant_id, u.id
+      FROM usage_records u
+      JOIN candidates k ON k.tenant_id = u.tenant_id AND k.id = u.id
+     FOR UPDATE OF u SKIP LOCKED
+  ),
   deleted AS (
     DELETE FROM usage_records u
-     USING candidates k
-     WHERE u.tenant_id = k.tenant_id AND u.id = k.id
+     USING chosen
+     WHERE u.tenant_id = chosen.tenant_id AND u.id = chosen.id
     RETURNING u.tenant_id
   ),
   lost AS (

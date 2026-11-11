@@ -14,6 +14,7 @@ pub mod rate_limit;
 pub mod refusal_audit;
 pub mod request_context;
 pub mod retention;
+mod retention_batches;
 pub mod run_event_relay;
 pub mod run_leases;
 pub mod run_queue;

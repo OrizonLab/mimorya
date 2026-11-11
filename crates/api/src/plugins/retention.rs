@@ -9,7 +9,6 @@
 //! platform in the deletion's own statement: how many, and why, never what
 //! they said.
 
-use std::future::Future;
 use std::time::Duration;
 
 use mimorya_db::Database;
@@ -18,7 +17,8 @@ use mimorya_db::repositories::retention::{
     purge_idle_conversations, purge_old_usage, purge_retained_memories,
 };
 use tokio::time::Instant;
-use uuid::Uuid;
+
+use super::retention_batches::{Lost, in_batches};
 
 /// The name of the pass's lock: one process at a time (ADR-086).
 pub const RETENTION_SWEEP: &str = "retention";
@@ -139,79 +139,6 @@ pub async fn apply_retention(db: &Database) -> anyhow::Result<Option<Retained>> 
         conversations,
         usage,
     }))
-}
-
-/// What a company lost to a purge that goes a batch at a time.
-trait Lost {
-    fn tenant_id(&self) -> Uuid;
-    /// What the batch size counts.
-    fn count(&self) -> i32;
-    /// Adds what the same company lost to another statement.
-    fn add(&mut self, other: &Self);
-}
-
-impl Lost for PurgedConversations {
-    fn tenant_id(&self) -> Uuid {
-        self.tenant_id
-    }
-
-    fn count(&self) -> i32 {
-        self.conversations
-    }
-
-    fn add(&mut self, other: &Self) {
-        self.conversations += other.conversations;
-        self.messages += other.messages;
-    }
-}
-
-impl Lost for PurgedUsage {
-    fn tenant_id(&self) -> Uuid {
-        self.tenant_id
-    }
-
-    fn count(&self) -> i32 {
-        self.records
-    }
-
-    fn add(&mut self, other: &Self) {
-        self.records += other.records;
-    }
-}
-
-/// What `purge` deleted a batch of `size` at a time, while a batch comes
-/// back full and the pass has `batches` statements left: each company
-/// once, what it lost in all. A failed statement ends it, logged as `what`.
-async fn in_batches<T, F, Fut>(what: &str, batches: usize, size: i32, mut purge: F) -> Vec<T>
-where
-    T: Lost,
-    F: FnMut() -> Fut,
-    Fut: Future<Output = sqlx::Result<Vec<T>>>,
-{
-    let mut lost: Vec<T> = Vec::new();
-    for _ in 0..batches {
-        let batch = match purge().await {
-            Ok(batch) => batch,
-            Err(error) => {
-                tracing::warn!(error = %error, "{what} purge failed");
-                break;
-            }
-        };
-        let deleted: i32 = batch.iter().map(Lost::count).sum();
-        for company in batch {
-            match lost
-                .iter_mut()
-                .find(|known| known.tenant_id() == company.tenant_id())
-            {
-                Some(known) => known.add(&company),
-                None => lost.push(company),
-            }
-        }
-        if deleted < size {
-            break;
-        }
-    }
-    lost
 }
 
 #[cfg(test)]

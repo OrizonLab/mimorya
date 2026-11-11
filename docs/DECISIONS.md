@@ -13502,8 +13502,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **`system_purge_old_usage(lot)`**, fonction `SECURITY DEFINER` dont la base fixe
     l'horizon (`now() - 5 ans`) : l'application n'en nomme aucun. Elle prend les plus
     anciennes de chaque entreprise par son propre index `(tenant_id, created_at)`, puis
-    les plus anciennes de toutes, un lot au plus (de 1 à 5 000, la base le borne). Aucun
-    verrou de ligne : un enregistrement n'est jamais modifié, seulement ajouté ;
+    les plus anciennes de toutes, un lot au plus (de 1 à 5 000, la base le borne). Celles
+    qu'elle choisit, elle les verrouille sans attendre (`FOR UPDATE SKIP LOCKED`) : un
+    enregistrement ne change que lorsque ce qu'il nomme part (son compte effacé, son run
+    supprimé : `user_id`, `run_id` vidés), jamais son âge ; une ligne qu'une telle écriture
+    tient est sautée, sans que l'une attende l'autre ni qu'elles se bloquent, et la passe
+    suivante la prend ;
   - **la passe horaire de rétention** (ADR-185) l'appelle après les conversations, par
     lots de 5 000, vingt au plus par passe ; un lot incomplet termine la purge, et la
     passe suivante reprend un arriéré. La boucle par lots est commune aux conversations
@@ -13521,7 +13525,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       n'informe personne ;
     - un lot prend les plus anciennes de toutes les entreprises, la plus ancienne dans
       l'entreprise lue en second ;
-    - un lot demandé à zéro en prend un.
+    - un lot demandé à zéro en prend un, à dix mille en prend cinq mille ;
+    - une ligne qu'une autre écriture tient est sautée sans attente, puis prise une fois
+      libérée ;
+    - la boucle par lots s'arrête sur un lot incomplet ou un échec, gardant ce que les
+      lots d'avant ont supprimé (`plugins/retention_batches.rs`).
   - suites de l'audit de la PR #245 :
     - le test des deux changements croisés de l'ADR-196 n'attend que les verrous
       consultatifs (`release_after_advisory`) ;

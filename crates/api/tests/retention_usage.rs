@@ -3,18 +3,23 @@
 //! of them all first, a batch at a time; younger ones stay. Each company
 //! that lost records finds how many in its own audit log, by the platform;
 //! a pass with nothing to delete tells no one. The horizon is the
-//! database's: the application names none. The tests start a process
-//! without maintenance: they run the passes themselves.
+//! database's: the application names none, and the database bounds the
+//! batch. A record another write holds (its account erased, its run
+//! deleted) is skipped, never waited on, and taken by the next pass. The
+//! tests start a process without maintenance: they run the passes
+//! themselves.
 
 mod support;
+
+use std::time::Duration;
 
 use mimorya_api::plugins::retention::apply_retention;
 use mimorya_core::demo::tenant;
 use mimorya_db::repositories::retention::{PurgedUsage, purge_old_usage};
 use serde_json::json;
 use support::queue::API;
-use support::retention::purged_entries;
-use support::usage_records::{usage_left, usage_record};
+use support::retention::{owner, purged_entries};
+use support::usage_records::{usage_left, usage_record, usage_records};
 use support::{TestApi, companies};
 use uuid::Uuid;
 
@@ -97,4 +102,51 @@ async fn a_batch_takes_the_oldest_of_all_the_companies() {
     let none_asked = purge_old_usage(db.pool(), 0).await.unwrap();
     assert_eq!(lost(&none_asked), [(neo, 1)]);
     assert!(usage_left("lot-conso-").await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_batch_is_five_thousand_records_at_most() {
+    let api = TestApi::start_with(API).await;
+    let db = &api.app.services.db;
+    usage_records(tenant::ID, "borne-conso", 5001, 61).await;
+
+    let asked_more = purge_old_usage(db.pool(), 10_000).await.unwrap();
+    assert_eq!(lost(&asked_more), [(tenant::ID, 5000)]);
+    let rest = purge_old_usage(db.pool(), 10_000).await.unwrap();
+    assert_eq!(lost(&rest), [(tenant::ID, 1)]);
+    assert!(usage_left("borne-conso").await.is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_record_another_write_holds_is_skipped_then_taken() {
+    let api = TestApi::start_with(API).await;
+    let db = &api.app.services.db;
+    usage_record(tenant::ID, "verrou-conso-tenu", 61).await;
+    usage_record(tenant::ID, "verrou-conso-libre", 61).await;
+
+    // An erasure or a run's deletion holds one, as it empties what it
+    // names.
+    let owner = owner().await;
+    let mut hold = owner.begin().await.unwrap();
+    sqlx::query("select id from usage_records where model = 'verrou-conso-tenu' for update")
+        .fetch_all(&mut *hold)
+        .await
+        .unwrap();
+
+    // The purge waits on nothing: the free one goes, the held one stays.
+    let batch = tokio::time::timeout(Duration::from_secs(10), purge_old_usage(db.pool(), 10))
+        .await
+        .expect("the purge waited on a held record")
+        .unwrap();
+    assert_eq!(lost(&batch), [(tenant::ID, 1)]);
+    assert_eq!(usage_left("verrou-conso").await, ["verrou-conso-tenu"]);
+
+    // Released, the next takes it.
+    hold.commit().await.unwrap();
+    let next = purge_old_usage(db.pool(), 10).await.unwrap();
+    assert_eq!(lost(&next), [(tenant::ID, 1)]);
+    assert!(usage_left("verrou-conso").await.is_empty());
+    owner.close().await;
 }
