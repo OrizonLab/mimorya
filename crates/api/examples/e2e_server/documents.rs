@@ -1,7 +1,6 @@
 //! Questions on the company's documents (ADR-096), as the end-to-end model
-//! plays them: recognised by their question, they are answered apart, so
-//! that the reference scenarios queued for conversations keep their order
-//! (`documents.spec.ts`). The model searches the documents, then answers
+//! plays them: recognised by their question, they are answered apart, not
+//! with the reference scenario (`documents.spec.ts`). The model searches the documents, then answers
 //! from the passage found, which the conversation cites.
 
 use std::sync::Arc;

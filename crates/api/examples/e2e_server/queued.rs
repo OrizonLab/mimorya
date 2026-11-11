@@ -3,7 +3,7 @@
 //! `api` process queues it. A lock on the run, held from the start, keeps
 //! the server's queue from claiming it until Marc's browser has followed
 //! it for a while; then the queue claims it, and the model answers it apart
-//! (`WithQueued`), so that the reference scenarios keep their order.
+//! (`WithQueued`), not with the reference scenario.
 
 use std::sync::Arc;
 use std::time::Duration;

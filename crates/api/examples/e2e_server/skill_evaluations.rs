@@ -1,7 +1,7 @@
 //! A skill's version tried on its case (ADR-104, ADR-105), as the
 //! end-to-end model plays it: recognised by the case's request, it is
-//! answered apart, so that the reference scenarios queued for
-//! conversations keep their order (`skill-evaluations.spec.ts`). The agent
+//! answered apart, not with the reference scenario
+//! (`skill-evaluations.spec.ts`). The agent
 //! loads the skill, then answers as the version played says: the version
 //! that says to cite no delay makes it answer without one, which the judge
 //! fails, while the active version passes. A regression.

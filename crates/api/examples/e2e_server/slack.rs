@@ -1,8 +1,7 @@
 //! What a person writes to the company's Slack application (ADR-127,
 //! ADR-128), as the end-to-end model plays it: recognised by its first
-//! question, the conversation is answered apart, so that the reference
-//! scenarios queued for conversations keep their order
-//! (`slack-conversations.spec.ts`). Its follow-up, written in the thread,
+//! question, the conversation is answered apart, not with the reference
+//! scenario (`slack-conversations.spec.ts`). Its follow-up, written in the thread,
 //! is answered from what came before.
 
 use std::sync::Arc;

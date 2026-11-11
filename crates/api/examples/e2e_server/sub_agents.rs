@@ -1,7 +1,6 @@
 //! A question handed to a sub-agent (ADR-098), as the end-to-end model
-//! plays it: recognised by its question, it is answered apart, so that the
-//! reference scenarios queued for conversations keep their order
-//! (`sub-agents.spec.ts`). The model hands a research to a sub-agent, which
+//! plays it: recognised by its question, it is answered apart, not with the
+//! reference scenario (`sub-agents.spec.ts`). The model hands a research to a sub-agent, which
 //! searches the documents and returns its summary, then answers from it.
 
 use std::sync::Arc;

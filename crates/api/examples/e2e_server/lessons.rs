@@ -1,7 +1,6 @@
 //! The rereading of finished runs (ADR-076), as the end-to-end model plays
 //! it: recognised by its instructions, it is answered apart, always with the
-//! same lesson, so that the reference scenarios queued for conversations
-//! keep their order whichever runs a company has reread (`lessons.spec.ts`).
+//! same lesson, not with the reference scenario (`lessons.spec.ts`).
 
 use std::sync::Arc;
 
