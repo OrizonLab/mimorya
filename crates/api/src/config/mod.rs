@@ -203,6 +203,7 @@ impl AppConfig {
             allow_stdio: reader.boolean("MIMORYA_MCP_ALLOW_STDIO", false),
             proxy: reader.outbound_proxy(allow_private_network),
             test_servers: &[],
+            test_roots: &[],
         };
         let start_seconds = reader.parsed("MIMORYA_MCP_START_TIMEOUT_SECS", 20_u64);
         if !(1..=120).contains(&start_seconds) {

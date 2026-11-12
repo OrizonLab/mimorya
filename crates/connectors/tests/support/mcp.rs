@@ -22,6 +22,7 @@ pub const PRIVATE: NetworkPolicy = NetworkPolicy {
     allow_stdio: false,
     proxy: None,
     test_servers: &[],
+    test_roots: &[],
 };
 
 /// A server reached over HTTP, its tools prefixed `docs`.

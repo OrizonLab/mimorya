@@ -5,9 +5,13 @@
 //! reached: the platform cannot hold its public-only rule, and a proxy is
 //! accepted only where the operator lifted it. Its credentials, if its
 //! address holds any, are never written: only its scheme, host and port are.
+//! The connections of the mail servers (ADR-205) go through it as the HTTP
+//! client's requests do, its bypass matched by the same rules (hyper-util's,
+//! which reqwest applies).
 
 use std::fmt;
 
+use hyper_util::client::proxy::matcher::{Intercept, Matcher};
 use reqwest_mcp::{NoProxy, Proxy};
 use url::Url;
 
@@ -18,6 +22,8 @@ const MAX_PROXY_CHARS: usize = 2000;
 pub struct OutboundProxy {
     url: Url,
     bypass: Option<String>,
+    /// Which connections go through it, as the HTTP client decides.
+    matcher: Matcher,
 }
 
 impl OutboundProxy {
@@ -43,9 +49,14 @@ impl OutboundProxy {
         if let Some(problem) = bypass.and_then(Self::bypass_problem) {
             return Err(problem.into());
         }
+        let matcher = Matcher::builder()
+            .all(url.as_str().to_string())
+            .no(bypass.unwrap_or_default().to_string())
+            .build();
         Ok(Self {
             url,
             bypass: bypass.map(str::to_string),
+            matcher,
         })
     }
 
@@ -67,6 +78,17 @@ impl OutboundProxy {
     pub(super) fn reqwest(&self) -> anyhow::Result<Proxy> {
         let bypass = self.bypass.as_deref().and_then(NoProxy::from_string);
         Ok(Proxy::all(self.url.as_str())?.no_proxy(bypass))
+    }
+
+    /// The proxy a connection to `host:port` goes through, with its
+    /// credentials; `None` when the bypass names the host.
+    pub(super) fn intercept(&self, host: &str, port: u16) -> Option<Intercept> {
+        let host = match host.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V6(_)) => format!("[{host}]"),
+            _ => host.to_string(),
+        };
+        let destination: http::Uri = format!("https://{host}:{port}").parse().ok()?;
+        self.matcher.intercept(&destination)
     }
 
     /// Its scheme, host and port: what may be written of it.

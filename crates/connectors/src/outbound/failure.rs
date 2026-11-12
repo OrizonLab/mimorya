@@ -15,6 +15,7 @@ pub const TOO_SLOW: &str = "Le serveur n’a pas répondu à temps";
 const MAX_DETAIL_CHARS: usize = 200;
 
 /// A failure's summary and the cause the transport gave.
+#[derive(Debug)]
 pub struct Cause {
     pub summary: &'static str,
     pub detail: String,

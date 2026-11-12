@@ -14100,3 +14100,86 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     reconnecte ;
   - le chantier du second facteur est complet : il reste à vérifier en conditions
     réelles la lecture du QR code par une vraie application d'authentification.
+
+## ADR-205 — Messagerie et agenda standards : IMAP, SMTP, CalDAV (chantier 3)
+
+- **Statut** : accepté (2026-11-12) · s'appuie sur ADR-025 (réseau des connecteurs),
+  ADR-116 et ADR-121 (comptes reliés), ADR-119 et ADR-123 (écriture validée), ADR-162
+  (mandataire de l'exploitant).
+- **Contexte** : beaucoup d'entreprises n'ont ni Microsoft 365 ni Google Workspace :
+  leur messagerie est chez un hébergeur (OVH, Gandi, Infomaniak, Zimbra, Nextcloud…) qui
+  parle les protocoles standards. Il n'y a pas d'OAuth : chacun se connecte avec un
+  identifiant et un mot de passe, souvent un mot de passe d'application. IMAP et SMTP
+  ne passent pas par HTTP, et la plateforme n'ouvrait jusqu'ici aucune connexion hors
+  de son client HTTP durci.
+- **Décision** :
+  - **un connecteur « Messagerie standard »** est déclaré une fois par entreprise par un
+    administrateur. La déclaration nomme son serveur IMAP, son serveur SMTP et, si
+    l'entreprise en a un, son agenda CalDAV. Elle ne contient aucun secret ;
+  - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
+    passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
+    refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM
+    sous la clé maîtresse, lié à l'entreprise, au connecteur et à la personne). Il n'est
+    jamais montré, exporté ni écrit dans un journal, et il part avec la liaison, la
+    désactivation du compte, son effacement ou la suppression de l'entreprise ;
+  - **TLS obligatoire, jamais de clair** :
+    - IMAP en TLS implicite (le port 993 habituellement) ;
+    - SMTP en TLS implicite (465) ou par STARTTLS (587). Un serveur qui n'offre pas
+      STARTTLS est refusé avant que rien ne soit envoyé, et aucun identifiant ne part
+      en clair ;
+    - CalDAV en `https://`, comme toute adresse que nomme une entreprise ;
+    - le certificat doit remonter aux racines webpki et nommer le serveur. Les racines
+      des serveurs simulés ne sont reconnues que dans les tests (`test_roots` de la
+      politique réseau, jamais lu de l'environnement) ;
+  - **réseau** : la connexion d'un serveur de messagerie suit les règles du client HTTP
+    (`outbound/tcp.rs`) :
+    - une adresse littérale privée est refusée ;
+    - un nom est résolu en adresses publiques seules, et la connexion vise ces adresses
+      mêmes ;
+    - le réseau privé ne s'ouvre que si l'exploitant le permet, et les serveurs
+      simulés des tests ne sont joints qu'à leur adresse exacte ;
+    - le mandataire de l'exploitant porte la connexion par un tunnel `CONNECT`, en clair
+      ou en TLS jusqu'à lui. Ses identifiants lui sont donnés et ne sont jamais écrits ;
+    - les hôtes que son contournement nomme sont joints sans lui, selon les règles du
+      client HTTP : le comparateur de hyper-util, celui qu'applique reqwest ;
+  - **bibliothèques** (licences MIT ou Apache-2.0, ring comme fournisseur
+    cryptographique, Rust 1.88) :
+    - `tokio-rustls` pour TLS sur la connexion que la plateforme a ouverte elle-même ;
+    - `async-imap` (Delta Chat), sans son exécuteur par défaut, pour IMAP ;
+    - `lettre`, déjà utilisé pour les e-mails de la plateforme, pour SMTP, sur la
+      connexion de la plateforme (`connect_with_transport`, STARTTLS exigé) ;
+    - `mail-parser` 0.11 (Stalwart) pour lire les messages bruts RFC 5322 : jeux de
+      caractères, mots encodés, MIME ;
+    - pour CalDAV, aucune bibliothèque mûre : un client WebDAV minimal (`PROPFIND`,
+      `REPORT` avec `expand`, `PUT`) sur le client HTTP durci, le XML lu par
+      `quick-xml`, les événements lus et écrits par la plateforme ;
+    - `rcgen` fait les certificats des serveurs simulés, dans les tests seulement ;
+  - **outils** : les mêmes que pour Gmail et Outlook :
+    - chercher et lire un e-mail, lire l'agenda ;
+    - envoyer un e-mail et créer un rendez-vous, toujours sous validation, exécutés tels
+      que validés ;
+    - la lecture est un résultat non fiable, et l'évaluation d'une compétence ne joint
+      pas ces serveurs (ADR-153) ;
+  - **découpage** :
+
+    | Lot | Contenu                                                                         |
+    | --- | ------------------------------------------------------------------------------- |
+    | 69a | Connexion TCP et TLS, tunnel, autorité des tests                                |
+    | 69b | Connexion IMAP et SMTP vérifiée, serveurs simulés                               |
+    | 69c | Déclaration par l'entreprise et identifiants scellés par personne (base et API) |
+    | 69d | Lecture IMAP                                                                    |
+    | 69e | Envoi SMTP                                                                      |
+    | 69f | Agenda CalDAV                                                                   |
+    | 69g | Écrans et tests de bout en bout                                                 |
+- **Conséquences** :
+  - un mot de passe de messagerie est un secret plus large qu'un jeton OAuth : il
+    ouvre la boîte entière, pas seulement les permissions accordées. Il n'est descellé
+    que pour une connexion d'un run de la personne servie ou pour la vérifier, et
+    l'entreprise peut ne pas déclarer ce connecteur ;
+  - sans clé maîtresse, aucun compte ne peut être relié ;
+  - un mandataire HTTP qui refuse `CONNECT` vers les ports de messagerie rend ces
+    serveurs injoignables. Le refus est dit, sans les identifiants du mandataire ;
+  - IMAP en STARTTLS (port 143) n'est pas proposé : tous les hébergeurs courants
+    offrent le port 993 ;
+  - OAuth 2.0 pour IMAP et SMTP (XOAUTH2) reste du ressort des connecteurs Microsoft 365
+    et Google Workspace.

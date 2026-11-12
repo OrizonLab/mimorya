@@ -55,6 +55,15 @@ saml-rs = { version = "=0.6.1", default-features = false, features = ["crypto-ru
 reqwest-mcp = { package = "reqwest", version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider", "stream"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 webpki-roots = "1"
+# The mail servers a company names (IMAP, SMTP; ADR-205): TLS over the
+# connection the platform opened itself, by rustls (ring, webpki roots), and
+# the operator's proxy matched as the HTTP client matches it (hyper-util,
+# the version reqwest uses).
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+hyper-util = { version = "0.1.21", default-features = false, features = ["client-proxy"] }
+http = "1"
+# Certificates of the tests' simulated mail servers, made at their start.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 schemars = { version = "1", features = ["chrono04", "uuid1"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

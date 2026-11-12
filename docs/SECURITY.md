@@ -1019,6 +1019,12 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   seulement avec le réseau privé permis : le mandataire résout les noms, et c'est à lui
   de refuser ce que la plateforme ne doit pas joindre. Ses identifiants ne sont jamais
   écrits (journaux, débogage, refus de la configuration).
+- Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
+  HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
+  et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée
+  par TLS (certificat remontant aux racines webpki et nommant le serveur) avant
+  qu'aucun identifiant ne parte ; les racines des serveurs simulés ne sont reconnues que
+  dans les tests.
 - Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais
   dans celui de l'API, lancé avec un environnement vide et borné par lui-même avant de
   rien lire (1 Gio de mémoire, 20 s de processeur, aucun fichier écrit), tué au bout de

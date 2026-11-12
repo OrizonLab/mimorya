@@ -8,7 +8,9 @@
 //! in `graph_writes`); Gmail and Google Calendar (`google`, its writes in
 //! `google_writes`); Slack's Web API (`slack`); Telegram's Bot API
 //! (`telegram`); Microsoft as a Teams bot reaches it: Entra, the Bot
-//! Framework's keys and a Teams service (`teams`).
+//! Framework's keys and a Teams service (`teams`); an authority of the tests
+//! and a server speaking TLS with its certificate, the proxy reached over
+//! TLS too (`tls`, ADR-205).
 
 mod endless;
 mod google;
@@ -24,6 +26,7 @@ mod slack;
 mod slow;
 mod teams;
 mod telegram;
+mod tls;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -47,7 +50,7 @@ pub use oauth::{
     LURE, METADATA_PATH, OAuthQuirk, ProtectedMcp, SLOW_ANSWER, Settings as AuthorizationSettings,
     SignedIn, serve_oauth_mcp_http, serve_oauth_mcp_http_on,
 };
-pub use proxy::{Proxied, serve_proxy};
+pub use proxy::{Proxied, serve_proxy, serve_tls_proxy};
 pub use quirks::{DeclaredToolsServer, HIDDEN_TEXT, Quirk};
 pub use rest::{KEY_HEADER, serve_rest_http};
 pub use slack::{
@@ -64,6 +67,7 @@ pub use telegram::{
     FakeTelegram, OTHER_BOT, OTHER_BOT_TOKEN, TELEGRAM_BOT, TELEGRAM_BOT_USERNAME, TELEGRAM_TOKEN,
     TelegramMessage, update,
 };
+pub use tls::{LOCAL_NAMES, TestAuthority, serve_tls_echo};
 
 /// Serves the demo documentation server at `http://127.0.0.1:<port>/mcp`
 /// until the process ends; returns that address.
