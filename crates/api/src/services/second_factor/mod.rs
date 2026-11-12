@@ -23,8 +23,8 @@ pub use challenge::{
     cleared_challenge_cookie, complete_challenge, open_after_password,
 };
 pub use own::{
-    OwnSecondFactor, confirm_enrolment, disable_second_factor, own_second_factor,
-    renew_recovery_codes, start_enrolment,
+    Deactivable, OwnSecondFactor, confirm_enrolment, deactivable, disable_second_factor,
+    own_second_factor, renew_recovery_codes, start_enrolment,
 };
 pub use proof::{Proof, Refusal};
 pub use requirement::{company_requirement, required_of, second_factor_required};

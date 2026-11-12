@@ -20,8 +20,7 @@ pub(super) const NO_ENROLMENT: &str =
     "Aucun enrôlement n’est en cours : recommencez depuis le début";
 pub const WRONG_FIRST_CODE: &str = "Code incorrect : vérifiez que l’heure de votre \
      téléphone est juste et saisissez le code affiché maintenant";
-const ALREADY_ON: &str = "Le second facteur est déjà actif : désactivez-le d’abord pour en \
-     changer";
+const ALREADY_ON: &str = "Le second facteur est déjà actif sur ce compte";
 
 /// What the authenticator app is given.
 #[derive(Debug, Clone)]

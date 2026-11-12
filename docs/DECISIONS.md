@@ -13909,7 +13909,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 'enrol'`), jamais une session. Ces trois routes répondent `{ "next":
 "second_factor_enrolment" }` ;
   - **l'enrôlement à la connexion**, par le défi seul :
-    - `GET /auth/second-factor` dit ce qu'attend la connexion ;
+    - `GET /auth/second-factor` dit ce qu'attend la connexion. Cette lecture ne vérifie
+      rien : elle ne compte pas dans la limite des connexions par client (la limite
+      globale la compte), pour qu'une page rechargée ne coûte pas une des étapes ;
     - `POST /auth/second-factor/enrolment` donne le secret. Le mot de passe vient d'être
       vérifié : il n'est pas redemandé ;
     - `POST /auth/second-factor/enrolment/confirmation` prend le premier code. Il active
@@ -13921,9 +13923,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - sans clé maîtresse, l'enrôlement est refusé et le dit : l'exploitant doit la
       configurer ;
   - **exigé, il ne se désactive pas** depuis « Mon compte » (409, avant toute
-    vérification de code ni tentative comptée). Pour changer d'application, un
-    administrateur le réinitialise (lot 68c). L'état du second facteur dit s'il est
-    exigé (`required`) ;
+    vérification de code ni tentative comptée). Le service ne désactive qu'avec la
+    permission que donne `deactivable` : aucun appelant ne peut l'oublier. Pour changer
+    d'application, un administrateur le réinitialise (lot 68c). L'état du second facteur
+    dit s'il est exigé (`required`) ;
   - **suites de l'audit de l'ADR-200** :
     - l'activation depuis « Mon compte » verrouille d'abord la ligne du compte, comme une
       connexion. Une connexion simultanée a soit ouvert sa session avant, et elle est
@@ -13938,7 +13941,15 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - un compte SSO n'est jamais concerné : son fournisseur demande son second facteur ;
   - perdre la clé maîtresse bloque l'enrôlement des comptes concernés jusqu'à ce que
     l'exploitant la rétablisse. Les comptes déjà enrôlés passent par leurs codes de
-    secours (ADR-200).
+    secours (ADR-200) ;
+  - jusqu'aux écrans du lot 68d, l'interface ne suit pas la réponse `next` d'une
+    connexion : une entreprise qui réglerait une exigence par l'API avant eux laisserait
+    ses comptes concernés sans moyen de se connecter depuis l'application. La politique
+    ne se règle encore que par l'API, et ne doit pas l'être avant ces écrans ;
+  - des tests tentent de contourner l'exigence : un administrateur invité, même d'une
+    seule équipe, s'enrôle avant sa première session ; un défi de vérification ne
+    démarre ni ne confirme aucun enrôlement ; une entreprise ne lit ni n'écrit
+    l'exigence d'une autre.
 - **Écartés** :
   - une session « limitée à l'enrôlement » : chaque route aurait dû la refuser ;
   - redemander le mot de passe à l'enrôlement par le défi, qui vient de le prouver ;

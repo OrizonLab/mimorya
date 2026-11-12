@@ -18,6 +18,9 @@ pub enum Requirement {
 }
 
 impl Requirement {
+    /// Every value, in the order the database constraint lists them.
+    pub const ALL: [Self; 3] = [Self::Optional, Self::Administrators, Self::Everyone];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Optional => "optional",
@@ -79,11 +82,7 @@ mod tests {
 
     #[test]
     fn reads_back_what_it_writes() {
-        for requirement in [
-            Requirement::Optional,
-            Requirement::Administrators,
-            Requirement::Everyone,
-        ] {
+        for requirement in Requirement::ALL {
             assert_eq!(Requirement::parse(requirement.as_str()), Some(requirement));
         }
         assert_eq!(Requirement::parse("tous"), None);

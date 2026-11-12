@@ -3,9 +3,10 @@
 //! challenge, held in a cookie of the browser for five minutes; the code
 //! of its app or a recovery code completes it, once, and opens the
 //! session. An account the company requires one of, without one, gets a
-//! challenge to enrol first (`sign_in_enrolment.rs`, ADR-201). A password changed or an account disabled meanwhile ends it
-//! (trigger of migration 0089); codes refused count against the account,
-//! however many challenges are open.
+//! challenge to enrol first (`sign_in_enrolment.rs`, ADR-201). A password
+//! changed or an account disabled meanwhile ends it (trigger of migration
+//! 0089); codes refused count against the account, however many challenges
+//! are open.
 
 use axum::http::HeaderMap;
 use chrono::{Duration, Utc};

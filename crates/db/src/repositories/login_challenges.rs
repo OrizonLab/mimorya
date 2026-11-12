@@ -18,6 +18,9 @@ pub enum ChallengePurpose {
 }
 
 impl ChallengePurpose {
+    /// Every purpose, in the order the database constraint lists them.
+    pub const ALL: [Self; 2] = [Self::Verify, Self::Enrol];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Verify => "verify",

@@ -1,9 +1,8 @@
 //! Invitation links, before sign-in (ADR-027): what a link opens, then the
 //! password its holder chooses, which opens a session (or first the
 //! enrolment of a second factor the company requires, ADR-201). The token
-//! travels in
-//! the request body, never in a URL; both routes are limited per client
-//! like logins.
+//! travels in the request body, never in a URL; both routes are limited per
+//! client like logins.
 
 use axum::extract::State;
 use axum::http::HeaderMap;

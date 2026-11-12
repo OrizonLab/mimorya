@@ -29,6 +29,8 @@ use crate::services::AccessContext;
 
 const NO_PASSWORD: &str = "Votre compte se connecte par le fournisseur d’identité de votre \
      entreprise : c’est lui qui demande un second facteur.";
+const REQUIRED: &str = "Votre entreprise exige un second facteur : il ne peut pas être \
+     désactivé.";
 
 /// One's own second factor, as « Mon compte » shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +179,19 @@ pub async fn renew_recovery_codes(
     Ok(Ok(codes))
 }
 
+/// Leave to turn the second factor off, which `disable_second_factor`
+/// takes: the company does not require one of the account (ADR-201).
+pub struct Deactivable(());
+
+/// Whether the account may turn its second factor off: refused, before any
+/// code is checked or counted, when the company requires one of it.
+pub async fn deactivable(db: &Database, access: &AccessContext) -> anyhow::Result<Deactivable> {
+    if required_of(db, access).await? {
+        return Err(DomainError::conflict(REQUIRED).into());
+    }
+    Ok(Deactivable(()))
+}
+
 /// Turns the second factor off, proven by a current code: how, or why the
 /// code was refused. Without one on, there is nothing to turn off: an
 /// enrolment that waits stays until replaced or purged.
@@ -184,6 +199,7 @@ pub async fn disable_second_factor(
     db: &Database,
     secrets: &SecretStore,
     access: &AccessContext,
+    _leave: Deactivable,
     code: &SecondFactorCode,
     context: &RequestContext,
 ) -> anyhow::Result<Result<Proof, Refusal>> {

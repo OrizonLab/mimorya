@@ -121,6 +121,24 @@ pub async fn second_step(api: &TestApi, challenge: &str, code: &str) -> TestResp
     api.send(request).await
 }
 
+/// Sends `body` to the enrolment route `path` of a sign-in (ADR-201), as
+/// the browser holding its challenge.
+pub async fn enrolment_step(
+    api: &TestApi,
+    challenge: &str,
+    path: &str,
+    body: Value,
+) -> TestResponse {
+    let request = Request::post(path)
+        .header("x-mimorya-request", "1")
+        .header("origin", WEB_ORIGIN)
+        .header("content-type", "application/json")
+        .header("cookie", format!("mimorya_challenge={challenge}"))
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    api.send(request).await
+}
+
 /// The second factor of `user_id` as the database keeps it: whether it is
 /// on, and the codes refused in a row.
 pub async fn kept_factor(user_id: Uuid) -> Option<(bool, i32)> {

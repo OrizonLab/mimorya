@@ -2,8 +2,9 @@
 //! answers, what the pending sign-in waits for, the code that completes it,
 //! and the enrolment it waits for when the company requires a second
 //! factor the account has not. The challenge travels in its own cookie,
-//! sent to these routes alone; every route is limited per client like
-//! logins, and every code refused counts against the account.
+//! sent to these routes alone; every step that checks or changes something
+//! is limited per client like logins, and every code refused counts
+//! against the account.
 
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -52,7 +53,14 @@ fn next(purpose: ChallengePurpose) -> SignIn {
     }
 }
 
-/// The challenge the browser holds, after the per-client limit.
+/// The challenge the browser holds.
+fn held_challenge(headers: &HeaderMap) -> ApiResult<String> {
+    cookie_value(headers, CHALLENGE_COOKIE)
+        .ok_or_else(|| DomainError::unauthenticated(EXPIRED).into())
+}
+
+/// The challenge the browser holds, for a step that checks or changes
+/// something: after the per-client limit of logins.
 async fn challenge(
     state: &AppState,
     context: &RequestContext,
@@ -61,8 +69,7 @@ async fn challenge(
     if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
-    cookie_value(headers, CHALLENGE_COOKIE)
-        .ok_or_else(|| DomainError::unauthenticated(EXPIRED).into())
+    held_challenge(headers)
 }
 
 fn completion<'a>(
@@ -79,13 +86,11 @@ fn completion<'a>(
     }
 }
 
-/// What the pending sign-in waits for.
-async fn waiting(
-    State(state): State<AppState>,
-    context: RequestContext,
-    headers: HeaderMap,
-) -> ApiResult<Json<SignIn>> {
-    let token = challenge(&state, &context, &headers).await?;
+/// What the pending sign-in waits for: a read that checks nothing, left out
+/// of the logins' limit (the global one still counts it), so that a page
+/// reloaded spends none of the steps a sign-in takes.
+async fn waiting(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Json<SignIn>> {
+    let token = held_challenge(&headers)?;
     let purpose = challenge_purpose(&state.db, &token).await?;
     Ok(Json(next(purpose)))
 }

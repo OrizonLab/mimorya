@@ -1,9 +1,9 @@
 //! What an invitation link opens before sign-in: who is invited and by
 //! which company, then the password the person chooses, which activates the
 //! account and opens a session, or first the enrolment of a second factor
-//! the company requires of it (ADR-201). A link works once, until it expires, for an
-//! account still invited in an active company; every other link gets the
-//! same answer, so nothing tells them apart.
+//! the company requires of it (ADR-201). A link works once, until it
+//! expires, for an account still invited in an active company; every other
+//! link gets the same answer, so nothing tells them apart.
 
 use axum::http::HeaderMap;
 use chrono::{DateTime, Utc};

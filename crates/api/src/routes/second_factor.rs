@@ -20,15 +20,13 @@ use crate::http::{ApiError, ApiResult, Body, iso};
 use crate::plugins::{Auth, RequestContext};
 use crate::secrets::SecretStore;
 use crate::services::second_factor::{
-    Refusal, WRONG_FIRST_CODE, confirm_enrolment, disable_second_factor, own_second_factor,
-    renew_recovery_codes, required_of, start_enrolment,
+    Refusal, WRONG_FIRST_CODE, confirm_enrolment, deactivable, disable_second_factor,
+    own_second_factor, renew_recovery_codes, start_enrolment,
 };
 
 const NOT_A_CODE: &str = "Saisissez les six chiffres de votre application ou l’un de vos codes \
      de secours";
 pub(super) const NOT_SIX_DIGITS: &str = "Saisissez les six chiffres affichés par votre application";
-const REQUIRED: &str = "Votre entreprise exige un second facteur : il ne peut pas être \
-     désactivé. Pour changer d’application, demandez à votre administrateur de le réinitialiser.";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -165,13 +163,11 @@ async fn deactivate(
     let code = read_code(&body.code)?;
     let access = state.access.context(identity).await?;
     // Required of the account, it stays (ADR-201): no code is checked.
-    if required_of(&state.db, &access).await? {
-        return Err(DomainError::conflict(REQUIRED).into());
-    }
+    let leave = deactivable(&state.db, &access).await?;
     let account = access.subject.user_id.to_string();
     take_slot(&state, &account).await?;
     let outcome =
-        disable_second_factor(&state.db, &secrets(&state), &access, &code, &context).await?;
+        disable_second_factor(&state.db, &secrets(&state), &access, leave, &code, &context).await?;
     settle(&state, &account, outcome).await?;
     Ok(Json(Done::OK))
 }

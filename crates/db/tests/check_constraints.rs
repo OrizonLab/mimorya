@@ -11,11 +11,13 @@ use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::documents::{DocumentKind, DocumentSpace};
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus};
 use mimorya_core::retention::RetentionKind;
+use mimorya_core::second_factor::Requirement;
 use mimorya_db::repositories::access_policies::POLICY_EFFECTS;
 use mimorya_db::repositories::approvals::APPROVAL_STATUSES;
 use mimorya_db::repositories::audit::{AUDIT_ACTORS, AUDIT_OUTCOMES};
 use mimorya_db::repositories::connectors::CONNECTOR_STATUSES;
 use mimorya_db::repositories::conversations::MESSAGE_ROLES;
+use mimorya_db::repositories::login_challenges::ChallengePurpose;
 use mimorya_db::repositories::policy_proposals::PROPOSAL_STATUSES;
 use mimorya_db::repositories::runs::RunStatus;
 use mimorya_db::repositories::skills::{SKILL_STATUSES, SKILL_VERSION_STATUSES};
@@ -102,6 +104,14 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
         (
             "documents_sensitivity_check",
             owned(Sensitivity::ALL.map(Sensitivity::as_str)),
+        ),
+        (
+            "tenant_second_factor_settings_requirement_check",
+            owned(Requirement::ALL.map(Requirement::as_str)),
+        ),
+        (
+            "login_challenges_purpose_check",
+            owned(ChallengePurpose::ALL.map(ChallengePurpose::as_str)),
         ),
     ];
     for (constraint, values) in expected {

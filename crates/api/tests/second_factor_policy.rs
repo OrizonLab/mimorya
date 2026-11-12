@@ -17,7 +17,7 @@ use support::llm::MASTER_KEY;
 use support::mail::link_in;
 use support::resets::{RESET_PASSWORD, complete_reset, new_reset_token};
 use support::second_factor::{
-    challenge_of, not_its_code, opens_a_session, password_step, second_step, traced,
+    challenge_of, enrolment_step, not_its_code, opens_a_session, password_step, second_step, traced,
 };
 use support::{Client, PASSWORD, TestApi, TestResponse, email};
 
@@ -28,19 +28,6 @@ async fn require(admin: &Client<'_>, requirement: &str) -> TestResponse {
     admin
         .put(POLICY, json!({ "requirement": requirement }))
         .await
-}
-
-/// Sends `body` to the enrolment route `path` of a sign-in, as the browser
-/// holding its challenge.
-async fn enrolment_step(api: &TestApi, challenge: &str, path: &str, body: Value) -> TestResponse {
-    let request = axum::http::Request::post(path)
-        .header("x-mimorya-request", "1")
-        .header("origin", support::WEB_ORIGIN)
-        .header("content-type", "application/json")
-        .header("cookie", format!("mimorya_challenge={challenge}"))
-        .body(axum::body::Body::from(body.to_string()))
-        .unwrap();
-    api.send(request).await
 }
 
 /// The sign-in's answer, the browser holding the challenge.
