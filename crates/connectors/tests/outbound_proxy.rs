@@ -29,6 +29,7 @@ fn through(proxy: &str, credentials: &str, bypass: Option<&str>) -> NetworkPolic
     NetworkPolicy {
         proxy: Some(proxy.leak()),
         test_servers: &[],
+        test_roots: &[],
         ..PRIVATE
     }
 }
@@ -186,6 +187,7 @@ fn without_private_addresses_no_client_takes_a_proxy() {
         allow_stdio: false,
         proxy: Some(proxy.leak()),
         test_servers: &[],
+        test_roots: &[],
     };
     assert!(http_client(public_only).is_err());
 }

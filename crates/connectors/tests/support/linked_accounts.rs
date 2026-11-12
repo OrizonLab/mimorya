@@ -25,6 +25,7 @@ pub const LOCAL: NetworkPolicy = NetworkPolicy {
     allow_stdio: false,
     proxy: None,
     test_servers: &[],
+    test_roots: &[],
 };
 
 /// The person's accounts: none reachable, for this reason.

@@ -5,9 +5,13 @@
 //! reached: the platform cannot hold its public-only rule, and a proxy is
 //! accepted only where the operator lifted it. Its credentials, if its
 //! address holds any, are never written: only its scheme, host and port are.
+//! The connections of the mail servers (ADR-205) go through it as the HTTP
+//! client's requests do, its bypass matched by the same rules (hyper-util's,
+//! which reqwest applies).
 
 use std::fmt;
 
+use hyper_util::client::proxy::matcher::{Intercept, Matcher};
 use reqwest_mcp::{NoProxy, Proxy};
 use url::Url;
 
@@ -18,6 +22,8 @@ const MAX_PROXY_CHARS: usize = 2000;
 pub struct OutboundProxy {
     url: Url,
     bypass: Option<String>,
+    /// Which connections go through it, as the HTTP client decides.
+    matcher: Matcher,
 }
 
 impl OutboundProxy {
@@ -43,9 +49,14 @@ impl OutboundProxy {
         if let Some(problem) = bypass.and_then(Self::bypass_problem) {
             return Err(problem.into());
         }
+        let matcher = Matcher::builder()
+            .all(url.as_str().to_string())
+            .no(bypass.unwrap_or_default().to_string())
+            .build();
         Ok(Self {
             url,
             bypass: bypass.map(str::to_string),
+            matcher,
         })
     }
 
@@ -69,6 +80,24 @@ impl OutboundProxy {
         Ok(Proxy::all(self.url.as_str())?.no_proxy(bypass))
     }
 
+    /// How a connection to `host:port` goes: through the proxy, with its
+    /// credentials, or straight when the bypass names the host. A host
+    /// that cannot be read as an address is no reason to go straight: it
+    /// is refused.
+    pub(super) fn route(&self, host: &str, port: u16) -> Result<Route, String> {
+        let host = match host.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V6(_)) => format!("[{host}]"),
+            _ => host.to_string(),
+        };
+        let destination: http::Uri = format!("https://{host}:{port}")
+            .parse()
+            .map_err(|_| format!("{host}:{port} : adresse illisible"))?;
+        Ok(match self.matcher.intercept(&destination) {
+            Some(intercept) => Route::Proxy(intercept),
+            None => Route::Direct,
+        })
+    }
+
     /// Its scheme, host and port: what may be written of it.
     pub fn shown(&self) -> String {
         let host = self.url.host_str().unwrap_or_default();
@@ -82,6 +111,14 @@ impl OutboundProxy {
     pub fn bypass(&self) -> Option<&str> {
         self.bypass.as_deref()
     }
+}
+
+/// How a connection reaches its server.
+pub(super) enum Route {
+    /// Through the proxy this names.
+    Proxy(Intercept),
+    /// Straight: the bypass names the host.
+    Direct,
 }
 
 impl fmt::Debug for OutboundProxy {

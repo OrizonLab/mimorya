@@ -7,13 +7,14 @@
 //! deployments can lift this for their internal servers.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest_mcp::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest_mcp::{Client, Url, redirect};
+use rustls::pki_types::CertificateDer;
 
 use super::proxy::OutboundProxy;
+use super::tls::client_config;
 
 /// What the operator allows (environment), never the companies.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -32,6 +33,10 @@ pub struct NetworkPolicy {
     /// their exact address and port, in plain `http://` (`BuildOptions`):
     /// never read from the environment, empty in production.
     pub test_servers: &'static [SocketAddr],
+    /// The roots the certificates of the tests' simulated servers chain to,
+    /// trusted beside the webpki roots: set by the tests alone, never read
+    /// from the environment, empty in production.
+    pub test_roots: &'static [CertificateDer<'static>],
 }
 
 impl NetworkPolicy {
@@ -49,7 +54,8 @@ impl NetworkPolicy {
 }
 
 pub const MAX_URL_CHARS: usize = 2000;
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long reaching a server (or the proxy) may take.
+pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Whether an address belongs to the public Internet.
 pub fn is_public_ip(ip: IpAddr) -> bool {
@@ -135,15 +141,36 @@ pub fn url_problem(url: &str, policy: NetworkPolicy) -> Option<String> {
     None
 }
 
-/// The public addresses of a name; an error when it has none.
-async fn public_addrs(host: &str) -> Result<Vec<SocketAddr>, String> {
+/// Why a name gave no address to connect to.
+#[derive(Debug)]
+pub(super) enum Unresolved {
+    /// The name could not be resolved.
+    Failed(String),
+    /// It resolved to private addresses only.
+    PrivateOnly(String),
+}
+
+impl std::fmt::Display for Unresolved {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Failed(detail) => write!(f, "{detail}"),
+            // Read back by the HTTP client's failures (`request_cause`).
+            Self::PrivateOnly(host) => write!(f, "{host} : aucune adresse publique"),
+        }
+    }
+}
+
+impl std::error::Error for Unresolved {}
+
+/// The public addresses of a name; why it has none, if it has none.
+pub(super) async fn public_addrs(host: &str) -> Result<Vec<SocketAddr>, Unresolved> {
     let found: Vec<SocketAddr> = tokio::net::lookup_host((host, 0))
         .await
-        .map_err(|error| format!("{host} : {error}"))?
+        .map_err(|error| Unresolved::Failed(format!("{host} : {error}")))?
         .filter(|addr| is_public_ip(addr.ip()))
         .collect();
     if found.is_empty() {
-        return Err(format!("{host} : aucune adresse publique"));
+        return Err(Unresolved::PrivateOnly(host.to_string()));
     }
     Ok(found)
 }
@@ -165,15 +192,7 @@ impl Resolve for PublicOnly {
 /// roots), no redirect, never a proxy from the environment, the operator's
 /// own if any (ADR-162), public addresses unless allowed.
 pub fn http_client(policy: NetworkPolicy) -> anyhow::Result<Client> {
-    let roots = rustls::RootCertStore {
-        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
-    };
-    let tls = rustls::ClientConfig::builder_with_provider(Arc::new(
-        rustls::crypto::ring::default_provider(),
-    ))
-    .with_safe_default_protocol_versions()?
-    .with_root_certificates(roots)
-    .with_no_client_auth();
+    let tls = client_config(policy)?;
     let mut builder = Client::builder()
         .tls_backend_preconfigured(tls)
         .redirect(redirect::Policy::none())
@@ -203,6 +222,7 @@ mod tests {
         allow_stdio: false,
         proxy: None,
         test_servers: &[],
+        test_roots: &[],
     };
 
     #[test]
@@ -275,6 +295,7 @@ mod tests {
         ];
         let tests = NetworkPolicy {
             test_servers: &SERVERS,
+            test_roots: &[],
             ..SAAS
         };
         assert_eq!(url_problem("http://127.0.0.1:4106/authorize", tests), None);
@@ -300,6 +321,7 @@ mod tests {
         ];
         let others = NetworkPolicy {
             test_servers: &OTHERS,
+            test_roots: &[],
             ..SAAS
         };
         assert_eq!(url_problem("http://[::1]:4108/mcp", others), None);

@@ -210,6 +210,7 @@ async fn main() -> anyhow::Result<()> {
                 allow_stdio: false,
                 proxy: None,
                 test_servers: &[],
+                test_roots: &[],
             }),
             // The browser's requests all come through the web relay, from one
             // address: the whole suite would share a minute's 600.

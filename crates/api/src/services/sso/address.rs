@@ -46,12 +46,14 @@ mod tests {
         allow_stdio: false,
         proxy: None,
         test_servers: &[],
+        test_roots: &[],
     };
     const PRIVATE: NetworkPolicy = NetworkPolicy {
         allow_private_network: true,
         allow_stdio: false,
         proxy: None,
         test_servers: &[],
+        test_roots: &[],
     };
     const TESTED: [std::net::SocketAddr; 1] = [std::net::SocketAddr::new(
         std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
@@ -62,6 +64,7 @@ mod tests {
     fn the_end_to_end_tests_servers_alone_by_their_address_and_port() {
         let tests = NetworkPolicy {
             test_servers: &TESTED,
+            test_roots: &[],
             ..SAAS
         };
         let server = "http://127.0.0.1:4110/.well-known/openid-configuration";

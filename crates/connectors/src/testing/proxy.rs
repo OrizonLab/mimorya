@@ -1,14 +1,17 @@
 //! An HTTP proxy for the tests (ADR-162): it forwards each connection to
 //! the server its first request names (`CONNECT host:port`, or an absolute
 //! address) and lists where it went; with credentials, it refuses a
-//! request without them (407).
+//! request without them (407). It may be reached over TLS, as an
+//! `https://` proxy (ADR-205).
 
 use std::sync::{Arc, Mutex};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
+
+use super::tls::TestAuthority;
 
 /// Where the proxy went, one entry per connection: `host:port`.
 #[derive(Default)]
@@ -23,24 +26,51 @@ impl Proxied {
 /// Serves a proxy on a local port, `credentials` (`user:password`) required
 /// if given; returns its address (`http://127.0.0.1:<port>`) and where it went.
 pub async fn serve_proxy(credentials: Option<&str>) -> (String, Arc<Proxied>) {
+    serve(credentials, None).await
+}
+
+/// Serves the same proxy over TLS, with a certificate of `authority` for
+/// `127.0.0.1`; returns its address (`https://127.0.0.1:<port>`).
+pub async fn serve_tls_proxy(
+    credentials: Option<&str>,
+    authority: &TestAuthority,
+) -> (String, Arc<Proxied>) {
+    serve(credentials, Some(authority)).await
+}
+
+async fn serve(
+    credentials: Option<&str>,
+    authority: Option<&TestAuthority>,
+) -> (String, Arc<Proxied>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("local port");
-    let address = format!("http://{}", listener.local_addr().expect("local address"));
+    let scheme = if authority.is_some() { "https" } else { "http" };
+    let address = format!(
+        "{scheme}://{}",
+        listener.local_addr().expect("local address")
+    );
     let proxied = Arc::new(Proxied::default());
     let expected = credentials.map(|c| format!("basic {}", STANDARD.encode(c)));
     let log = proxied.clone();
+    let acceptor = authority.map(TestAuthority::acceptor);
     tokio::spawn(async move {
         while let Ok((client, _)) = listener.accept().await {
-            let (log, expected) = (log.clone(), expected.clone());
+            let (log, expected, acceptor) = (log.clone(), expected.clone(), acceptor.clone());
             tokio::spawn(async move {
-                let _ = forward(client, &log, expected.as_deref()).await;
+                let _ = match acceptor {
+                    Some(acceptor) => match acceptor.accept(client).await {
+                        Ok(client) => forward(client, &log, expected.as_deref()).await,
+                        Err(error) => Err(error),
+                    },
+                    None => forward(client, &log, expected.as_deref()).await,
+                };
             });
         }
     });
     (address, proxied)
 }
 
-async fn forward(
-    mut client: TcpStream,
+async fn forward<C: AsyncRead + AsyncWrite + Unpin>(
+    mut client: C,
     log: &Proxied,
     expected: Option<&str>,
 ) -> std::io::Result<()> {
@@ -85,7 +115,7 @@ async fn forward(
 }
 
 /// The request's head, up to its blank line.
-async fn read_head(client: &mut TcpStream) -> std::io::Result<Vec<u8>> {
+async fn read_head<C: AsyncRead + Unpin>(client: &mut C) -> std::io::Result<Vec<u8>> {
     let mut head = Vec::new();
     let mut byte = [0u8; 1];
     while !head.ends_with(b"\r\n\r\n") && head.len() < 64 * 1024 {

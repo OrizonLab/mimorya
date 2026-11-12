@@ -23,6 +23,7 @@ fn api(teams: &FakeTeams) -> TeamsApi {
         allow_stdio: false,
         proxy: None,
         test_servers: &[],
+        test_roots: &[],
     };
     TeamsApi::new(
         TeamsEndpoints::local(&teams.url),
