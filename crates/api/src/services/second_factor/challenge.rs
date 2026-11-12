@@ -16,7 +16,7 @@ use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::auth::lock_login_state;
 use mimorya_db::repositories::login_challenges::{
     ChallengePurpose, LoginChallengeRecord, NewLoginChallenge, find_login_challenge,
-    put_login_challenge, take_login_challenge,
+    login_challenge_stands, put_login_challenge, take_login_challenge,
 };
 use mimorya_db::repositories::second_factors::second_factor_state;
 use mimorya_db::{Database, TenantTx};
@@ -160,12 +160,12 @@ pub async fn complete_challenge(
         return Err(ApiError::RateLimited);
     }
     let mut tx = completion.db.begin(record.tenant_id).await?;
-    // The account's row first, as a login or a reset: a password changed or
-    // an account disabled meanwhile wins.
+    // The account's row first, as a login or a reset: a password changed, an
+    // account disabled or a second factor reset meanwhile wins (ADR-202).
     let active = lock_login_state(&mut tx, record.user_id)
         .await?
         .is_some_and(|(_, status)| status == "active");
-    if !active {
+    if !active || !login_challenge_stands(&mut tx, record.challenge_id, &token_hash).await? {
         // No code checked: nothing counts.
         completion.refusals.release(&account).await;
         return Err(DomainError::unauthenticated(EXPIRED).into());

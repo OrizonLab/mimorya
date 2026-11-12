@@ -13981,7 +13981,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     réinitialisation d'un mot de passe ; jamais sur son propre compte (403) ;
   - la ligne du compte est verrouillée d'abord, comme à une connexion ou une activation
     : une connexion qui croise la réinitialisation a ouvert sa session avant, qui est
-    fermée, ou ne trouve plus de second facteur ;
+    fermée, ou trouve sa connexion terminée (401), sans qu'aucun code soit vérifié ni
+    compté. La fin d'une connexion relit pour cela son défi sous le verrou du compte
+    (testé dans les deux ordres) ;
   - le second facteur et ses codes de secours sont supprimés, les connexions qui
     attendent un code sont terminées, toutes les sessions du compte sont fermées ;
   - sa prochaine connexion par mot de passe ouvre une session, ou d'abord un enrôlement
@@ -13993,11 +13995,23 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - l'annuaire dit aux seuls gestionnaires des comptes (`user:manage`) quels comptes ont
     un second facteur actif (`secondFactor`).
 - **Conséquences** :
-  - qui gère les comptes peut déjà réinitialiser un mot de passe : réinitialiser aussi le
-    second facteur ne lui donne pas plus de pouvoir sur un compte, et chaque geste est
-    tracé à son nom ;
+  - un mot de passe provisoire suivi de la réinitialisation permet à un seul détenteur
+    de `user:manage` de se connecter à la place de tout autre compte, même protégé par
+    son second facteur, y compris un autre administrateur, et d'y enrôler sa propre
+    application là où l'entreprise l'exige. C'est la limite déjà assumée par
+    SECURITY.md §5 et l'ADR-168 (la double validation qu'un administrateur seul peut
+    accomplir en prenant la place de l'autre), étendue aux comptes protégés : chaque
+    geste est tracé à son nom (`user.password_reset`, `user.second_factor_reset`), et
+    la double validation des actions d'administration reste prévue en phase 3 ;
   - la personne l'apprend à sa prochaine connexion : ses sessions sont fermées et, si
-    l'entreprise l'exige, elle enrôle une nouvelle application.
+    l'entreprise l'exige, elle enrôle une nouvelle application ;
+  - la limite des codes refusés par compte (cinq par quart d'heure) n'est pas remise à
+    zéro : une personne qui l'a épuisée attend au plus quinze minutes avant de confirmer
+    son nouvel enrôlement ;
+  - les identités Slack, Telegram ou Teams reliées au compte restent : seule la personne
+    les retire. Un téléphone volé qui les porte peut encore parler à l'agent et presser
+    les boutons de validation ; les retirer avec le second facteur pourra venir plus
+    tard si le besoin s'en fait sentir.
 - **Écartés** :
   - un e-mail à la personne : la réinitialisation d'un mot de passe par un
     administrateur n'en envoie pas non plus. La fermeture des sessions et la trace

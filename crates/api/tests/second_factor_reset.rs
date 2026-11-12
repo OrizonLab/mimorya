@@ -5,7 +5,8 @@
 //! Only who manages accounts company-wide resets one, never its own: an
 //! administrator of one team, a collaborator, another company's account or
 //! one without a second factor change nothing. The directory shows account
-//! managers alone whose second factor is on.
+//! managers alone whose second factor is on. A sign-in crossing a reset,
+//! made deterministic with `support::locks`, keeps no session past it.
 
 mod support;
 
@@ -14,8 +15,9 @@ use mimorya_core::demo::{tenant, user};
 use mimorya_db::testing::OTHER_USER_ID;
 use serde_json::{Value, json};
 use support::accounts::{activate, create_partial_admin};
+use support::locks::{hold_rows, release_after, wait_for_waiters};
 use support::second_factor::{
-    KEYED, enrol, kept_factor, password_step, require, second_step, traced,
+    KEYED, enrol, kept_factor, opens_a_session, password_step, require, second_step, traced,
 };
 use support::{Client, PASSWORD, TestApi, email, owner_url};
 use uuid::Uuid;
@@ -152,4 +154,50 @@ async fn only_who_manages_accounts_company_wide_resets_another_s() {
         )
         .await;
     assert_eq!(off.status, StatusCode::OK, "{}", off.text());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_sign_in_crossing_a_reset_keeps_no_session_past_it() {
+    let api = TestApi::start_with(&KEYED).await;
+    let paul = api.sign_in(user::PAUL).await;
+
+    // The code queued first: its session opens, then the reset ends it.
+    let (_, mut app, _) = enrol(&api.sign_in(user::LEA).await).await;
+    let challenge = password_step(&api, &email(user::LEA), PASSWORD).await;
+    let (code, path) = (app.next_code(), reset_path(user::LEA));
+    let hold = hold_rows(&api, "users", &[user::LEA]).await;
+    let (signed_in, reset, ()) = tokio::join!(
+        second_step(&api, &challenge, &code),
+        async {
+            wait_for_waiters(&api, 1).await;
+            paul.delete(&path).await
+        },
+        release_after(&api, 2, hold),
+    );
+    assert_eq!(reset.status, StatusCode::OK, "{}", reset.text());
+    assert_eq!(signed_in.status, StatusCode::OK, "{}", signed_in.text());
+    let crossed = api.session_from(&signed_in);
+    assert_eq!(
+        crossed.get("/auth/me").await.status,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // The reset queued first: the code behind it finds no sign-in waiting.
+    let (_, mut app, _) = enrol(&api.sign_in(user::ISABELLE).await).await;
+    let challenge = password_step(&api, &email(user::ISABELLE), PASSWORD).await;
+    let (code, path) = (app.next_code(), reset_path(user::ISABELLE));
+    let hold = hold_rows(&api, "users", &[user::ISABELLE]).await;
+    let (reset, late, ()) = tokio::join!(
+        paul.delete(&path),
+        async {
+            wait_for_waiters(&api, 1).await;
+            second_step(&api, &challenge, &code).await
+        },
+        release_after(&api, 2, hold),
+    );
+    assert_eq!(reset.status, StatusCode::OK, "{}", reset.text());
+    assert_eq!(late.status, StatusCode::UNAUTHORIZED, "{}", late.text());
+    assert!(!opens_a_session(&late));
+    assert_eq!(kept_factor(user::ISABELLE).await, None);
 }

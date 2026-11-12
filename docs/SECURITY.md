@@ -637,8 +637,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       lui attribuer un rôle d'administration et agir par ce compte ; la
       réinitialisation par mot de passe provisoire lui permet de se connecter à la place
       de la personne (y compris un autre administrateur) et donc de lire ses conversations et
-      sa mémoire personnelle. Tout est tracé (`user.created`, `role.assigned`,
-      `user.password_reset`…). La double validation des politiques d'autorisation est
+      sa mémoire personnelle. Le second facteur n'y fait pas obstacle : suivie de sa
+      réinitialisation (ADR-202), elle ouvre aussi un compte qui en a un, et là où
+      l'entreprise l'exige, l'administrateur y enrôle sa propre application. Tout est
+      tracé (`user.created`, `role.assigned`, `user.password_reset`,
+      `user.second_factor_reset`…). La double validation des politiques d'autorisation est
       faite (ADR-168), mais un administrateur qui peut ainsi faire seul un second
       administrateur des politiques, ou prendre la place de l'autre (réinitialisation de
       son mot de passe), l'accomplit seul ; celle des autres actions d'administration est

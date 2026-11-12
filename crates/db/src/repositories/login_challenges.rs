@@ -105,6 +105,23 @@ pub async fn take_login_challenge(
     .await
 }
 
+/// Whether the challenge `challenge_id`, of this very token, still waits:
+/// read under the account's lock, a reset or a password changed meanwhile
+/// has ended it (ADR-202).
+pub async fn login_challenge_stands(
+    conn: &mut PgConnection,
+    challenge_id: Uuid,
+    token_hash: &str,
+) -> sqlx::Result<bool> {
+    sqlx::query_scalar(
+        "select exists (select 1 from login_challenges where id = $1 and token_hash = $2)",
+    )
+    .bind(challenge_id)
+    .bind(token_hash)
+    .fetch_one(conn)
+    .await
+}
+
 /// Ends every sign-in of `user_id` that waits for its second factor, as a
 /// reset by an administrator does (ADR-202); how many.
 pub async fn end_login_challenges(conn: &mut PgConnection, user_id: Uuid) -> sqlx::Result<u64> {
