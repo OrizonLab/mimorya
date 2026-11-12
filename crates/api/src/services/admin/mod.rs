@@ -55,6 +55,7 @@ mod reset_links;
 mod rest_connectors;
 mod retention;
 mod roles;
+mod second_factor_policy;
 mod skill_eval_cases;
 mod skill_evaluations;
 mod skill_proposals;
@@ -129,6 +130,7 @@ pub use retention::{
     set_company_retention,
 };
 pub use roles::{RoleChanges, RoleInput, create_role, delete_role, update_role};
+pub use second_factor_policy::{company_second_factor_policy, set_company_second_factor_policy};
 pub use skill_eval_cases::{EvalCaseInput, change_eval_case, create_eval_case, remove_eval_case};
 pub use skill_evaluations::launch_evaluation;
 pub use skill_proposals::reject_skill_proposal;

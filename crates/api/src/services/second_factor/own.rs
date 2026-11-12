@@ -8,18 +8,20 @@
 
 use chrono::Utc;
 use mimorya_core::DomainError;
-use mimorya_core::second_factor::{SecondFactorCode, accepted_step, base32, otpauth_uri, step_at};
+use mimorya_core::second_factor::SecondFactorCode;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
+use mimorya_db::repositories::auth::lock_login_state;
 use mimorya_db::repositories::second_factors::{
-    delete_second_factor, enable_second_factor, lock_second_factor, put_pending_second_factor,
-    replace_recovery_codes, second_factor_state,
+    delete_second_factor, replace_recovery_codes, second_factor_state,
 };
 use mimorya_db::repositories::users::{get_password_hash, revoke_user_sessions};
 use uuid::Uuid;
 
+use super::activation::{Enrolment, NO_ENROLMENT, activate, begin};
 use super::proof::{Attempt, Proof, Refusal, prove};
-use super::secret::{new_recovery_codes, new_secret, open_secret};
+use super::requirement::required_of;
+use super::secret::new_recovery_codes;
 use crate::auth::credentials::verify_password_async;
 use crate::plugins::RequestContext;
 use crate::secrets::SecretStore;
@@ -27,24 +29,16 @@ use crate::services::AccessContext;
 
 const NO_PASSWORD: &str = "Votre compte se connecte par le fournisseur d’identité de votre \
      entreprise : c’est lui qui demande un second facteur.";
-const ALREADY_ON: &str = "Le second facteur est déjà actif : désactivez-le d’abord pour en \
-     changer";
-const NO_ENROLMENT: &str = "Aucun enrôlement n’est en cours : recommencez depuis le début";
 
 /// One's own second factor, as « Mon compte » shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnSecondFactor {
     pub applicable: bool,
     pub available: bool,
+    /// The company requires one of this account (ADR-201).
+    pub required: bool,
     pub enabled_at: Option<chrono::DateTime<Utc>>,
     pub recovery_codes_left: i64,
-}
-
-/// What the authenticator app is given.
-#[derive(Debug, Clone)]
-pub struct Enrolment {
-    pub secret: String,
-    pub uri: String,
 }
 
 fn entry(
@@ -76,6 +70,7 @@ pub async fn own_second_factor(
     Ok(OwnSecondFactor {
         applicable: has_password,
         available: secrets.available(),
+        required: has_password && required_of(db, access).await?,
         enabled_at,
         recovery_codes_left: match (enabled_at, state) {
             (Some(_), Some(state)) => state.recovery_codes_left,
@@ -105,22 +100,18 @@ pub async fn start_enrolment(
     if !verify_password_async(hash, password).await {
         return Ok(None);
     }
-    let (secret, sealed) = new_secret(cipher, tenant_id, user_id)?;
     let mut tx = db.begin(tenant_id).await?;
-    if !put_pending_second_factor(&mut tx, tenant_id, user_id, &sealed).await? {
-        return Err(DomainError::conflict(ALREADY_ON).into());
-    }
+    let enrolment = begin(&mut tx, cipher, user_id, &access.profile.email).await?;
     tx.commit().await?;
-    Ok(Some(Enrolment {
-        secret: base32(&secret),
-        uri: otpauth_uri(&secret, &access.profile.email),
-    }))
+    Ok(Some(enrolment))
 }
 
 /// Turns the enrolment on with the first code of the app: the recovery
 /// codes, shown this once, the account's other sessions ended (one opened
 /// before may be someone else's); `None` when the code is not the app's,
-/// the refusal traced.
+/// the refusal traced. The account's row is locked first, as a sign-in
+/// locks it: a sign-in at the same instant either opened its session
+/// before, and it is ended, or finds the second factor on.
 pub async fn confirm_enrolment(
     db: &Database,
     secrets: &SecretStore,
@@ -132,25 +123,19 @@ pub async fn confirm_enrolment(
     let cipher = secrets.cipher()?;
     let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
     let mut tx = db.begin(tenant_id).await?;
-    let pending = lock_second_factor(&mut tx, user_id)
+    let active = lock_login_state(&mut tx, user_id)
         .await?
-        .filter(|factor| factor.enabled_at.is_none())
-        .ok_or_else(|| DomainError::conflict(NO_ENROLMENT))?;
-    let secret = open_secret(cipher, tenant_id, user_id, &pending.secret)
-        .map_err(|_| DomainError::conflict(NO_ENROLMENT))?;
-    let now = step_at(Utc::now().timestamp());
-    let Some(step) = accepted_step(&secret, code, now, pending.last_step) else {
+        .is_some_and(|(_, status)| status == "active");
+    if !active {
+        return Err(DomainError::conflict(NO_ENROLMENT).into());
+    }
+    let Some(codes) = activate(&mut tx, cipher, user_id, code).await? else {
         let refused = entry(access, "auth.second_factor_failed", "denied", context)
             .reason("Activation : code refusé");
         append_audit(&mut tx, refused).await?;
         tx.commit().await?;
         return Ok(None);
     };
-    if !enable_second_factor(&mut tx, user_id, step).await? {
-        return Err(DomainError::conflict(NO_ENROLMENT).into());
-    }
-    let (codes, digests) = new_recovery_codes();
-    replace_recovery_codes(&mut tx, tenant_id, user_id, &digests).await?;
     revoke_user_sessions(&mut tx, user_id, Some(session_id)).await?;
     append_audit(
         &mut tx,

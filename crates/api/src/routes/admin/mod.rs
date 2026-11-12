@@ -28,6 +28,7 @@ mod policy_proposals;
 mod retention;
 mod roles;
 mod scim;
+mod second_factor_policy;
 mod skill_eval_cases;
 mod skill_evaluations;
 mod skills;
@@ -139,6 +140,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route(
             "/admin/retention",
             get(retention::show).put(retention::update),
+        )
+        .route(
+            "/admin/second-factor",
+            get(second_factor_policy::show).put(second_factor_policy::update),
         )
         .route(
             "/admin/connectors",

@@ -18,7 +18,7 @@ use mimorya_db::repositories::users::{revoke_user_sessions, set_reset_password_h
 use crate::auth::credentials::{hash_password_async, hash_token};
 use crate::plugins::RequestContext;
 use crate::services::AccessService;
-use crate::services::second_factor::{Opened, open_after_password};
+use crate::services::second_factor::{Opened, open_after_password, second_factor_required};
 use crate::services::sso::required_provider;
 
 const UNUSABLE: &str = "Ce lien de réinitialisation n’est plus valable : demandez-en un nouveau \
@@ -71,6 +71,7 @@ pub async fn complete_reset(
         ))
         .into());
     }
+    let required = second_factor_required(db, access, record.tenant_id, record.user_id).await?;
     let password_hash = hash_password_async(password).await?;
     let mut tx = db.begin(record.tenant_id).await?;
     // The account's row first, as a login, an administrator's reset or a
@@ -87,7 +88,7 @@ pub async fn complete_reset(
     set_reset_password_hash(&mut tx, record.user_id, &password_hash).await?;
     // Every session ends, a stolen one included; only the new one is open.
     revoke_user_sessions(&mut tx, record.user_id, None).await?;
-    let opened = open_after_password(&mut tx, record.user_id, context, headers).await?;
+    let opened = open_after_password(&mut tx, record.user_id, required, context, headers).await?;
     let mut entry = AuditEntry::new(
         record.tenant_id,
         "user",

@@ -34,6 +34,7 @@ async fn an_enrolled_account_signs_in_with_its_app_once_per_code() {
         json!({
             "applicable": true,
             "available": true,
+            "required": false,
             "enabled": false,
             "enabledAt": null,
             "recoveryCodesLeft": 0,
@@ -287,4 +288,23 @@ async fn turning_it_off_takes_a_current_code() {
     let response = api.try_login(&email(user::HUGO), PASSWORD).await;
     assert_eq!(response.json(), json!({ "next": "signed_in" }));
     assert!(opens_a_session(&response));
+
+    // A refusal that checked no code costs no attempt: more of them than
+    // the limit are each refused for what they are.
+    for route in ["recovery-codes", "deactivation", "confirmation"] {
+        for _ in 0..6 {
+            let refused = hugo
+                .post(
+                    &format!("/account/second-factor/{route}"),
+                    json!({ "code": "123456" }),
+                )
+                .await;
+            assert_eq!(
+                refused.status,
+                StatusCode::CONFLICT,
+                "{route}: {}",
+                refused.text()
+            );
+        }
+    }
 }

@@ -1,6 +1,7 @@
 //! What an invitation link opens before sign-in: who is invited and by
 //! which company, then the password the person chooses, which activates the
-//! account and opens a session. A link works once, until it expires, for an
+//! account and opens a session, or first the enrolment of a second factor
+//! the company requires of it (ADR-201). A link works once, until it expires, for an
 //! account still invited in an active company; every other link gets the
 //! same answer, so nothing tells them apart.
 
@@ -14,9 +15,9 @@ use mimorya_db::repositories::invitations::{InvitationRecord, find_invitation, t
 use mimorya_db::repositories::users::activate_invited_user;
 
 use crate::auth::credentials::{hash_password_async, hash_token};
-use crate::auth::sessions::open_session;
 use crate::plugins::RequestContext;
 use crate::services::AccessService;
+use crate::services::second_factor::{Opened, open_after_password, second_factor_required};
 use crate::services::sso::required_provider;
 
 const UNUSABLE: &str =
@@ -52,8 +53,9 @@ pub async fn inspect_invitation(db: &Database, token: &str) -> anyhow::Result<In
     })
 }
 
-/// Activates the account with its chosen password; returns the token of
-/// the session it opens. Under a provider required for its domain, the
+/// Activates the account with its chosen password; returns the session it
+/// opens, or the challenge of the enrolment a required second factor needs
+/// first (ADR-201). Under a provider required for its domain, the
 /// account accepts through it instead (ADR-064, ADR-066).
 pub async fn accept_invitation(
     db: &Database,
@@ -62,7 +64,7 @@ pub async fn accept_invitation(
     password: String,
     context: &RequestContext,
     headers: &HeaderMap,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<Opened> {
     let token_hash = hash_token(token);
     let record = usable(db, &token_hash).await?;
     if let Some(provider) = required_provider(db, access, record.tenant_id, record.user_id).await? {
@@ -71,6 +73,9 @@ pub async fn accept_invitation(
         ))
         .into());
     }
+    // An account the company requires a second factor of enrols before
+    // its first session (ADR-201): its roles count already.
+    let required = second_factor_required(db, access, record.tenant_id, record.user_id).await?;
     let password_hash = hash_password_async(password).await?;
     let mut tx = db.begin(record.tenant_id).await?;
     // The account's row first, as a resend or a disabling: they wait for
@@ -87,7 +92,7 @@ pub async fn accept_invitation(
     {
         return Err(DomainError::not_found(UNUSABLE).into());
     }
-    let session = open_session(&mut tx, record.user_id, context, headers).await?;
+    let opened = open_after_password(&mut tx, record.user_id, required, context, headers).await?;
     let mut entry = AuditEntry::new(
         record.tenant_id,
         "user",
@@ -100,5 +105,5 @@ pub async fn accept_invitation(
     entry.request_id = Some(context.id.to_string());
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
-    Ok(session)
+    Ok(opened)
 }

@@ -12,7 +12,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use mimorya_core::DomainError;
 
-use super::second_factor::signed_in;
+use super::second_factor_sign_in::signed_in;
 use crate::app::AppState;
 use crate::contract::{Done, LinkPassword, LinkToken, ResetDetails, ResetLinkRequest};
 use crate::http::{ApiError, ApiResult, Body};

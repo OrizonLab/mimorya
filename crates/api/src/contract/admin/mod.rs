@@ -29,6 +29,7 @@ mod rest_import;
 mod retention;
 mod roles;
 mod scim;
+mod second_factor_policy;
 mod skill_eval_cases;
 mod skill_evaluations;
 mod skills;
@@ -89,6 +90,9 @@ pub use retention::{
     RetentionDurationView, RetentionKindName, RetentionUnitName, RetentionUpdate, RetentionView,
 };
 pub use scim::ScimTokens;
+pub use second_factor_policy::{
+    SecondFactorPolicyUpdate, SecondFactorPolicyView, SecondFactorRequirement,
+};
 
 pub use organization::{
     NewOrgUnit, OrgPerson, OrgUnitType, OrgUnitUpdate, OrgUnitView, Organization,

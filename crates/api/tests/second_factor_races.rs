@@ -2,12 +2,15 @@
 //! deterministic with `support::locks`: the account's row held while both
 //! completions queue behind it, then released. A code serves once however
 //! many sign-ins carry it; a challenge opens one session; a password
-//! changed while a completion waits ends its challenge.
+//! changed while a completion waits ends its challenge; a sign-in crossing
+//! an activation keeps no session past it (ADR-201).
 
 mod support;
 
 use axum::http::StatusCode;
+use chrono::Utc;
 use mimorya_core::demo::user;
+use mimorya_core::second_factor::{DIGITS, code_at, read_base32, step_at};
 use serde_json::json;
 use support::limits::windows_of;
 use support::llm::MASTER_KEY;
@@ -141,4 +144,67 @@ async fn a_password_changed_while_a_code_waits_ends_its_sign_in() {
         .unwrap()
         .to_string();
     password_step(&api, &email(user::LEA), &temporary).await;
+}
+
+/// Starts an enrolment as `session`: the code its app shows now.
+async fn enrolment_code(session: &support::Client<'_>) -> String {
+    let started = session
+        .post(
+            "/account/second-factor/enrolment",
+            json!({ "password": PASSWORD }),
+        )
+        .await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text());
+    let secret = read_base32(started.json()["secret"].as_str().unwrap()).unwrap();
+    format!(
+        "{:06}",
+        code_at(&secret, step_at(Utc::now().timestamp()), DIGITS)
+    )
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_sign_in_crossing_an_activation_keeps_no_session_past_it() {
+    let api = api().await;
+    let confirm = "/account/second-factor/confirmation";
+
+    // The activation queued first: the sign-in behind it finds the second
+    // factor on, and is asked for it.
+    let nadia = api.sign_in(user::NADIA).await;
+    let code = enrolment_code(&nadia).await;
+    let hold = hold_rows(&api, "users", &[user::NADIA]).await;
+    let (activated, login, ()) = tokio::join!(
+        nadia.post(confirm, json!({ "code": code })),
+        async {
+            wait_for_waiters(&api, 1).await;
+            api.try_login(&email(user::NADIA), PASSWORD).await
+        },
+        release_after(&api, 2, hold),
+    );
+    assert_eq!(activated.status, StatusCode::OK, "{}", activated.text());
+    assert_eq!(login.json(), json!({ "next": "second_factor" }));
+    assert!(!opens_a_session(&login));
+
+    // The sign-in queued first: its session opens, then the activation
+    // ends it.
+    let claire = api.sign_in(user::CLAIRE).await;
+    let code = enrolment_code(&claire).await;
+    let address = email(user::CLAIRE);
+    let hold = hold_rows(&api, "users", &[user::CLAIRE]).await;
+    let (login, activated, ()) = tokio::join!(
+        api.try_login(&address, PASSWORD),
+        async {
+            wait_for_waiters(&api, 1).await;
+            claire.post(confirm, json!({ "code": code })).await
+        },
+        release_after(&api, 2, hold),
+    );
+    assert_eq!(activated.status, StatusCode::OK, "{}", activated.text());
+    assert!(opens_a_session(&login));
+    let crossed = api.session_from(&login);
+    assert_eq!(
+        crossed.get("/auth/me").await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(claire.get("/auth/me").await.status, StatusCode::OK);
 }

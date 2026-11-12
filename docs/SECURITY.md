@@ -121,7 +121,12 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   après cent refus de suite (NIST SP 800-63B), seuls les codes de secours passent. La
   fin d'un mot de passe oublié demande aussi le second facteur avant d'ouvrir une
   session. Les comptes sans mot de passe (fournisseur d'identité) en sont exemptés :
-  leur second facteur est celui du fournisseur. Activation, désactivation,
+  leur second facteur est celui du fournisseur. L'entreprise peut l'exiger de ses
+  administrateurs (une permission d'administration sur un périmètre quelconque, hors
+  `approval:decide` et `document:write`) ou de tous (ADR-201, `settings:manage`, refusé
+  sans clé maîtresse) : à la prochaine connexion par mot de passe, par un mot de passe
+  oublié ou par une invitation, le compte concerné reçoit un défi d'enrôlement, jamais
+  une session, et ne peut plus le désactiver. Activation, désactivation,
   renouvellement des codes de secours, code refusé et code de secours utilisé sont
   audités, jamais un code ni le secret.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
