@@ -8,8 +8,8 @@ mod imap;
 mod lines;
 mod smtp;
 
-pub use imap::{FakeImap, ImapBehaviour};
-pub use smtp::{FakeSmtp, SmtpMode};
+pub use imap::{FakeImap, ImapBehaviour, ImapSetup};
+pub use smtp::{FakeSmtp, SmtpMode, SmtpSetup};
 
 use std::sync::{Arc, Mutex};
 

@@ -2,7 +2,8 @@
 //! (ADR-205): an identifier and a password, often an application password.
 //! Neither holds a line break nor a control character, which would end a
 //! command early; the password is never written, neither by `Debug` nor in
-//! a refusal, where its redactor masks it.
+//! a refusal: taken out of it however a server or a library spelt it
+//! (`scrub`), and masked again by its redactor.
 
 use std::fmt;
 
@@ -55,6 +56,23 @@ impl MailLogin {
         &self.password
     }
 
+    /// `text` without the password, however a server quoted it back or a
+    /// library wrote it: as is, quoted as IMAP quotes a string, and each of
+    /// these escaped as `Debug` escapes it.
+    pub(super) fn scrub(&self, text: &str) -> String {
+        let quoted = self.password.replace('\\', "\\\\").replace('"', "\\\"");
+        let mut spellings = [
+            self.password.escape_debug().to_string(),
+            quoted.escape_debug().to_string(),
+            quoted,
+            self.password.clone(),
+        ];
+        spellings.sort_by_key(|spelling| std::cmp::Reverse(spelling.len()));
+        spellings.iter().fold(text.to_string(), |text, spelling| {
+            text.replace(spelling.as_str(), "***")
+        })
+    }
+
     /// What masks the password in whatever a server says back.
     pub fn redactor(&self) -> Redactor {
         Redactor::new(Some(&self.password))
@@ -102,5 +120,16 @@ mod tests {
         );
         let said = login.redactor().text("refusé pour secret-de-paul");
         assert!(!said.contains("secret-de-paul"), "{said}");
+    }
+
+    #[test]
+    fn scrubs_the_password_however_it_was_spelt() {
+        let password = r#"autre "secret" \ de paul"#;
+        let login = MailLogin::new("paul", password).unwrap();
+        let quoted = r#"autre \"secret\" \\ de paul"#;
+        let said = format!("{password} ; {quoted} ; {:?} ; {:?}", password, quoted);
+        let scrubbed = login.scrub(&said);
+        assert!(!scrubbed.contains("secret"), "{scrubbed}");
+        assert_eq!(scrubbed.matches("***").count(), 4, "{scrubbed}");
     }
 }

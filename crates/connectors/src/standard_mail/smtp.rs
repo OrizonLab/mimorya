@@ -1,47 +1,48 @@
-//! Signing in to a company's SMTP server as a person (ADR-205): implicit
-//! TLS, or STARTTLS, which the server must offer, before any credential
-//! leaves; lettre speaks SMTP over the connection the platform opened (the
-//! network policy's, through the operator's proxy if any), all within one
-//! delay. A server in clear that offers no STARTTLS hears nothing more than
-//! `EHLO` and `QUIT`.
+//! Signing in to a company's SMTP server as a person (ADR-205): a connection
+//! the network policy allows (through the operator's proxy if any), what the
+//! server sends bounded; implicit TLS, or STARTTLS said by the platform
+//! itself (`starttls`), the server having to offer it; then the platform's
+//! own TLS, the same as for implicit TLS, before lettre speaks SMTP over it
+//! and any credential leaves (`AUTH PLAIN` or `LOGIN`), all within one
+//! delay. The platform gives no host name of its own (`EHLO [127.0.0.1]`).
 
-use std::io;
-use std::net::SocketAddr;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::net::Ipv4Addr;
 
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
-use lettre::transport::smtp::client::{
-    AsyncSmtpConnection, AsyncTokioStream, Certificate, TlsParameters,
-};
+use lettre::transport::smtp::client::AsyncSmtpConnection;
 use lettre::transport::smtp::extension::ClientId;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::time::timeout;
 
+use super::starttls::start_tls;
+use super::wire::Wire;
 use super::{
-    CREDENTIALS_REFUSED, MailLogin, NOT_A_MAIL_SERVER, SIGN_IN_TIMEOUT, SmtpSecurity, SmtpServer,
+    CREDENTIALS_REFUSED, LEAVE_TIMEOUT, MailLogin, NO_SHARED_MECHANISM, NOT_A_MAIL_SERVER,
+    SIGN_IN_READ_LIMIT, SIGN_IN_TIMEOUT, SmtpSecurity, SmtpServer, TRY_LATER,
 };
 use crate::outbound::{
-    Cause, Connection, NOT_SECURE, NetworkPolicy, TOO_SLOW, UNREACHABLE, connect, secured,
+    Cause, NOT_SECURE, NetworkPolicy, ReadBudget, TOO_LONG, TOO_SLOW, UNREACHABLE, bounded,
+    connect, secured,
 };
 
-/// What a server offering no STARTTLS is told.
-pub const NO_STARTTLS: &str =
-    "Le serveur SMTP n’offre pas STARTTLS : rien ne lui est envoyé en clair";
-
-/// A connection of `login` to `server`, signed in, within the sign-in delay.
+/// A connection of `login` to `server`, signed in, within the sign-in
+/// delay, and what it may still read.
 pub async fn smtp_connection(
     server: &SmtpServer,
     login: &MailLogin,
     policy: NetworkPolicy,
-) -> Result<AsyncSmtpConnection, Cause> {
-    match timeout(SIGN_IN_TIMEOUT, sign_in(server, login, policy)).await {
+) -> Result<(AsyncSmtpConnection, ReadBudget), Cause> {
+    let signed_in = match timeout(SIGN_IN_TIMEOUT, sign_in(server, login, policy)).await {
         Ok(connection) => connection,
         Err(_) => Err(Cause {
             summary: TOO_SLOW,
             detail: "connexion au serveur SMTP".into(),
         }),
-    }
+    };
+    // What the server said back never carries the password out.
+    signed_in.map_err(|cause| Cause {
+        detail: login.scrub(&cause.detail),
+        ..cause
+    })
 }
 
 /// Whether `login` signs in to `server`: the connection is left at once.
@@ -50,8 +51,8 @@ pub async fn check_smtp(
     login: &MailLogin,
     policy: NetworkPolicy,
 ) -> Result<(), Cause> {
-    let mut connection = smtp_connection(server, login, policy).await?;
-    let _ = timeout(SIGN_IN_TIMEOUT, connection.quit()).await;
+    let (mut connection, _) = smtp_connection(server, login, policy).await?;
+    let _ = timeout(LEAVE_TIMEOUT, connection.quit()).await;
     Ok(())
 }
 
@@ -59,66 +60,54 @@ async fn sign_in(
     server: &SmtpServer,
     login: &MailLogin,
     policy: NetworkPolicy,
-) -> Result<AsyncSmtpConnection, Cause> {
-    let hello = ClientId::default();
+) -> Result<(AsyncSmtpConnection, ReadBudget), Cause> {
     let plain = connect(&server.host, server.port, policy).await?;
-    let mut connection = match server.security {
+    let (mut plain, budget) = bounded(plain, SIGN_IN_READ_LIMIT);
+    let told = |cause: Cause| match budget.spent() {
+        true => Cause {
+            summary: TOO_LONG,
+            detail: cause.detail,
+        },
+        false => cause,
+    };
+    let hello = ClientId::Ipv4(Ipv4Addr::LOCALHOST);
+    let wire = match server.security {
         SmtpSecurity::Tls => {
-            let secured = secured(plain, &server.host, policy).await?;
-            AsyncSmtpConnection::connect_with_transport(Box::new(Wire(secured)), &hello)
-                .await
-                .map_err(failed)?
+            Wire::greeted_by_server(secured(plain, &server.host, policy).await.map_err(told)?)
         }
         SmtpSecurity::StartTls => {
-            let mut connection =
-                AsyncSmtpConnection::connect_with_transport(Box::new(Wire(plain)), &hello)
-                    .await
-                    .map_err(failed)?;
-            if !connection.can_starttls() {
-                let _ = connection.quit().await;
-                return Err(Cause {
-                    summary: NO_STARTTLS,
-                    detail: server.host.clone(),
-                });
-            }
-            let tls = tls_parameters(&server.host, policy)?;
-            connection
-                .starttls(tls, &hello)
-                .await
-                .map_err(|error| Cause {
-                    summary: NOT_SECURE,
-                    detail: error.to_string(),
-                })?;
-            connection
+            start_tls(&mut plain).await.map_err(told)?;
+            let secured = secured(plain, &server.host, policy).await.map_err(told)?;
+            Wire::resumed_after_starttls(secured)
         }
     };
+    let mut connection = AsyncSmtpConnection::connect_with_transport(Box::new(wire), &hello)
+        .await
+        .map_err(|error| told(failed(error)))?;
     let credentials = Credentials::new(login.username().into(), login.password().into());
     connection
         .auth(&[Mechanism::Plain, Mechanism::Login], &credentials)
         .await
-        .map_err(|error| match error.is_permanent() {
-            true => Cause {
-                summary: CREDENTIALS_REFUSED,
-                detail: error.to_string(),
-            },
-            false => failed(error),
-        })?;
-    Ok(connection)
+        .map_err(|error| told(not_signed_in(error)))?;
+    Ok((connection, budget))
 }
 
-/// How STARTTLS checks the server: the webpki roots, beside them the
-/// tests' alone, its certificate naming the host.
-fn tls_parameters(host: &str, policy: NetworkPolicy) -> Result<TlsParameters, Cause> {
-    let refused = |detail: String| Cause {
-        summary: NOT_SECURE,
-        detail,
+/// A refused `AUTH`, told by what failed.
+fn not_signed_in(error: lettre::transport::smtp::Error) -> Cause {
+    let summary = if error.is_permanent() {
+        CREDENTIALS_REFUSED
+    } else if error.is_transient() {
+        TRY_LATER
+    } else if error.is_client() {
+        // No mechanism both sides know: nothing was sent.
+        NO_SHARED_MECHANISM
+    } else {
+        return failed(error);
     };
-    let mut builder = TlsParameters::builder(host.to_string());
-    for root in policy.test_roots {
-        let root = Certificate::from_der(root.to_vec()).map_err(|e| refused(e.to_string()))?;
-        builder = builder.add_root_certificate(root);
+    Cause {
+        summary,
+        detail: error.to_string(),
     }
-    builder.build_rustls().map_err(|e| refused(e.to_string()))
 }
 
 /// A failure of the exchange itself.
@@ -135,46 +124,5 @@ fn failed(error: lettre::transport::smtp::Error) -> Cause {
     Cause {
         summary,
         detail: error.to_string(),
-    }
-}
-
-/// The platform's connection as lettre takes one.
-#[derive(Debug)]
-struct Wire(Connection);
-
-impl AsyncRead for Wire {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        Pin::new(&mut *self.0).poll_read(cx, buf)
-    }
-}
-
-impl AsyncWrite for Wire {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut *self.0).poll_write(cx, buf)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut *self.0).poll_flush(cx)
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut *self.0).poll_shutdown(cx)
-    }
-}
-
-impl AsyncTokioStream for Wire {
-    /// Through a tunnel, the server's address is the proxy's to know.
-    fn peer_addr(&self) -> io::Result<SocketAddr> {
-        Err(io::Error::other(
-            "adresse tenue par la connexion de la plateforme",
-        ))
     }
 }

@@ -46,7 +46,9 @@ pub use google::{FakeGoogle, GOOGLE_DETAIL, GoogleRequest, LISTED_GONE, LISTED_R
 pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
-pub use mail::{Accounts, FakeImap, FakeSmtp, Heard, ImapBehaviour, SmtpMode};
+pub use mail::{
+    Accounts, FakeImap, FakeSmtp, Heard, ImapBehaviour, ImapSetup, SmtpMode, SmtpSetup,
+};
 pub use oauth::{
     AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, IdTokenQuirk, LONG_TOKEN_CHARS,
     LURE, METADATA_PATH, OAuthQuirk, ProtectedMcp, SLOW_ANSWER, Settings as AuthorizationSettings,

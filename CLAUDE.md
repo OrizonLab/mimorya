@@ -141,8 +141,8 @@ Repères à l'intérieur des crates :
   `connectors/src/bin/mcp_demo_docs.rs`,
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
-  de l'exploitant, `proxy.rs`, ADR-162 ; connexion hors HTTP aux serveurs de messagerie d'une entreprise, aux mêmes règles (`tcp.rs`), chiffrée par TLS (`tls.rs`) et passant par le mandataire (`tunnel.rs`), ADR-205),
-  `connectors/src/standard_mail/` (serveurs de messagerie d'une entreprise, IMAP et SMTP, `servers.rs`, compte d'une personne, son mot de passe jamais écrit, `login.rs`, connexion IMAP en TLS implicite, `imap.rs`, et SMTP en TLS implicite ou STARTTLS exigé, `smtp.rs`, ADR-205),
+  de l'exploitant, `proxy.rs`, ADR-162 ; connexion hors HTTP aux serveurs de messagerie d'une entreprise, aux mêmes règles (`tcp.rs`), chiffrée par TLS (`tls.rs`) et passant par le mandataire (`tunnel.rs`), ce qu'elle lit borné (`bounded.rs`), ADR-205),
+  `connectors/src/standard_mail/` (serveurs de messagerie d'une entreprise, IMAP et SMTP, `servers.rs`, compte d'une personne, son mot de passe jamais écrit, `login.rs`, connexion IMAP en TLS implicite, `imap.rs`, et SMTP en TLS implicite ou STARTTLS exigé, `smtp.rs`, STARTTLS dit par la plateforme octet par octet, `starttls.rs`, connexion donnée à lettre, `wire.rs`, ADR-205),
   `connectors/src/rest/` (API REST décrites par l'entreprise : déclaration et ses
   règles, requête, réponse bornée, outil d'une opération, ADR-112 ; opérations lues
   d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`
@@ -167,7 +167,7 @@ Repères à l'intérieur des crates :
   OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), ses métadonnées retenues jusqu'à ce que le test les laisse passer (`oauth/metadata_endpoint.rs`), et sa configuration OpenID de même, mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
-  les activités avec une clé de test, autorité de certificats des tests et serveur qui parle TLS, mandataire joint en TLS, `tls.rs`, serveurs IMAP et SMTP simulés en TLS, en STARTTLS ou en clair, qui notent ce qu'ils entendent sans les mots de passe, `mail/`, ADR-205).
+  les activités avec une clé de test, autorité de certificats des tests et serveur qui parle TLS, mandataire joint en TLS, `tls.rs`, serveurs IMAP et SMTP simulés en TLS, en STARTTLS ou en clair, qui notent ce qu'ils entendent sans les mots de passe, et peuvent se taire, répondre sans fin, glisser des réponses en clair ou recopier un mot de passe refusé, `mail/`, ADR-205).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, clés en HMAC sous une clé dérivée de la clé maître, `shared_limit.rs`, ADR-088, ADR-152), CSRF (sauf la réception
   des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, les événements de

@@ -29,7 +29,8 @@ dotenvy = "0.15"
 encoding_rs = "0.8"
 futures = "0.3"
 # SMTP: the platform's own e-mails, and a person's sent through their
-# company's server (ADR-205): TLS by rustls (ring, webpki roots).
+# company's server (ADR-205): TLS by rustls (ring, webpki roots). Its
+# `tracing` feature stays off: it would write `AUTH PLAIN <credentials>`.
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "hostname", "pool", "smtp-transport", "tokio1-rustls-tls"] }
 regex = "1"
 rmcp = { version = "3.5.1", features = ["client", "macros", "server", "transport-child-process", "transport-io", "transport-streamable-http-client-reqwest"] }

@@ -1,9 +1,12 @@
 //! An SMTP server for the tests (ADR-205), with a certificate of a test
 //! authority: over implicit TLS, over STARTTLS, or in clear offering no
 //! STARTTLS but `AUTH` all the same (what a client must never answer). It
-//! takes `EHLO`, `STARTTLS`, `AUTH PLAIN` and `AUTH LOGIN` for its accounts,
-//! `NOOP`, `RSET` and `QUIT`, and notes each command with the layer it came
-//! over (`clair` or `tls`), never a credential.
+//! takes `EHLO`, `STARTTLS`, `AUTH PLAIN` and `AUTH LOGIN` (those it
+//! offers) for its accounts, `NOOP`, `RSET` and `QUIT`, and notes each
+//! command with the layer it came over (`clair` or `tls`), never a
+//! credential. It may also slip answers in clear after its STARTTLS
+//! go-ahead, fall silent once it has greeted, greet without end, or quote
+//! the password it refused.
 
 use std::net::SocketAddr;
 
@@ -27,6 +30,36 @@ pub enum SmtpMode {
     ClearOnly,
 }
 
+/// What the server offers and does.
+#[derive(Debug, Clone, Copy)]
+pub struct SmtpSetup {
+    pub mode: SmtpMode,
+    /// The `AUTH` mechanisms it offers, once secured.
+    pub mechanisms: &'static [&'static str],
+    /// Whether it slips `250 AUTH PLAIN` then `235` in clear after its
+    /// STARTTLS go-ahead, as someone on the path would.
+    pub slips_answers_in_clear: bool,
+    /// Whether it never answers once it has greeted.
+    pub falls_silent: bool,
+    /// Whether its greeting never ends.
+    pub greets_endlessly: bool,
+    /// Whether a refusal quotes the password it was given.
+    pub quotes_refused_password: bool,
+}
+
+impl SmtpSetup {
+    pub fn new(mode: SmtpMode) -> Self {
+        Self {
+            mode,
+            mechanisms: &["PLAIN", "LOGIN"],
+            slips_answers_in_clear: false,
+            falls_silent: false,
+            greets_endlessly: false,
+            quotes_refused_password: false,
+        }
+    }
+}
+
 /// A running SMTP server and what it heard.
 pub struct FakeSmtp {
     pub address: SocketAddr,
@@ -35,6 +68,10 @@ pub struct FakeSmtp {
 
 impl FakeSmtp {
     pub async fn start(authority: &TestAuthority, mode: SmtpMode, accounts: Accounts) -> Self {
+        Self::with(authority, SmtpSetup::new(mode), accounts).await
+    }
+
+    pub async fn with(authority: &TestAuthority, setup: SmtpSetup, accounts: Accounts) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("local port");
         let address = listener.local_addr().expect("local address");
         let heard = Heard::default();
@@ -45,11 +82,11 @@ impl FakeSmtp {
                     (acceptor.clone(), noted.clone(), accounts.clone());
                 tokio::spawn(async move {
                     let server = Server {
-                        mode,
+                        setup,
                         accounts: &accounts,
                         heard: &noted,
                     };
-                    if mode == SmtpMode::ImplicitTls {
+                    if setup.mode == SmtpMode::ImplicitTls {
                         if let Ok(tls) = acceptor.accept(socket).await {
                             server.converse(tls, true, true).await;
                         }
@@ -73,7 +110,7 @@ enum End<S> {
 }
 
 struct Server<'a> {
-    mode: SmtpMode,
+    setup: SmtpSetup,
     accounts: &'a Accounts,
     heard: &'a Heard,
 }
@@ -87,6 +124,11 @@ impl Server<'_> {
     ) -> End<S> {
         let mut stream = BufReader::new(stream);
         let layer = if secure { "tls" } else { "clair" };
+        if greet && self.setup.greets_endlessly {
+            let _ = stream.write_all(b"220 ").await;
+            while stream.write_all(&[b'a'; 4096]).await.is_ok() {}
+            return End::Closed;
+        }
         if greet
             && say(&mut stream, "220 smtp.test ESMTP serveur de test")
                 .await
@@ -102,17 +144,27 @@ impl Server<'_> {
                 "AUTH" => self.heard.note(format!("{layer} AUTH {mechanism}")),
                 _ => self.heard.note(format!("{layer} {verb}")),
             }
+            if self.setup.falls_silent {
+                continue;
+            }
             let answer = match verb.as_str() {
                 "EHLO" | "HELO" => self.capabilities(secure),
-                "STARTTLS" if !secure && self.mode == SmtpMode::StartTls => {
-                    if say(&mut stream, "220 2.0.0 prêt pour TLS").await.is_err() {
+                "STARTTLS" if !secure && self.setup.mode == SmtpMode::StartTls => {
+                    let mut go = "220 2.0.0 prêt pour TLS".to_string();
+                    if self.setup.slips_answers_in_clear {
+                        go.push_str("\r\n250 AUTH PLAIN\r\n235 2.7.0 authentifié");
+                    }
+                    if say(&mut stream, &go).await.is_err() {
                         return End::Closed;
                     }
                     return End::Upgrade(stream.into_inner());
                 }
                 "AUTH" => match self.authenticated(&mut stream, argument).await {
-                    Some(true) => "235 2.7.0 authentifié".into(),
-                    Some(false) => "535 5.7.8 identifiants invalides".into(),
+                    Some(Ok(())) => "235 2.7.0 authentifié".into(),
+                    Some(Err(password)) if self.setup.quotes_refused_password => {
+                        format!("535 5.7.8 {password} refusé")
+                    }
+                    Some(Err(_)) => "535 5.7.8 identifiants invalides".into(),
                     None => return End::Closed,
                 },
                 "NOOP" | "RSET" => "250 2.0.0 ok".into(),
@@ -133,25 +185,29 @@ impl Server<'_> {
     /// secured, or in clear by a server that offers nothing better.
     fn capabilities(&self, secure: bool) -> String {
         let mut lines = vec!["250-smtp.test".to_string()];
-        if !secure && self.mode == SmtpMode::StartTls {
+        if !secure && self.setup.mode == SmtpMode::StartTls {
             lines.push("250-STARTTLS".into());
         }
-        if secure || self.mode == SmtpMode::ClearOnly {
-            lines.push("250-AUTH PLAIN LOGIN".into());
+        let offered = self.setup.mechanisms;
+        if (secure || self.setup.mode == SmtpMode::ClearOnly) && !offered.is_empty() {
+            lines.push(format!("250-AUTH {}", offered.join(" ")));
         }
         lines.push("250 8BITMIME".into());
         lines.join("\r\n")
     }
 
-    /// Whether the account given to `AUTH` is one of its own; `None` if the
-    /// client left meanwhile.
+    /// Whether the account given to `AUTH` is one of its own, else the
+    /// password refused; `None` if the client left meanwhile.
     async fn authenticated<S: AsyncRead + AsyncWrite + Unpin>(
         &self,
         stream: &mut BufReader<S>,
         argument: &str,
-    ) -> Option<bool> {
+    ) -> Option<Result<(), String>> {
         let mut words = argument.split_whitespace();
         let mechanism = words.next().unwrap_or_default().to_ascii_uppercase();
+        if !self.setup.mechanisms.contains(&mechanism.as_str()) {
+            return Some(Err(String::new()));
+        }
         let (username, password) = match mechanism.as_str() {
             "PLAIN" => {
                 let payload = match words.next() {
@@ -165,15 +221,17 @@ impl Server<'_> {
                 let mut parts = decoded.split('\0').skip(1);
                 (parts.next()?.to_string(), parts.next()?.to_string())
             }
-            "LOGIN" => {
+            _ => {
                 say(stream, "334 VXNlcm5hbWU6").await.ok()?;
                 let username = decoded(&next_line(stream).await?);
                 say(stream, "334 UGFzc3dvcmQ6").await.ok()?;
                 (username, decoded(&next_line(stream).await?))
             }
-            _ => return Some(false),
         };
-        Some(accepts(self.accounts, &username, &password))
+        Some(match accepts(self.accounts, &username, &password) {
+            true => Ok(()),
+            false => Err(password),
+        })
     }
 }
 
