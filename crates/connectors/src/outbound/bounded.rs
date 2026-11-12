@@ -32,11 +32,17 @@ impl ReadBudget {
 
     /// `bytes` more may be read.
     pub fn grant(&self, bytes: usize) {
-        let _ = self
-            .0
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |left| {
-                Some(left.saturating_add(bytes))
-            });
+        let mut left = self.0.load(Ordering::Acquire);
+        loop {
+            let raised = left.saturating_add(bytes);
+            match self
+                .0
+                .compare_exchange_weak(left, raised, Ordering::AcqRel, Ordering::Acquire)
+            {
+                Ok(_) => return,
+                Err(now) => left = now,
+            }
+        }
     }
 }
 
