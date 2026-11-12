@@ -1024,7 +1024,9 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée
   par TLS (certificat remontant aux racines webpki et nommant le serveur) avant
   qu'aucun identifiant ne parte ; les racines des serveurs simulés ne sont reconnues que
-  dans les tests.
+  dans les tests. Un serveur SMTP en clair qui n'offre pas STARTTLS n'entend que `EHLO`
+  et `QUIT`, même s'il annonce `AUTH` ; un compte refusé est dit sans son mot de passe,
+  que le masquage retire de ce que le serveur répond.
 - Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais
   dans celui de l'API, lancé avec un environnement vide et borné par lui-même avant de
   rien lire (1 Gio de mémoire, 20 s de processeur, aucun fichier écrit), tué au bout de

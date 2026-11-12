@@ -14131,6 +14131,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - le certificat doit remonter aux racines webpki et nommer le serveur. Les racines
       des serveurs simulés ne sont reconnues que dans les tests (`test_roots` de la
       politique réseau, jamais lu de l'environnement) ;
+    - la connexion d'une personne, de l'ouverture de la connexion à l'acceptation de
+      son compte, tient dans un délai d'ensemble de 30 s, quels que soient les délais
+      de chaque étape (connexion, mandataire, TLS) ;
   - **réseau** : la connexion d'un serveur de messagerie suit les règles du client HTTP
     (`outbound/tcp.rs`) :
     - une adresse littérale privée est refusée ;

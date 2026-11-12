@@ -178,4 +178,22 @@ mod tests {
         assert_eq!(proxy.bypass(), Some("intra.example, 10.0.0.0/8"));
         assert!(proxy.reqwest().is_ok());
     }
+
+    #[test]
+    fn a_host_goes_through_it_unless_bypassed_never_straight_when_unreadable() {
+        let proxy = OutboundProxy::new("http://proxy.example:3128", Some("intra.example")).unwrap();
+        assert!(matches!(
+            proxy.route("imap.example.com", 993),
+            Ok(Route::Proxy(_))
+        ));
+        assert!(matches!(
+            proxy.route("imap.intra.example", 993),
+            Ok(Route::Direct)
+        ));
+        assert!(matches!(
+            proxy.route("2001:db8::1", 993),
+            Ok(Route::Proxy(_))
+        ));
+        assert!(proxy.route("imap example.com", 993).is_err());
+    }
 }

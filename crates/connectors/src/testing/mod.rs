@@ -10,7 +10,7 @@
 //! (`telegram`); Microsoft as a Teams bot reaches it: Entra, the Bot
 //! Framework's keys and a Teams service (`teams`); an authority of the tests
 //! and a server speaking TLS with its certificate, the proxy reached over
-//! TLS too (`tls`, ADR-205).
+//! TLS too (`tls`, ADR-205); a company's IMAP and SMTP servers (`mail`).
 
 mod endless;
 mod google;
@@ -18,6 +18,7 @@ mod google_writes;
 mod graph;
 mod graph_writes;
 mod hold;
+mod mail;
 mod oauth;
 mod proxy;
 mod quirks;
@@ -45,6 +46,7 @@ pub use google::{FakeGoogle, GOOGLE_DETAIL, GoogleRequest, LISTED_GONE, LISTED_R
 pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
+pub use mail::{Accounts, FakeImap, FakeSmtp, Heard, ImapBehaviour, SmtpMode};
 pub use oauth::{
     AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, IdTokenQuirk, LONG_TOKEN_CHARS,
     LURE, METADATA_PATH, OAuthQuirk, ProtectedMcp, SLOW_ANSWER, Settings as AuthorizationSettings,
