@@ -6,15 +6,14 @@
 //! logins, and asking also per address.
 
 use axum::extract::State;
-use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::{AppendHeaders, IntoResponse};
+use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
 use mimorya_core::DomainError;
 
+use super::second_factor::signed_in;
 use crate::app::AppState;
-use crate::auth::cookies::session_cookie;
 use crate::contract::{Done, LinkPassword, LinkToken, ResetDetails, ResetLinkRequest};
 use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::RequestContext;
@@ -90,7 +89,8 @@ async fn complete(
     if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
-    let session = complete_reset(
+    // A session, or the second factor asked for first (ADR-200).
+    let opened = complete_reset(
         &state.db,
         &state.access,
         &body.token,
@@ -99,6 +99,5 @@ async fn complete(
         &headers,
     )
     .await?;
-    let cookie = session_cookie(&session, state.config.secure_cookies);
-    Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
+    Ok(signed_in(opened, state.config.secure_cookies))
 }

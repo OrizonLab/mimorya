@@ -28,6 +28,7 @@ pub mod provisioning;
 pub mod runs;
 pub mod scheduled_tasks;
 pub mod scim;
+pub mod second_factor;
 pub mod skill_evaluations;
 pub mod skill_proposal_notice;
 pub mod sso;

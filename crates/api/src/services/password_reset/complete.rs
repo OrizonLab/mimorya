@@ -1,5 +1,6 @@
 //! What a reset link opens before sign-in (the account's address), then the
-//! new password, which ends every session of the account and opens one. A
+//! new password, which ends every session of the account and opens one, or
+//! asks for its second factor first (ADR-200). A
 //! link works once, until it expires, for an account still active in an
 //! active company; every other link gets the same answer.
 
@@ -15,9 +16,9 @@ use mimorya_db::repositories::password_resets::{
 use mimorya_db::repositories::users::{revoke_user_sessions, set_reset_password_hash};
 
 use crate::auth::credentials::{hash_password_async, hash_token};
-use crate::auth::sessions::open_session;
 use crate::plugins::RequestContext;
 use crate::services::AccessService;
+use crate::services::second_factor::{Opened, open_after_password};
 use crate::services::sso::required_provider;
 
 const UNUSABLE: &str = "Ce lien de réinitialisation n’est plus valable : demandez-en un nouveau \
@@ -49,9 +50,11 @@ pub async fn inspect_reset(db: &Database, token: &str) -> anyhow::Result<ResetVi
     })
 }
 
-/// Sets the chosen password; returns the token of the session it opens.
-/// Under a provider required for its domain, a link sent before is of no
-/// use (ADR-066).
+/// Sets the chosen password; returns the session it opens or, when the
+/// account's second factor is on, the challenge that asks for it first: a
+/// link sent to the mailbox proves the mailbox, not the second factor
+/// (ADR-200). Under a provider required for its domain, a link sent before
+/// is of no use (ADR-066).
 pub async fn complete_reset(
     db: &Database,
     access: &AccessService,
@@ -59,7 +62,7 @@ pub async fn complete_reset(
     password: String,
     context: &RequestContext,
     headers: &HeaderMap,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<Opened> {
     let token_hash = hash_token(token);
     let record = usable(db, &token_hash).await?;
     if let Some(provider) = required_provider(db, access, record.tenant_id, record.user_id).await? {
@@ -84,7 +87,7 @@ pub async fn complete_reset(
     set_reset_password_hash(&mut tx, record.user_id, &password_hash).await?;
     // Every session ends, a stolen one included; only the new one is open.
     revoke_user_sessions(&mut tx, record.user_id, None).await?;
-    let session = open_session(&mut tx, record.user_id, context, headers).await?;
+    let opened = open_after_password(&mut tx, record.user_id, context, headers).await?;
     let mut entry = AuditEntry::new(
         record.tenant_id,
         "user",
@@ -97,5 +100,5 @@ pub async fn complete_reset(
     entry.request_id = Some(context.id.to_string());
     append_audit(&mut tx, entry).await?;
     tx.commit().await?;
-    Ok(session)
+    Ok(opened)
 }

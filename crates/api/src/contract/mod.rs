@@ -26,6 +26,7 @@ mod runs;
 mod scheduled_tasks;
 mod scim;
 mod scim_body;
+mod second_factor;
 mod session;
 mod sso;
 mod stored;
@@ -87,6 +88,10 @@ pub use scim::{
     ScimUserList, scim_url,
 };
 pub use scim_body::{read_operations as scim_operations, read_user_fields as scim_user_fields};
+pub use second_factor::{
+    RecoveryCodes, SecondFactorCodeInput, SecondFactorEnrolment, SecondFactorEnrolmentRequest,
+    SecondFactorStatus, SignIn, SignInNext,
+};
 pub use session::{
     AssistantStatus, AuthOptions, Credentials, Me, MeTenant, MeUser, OrgUnitRef, PasswordUpdate,
 };
@@ -105,6 +110,10 @@ pub fn typescript() -> String {
     declarations.add::<SsoLink>();
     declarations.add::<SsoStart>();
     declarations.add::<Done>();
+    declarations.add::<SignIn>();
+    declarations.add::<SecondFactorStatus>();
+    declarations.add::<SecondFactorEnrolment>();
+    declarations.add::<RecoveryCodes>();
     declarations.add::<PersonalExport>();
     declarations.add::<AccountLinks>();
     declarations.add::<AccountLinkStart>();
@@ -200,6 +209,8 @@ macro_rules! request_bodies {
             SsoLookup,
             SsoLinkLookup,
             PasswordUpdate,
+            SecondFactorEnrolmentRequest,
+            SecondFactorCodeInput,
             NotificationSettings,
             GatewayLinkCode,
             ResetLinkRequest,

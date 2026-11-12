@@ -13759,3 +13759,117 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - compiler dans chaque lot ;
   - une archive unique, que chaque lot téléchargerait en entier ;
   - partager le dossier `target` par le cache, qui ne garde que les dépendances.
+
+## ADR-200 — Second facteur des comptes à mot de passe : codes TOTP et codes de secours (chantier 2, lot 68a)
+
+- **Statut** : accepté (2026-11-11) · complète ADR-028 (mot de passe oublié), ADR-064
+  (comptes sans mot de passe), ADR-088 (limites partagées) et ADR-187 (export
+  personnel).
+- **Contexte** : un compte qui se connecte par mot de passe n'avait que lui. Un mot de
+  passe deviné, réutilisé ou volé ouvrait une session. Le second facteur choisi est
+  celui que proposent toutes les applications d'authentification : codes à six chiffres
+  calculés sur l'heure (TOTP, RFC 6238). Les clés d'accès (WebAuthn) viendront dans un
+  lot suivant. Les comptes qui se connectent par le fournisseur d'identité de leur
+  entreprise ont leur second facteur chez lui : ils en sont exemptés ici.
+- **Décision** :
+  - **le calcul** (`crates/core/src/second_factor/`) :
+    - HMAC-SHA1 du nombre de pas de 30 secondes depuis l'époque Unix, tronqué à six
+      chiffres (RFC 4226 §5.3). Ce sont les paramètres par défaut de toutes les
+      applications. SHA-1 n'y sert que de HMAC, que ses collisions n'affaiblissent pas ;
+    - un secret de 20 octets (160 bits, RFC 4226 §4), donné à l'application en base32
+      dans une adresse `otpauth://totp/Mimorya:<adresse>?…` (le format que lisent les
+      applications), à saisir ou à lire dans un QR code ;
+    - un code est accepté pour le pas du serveur ou celui d'à côté (une horloge de
+      téléphone décalée de 30 secondes), et seulement pour un pas **après le dernier
+      accepté** (`last_step`). Aucun code ne passe deux fois, ni un plus ancien. Deux
+      requêtes portant le même code verrouillent la même ligne : la seconde trouve le
+      pas pris ;
+    - vérifié contre les vecteurs de la RFC 6238 (annexe B) et de la RFC 4648 ;
+  - **dix codes de secours** de 80 bits, écrits en base32 en quatre groupes
+    (`ABCD-EFGH-IJKL-MNOP`) :
+    - montrés une seule fois, gardés en SHA-256 seulement. Leur entropie rend un
+      hachage lent inutile ;
+    - chacun sert une fois. Ils sont lus quelle que soit leur casse, avec ou sans tirets
+      ni espaces, et remplacés tous ensemble sur un code valable ;
+  - **le secret scellé** sous la clé maîtresse (AES-256-GCM, `SecretCipher`) :
+    - la donnée associée lie le secret à l'entreprise et au compte
+      (`second-factor/<compte>`) : copié sur une autre ligne, il ne s'ouvre pas ;
+    - sans clé maîtresse, l'enrôlement est refusé et expliqué (503,
+      `MIMORYA_MASTER_KEY`). Un serveur qui a perdu sa clé ne vérifie plus les codes
+      de l'application et le dit ; les codes de secours, simples empreintes, passent
+      toujours ;
+  - **la connexion en deux temps** :
+    - une fois le mot de passe vérifié (même verrou du compte, même recheck qu'avant),
+      un compte dont le second facteur est actif reçoit un **défi**, pas une session.
+      `POST /auth/login` répond `{ "next": "second_factor" }`, sinon
+      `{ "next": "signed_in" }` avec le cookie de session ;
+    - le défi est un jeton de 256 bits, dont seule l'empreinte est gardée
+      (`login_challenges`). Il voyage dans le cookie `mimorya_challenge` : HttpOnly,
+      SameSite=Strict, `Path=/api/auth/second-factor`, cinq minutes ;
+    - `POST /auth/second-factor` le complète, une fois, avec un code de l'application
+      ou un code de secours, et ouvre la session ;
+    - un changement de mot de passe ou de statut du compte retire ses défis
+      (déclencheur, comme pour les liens de réinitialisation) ;
+    - le défi est lu avant toute session par `auth_find_login_challenge`
+      (`SECURITY DEFINER`) ;
+  - **le mot de passe oublié ne le contourne pas** : la fin d'une réinitialisation ferme
+    toujours toutes les sessions, puis demande le second facteur avant d'en ouvrir une.
+    Un lien reçu par e-mail prouve la boîte, pas le second facteur. Une invitation crée
+    un compte sans second facteur : rien à contourner (son enrôlement imposé à la
+    première connexion vient au lot 68b) ;
+  - **les tentatives limitées par compte, quel que soit le nombre de défis ouverts** :
+    - cinq codes refusés par quart d'heure (`second_factor_failures`, limite partagée
+      par tous les processus, ADR-088), la place rendue quand un code est accepté ;
+    - au-delà de cent codes refusés à la suite, de l'application ou de secours
+      (NIST SP 800-63B §5.2.2), seuls les codes de secours sont acceptés ; un code
+      accepté remet la série à zéro. Seul un code vérifié et refusé compte : un refus
+      sans vérification (série atteinte, secret illisible sur ce serveur, aucun second
+      facteur actif) rend sa place ; À cinq essais par quart d'heure, cent refus prennent cinq heures,
+      et cent essais ont environ trois chances sur dix mille de tomber sur un code valable ;
+    - un défi n'a donc pas son propre compteur : en ouvrir plusieurs ne donne pas plus
+      d'essais. Le premier code de l'activation, le renouvellement des codes de secours
+      et la désactivation partagent la même limite, chaque refus tracé ;
+  - **depuis « Mon compte »** (`/account/second-factor…`) :
+    - état : applicable (le compte a un mot de passe), disponible (clé maîtresse),
+      actif, depuis quand, codes de secours restants ;
+    - enrôlement : le mot de passe retapé d'abord, compté comme une connexion s'il est
+      faux, car une session volée ne doit pas pouvoir lier le compte à l'application
+      d'un autre et en exclure son titulaire. Puis un nouveau secret, qui remplace un
+      enrôlement en attente mais jamais un second facteur actif, et l'activation par le
+      premier code de l'application, qui donne les codes de secours et ferme les autres
+      sessions du compte (une session ouverte avant peut être celle d'un autre) ;
+    - nouveaux codes de secours, et désactivation, chacun sur un code valable ;
+    - un compte sans mot de passe (ADR-064) est refusé : son second facteur est celui
+      de son fournisseur ;
+  - **tracé** dans le journal d'audit, jamais un code ni le secret :
+    - activation (`account.second_factor_enabled`) et désactivation
+      (`account.second_factor_disabled`, avec la preuve donnée : `app` ou `recovery`) ;
+    - nouveaux codes de secours (`account.recovery_codes_renewed`) ;
+    - code refusé (`auth.second_factor_failed`, « Connexion : code refusé ») ;
+    - code de secours utilisé (`auth.recovery_code_used`, avec ceux qui restent) ;
+    - connexion réussie (`auth.login`, `{ "method": "password", "secondFactor": … }`) ;
+  - **RGPD** :
+    - l'export personnel dit si le second facteur est actif, depuis quand et combien de
+      codes de secours restent, jamais le secret ni un code ;
+    - l'effacement du compte emporte le second facteur, ses codes et ses défis (clés
+      composites en cascade) ;
+    - la maintenance purge chaque minute les défis expirés et les enrôlements restés un
+      jour sans premier code (`system_purge_second_factor_leftovers`).
+- **Conséquences** :
+  - deux appels pour se connecter quand le second facteur est actif. L'interface les
+    enchaîne au lot 68c ; d'ici là, rien ne l'active hors de l'API ;
+  - perdre son téléphone et ses codes de secours bloque le compte jusqu'à la
+    réinitialisation par un administrateur (lot 68b). Le message de refus le dit déjà ;
+  - qui détient le mot de passe peut épuiser les cinq essais du quart d'heure, et
+    cent à la suite. La personne passe alors par un code de secours. Chaque refus est
+    tracé ;
+  - la politique de l'entreprise (obligatoire, administrateurs, facultatif) et
+    l'enrôlement imposé à la première connexion viennent au lot 68b. La colonne
+    `purpose` des défis (`verify`, `enrol`) les attend.
+- **Écartés** :
+  - SHA-256 ou huit chiffres : mal ou pas pris en charge par plusieurs applications
+    courantes ;
+  - un compteur d'essais par défi : contourné en ouvrant d'autres défis ;
+  - une session « partielle » au lieu d'un défi : chaque route aurait dû la refuser ;
+  - une bibliothèque TOTP : le calcul tient en quelques lignes sur `ring`, déjà
+    utilisé, et se vérifie sur les vecteurs de la RFC.

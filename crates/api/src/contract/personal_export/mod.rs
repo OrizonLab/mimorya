@@ -1,7 +1,7 @@
 //! The export of a person's own data (ADR-187): what the platform keeps
 //! about them and what they wrote, set up or had done for them, in their
 //! company, as one JSON document they download. Never a password, a token
-//! nor a secret; a colleague's data never.
+//! nor a secret (a second factor's included); a colleague's data never.
 
 mod account;
 mod activity;
@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use ts_rs::TS;
 
-pub use account::{AccountRows, ExportAccount};
+pub use account::{AccountRows, ExportAccount, ExportSecondFactor};
 pub use activity::run_exports;
 pub use content::{ConversationRows, conversation_exports};
 
@@ -37,6 +37,7 @@ pub struct PersonalExport {
     /// their end, ADR-185).
     pub sessions: Vec<ExportSession>,
     pub sign_ins: Vec<ExportSignIn>,
+    pub second_factor: ExportSecondFactor,
     pub provisioning: Vec<ExportProvisioning>,
     /// The invitation still awaiting the person, if any (ADR-027).
     pub invitation: Option<ExportInvitation>,

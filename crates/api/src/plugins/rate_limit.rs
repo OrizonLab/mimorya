@@ -3,7 +3,8 @@
 //! processes each count their own (ADR-016, ADR-088), sparing every request
 //! a write to the database. The authentication limits are shared by every
 //! process (`shared_limit`, ADR-088): logins per client address and, for
-//! failures, per account; reset links per e-mail address; the addresses
+//! failures, per account; second factor codes refused, per account
+//! (ADR-200); reset links per e-mail address; the addresses
 //! asked about and the sign-ins through an identity provider, per client
 //! address. Their keys leave the process as their HMAC under the server's
 //! key (ADR-152).
@@ -30,6 +31,10 @@ pub(crate) const GLOBAL_RATE_LIMIT_PER_MINUTE: u32 = 600;
 /// Failed logins allowed per account before it is throttled for the window.
 const FAILED_LOGINS_PER_ACCOUNT: u32 = 10;
 pub(crate) const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
+/// Second factor codes refused per account before it is throttled for the
+/// window (ADR-200).
+const SECOND_FACTOR_FAILURES_PER_ACCOUNT: u32 = 5;
+pub(crate) const SECOND_FACTOR_WINDOW: Duration = Duration::from_secs(15 * 60);
 /// Password reset links an address may ask for in the window.
 const RESET_REQUESTS_PER_ADDRESS: u32 = 3;
 pub(crate) const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
@@ -103,6 +108,10 @@ pub struct RateLimits {
     pub failed_logins: SharedLimiter,
     /// Password reset links asked for, per e-mail address, known or not.
     pub reset_requests: SharedLimiter,
+    /// Second factor codes tried, per account, given back when one is
+    /// accepted: only refusals count, however many sign-ins are under way
+    /// (ADR-200).
+    pub second_factor_failures: SharedLimiter,
 }
 
 impl RateLimits {
@@ -145,6 +154,11 @@ impl RateLimits {
                 "reset_requests",
                 RESET_REQUESTS_PER_ADDRESS,
                 RESET_REQUEST_WINDOW,
+            ),
+            second_factor_failures: shared(
+                "second_factor_failures",
+                SECOND_FACTOR_FAILURES_PER_ACCOUNT,
+                SECOND_FACTOR_WINDOW,
             ),
         })
     }

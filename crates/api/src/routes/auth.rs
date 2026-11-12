@@ -14,10 +14,10 @@ use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::auth::{find_login, lock_login_state, revoke_session};
 use uuid::Uuid;
 
+use super::second_factor::signed_in;
 use crate::app::AppState;
-use crate::auth::cookies::{cleared_session_cookie, session_cookie};
+use crate::auth::cookies::cleared_session_cookie;
 use crate::auth::credentials::verify_password_async;
-use crate::auth::sessions::open_session;
 use crate::contract::{
     AssistantStatus, AuthOptions, Credentials, Done, Me, MeTenant, MeUser, OrgUnitRef,
 };
@@ -25,6 +25,7 @@ use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::{AuthPendingPasswordChange, MaybeAuth, RequestContext};
 use crate::services::account;
 use crate::services::permission_catalog::permission_catalog;
+use crate::services::second_factor::{Opened, open_after_password};
 use crate::services::sso::required_provider;
 
 const INVALID_CREDENTIALS: &str = "Identifiants invalides";
@@ -137,16 +138,18 @@ async fn login(
         record_in_background(state.clone(), entry);
         return Err(DomainError::unauthenticated(INVALID_CREDENTIALS).into());
     }
-    let token = open_session(&mut tx, login.user_id, &context, &headers).await?;
-    append_audit(
-        &mut tx,
-        login_audit(login.tenant_id, login.user_id, "success", &context),
-    )
-    .await?;
+    // A session, or a challenge for the second factor, its success
+    // traced once it is proven (ADR-200).
+    let opened = open_after_password(&mut tx, login.user_id, &context, &headers).await?;
+    if matches!(opened, Opened::Session(_)) {
+        append_audit(
+            &mut tx,
+            login_audit(login.tenant_id, login.user_id, "success", &context),
+        )
+        .await?;
+    }
     tx.commit().await?;
-
-    let cookie = session_cookie(&token, state.config.secure_cookies);
-    Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
+    Ok(signed_in(opened, state.config.secure_cookies))
 }
 
 /// What the sign-in page offers: a reset link can be asked for only when

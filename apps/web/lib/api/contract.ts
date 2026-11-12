@@ -1023,6 +1023,12 @@ export type ExportRun = { id: string, conversationId: string | null,
 parentRunId: string | null, objective: string, status: string, channel: string, createdAt: string, finishedAt: string | null, toolCalls: Array<ExportToolCall>, };
 
 /**
+ * The person's second factor (ADR-200): whether it is on, since when, and
+ * the recovery codes left. Never its secret nor a code.
+ */
+export type ExportSecondFactor = { enabled: boolean, enabledAt: string | null, recoveryCodesLeft: number, };
+
+/**
  * A session: when, from which address, with what browser.
  */
 export type ExportSession = { createdAt: string, lastSeenAt: string, expiresAt: string, revokedAt: string | null, ip: string | null, userAgent: string | null, };
@@ -2378,7 +2384,7 @@ export type PersonalExport = { exportedAt: string, account: ExportAccount, notif
  * The sessions opened in the person's name, still kept (30 days past
  * their end, ADR-185).
  */
-sessions: Array<ExportSession>, signIns: Array<ExportSignIn>, provisioning: Array<ExportProvisioning>,
+sessions: Array<ExportSession>, signIns: Array<ExportSignIn>, secondFactor: ExportSecondFactor, provisioning: Array<ExportProvisioning>,
 /**
  * The invitation still awaiting the person, if any (ADR-027).
  */
@@ -2484,6 +2490,13 @@ export type ProviderKind = { kind: string, requiresKey: boolean,
  * Served at an endpoint the operator lists.
  */
 listedEndpoint: boolean, defaultModel: string | null, };
+
+/**
+ * `POST /account/second-factor/confirmation` and
+ * `POST /account/second-factor/recovery-codes`: the recovery codes,
+ * shown this once.
+ */
+export type RecoveryCodes = { codes: Array<string>, };
 
 /**
  * `POST /auth/password-reset/link`: the account whose password is reset.
@@ -2857,6 +2870,50 @@ totalResults: number,
 startIndex: number, itemsPerPage: number, Resources: Array<ScimUser>, };
 
 /**
+ * Body of the routes that take a code of one's second factor: six digits
+ * of the app or a recovery code, checked by the server.
+ */
+export type SecondFactorCodeInput = { code: string, };
+
+/**
+ * `POST /account/second-factor/enrolment`: what the authenticator app is
+ * given, shown this once.
+ */
+export type SecondFactorEnrolment = {
+/**
+ * The secret in base32, to type by hand.
+ */
+secret: string,
+/**
+ * The `otpauth://` address its QR code holds.
+ */
+uri: string, };
+
+/**
+ * Body of `POST /account/second-factor/enrolment`: the account's password,
+ * typed again: a session alone does not change how the account signs in.
+ */
+export type SecondFactorEnrolmentRequest = { password: string, };
+
+/**
+ * `GET /account/second-factor`: one's own second factor.
+ */
+export type SecondFactorStatus = {
+/**
+ * The account signs in with a password: an account that signs in
+ * through its company's identity provider has its second factor there.
+ */
+applicable: boolean,
+/**
+ * The server can keep a secret (`MIMORYA_MASTER_KEY`).
+ */
+available: boolean, enabled: boolean, enabledAt: string | null,
+/**
+ * Recovery codes not used yet.
+ */
+recoveryCodesLeft: number, };
+
+/**
  * Highest sensitivity of the data an account may read.
  */
 export type Sensitivity = "public" | "internal" | "confidential" | "restricted";
@@ -2865,6 +2922,14 @@ export type Sensitivity = "public" | "internal" | "confidential" | "restricted";
  * A unit a share may name.
  */
 export type ShareableUnit = { id: string, parentId: string | null, name: string, };
+
+/**
+ * `POST /auth/login`, `POST /auth/password-reset/complete`: whether the
+ * session is open, or waits for the second factor.
+ */
+export type SignIn = { next: SignInNext, };
+
+export type SignInNext = "signed_in" | "second_factor";
 
 /**
  * Body of `PUT /admin/skills/{id}/activation`: the version made active.

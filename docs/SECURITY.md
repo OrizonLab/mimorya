@@ -102,6 +102,28 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   de l'heure, la vraie demande de la personne ; l'administrateur peut alors lui
   envoyer un lien. La page de connexion ne propose le lien que si un relais est
   configuré ; l'audit d'une demande, anonyme, est inscrit au nom de la plateforme.
+- Second facteur des comptes à mot de passe (ADR-200) : codes à six chiffres d'une
+  application d'authentification (TOTP, RFC 6238, pas de 30 s, un pas d'écart toléré)
+  et dix codes de secours de 80 bits. L'enrôlement demande de retaper le mot de passe
+  (une session volée ne lie pas le compte à une autre application) ; le renouvellement
+  des codes de secours et la désactivation, un code valable. Le secret (160 bits) est scellé sous la clé
+  maîtresse pour ce compte seul ; sans clé maîtresse, l'enrôlement est refusé et
+  expliqué. Les codes de secours sont gardés en SHA-256, montrés une seule fois. Une
+  fois le mot de passe vérifié, un compte au second facteur actif ne reçoit pas de
+  session mais un défi : jeton de 256 bits gardé en empreinte, dans un cookie
+  `HttpOnly`, `SameSite=Strict`, limité à `/api/auth/second-factor`, valable cinq
+  minutes, à usage unique, retiré avec un changement de mot de passe ou de statut du
+  compte. Chaque code ne sert qu'une fois : un code de l'application n'est accepté que
+  pour un pas postérieur au dernier accepté, la ligne verrouillée. Cinq codes refusés
+  par quart d'heure et par compte, quel que soit le nombre de défis et la route (connexion,
+  activation, codes de secours, désactivation : limite partagée) ; l'activation ferme les
+  autres sessions du compte ;
+  après cent refus de suite (NIST SP 800-63B), seuls les codes de secours passent. La
+  fin d'un mot de passe oublié demande aussi le second facteur avant d'ouvrir une
+  session. Les comptes sans mot de passe (fournisseur d'identité) en sont exemptés :
+  leur second facteur est celui du fournisseur. Activation, désactivation,
+  renouvellement des codes de secours, code refusé et code de secours utilisé sont
+  audités, jamais un code ni le secret.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
   requêtes modifiantes + vérification d'`Origin`. Quatre exceptions, que des tests tentent
   de contourner : la réception des réponses SAML (ADR-068, ci-dessous), l'envoi d'un
@@ -854,8 +876,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   messages, leur résumé et leur fil de messagerie, ses mémoires personnelles, ses tâches,
   déclencheurs, missions et livrables, les runs faits pour lui et leurs appels d'outils,
   les validations qui lui ont été demandées et ses décisions sur celles des autres (la
-  sienne seule), sa consommation par mois, ses absences, ce qu'il a relié ou autorisé ;
-  jamais un secret ni les données d'un autre ; l'export, lu sur un même instantané, est
+  sienne seule), sa consommation par mois, ses absences, ce qu'il a relié ou autorisé,
+  si son second facteur est actif, depuis quand et combien de codes de secours lui
+  restent (ADR-200) ; jamais un secret ni les données d'un autre ; l'export, lu sur un même instantané, est
   tracé par ses nombres seuls avant d'être envoyé, et un envoi qui n'avance plus pendant
   une minute est arrêté. Un administrateur qui détient `user:erase` (non délégable, sur
   toute l'entreprise) efface un compte désactivé en retapant son adresse

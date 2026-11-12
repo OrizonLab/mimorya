@@ -1,6 +1,6 @@
 //! The person's account in their export (ADR-187): who they are, their
 //! units (those they lead too) and roles, their absences, their sessions,
-//! how they sign in and the invitation awaiting them.
+//! how they sign in, their second factor and the invitation awaiting them.
 
 use mimorya_db::repositories::personal_access::{
     ExportedInvitation, ExportedProvisioning, ExportedSession, ExportedSignIn,
@@ -8,6 +8,7 @@ use mimorya_db::repositories::personal_access::{
 use mimorya_db::repositories::personal_data::{
     ExportedAbsence, ExportedProfile, ExportedRole, ExportedUnit,
 };
+use mimorya_db::repositories::second_factors::SecondFactorState;
 use serde::Serialize;
 use serde_json::Value;
 use ts_rs::TS;
@@ -63,6 +64,37 @@ pub struct ExportAbsence {
     pub ends_at: String,
     /// Who stood in, by name.
     pub delegate: String,
+}
+
+/// The person's second factor (ADR-200): whether it is on, since when, and
+/// the recovery codes left. Never its secret nor a code.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportSecondFactor {
+    pub enabled: bool,
+    pub enabled_at: Option<String>,
+    pub recovery_codes_left: i64,
+}
+
+impl From<Option<SecondFactorState>> for ExportSecondFactor {
+    fn from(state: Option<SecondFactorState>) -> Self {
+        match state {
+            Some(SecondFactorState {
+                enabled_at: Some(enabled_at),
+                recovery_codes_left,
+            }) => Self {
+                enabled: true,
+                enabled_at: Some(iso(&enabled_at)),
+                recovery_codes_left,
+            },
+            // An enrolment that waits is no second factor.
+            _ => Self {
+                enabled: false,
+                enabled_at: None,
+                recovery_codes_left: 0,
+            },
+        }
+    }
 }
 
 /// A session: when, from which address, with what browser.
