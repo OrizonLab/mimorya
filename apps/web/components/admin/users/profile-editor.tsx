@@ -14,9 +14,13 @@ import { CLEARANCE_LABELS } from '@/lib/labels';
 import { useSyncedState } from '@/lib/use-synced-state';
 import { unitOptions } from '../organization/types';
 import { CredentialActions } from './credential-actions';
+import { SecondFactorReset } from './second-factor-reset';
 import type { AccountNotice } from './types';
 
-/** Profile, status and password (or invitation) of an account (`user:manage`). */
+/**
+ * Profile, status, password (or invitation) and second factor of an account
+ * (`user:manage`).
+ */
 export function ProfileEditor({
   user,
   units,
@@ -108,6 +112,9 @@ export function ProfileEditor({
           action={action}
           onNotice={onNotice}
         />
+        {user.secondFactor && (
+          <SecondFactorReset user={user} action={action} onNotice={onNotice} onReset={onChanged} />
+        )}
         <Button type="button" variant={active ? 'danger' : 'secondary'} onClick={toggleStatus}>
           {active ? 'Désactiver le compte' : 'Réactiver le compte'}
         </Button>

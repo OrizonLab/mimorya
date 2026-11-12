@@ -14038,7 +14038,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     Apache-2.0) réduit à son rendu SVG (`default-features = false, features =
 ["svg"]`), sans autre dépendance. Il est donné dans la réponse d'enrôlement
     (`qrCode`, adresse `data:image/svg+xml`), que la politique de la page admet déjà
-    (`img-src 'self' data:`). Noir sur blanc quel que soit le thème, marge comprise ;
+    (`img-src 'self' data: blob:`). Noir sur blanc quel que soit le thème, marge comprise ;
   - **connexion en deux temps** : la connexion, la fin d'un mot de passe oublié et
     l'acceptation d'une invitation suivent la réponse (`lib/sign-in.ts`) : l'application
     si la session est ouverte, sinon la page `/login/second-factor`. Cette page lit
@@ -14075,3 +14075,28 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - un enrôlement sans QR code (clé seule) : la saisie d'une clé de 32 caractères est
     la source d'erreurs que le QR code évite ; la clé reste montrée pour qui n'a pas
     d'appareil photo.
+
+## ADR-204 — Écrans d'administration du second facteur (chantier 2, lot 68e)
+
+- **Statut** : accepté (2026-11-12) · complète ADR-201, ADR-202 et ADR-203 ; clôt le
+  chantier du second facteur.
+- **Contexte** : la politique de l'entreprise (ADR-201) et la réinitialisation par un
+  administrateur (ADR-202) n'étaient accessibles que par l'API.
+- **Décision** :
+  - **politique** : une section « Second facteur » dans l'onglet « Connexion » (ouvert à
+    qui gère les réglages, `settings:manage`) choisit qui doit en avoir un : personne,
+    les administrateurs (avec ce qui en fait un, dit à côté) ou tous les comptes à mot de
+    passe. Sans clé maîtresse, la page le dit et seule « Personne » reste possible ;
+    enregistrée, l'exigence vaut à la prochaine connexion de chacun ;
+  - **annuaire** : un badge « Second facteur » marque, pour les seuls gestionnaires des
+    comptes, ceux dont le second facteur est actif ;
+  - **réinitialisation** : un bouton « Réinitialiser le second facteur » dans la gestion
+    d'un compte qui en a un, après confirmation ; un avis dit ce qui suit (sessions
+    fermées, mot de passe seul ou nouvel enrôlement si l'entreprise l'exige).
+- **Conséquences** :
+  - les tests de bout en bout règlent la politique depuis l'écran (relue après
+    rechargement et par l'API) et réinitialisent le second facteur d'un compte fait pour
+    le test : sa session prend fin, le badge disparaît, son mot de passe seul le
+    reconnecte ;
+  - le chantier du second facteur est complet : il reste à vérifier en conditions
+    réelles la lecture du QR code par une vraie application d'authentification.

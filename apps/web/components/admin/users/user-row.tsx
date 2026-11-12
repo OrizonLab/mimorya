@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Cell, LabelBadge } from '@/components/ui';
+import { Badge, Button, Cell, LabelBadge } from '@/components/ui';
 import { formatDate } from '@/lib/format';
 import { ACCOUNT_STATUS } from '@/lib/labels';
 import type { Directory, DirectoryUser, OrgUnitView } from '@/lib/api';
@@ -46,6 +46,8 @@ export function UserRow({
           <p className="text-xs text-muted">{user.jobTitle}</p>
           {user.email && <p className="text-xs text-muted">{user.email}</p>}
           {user.status !== 'active' && <LabelBadge labels={ACCOUNT_STATUS} value={user.status} />}
+          {/* To account managers only (ADR-202). */}
+          {user.secondFactor && <Badge tone="ok">Second facteur</Badge>}
           {user.status === 'invited' && canManage.users && (
             <p className="text-xs text-muted">{invitationState(user.invitationExpiresAt)}</p>
           )}

@@ -1,22 +1,33 @@
 'use client';
 
 import { useState } from 'react';
-import { api, useAction, type RecoveryCodes, type SecondFactorCodeInput } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type RecoveryCodes,
+  type SecondFactorCodeInput,
+  type SecondFactorStatus,
+} from '@/lib/api';
+import { formatDate } from '@/lib/format';
 import { CodeForm } from './code-form';
 import { RecoveryCodesNotice } from './recovery-codes-notice';
 
 /**
- * One's second factor once on (ADR-200): new recovery codes, which replace
- * the others, and turning it off, each proven by a current code; turning it
- * off is not offered where the company requires one (ADR-201).
+ * One's second factor once on (ADR-200): its state, new recovery codes,
+ * which replace the others, and turning it off, each proven by a current
+ * code; turning it off is not offered where the company requires one
+ * (ADR-201). While new codes are shown, the state, which still counts the
+ * former, is not.
  */
 export function AccountSecondFactorOn({
-  required,
+  status,
   onChange,
 }: {
-  required: boolean;
+  status: SecondFactorStatus;
   onChange: () => void;
 }) {
+  const required = status.required;
+  const left = status.recoveryCodesLeft;
   const [codes, setCodes] = useState<string[] | null>(null);
   const renew = useAction();
   const off = useAction();
@@ -53,6 +64,11 @@ export function AccountSecondFactorOn({
   }
   return (
     <div className="flex flex-col gap-5">
+      <p role="status" className="text-sm">
+        Activé{status.enabledAt ? ` le ${formatDate(status.enabledAt)}` : ''} · {left} code
+        {left > 1 ? 's' : ''} de secours restant{left > 1 ? 's' : ''}
+        {required ? ' · exigé par votre entreprise' : ''}
+      </p>
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-medium">Nouveaux codes de secours</h3>
         <p className="text-sm text-muted">Les codes de secours précédents ne serviront plus.</p>

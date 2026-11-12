@@ -7,6 +7,7 @@ import { useApiData, type IdentityProvidersView } from '@/lib/api';
 import { DomainProofs } from './domain-proofs';
 import { IdentityProviderCard } from './identity-provider-card';
 import { IdentityProviderForm } from './identity-provider-form';
+import { SecondFactorPolicy } from './second-factor-policy';
 
 /**
  * The company's identity providers (ADR-063): its collaborators sign in
@@ -15,7 +16,8 @@ import { IdentityProviderForm } from './identity-provider-form';
  * (ADR-064). The company's sign-in link may also create the account at the
  * first sign-in, when the provider is told to (ADR-067). A SAML provider is
  * given the company's own entity ID and the address it posts to (ADR-068).
- * The company proves its domains by DNS (ADR-069).
+ * The company proves its domains by DNS (ADR-069). Who must have a second
+ * factor to sign in with a password is set here too (ADR-201).
  */
 export function IdentityProvidersTab() {
   const state = useApiData<IdentityProvidersView>('/admin/identity-providers');
@@ -65,6 +67,7 @@ export function IdentityProvidersTab() {
             <IdentityProviderCard key={provider.id} provider={provider} onChanged={state.reload} />
           ))}
           <DomainProofs domains={data.domains} onChanged={state.reload} />
+          <SecondFactorPolicy />
         </div>
       )}
     </Loaded>
