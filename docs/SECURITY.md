@@ -132,7 +132,10 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   attendent un code terminées, toutes les sessions du compte fermées ; sa prochaine
   connexion l'enrôle de nouveau si l'entreprise l'exige. Activation, désactivation,
   renouvellement des codes de secours, code refusé, code de secours utilisé et
-  réinitialisation par un administrateur sont audités, jamais un code ni le secret.
+  réinitialisation par un administrateur sont audités, jamais un code ni le secret. Le
+  QR code de l'enrôlement est dessiné par le serveur (ADR-203) et donné dans la seule
+  réponse qui porte déjà le secret : aucune bibliothèque ni aucun service tiers ne le
+  voit.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
   requêtes modifiantes + vérification d'`Origin`. Quatre exceptions, que des tests tentent
   de contourner : la réception des réponses SAML (ADR-068, ci-dessous), l'envoi d'un

@@ -128,6 +128,7 @@ async fn enrol(
     Ok(Json(SecondFactorEnrolment {
         secret: enrolment.secret,
         uri: enrolment.uri,
+        qr_code: enrolment.qr_code,
     }))
 }
 

@@ -69,6 +69,9 @@ pub struct SecondFactorEnrolment {
     pub secret: String,
     /// The `otpauth://` address its QR code holds.
     pub uri: String,
+    /// That QR code, drawn by the server as a `data:image/svg+xml` address
+    /// (ADR-203).
+    pub qr_code: String,
 }
 
 /// `POST /account/second-factor/confirmation` and

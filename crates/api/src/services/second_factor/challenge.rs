@@ -5,8 +5,9 @@
 //! session. An account the company requires one of, without one, gets a
 //! challenge to enrol first (`sign_in_enrolment.rs`, ADR-201). A password
 //! changed or an account disabled meanwhile ends it (trigger of migration
-//! 0089); codes refused count against the account, however many challenges
-//! are open.
+//! 0089), as its second factor reset by an administrator does (ADR-202): a
+//! completion reads its challenge again under the account's lock. Codes
+//! refused count against the account, however many challenges are open.
 
 use axum::http::HeaderMap;
 use chrono::{Duration, Utc};

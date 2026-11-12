@@ -2,11 +2,14 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction, type LinkPassword, type ResetDetails } from '@/lib/api';
+import { api, useAction, type LinkPassword, type ResetDetails, type SignIn } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { EMPTY_NEW_PASSWORD, NewPasswordFields, passwordsDiffer } from './new-password-fields';
 
-/** Chooses the new password; the API ends every other session and signs this one in. */
+/**
+ * Chooses the new password; the API ends every other session and signs this
+ * one in, or first asks for the second factor (ADR-200, ADR-201).
+ */
 export function ResetPasswordForm({
   token,
   reset,
@@ -14,7 +17,7 @@ export function ResetPasswordForm({
 }: {
   token: string;
   reset: ResetDetails;
-  onReset: () => void;
+  onReset: (answer: SignIn) => void;
 }) {
   const [chosen, setChosen] = useState(EMPTY_NEW_PASSWORD);
   const action = useAction();
@@ -24,12 +27,12 @@ export function ResetPasswordForm({
     event.preventDefault();
     if (mismatch) return;
     const done = await action.run(() =>
-      api.post('/auth/password-reset/complete', {
+      api.post<SignIn>('/auth/password-reset/complete', {
         token,
         password: chosen.password,
       } satisfies LinkPassword),
     );
-    if (done) onReset();
+    if (done) onReset(done);
   }
 
   return (

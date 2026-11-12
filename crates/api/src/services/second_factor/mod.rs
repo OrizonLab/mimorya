@@ -7,12 +7,14 @@
 //! (`challenge.rs`). What the company requires of whom (`requirement.rs`),
 //! an enrolment's two steps (`activation.rs`) and the enrolment a sign-in
 //! waits for when the company requires one (`sign_in_enrolment.rs`,
-//! ADR-201).
+//! ADR-201); the QR code an app reads, drawn on the server (`qr_code.rs`,
+//! ADR-203).
 
 mod activation;
 mod challenge;
 mod own;
 mod proof;
+mod qr_code;
 mod requirement;
 mod secret;
 mod sign_in_enrolment;

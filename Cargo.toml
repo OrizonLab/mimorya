@@ -36,6 +36,9 @@ ring = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 # The HTTP client of the MCP transport (rmcp): TLS configured explicitly (ring, webpki roots).
 openidconnect = { version = "4.0.1", default-features = false }
+# The QR code of a second factor's enrolment (ADR-203): drawn as SVG only,
+# without the image renderer or any other dependency.
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 # A domain's proof read from its DNS (ADR-069): pure Rust, the system's resolver.
 hickory-resolver = "0.26"
 # Reading deposited documents (ADR-095), in the extraction process only:
