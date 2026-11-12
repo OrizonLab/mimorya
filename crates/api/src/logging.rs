@@ -2,8 +2,10 @@
 //! errors with the body a server sent back, which may quote a company's
 //! token: its logs are off unless the operator names it explicitly
 //! (`LOG_LEVEL=info,rmcp=warn`). The IMAP library traces every command and
-//! answer, a person's `LOGIN` password and e-mails included: its logs are
-//! always off, whatever the operator names (ADR-205). Connectors log their
+//! answer, a person's `LOGIN` password and e-mails included: its records
+//! are dropped where `log` is bridged into `tracing`, before any filter
+//! reads them, and its logs are off in the filter too, whatever the
+//! operator names (ADR-205). Connectors log their
 //! own failures, token masked. Colours only for a terminal, unless `NO_COLOR` says otherwise:
 //! logs kept by Docker or a collector read as plain text, an anchor copied
 //! as it is written (ADR-180).
@@ -21,6 +23,22 @@ pub fn log_colours(terminal: bool, no_color: Option<&OsStr>) -> bool {
 /// Libraries whose logs write secrets at any level they use, never
 /// enabled: a directive naming one is dropped.
 const SILENCED: [&str; 2] = ["async_imap", "imap_proto"];
+
+/// Sets the server's logs up: `tracing` filtered by `level`, coloured as
+/// told, and the `log` records of the libraries bridged into it, those of
+/// `SILENCED` dropped first, so that no directive (a span's included) lets
+/// them through.
+pub fn init_logs(level: &str, colours: bool) -> anyhow::Result<()> {
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(log_filter(level)?)
+        .with_ansi(colours)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)?;
+    tracing_log::LogTracer::builder()
+        .ignore_all(SILENCED)
+        .init()?;
+    Ok(())
+}
 
 pub fn log_filter(level: &str) -> anyhow::Result<EnvFilter> {
     let kept: Vec<&str> = level

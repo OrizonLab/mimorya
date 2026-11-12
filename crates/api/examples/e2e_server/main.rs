@@ -99,7 +99,7 @@ use mimorya_agent::llm::{EmbeddingProvider, LlmProvider};
 use mimorya_agent::testing::{ConceptEmbedder, ScriptedProvider, ScriptedStep};
 use mimorya_api::mail::Mailer;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
-use mimorya_api::{AppConfig, BuildOptions, build_app, log_filter};
+use mimorya_api::{AppConfig, BuildOptions, build_app, init_logs};
 use mimorya_connectors::outbound::NetworkPolicy;
 use mimorya_connectors::testing::{FakeSlack, FakeTeams, FakeTelegram};
 
@@ -138,9 +138,7 @@ const CONNECTION_TESTS: usize = 20;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = AppConfig::from_env()?;
-    tracing_subscriber::fmt()
-        .with_env_filter(log_filter(&config.log_level)?)
-        .init();
+    init_logs(&config.log_level, true)?;
     let mail_dir = PathBuf::from(
         std::env::var("E2E_MAIL_DIR").unwrap_or_else(|_| "target/e2e/mail".to_string()),
     );

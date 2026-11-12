@@ -22,8 +22,9 @@ pub const USER: &str = "paul.renaud@neo-maintenance.example";
 pub const PASSWORD: &str = r#"mot de passe "entre" \ guillemets"#;
 /// Beyond ASCII.
 pub const ACCENTED: &str = "mot de passe accentué à Noël";
-/// Another password, refused, quoted back by some servers.
-pub const WRONG: &str = r#"autre "secret" \ de paul"#;
+/// Another password, refused, quoted back by some servers: an apostrophe,
+/// guillemets and a backslash, spelt differently by each escaping.
+pub const WRONG: &str = r#"l'autre "secret" \ de paul"#;
 
 pub fn trusting(authority: &TestAuthority) -> NetworkPolicy {
     NetworkPolicy {
@@ -63,11 +64,23 @@ pub fn masked(cause: Cause, login: &MailLogin) -> String {
     explained(cause, &login.redactor()).to_string()
 }
 
-/// Neither the password nor its quoted form (`\"`, `\\`).
+/// Neither the password nor its quoted form (`\"`, `\\`), nor either as
+/// `{:?}` or `escape_debug` writes it.
 pub fn hides(text: &str, password: &str) {
     let quoted = password.replace('\\', "\\\\").replace('"', "\\\"");
-    assert!(!text.contains(password), "{text}");
-    assert!(!text.contains(&quoted), "{text}");
+    let debugged = |form: &str| format!("{form:?}").trim_matches('"').to_string();
+    for spelling in [
+        password.to_string(),
+        debugged(password),
+        password.escape_debug().to_string(),
+        debugged(&quoted),
+        quoted.escape_debug().to_string(),
+        quoted,
+    ] {
+        assert!(!text.contains(&spelling), "{spelling} in {text}");
+    }
+    // The secret's core never shows, however it was escaped.
+    assert!(!text.contains("secret"), "{text}");
 }
 
 pub fn no_credential_in(heard: &[String]) {

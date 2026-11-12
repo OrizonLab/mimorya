@@ -58,10 +58,17 @@ impl MailLogin {
 
     /// `text` without the password, however a server quoted it back or a
     /// library wrote it: as is, quoted as IMAP quotes a string, and each of
-    /// these escaped as `Debug` escapes it.
+    /// these as `{:?}` writes it (an apostrophe kept) or as `escape_debug`
+    /// does (an apostrophe escaped).
     pub(super) fn scrub(&self, text: &str) -> String {
         let quoted = self.password.replace('\\', "\\\\").replace('"', "\\\"");
+        let debugged = |form: &str| {
+            let written = format!("{form:?}");
+            written[1..written.len() - 1].to_string()
+        };
         let mut spellings = [
+            debugged(&self.password),
+            debugged(&quoted),
             self.password.escape_debug().to_string(),
             quoted.escape_debug().to_string(),
             quoted,
@@ -124,12 +131,18 @@ mod tests {
 
     #[test]
     fn scrubs_the_password_however_it_was_spelt() {
-        let password = r#"autre "secret" \ de paul"#;
+        let password = r#"l'autre "secret" \ de paul"#;
         let login = MailLogin::new("paul", password).unwrap();
-        let quoted = r#"autre \"secret\" \\ de paul"#;
-        let said = format!("{password} ; {quoted} ; {:?} ; {:?}", password, quoted);
+        let quoted = r#"l'autre \"secret\" \\ de paul"#;
+        let said = format!(
+            "{password} ; {quoted} ; {:?} ; {:?} ; {} ; {}",
+            password,
+            quoted,
+            password.escape_debug(),
+            quoted.escape_debug()
+        );
         let scrubbed = login.scrub(&said);
         assert!(!scrubbed.contains("secret"), "{scrubbed}");
-        assert_eq!(scrubbed.matches("***").count(), 4, "{scrubbed}");
+        assert_eq!(scrubbed.matches("***").count(), 6, "{scrubbed}");
     }
 }

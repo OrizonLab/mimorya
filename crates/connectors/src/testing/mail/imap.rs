@@ -38,6 +38,9 @@ pub struct ImapSetup {
     pub offers_plain: bool,
     /// Whether a refusal quotes the password it was given.
     pub quotes_refused_password: bool,
+    /// Whether it answers `BAD` to `LOGIN` (as a strict IMAP4rev1 server
+    /// answers a quoted string beyond ASCII).
+    pub refuses_login_form: bool,
 }
 
 impl ImapSetup {
@@ -46,6 +49,7 @@ impl ImapSetup {
             behaviour,
             offers_plain: true,
             quotes_refused_password: false,
+            refuses_login_form: false,
         }
     }
 }
@@ -144,6 +148,7 @@ async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
             _ => None,
         };
         let answer = match (command.as_str(), account) {
+            ("LOGIN", _) if setup.refuses_login_form => format!("{tag} BAD chaîne invalide\r\n"),
             ("CAPABILITY", _) => format!("* CAPABILITY IMAP4rev1\r\n{tag} OK terminé\r\n"),
             ("NOOP", _) => format!("{tag} OK NOOP terminé\r\n"),
             ("LOGIN" | "AUTHENTICATE", Some((user, password))) => {

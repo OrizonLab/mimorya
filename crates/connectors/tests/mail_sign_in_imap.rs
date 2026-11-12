@@ -10,7 +10,7 @@
 mod support;
 
 use mimorya_connectors::outbound::{NOT_SECURE, TOO_LONG, TOO_SLOW, UNREACHABLE};
-use mimorya_connectors::standard_mail::{CREDENTIALS_REFUSED, check_imap};
+use mimorya_connectors::standard_mail::{CREDENTIALS_REFUSED, FORM_REFUSED, check_imap};
 use mimorya_connectors::testing::{FakeImap, ImapBehaviour, ImapSetup, TestAuthority};
 use support::mail::{
     ACCENTED, PASSWORD, USER, WRONG, accounts, hides, imap_at, login, masked, trusting, until_heard,
@@ -77,12 +77,30 @@ async fn another_password_is_refused_and_masked_where_the_server_quotes_it() {
         .await
         .unwrap_err();
     assert_eq!(cause.summary, CREDENTIALS_REFUSED, "{cause:?}");
-    // The server said it back; the person reads it masked.
     // The server said it back: taken out at once, masked again for the
     // person.
     hides(&cause.detail, WRONG);
     assert!(cause.detail.contains("***"), "{cause:?}");
     hides(&masked(cause, &wrong), WRONG);
+}
+
+#[tokio::test]
+async fn a_server_refusing_the_login_form_is_told_so() {
+    let authority = TestAuthority::new();
+    let setup = ImapSetup {
+        offers_plain: false,
+        refuses_login_form: true,
+        ..ImapSetup::new(ImapBehaviour::Answers)
+    };
+    let server = FakeImap::with(&authority, accounts(), setup).await;
+    let cause = check_imap(
+        &imap_at(server.address),
+        &login(ACCENTED),
+        trusting(&authority),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(cause.summary, FORM_REFUSED, "{cause:?}");
 }
 
 #[tokio::test]

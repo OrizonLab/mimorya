@@ -12,7 +12,8 @@ mod support;
 
 use mimorya_connectors::outbound::{NOT_SECURE, NetworkPolicy, OutboundProxy, TOO_LONG, TOO_SLOW};
 use mimorya_connectors::standard_mail::{
-    CREDENTIALS_REFUSED, NO_SHARED_MECHANISM, NO_STARTTLS, SmtpSecurity, check_imap, check_smtp,
+    CREDENTIALS_REFUSED, NO_SHARED_MECHANISM, NO_STARTTLS, SmtpSecurity, TRY_LATER, check_imap,
+    check_smtp,
 };
 use mimorya_connectors::testing::{
     FakeImap, FakeSmtp, SmtpMode, SmtpSetup, TestAuthority, serve_proxy,
@@ -79,6 +80,17 @@ async fn auth_login_serves_where_plain_is_not_offered_and_none_is_told() {
         .unwrap_err();
     assert_eq!(cause.summary, NO_SHARED_MECHANISM, "{cause:?}");
     no_credential_in(&server.heard.lines());
+    // Refused for now: said so, to try again later.
+    let busy = SmtpSetup {
+        refuses_for_now: true,
+        ..setup(SmtpMode::StartTls)
+    };
+    let server = FakeSmtp::with(&authority, busy, accounts()).await;
+    let smtp = smtp_at(server.address, SmtpSecurity::StartTls);
+    let cause = check_smtp(&smtp, &login(PASSWORD), trusting(&authority))
+        .await
+        .unwrap_err();
+    assert_eq!(cause.summary, TRY_LATER, "{cause:?}");
 }
 
 #[tokio::test]

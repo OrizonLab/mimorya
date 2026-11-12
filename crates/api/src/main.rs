@@ -5,7 +5,7 @@
 use std::io::IsTerminal;
 use std::net::SocketAddr;
 
-use mimorya_api::{App, AppConfig, BuildOptions, build_app, log_colours, log_filter};
+use mimorya_api::{App, AppConfig, BuildOptions, build_app, init_logs, log_colours};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -17,10 +17,7 @@ async fn main() -> anyhow::Result<()> {
         std::io::stdout().is_terminal(),
         std::env::var_os("NO_COLOR").as_deref(),
     );
-    tracing_subscriber::fmt()
-        .with_env_filter(log_filter(&config.log_level)?)
-        .with_ansi(colours)
-        .init();
+    init_logs(&config.log_level, colours)?;
 
     if let Some(proxy) = config.mcp_network.proxy {
         // Its address without its credentials (ADR-162).

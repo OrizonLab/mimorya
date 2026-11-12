@@ -1029,9 +1029,10 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   octet, et ce qui est glissé en clair après son accord fait échouer TLS au lieu d'être
   lu ; ce qu'un serveur envoie est borné (64 Kio pendant la connexion d'une personne) ;
   un compte refusé est dit sans son mot de passe, retiré de ce que le serveur répond sous
-  chacune de ses formes puis masqué encore. Les journaux de la bibliothèque IMAP sont
-  toujours coupés (`log_filter`), quel que soit `LOG_LEVEL`, et ceux de lettre ne sont
-  pas compilés.
+  chacune de ses formes puis masqué encore. Les enregistrements de la bibliothèque IMAP
+  sont écartés au pont de `log` vers `tracing` (`init_logs`), avant tout filtre, et
+  coupés encore par le filtre, quel que soit `LOG_LEVEL` ; ceux de lettre ne sont pas
+  compilés.
 - Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais
   dans celui de l'API, lancé avec un environnement vide et borné par lui-même avant de
   rien lire (1 Gio de mémoire, 20 s de processeur, aucun fichier écrit), tué au bout de

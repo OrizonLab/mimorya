@@ -14139,11 +14139,18 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       1 000 octets. Au-delà, le refus dit « réponse trop longue » ;
     - le mot de passe ne sort d'aucun refus : il est retiré de ce que le serveur répond
       ou que la bibliothèque écrit, sous chacune de ses formes (telle quelle, entre
-      guillemets IMAP, échappée une ou deux fois), puis masqué encore par l'appelant ;
-    - les journaux de la bibliothèque IMAP sont toujours coupés : à son niveau `trace`,
-      elle écrirait chaque commande, `LOGIN` et son mot de passe compris. La fonctionnalité
-      `tracing` de lettre reste coupée pour la même raison (`AUTH PLAIN`). La plateforme
-      se nomme `[127.0.0.1]` dans `EHLO`, sans dire le nom de sa machine ;
+      guillemets IMAP, et chacune écrite par `{:?}` ou par `escape_debug`, qui
+      diffèrent sur l'apostrophe), puis masqué encore par l'appelant ;
+    - les journaux de la bibliothèque IMAP ne sont jamais écrits : à son niveau
+      `trace`, elle écrirait chaque commande, `LOGIN` et son mot de passe compris. Ses
+      enregistrements `log` sont écartés là où ils passent dans `tracing`, avant tout
+      filtre, et le filtre les coupe encore. La fonctionnalité `tracing` de lettre reste
+      coupée pour la même raison (`AUTH PLAIN`). La plateforme se nomme `[127.0.0.1]`
+      dans `EHLO`, sans dire le nom de sa machine ;
+    - aucun mécanisme d'authentification commun (ni PLAIN ni LOGIN) est dit tel quel
+      avant que rien ne parte ; un refus pour l'instant (`4xx`) invite à réessayer ;
+      `BAD` à la connexion IMAP dit que la forme de l'identifiant ou du mot de passe
+      est refusée ;
     - CalDAV en `https://`, comme toute adresse que nomme une entreprise ;
     - le certificat doit remonter aux racines webpki et nommer le serveur. Les racines
       des serveurs simulés ne sont reconnues que dans les tests (`test_roots` de la

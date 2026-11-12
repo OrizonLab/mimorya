@@ -90,6 +90,9 @@ tower = { version = "0.5", features = ["util"] }
 ts-rs = { version = "12", features = ["uuid-impl", "no-serde-warnings"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+# The bridge of `log` records into `tracing`, set up by hand to drop the
+# records of the libraries that would write secrets (ADR-205).
+tracing-log = "0.2"
 url = "2"
 uuid = { version = "1", features = ["serde", "v4"] }
 validator = { version = "0.21", features = ["derive"] }

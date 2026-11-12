@@ -84,9 +84,22 @@ async fn sign_in(
     let mut connection = AsyncSmtpConnection::connect_with_transport(Box::new(wire), &hello)
         .await
         .map_err(|error| told(failed(error)))?;
+    let mechanisms = [Mechanism::Plain, Mechanism::Login];
+    if connection
+        .server_info()
+        .get_auth_mechanism(&mechanisms)
+        .is_none()
+    {
+        // No mechanism both sides know: nothing is sent.
+        let _ = timeout(LEAVE_TIMEOUT, connection.quit()).await;
+        return Err(Cause {
+            summary: NO_SHARED_MECHANISM,
+            detail: String::new(),
+        });
+    }
     let credentials = Credentials::new(login.username().into(), login.password().into());
     connection
-        .auth(&[Mechanism::Plain, Mechanism::Login], &credentials)
+        .auth(&mechanisms, &credentials)
         .await
         .map_err(|error| told(not_signed_in(error)))?;
     Ok((connection, budget))
@@ -98,9 +111,6 @@ fn not_signed_in(error: lettre::transport::smtp::Error) -> Cause {
         CREDENTIALS_REFUSED
     } else if error.is_transient() {
         TRY_LATER
-    } else if error.is_client() {
-        // No mechanism both sides know: nothing was sent.
-        NO_SHARED_MECHANISM
     } else {
         return failed(error);
     };
@@ -116,7 +126,12 @@ fn failed(error: lettre::transport::smtp::Error) -> Cause {
         TOO_SLOW
     } else if error.is_tls() {
         NOT_SECURE
-    } else if error.is_response() || error.is_permanent() || error.is_transient() {
+    } else if error.is_response()
+        || error.is_permanent()
+        || error.is_transient()
+        || error.is_client()
+    {
+        // An answer the exchange did not expect, a challenge among them.
         NOT_A_MAIL_SERVER
     } else {
         UNREACHABLE

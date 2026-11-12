@@ -45,6 +45,8 @@ pub struct SmtpSetup {
     pub greets_endlessly: bool,
     /// Whether a refusal quotes the password it was given.
     pub quotes_refused_password: bool,
+    /// Whether it refuses `AUTH` for now (`454`).
+    pub refuses_for_now: bool,
 }
 
 impl SmtpSetup {
@@ -56,6 +58,7 @@ impl SmtpSetup {
             falls_silent: false,
             greets_endlessly: false,
             quotes_refused_password: false,
+            refuses_for_now: false,
         }
     }
 }
@@ -159,6 +162,7 @@ impl Server<'_> {
                     }
                     return End::Upgrade(stream.into_inner());
                 }
+                "AUTH" if self.setup.refuses_for_now => "454 4.7.0 réessayez plus tard".into(),
                 "AUTH" => match self.authenticated(&mut stream, argument).await {
                     Some(Ok(())) => "235 2.7.0 authentifié".into(),
                     Some(Err(password)) if self.setup.quotes_refused_password => {
