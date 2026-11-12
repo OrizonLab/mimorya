@@ -1,11 +1,14 @@
 //! A company's own mail servers, reached with the protocols every host
-//! speaks (ADR-205): where its IMAP and SMTP servers are (`servers`), the
+//! speaks (ADR-205): its declaration (`declaration`) and connector type
+//! (`connector`), where its IMAP and SMTP servers are (`servers`), the
 //! account each person signs in with (`login`), and signing in, IMAP over
 //! implicit TLS (`imap`), SMTP over implicit TLS or STARTTLS (`smtp`, its
 //! words in clear in `starttls`), both on a connection the network policy
 //! allows, secured by the platform's own TLS before any credential, what
 //! the server sends bounded.
 
+mod connector;
+mod declaration;
 mod imap;
 mod login;
 mod servers;
@@ -13,6 +16,8 @@ mod smtp;
 mod starttls;
 mod wire;
 
+pub use connector::MailServerConnector;
+pub use declaration::{MAIL_NAMESPACE, MAIL_SERVER, MAIL_TOOLS, MailServerConfig};
 pub use imap::{ImapSession, check_imap, imap_session};
 pub use login::{MAX_PASSWORD_CHARS, MAX_USERNAME_CHARS, MailLogin};
 pub use servers::{ImapServer, SmtpSecurity, SmtpServer};

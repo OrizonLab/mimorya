@@ -191,6 +191,23 @@ fn administration_bodies_read_what_the_web_client_sends() {
             }],
         }),
     );
+    let imap = json!({ "host": "imap.example.com", "port": 993 });
+    let smtp = json!({ "host": "smtp.example.com", "port": 587, "security": "starttls" });
+    strict::<NewMailServerConnector>(
+        json!({ "name": "Messagerie", "imap": imap, "smtp": smtp }),
+        json!({
+            "name": "Messagerie",
+            "imap": imap,
+            "smtp": smtp,
+            "caldav": "https://dav.example.com/",
+            "enabled": false,
+            "writeTools": true,
+        }),
+    );
+    strict::<ConnectorUpdate>(
+        json!({ "caldav": null }),
+        json!({ "imap": imap, "smtp": smtp, "caldav": "https://dav.example.com/", "writeTools": true }),
+    );
     let description = json!({ "document": "{\"openapi\": \"3.1.0\"}" });
     strict::<OpenApiDescription>(description.clone(), description);
     strict::<ConnectorUpdate>(
@@ -237,6 +254,13 @@ fn nested_administration_values_refuse_unknown_fields() {
             "{scope}"
         );
     }
+    // The standard mail's servers (ADR-205).
+    let imap = json!({ "host": "imap.example.com", "port": 993, "password": "secret" });
+    assert!(serde_json::from_value::<MailImapServer>(imap).is_err());
+    let smtp = json!({ "host": "smtp.example.com", "port": 25, "security": "none" });
+    assert!(serde_json::from_value::<MailSmtpServer>(smtp).is_err());
+    let smtp = json!({ "host": "smtp.example.com", "port": 25, "security": "tls", "tls": true });
+    assert!(serde_json::from_value::<MailSmtpServer>(smtp).is_err());
     // And they are answered as before.
     for (scope, written) in [
         (AssignmentScope::Tenant {}, json!({ "type": "tenant" })),

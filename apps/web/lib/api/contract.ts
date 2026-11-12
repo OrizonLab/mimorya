@@ -486,10 +486,24 @@ tokenHeader?: string | null,
  */
 operations?: Array<RestOperation>,
 /**
- * A Microsoft 365 application's or a Google Workspace client's: whether
- * its tools may send e-mail and create events (ADR-119, ADR-123).
+ * A Microsoft 365 application's, a Google Workspace client's or the
+ * standard mail's: whether its tools may send e-mail and create events
+ * (ADR-119, ADR-123, ADR-205).
  */
-writeTools?: boolean, };
+writeTools?: boolean,
+/**
+ * The standard mail's IMAP server (ADR-205).
+ */
+imap?: MailImapServer,
+/**
+ * The standard mail's SMTP server (ADR-205).
+ */
+smtp?: MailSmtpServer,
+/**
+ * The standard mail's CalDAV agenda: a text replaces its address,
+ * `null` or blank removes it (ADR-205).
+ */
+caldav?: string | null, };
 
 export type ConnectorView = { id: string, type: string, name: string, enabled: boolean, status: ConnectorStatus, lastError: string | null,
 /**
@@ -505,6 +519,10 @@ microsoft365: Microsoft365App | null,
  * A company's Google Workspace client (ADR-121).
  */
 googleWorkspace: GoogleWorkspaceApp | null,
+/**
+ * A company's standard mail (ADR-205).
+ */
+mailServer: MailServerView | null,
 /**
  * An MCP server whose OAuth declaration can no longer be read: it is
  * withdrawn (`DELETE …/oauth`) before anything else changes (ADR-171).
@@ -1573,6 +1591,31 @@ verification: LlmSettingsView | null, providers: Array<ProviderKind>,
 endpoints: Array<string>, };
 
 /**
+ * The IMAP server, over implicit TLS (993 usually).
+ */
+export type MailImapServer = { host: string, port: number, };
+
+/**
+ * A company's standard mail, as `ConnectorView` shows it.
+ */
+export type MailServerView = { imap: MailImapServer, smtp: MailSmtpServer, caldav: string | null,
+/**
+ * Its tools may send e-mail and create events.
+ */
+writeTools: boolean, };
+
+/**
+ * How the SMTP server is secured: TLS from the first byte (465 usually),
+ * or STARTTLS, which it must offer (587 usually).
+ */
+export type MailSmtpSecurity = "tls" | "starttls";
+
+/**
+ * The SMTP server a person's e-mails leave through.
+ */
+export type MailSmtpServer = { host: string, port: number, security: MailSmtpSecurity, };
+
+/**
  * Body of `POST /memory`.
  */
 export type ManualMemory = { space: MemorySpace, kind: ManualMemoryKind, title: string, content: string, };
@@ -2054,6 +2097,25 @@ export type NewKnowledgeShare = { sourceOrgUnitId: string, targetOrgUnitId: stri
  * ISO 8601; absent, until removed.
  */
 expiresAt?: string, };
+
+/**
+ * Body of `POST /admin/connectors/mail-server`.
+ */
+export type NewMailServerConnector = { name: string, imap: MailImapServer, smtp: MailSmtpServer,
+/**
+ * The address of its CalDAV agenda (`https://…`). Absent or blank:
+ * none.
+ */
+caldav?: string,
+/**
+ * Absent: enabled.
+ */
+enabled?: boolean,
+/**
+ * Whether its tools may send e-mail and create events in the person's
+ * name, each validated. Absent: they only read.
+ */
+writeTools?: boolean, };
 
 /**
  * Body of `POST /conversations/{id}/messages`.

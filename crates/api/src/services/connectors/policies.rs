@@ -1,9 +1,9 @@
 //! The tool policies of an instance, as runs apply them: read strictly (a
 //! policy that cannot be read makes the connector unavailable, since
 //! ignoring it could drop a restriction an administrator set), scoped to the
-//! instance's own tools; an MCP, REST, Microsoft 365 or Google Workspace
-//! tool always requires `connector:use` (ADR-025, ADR-112, ADR-117,
-//! ADR-121), and a description an administrator
+//! instance's own tools; an MCP, REST, Microsoft 365, Google Workspace or
+//! standard mail tool always requires `connector:use` (ADR-025, ADR-112,
+//! ADR-117, ADR-121, ADR-205), and a description an administrator
 //! wrote keeps naming the server (ADR-057), an MCP server's tools being the
 //! only ones whose description may be replaced.
 

@@ -127,6 +127,7 @@ pub const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/admin/connectors/rest"),
     ("POST", "/admin/connectors/microsoft365"),
     ("POST", "/admin/connectors/google-workspace"),
+    ("POST", "/admin/connectors/mail-server"),
     ("GET", "/admin/gateways"),
     ("POST", "/admin/gateways/slack"),
     ("POST", "/admin/gateways/telegram"),
