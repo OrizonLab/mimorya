@@ -27,22 +27,30 @@ export function SignInSecondFactor() {
   }, []);
 
   const signedIn = () => window.location.assign('/chat');
+  // Expired while the phone was looked for, or ended meanwhile: the
+  // password again, from here.
+  const back = (
+    <Link href="/login" className="text-center text-sm text-muted hover:text-fg">
+      Revenir à la connexion
+    </Link>
+  );
 
   return (
     <Card className="p-6">
       {error ? (
         <div className="flex flex-col gap-4">
           <ErrorNote message={error} />
-          <Link href="/login" className="text-center text-sm text-muted hover:text-fg">
-            Revenir à la connexion
-          </Link>
+          {back}
         </div>
       ) : waiting === null ? (
         <Spinner />
       ) : waiting.next === 'second_factor_enrolment' ? (
-        <SignInEnrolment onSignedIn={signedIn} />
+        <SignInEnrolment onSignedIn={signedIn} back={back} />
       ) : (
-        <SignInCode onSignedIn={signedIn} />
+        <div className="flex flex-col gap-4">
+          <SignInCode onSignedIn={signedIn} />
+          {back}
+        </div>
       )}
     </Card>
   );

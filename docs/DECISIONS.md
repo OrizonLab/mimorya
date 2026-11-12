@@ -14046,7 +14046,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - le code de l'application, ou un code de secours pour qui ne l'a plus ;
     - ou l'enrôlement que l'entreprise exige : QR code, clé à saisir à la main,
       premier code, puis les codes de secours, montrés une fois, avant l'application ;
-    - une connexion expirée ou terminée renvoie au mot de passe ;
+    - une connexion expirée ou terminée renvoie au mot de passe, et un lien y ramène à
+      chaque étape (le défi ne vaut que cinq minutes) ;
   - **« Mon compte »** (section « Second facteur », comptes à mot de passe) : activation
     avec le mot de passe retapé, puis les mêmes étapes ; une fois actif, sa date, les
     codes de secours restants et s'il est exigé, de nouveaux codes de secours et la
@@ -14059,9 +14060,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - l'exigence de l'entreprise peut désormais être réglée (par l'API jusqu'au lot 68e) :
     l'interface conduit les comptes concernés à leur enrôlement ;
   - les tests de bout en bout jouent une application d'authentification
-    (`e2e/support/totp.ts`, RFC 6238) : enrôlement depuis « Mon compte », connexion avec
-    le code, rejeu refusé, code de secours, désactivation ; enrôlement imposé à
-    l'acceptation d'une invitation ;
+    (`e2e/support/totp.ts`, RFC 6238) : enrôlement depuis « Mon compte » (QR code
+    dessiné), connexion avec le code, rejeu refusé, code de secours, nouveaux codes de
+    secours qui remplacent les anciens, mot de passe oublié qui demande le second
+    facteur, désactivation ; page ouverte sans connexion en attente ; enrôlement imposé
+    à l'acceptation d'une invitation ;
   - la lecture du QR code par une vraie application ne se vérifie qu'en conditions
     réelles.
 - **Écartés** :

@@ -10,26 +10,30 @@ import { Button } from '@/components/ui';
  */
 export function RecoveryCodesNotice({
   codes,
+  level = 'h3',
   doneLabel,
   onDone,
 }: {
   codes: string[];
+  /** The heading's level where the notice is shown. */
+  level?: 'h2' | 'h3';
   doneLabel: string;
   onDone: () => void;
 }) {
+  const Heading = level;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
 
   return (
     <section aria-labelledby="recovery-codes-heading" className="flex flex-col gap-3">
-      <h3
+      <Heading
         id="recovery-codes-heading"
         ref={heading}
         tabIndex={-1}
         className="text-sm font-medium outline-none"
       >
         Vos codes de secours
-      </h3>
+      </Heading>
       <p className="text-sm text-muted">
         Chacun permet une connexion si vous n’avez plus votre application. Notez-les ou imprimez-les
         et gardez-les en lieu sûr : ils ne seront plus affichés.

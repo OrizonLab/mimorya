@@ -8,7 +8,7 @@ use base64::engine::general_purpose::STANDARD;
 use qrcode::render::svg;
 use qrcode::{EcLevel, QrCode};
 
-/// Squares of quiet margin and pixels per module of the drawing.
+/// Pixels per module of the drawing; the quiet margin is drawn around it.
 const MODULE_PIXELS: u32 = 6;
 
 /// The QR code of `uri`, as a `data:image/svg+xml` address; `None` if the

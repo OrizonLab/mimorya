@@ -48,11 +48,16 @@ export function EnrolmentSteps({
         height={180}
         className="rounded-md border border-line"
       />
-      <p className="text-sm text-muted">
-        Sans appareil photo, saisissez cette clé dans l’application :{' '}
-        <code aria-label="Clé du second facteur" className="font-mono text-fg">
-          {grouped(enrolment.secret)}
-        </code>
+      <Field label="Clé du second facteur">
+        <Input
+          readOnly
+          value={grouped(enrolment.secret)}
+          className="w-full max-w-sm font-mono"
+          aria-describedby="second-factor-key-help"
+        />
+      </Field>
+      <p id="second-factor-key-help" className="text-xs text-muted">
+        Sans appareil photo, saisissez cette clé dans l’application.
       </p>
       <p className="text-sm">2. Saisissez le code à six chiffres qu’elle affiche.</p>
       <Field label="Code à six chiffres">

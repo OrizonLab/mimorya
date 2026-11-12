@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button, ErrorNote } from '@/components/ui';
 import {
   api,
@@ -16,9 +16,10 @@ import { RecoveryCodesNotice } from './recovery-codes-notice';
  * The enrolment a sign-in waits for when the company requires a second
  * factor (ADR-201): its start, the app's QR code and first code, which open
  * the session, then the recovery codes, shown once; `onSignedIn` once they
- * are noted. The password was just checked: it is not asked again.
+ * are noted. The password was just checked: it is not asked again. `back`
+ * leads to the password again, until the session is open.
  */
-export function SignInEnrolment({ onSignedIn }: { onSignedIn: () => void }) {
+export function SignInEnrolment({ onSignedIn, back }: { onSignedIn: () => void; back: ReactNode }) {
   const [enrolment, setEnrolment] = useState<SecondFactorEnrolment | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
   const start = useAction();
@@ -44,6 +45,7 @@ export function SignInEnrolment({ onSignedIn }: { onSignedIn: () => void }) {
     return (
       <RecoveryCodesNotice
         codes={codes}
+        level="h2"
         doneLabel="J’ai noté mes codes, continuer"
         onDone={onSignedIn}
       />
@@ -51,12 +53,15 @@ export function SignInEnrolment({ onSignedIn }: { onSignedIn: () => void }) {
   }
   if (enrolment) {
     return (
-      <EnrolmentSteps
-        enrolment={enrolment}
-        pending={confirm.pending}
-        error={confirm.error}
-        onCode={activate}
-      />
+      <div className="flex flex-col gap-4">
+        <EnrolmentSteps
+          enrolment={enrolment}
+          pending={confirm.pending}
+          error={confirm.error}
+          onCode={activate}
+        />
+        {back}
+      </div>
     );
   }
   return (
@@ -70,6 +75,7 @@ export function SignInEnrolment({ onSignedIn }: { onSignedIn: () => void }) {
       <Button type="button" loading={start.pending} onClick={begin}>
         Activer le second facteur
       </Button>
+      {back}
     </div>
   );
 }

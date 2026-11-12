@@ -3,15 +3,18 @@
 // code the server draws, its key read as an app would, the first code, the
 // recovery codes shown once. Its next sign-in asks for a code after the
 // password: the app's serves once, a replay is refused, a recovery code
-// passes instead; it then turns its second factor off. Required by the
+// passes instead; new recovery codes replace the former, which serve no
+// more; a forgotten password asks for the second factor too; it then turns
+// its second factor off. A sign-in page opened without a sign-in waiting
+// leads back to the password. Required by the
 // company, a new account accepting its invitation enrols before any
 // session and can no longer turn it off. The company's requirement goes
 // back to no one, and each account is erased, whatever happened.
 import type { BrowserContext, Locator, Page } from '@playwright/test';
-import type { SecondFactorPolicyUpdate } from '../lib/api/contract';
+import type { ResetLinkRequest, SecondFactorPolicyUpdate } from '../lib/api/contract';
 import { activate, makeAccount, retire, type MadeAccounts } from './support/accounts';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
-import { lastLink } from './support/mail';
+import { lastLink, mailCount } from './support/mail';
 import { App } from './support/totp';
 
 const CHOSEN = 'phrase-de-passe-second-facteur-e2e';
@@ -60,8 +63,13 @@ async function passwordStep(page: Page, email: string) {
  * the app's first code typed; the app and the recovery codes shown.
  */
 async function enrol(scope: Page | Locator): Promise<{ app: App; codes: string[] }> {
-  await expect(scope.getByRole('img', { name: /QR code/ })).toBeVisible();
-  const app = new App(await scope.getByLabel('Clé du second facteur').innerText());
+  const image = scope.getByRole('img', { name: /QR code/ });
+  await expect(image).toBeVisible();
+  // Drawn, not a broken image.
+  await expect
+    .poll(() => image.evaluate((drawn: HTMLImageElement) => drawn.naturalWidth))
+    .toBeGreaterThan(0);
+  const app = new App(await scope.getByLabel('Clé du second facteur').inputValue());
   await scope.getByLabel('Code à six chiffres').fill(app.next());
   await scope.getByRole('button', { name: 'Activer', exact: true }).click();
   const shown = scope.getByRole('list', { name: 'Codes de secours' }).getByRole('listitem');
@@ -73,6 +81,11 @@ test('an account enrols from « Mon compte » and signs in with its app or a rec
   page,
   newContext,
 }) => {
+  // Opened without a sign-in waiting: back to the password.
+  await page.goto('/login/second-factor');
+  await expect(page.getByText('Cette connexion a expiré')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Revenir à la connexion' })).toBeVisible();
+
   const email = await invite(newContext, 'second.facteur');
   await activate(page, email, CHOSEN);
   await page.goto('/account');
@@ -103,11 +116,46 @@ test('an account enrols from « Mon compte » and signs in with its app or a rec
   await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
   await page.waitForURL('**/chat');
 
-  // Turned off with another, as read again from the API.
+  // New recovery codes, proven by another: the former serve no more.
   await page.goto('/account');
   await expect(section.getByRole('status')).toContainText('9 codes de secours restants');
+  const renew = section.getByRole('form', { name: 'Nouveaux codes de secours' });
+  await renew.getByLabel('Code de l’application ou code de secours').fill(second);
+  await renew.getByRole('button', { name: 'Remplacer mes codes de secours' }).click();
+  const fresh = section.getByRole('list', { name: 'Codes de secours' }).getByRole('listitem');
+  await expect(fresh).toHaveCount(10);
+  const renewed = await fresh.allInnerTexts();
+  expect(renewed.filter((code) => codes.includes(code))).toEqual([]);
+  await section.getByRole('button', { name: 'J’ai noté mes nouveaux codes' }).click();
+  await page.reload();
+  await expect(section.getByRole('status')).toContainText('10 codes de secours restants');
   const off = section.getByRole('form', { name: 'Désactiver le second facteur' });
-  await off.getByLabel('Code de l’application ou code de secours').fill(second);
+  const offCode = off.getByLabel('Code de l’application ou code de secours');
+  await offCode.fill(codes[2] ?? '');
+  await off.getByRole('button', { name: 'Désactiver' }).click();
+  await expect(off.getByText('Code incorrect ou déjà utilisé')).toBeVisible();
+
+  // A forgotten password asks for the second factor too, before any session.
+  const before = await mailCount(email);
+  const asked = await page.request.post('/api/auth/password-reset', {
+    headers: WRITE,
+    data: { email } satisfies ResetLinkRequest,
+  });
+  expect(asked.status()).toBe(202);
+  const { link } = await lastLink(email, 'reset-password', before);
+  await page.goto(link);
+  await page.getByLabel('Mot de passe (12 caractères minimum)').fill(CHOSEN);
+  await page.getByLabel('Confirmation').fill(CHOSEN);
+  await page.getByRole('button', { name: 'Enregistrer et me connecter' }).click();
+  await page.waitForURL('**/login/second-factor');
+  await page.getByRole('button', { name: 'Utiliser un code de secours' }).click();
+  await page.getByLabel('Code de secours').fill(renewed[0] ?? '');
+  await page.getByRole('button', { name: 'Se connecter', exact: true }).click();
+  await page.waitForURL('**/chat');
+
+  // Turned off with a new one, as read again from the API.
+  await page.goto('/account');
+  await offCode.fill(renewed[1] ?? '');
   await off.getByRole('button', { name: 'Désactiver' }).click();
   await expect(section.getByRole('button', { name: 'Activer le second facteur' })).toBeVisible();
   await page.reload();
