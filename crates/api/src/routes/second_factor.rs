@@ -1,38 +1,32 @@
-//! The second factor (ADR-200): one's own, from « Mon compte », and the
-//! code that completes a sign-in waiting for it. Every code checked and
-//! refused, at sign-in, at activation or later, counts against the account,
+//! One's own second factor, from « Mon compte » (ADR-200): its state, its
+//! enrolment, new recovery codes, and turning it off, unless the company
+//! requires it (ADR-201). Every code checked and refused, here or at
+//! sign-in (`second_factor_sign_in.rs`), counts against the account,
 //! shared by every process; a slot is given back when the code is accepted
 //! or none was checked.
 
 use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::http::header::SET_COOKIE;
-use axum::response::{AppendHeaders, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use mimorya_core::DomainError;
 use mimorya_core::second_factor::SecondFactorCode;
 
 use crate::app::AppState;
-use crate::auth::cookies::{cookie_value, session_cookie};
 use crate::contract::{
     Done, RecoveryCodes, SecondFactorCodeInput, SecondFactorEnrolment,
-    SecondFactorEnrolmentRequest, SecondFactorStatus, SignIn,
+    SecondFactorEnrolmentRequest, SecondFactorStatus,
 };
 use crate::http::{ApiError, ApiResult, Body, iso};
 use crate::plugins::{Auth, RequestContext};
 use crate::secrets::SecretStore;
 use crate::services::second_factor::{
-    CHALLENGE_COOKIE, Completion, EXPIRED, Opened, Refusal, challenge_cookie,
-    cleared_challenge_cookie, complete_challenge, confirm_enrolment, disable_second_factor,
+    Refusal, WRONG_FIRST_CODE, confirm_enrolment, deactivable, disable_second_factor,
     own_second_factor, renew_recovery_codes, start_enrolment,
 };
 
 const NOT_A_CODE: &str = "Saisissez les six chiffres de votre application ou l’un de vos codes \
      de secours";
-const NOT_SIX_DIGITS: &str = "Saisissez les six chiffres affichés par votre application";
-const WRONG_FIRST_CODE: &str = "Code incorrect : vérifiez que l’heure de votre téléphone est \
-     juste et saisissez le code affiché maintenant";
+pub(super) const NOT_SIX_DIGITS: &str = "Saisissez les six chiffres affichés par votre application";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -41,24 +35,13 @@ pub fn routes() -> Router<AppState> {
         .route("/account/second-factor/confirmation", post(confirm))
         .route("/account/second-factor/recovery-codes", post(renew_codes))
         .route("/account/second-factor/deactivation", post(deactivate))
-        .route("/auth/second-factor", post(sign_in))
-}
-
-/// What a sign-in answers once the password is checked: the session's
-/// cookie, or the challenge's when the second factor is asked for next.
-pub(super) fn signed_in(opened: Opened, secure: bool) -> impl IntoResponse {
-    let (cookie, next) = match opened {
-        Opened::Session(token) => (session_cookie(&token, secure), SignIn::SIGNED_IN),
-        Opened::Challenge(token) => (challenge_cookie(&token, secure), SignIn::SECOND_FACTOR),
-    };
-    (AppendHeaders([(SET_COOKIE, cookie)]), Json(next))
 }
 
 fn secrets(state: &AppState) -> SecretStore {
     SecretStore::new(state.config.secrets.clone())
 }
 
-fn read_code(input: &str) -> Result<SecondFactorCode, ApiError> {
+pub(super) fn read_code(input: &str) -> Result<SecondFactorCode, ApiError> {
     SecondFactorCode::read(input).ok_or_else(|| DomainError::validation(NOT_A_CODE).into())
 }
 
@@ -71,6 +54,7 @@ async fn status(
     Ok(Json(SecondFactorStatus {
         applicable: own.applicable,
         available: own.available,
+        required: own.required,
         enabled: own.enabled_at.is_some(),
         enabled_at: own.enabled_at.as_ref().map(iso),
         recovery_codes_left: own.recovery_codes_left,
@@ -178,43 +162,12 @@ async fn deactivate(
 ) -> ApiResult<Json<Done>> {
     let code = read_code(&body.code)?;
     let access = state.access.context(identity).await?;
+    // Required of the account, it stays (ADR-201): no code is checked.
+    let leave = deactivable(&state.db, &access).await?;
     let account = access.subject.user_id.to_string();
     take_slot(&state, &account).await?;
     let outcome =
-        disable_second_factor(&state.db, &secrets(&state), &access, &code, &context).await?;
+        disable_second_factor(&state.db, &secrets(&state), &access, leave, &code, &context).await?;
     settle(&state, &account, outcome).await?;
     Ok(Json(Done::OK))
-}
-
-/// Completes a sign-in waiting for its second factor: the session opens.
-async fn sign_in(
-    State(state): State<AppState>,
-    context: RequestContext,
-    headers: HeaderMap,
-    Body(body): Body<SecondFactorCodeInput>,
-) -> ApiResult<impl IntoResponse> {
-    if !state.limits.login.allow(&context.client_key()).await? {
-        return Err(ApiError::RateLimited);
-    }
-    let Some(token) = cookie_value(&headers, CHALLENGE_COOKIE) else {
-        return Err(DomainError::unauthenticated(EXPIRED).into());
-    };
-    let code = read_code(&body.code)?;
-    let cipher = state.config.secrets.as_deref();
-    let completion = Completion {
-        db: &state.db,
-        cipher,
-        refusals: &state.limits.second_factor_failures,
-        context: &context,
-        headers: &headers,
-    };
-    let session = complete_challenge(completion, &token, &code).await?;
-    let secure = state.config.secure_cookies;
-    Ok((
-        AppendHeaders([
-            (SET_COOKIE, session_cookie(&session, secure)),
-            (SET_COOKIE, cleared_challenge_cookie(secure)),
-        ]),
-        Json(SignIn::SIGNED_IN),
-    ))
 }

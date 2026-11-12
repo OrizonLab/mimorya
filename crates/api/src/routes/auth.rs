@@ -14,7 +14,7 @@ use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::auth::{find_login, lock_login_state, revoke_session};
 use uuid::Uuid;
 
-use super::second_factor::signed_in;
+use super::second_factor_sign_in::signed_in;
 use crate::app::AppState;
 use crate::auth::cookies::cleared_session_cookie;
 use crate::auth::credentials::verify_password_async;
@@ -25,7 +25,7 @@ use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::{AuthPendingPasswordChange, MaybeAuth, RequestContext};
 use crate::services::account;
 use crate::services::permission_catalog::permission_catalog;
-use crate::services::second_factor::{Opened, open_after_password};
+use crate::services::second_factor::{Opened, open_after_password, second_factor_required};
 use crate::services::sso::required_provider;
 
 const INVALID_CREDENTIALS: &str = "Identifiants invalides";
@@ -126,6 +126,10 @@ async fn login(
         .into());
     }
 
+    // What the company requires of the account, read before any lock
+    // (ADR-201).
+    let required =
+        second_factor_required(&state.db, &state.access, login.tenant_id, login.user_id).await?;
     let mut tx = state.db.begin(login.tenant_id).await?;
     // A reset, a disabling or a password change committed during the
     // verification wins: no session is opened with what it replaced.
@@ -140,7 +144,7 @@ async fn login(
     }
     // A session, or a challenge for the second factor, its success
     // traced once it is proven (ADR-200).
-    let opened = open_after_password(&mut tx, login.user_id, &context, &headers).await?;
+    let opened = open_after_password(&mut tx, login.user_id, required, &context, &headers).await?;
     if matches!(opened, Opened::Session(_)) {
         append_audit(
             &mut tx,

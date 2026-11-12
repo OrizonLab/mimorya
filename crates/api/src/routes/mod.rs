@@ -34,6 +34,7 @@ mod saml;
 mod scheduled_tasks;
 mod scim;
 mod second_factor;
+mod second_factor_sign_in;
 mod sso;
 
 use axum::Router;
@@ -59,6 +60,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .merge(invitations::routes())
         .merge(password_reset::routes())
         .merge(second_factor::routes())
+        .merge(second_factor_sign_in::routes())
         .merge(account::routes())
         .merge(account_links::routes())
         .merge(account_connector_authorizations::routes())

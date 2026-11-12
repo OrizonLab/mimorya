@@ -2896,6 +2896,26 @@ uri: string, };
 export type SecondFactorEnrolmentRequest = { password: string, };
 
 /**
+ * Body of `PUT /admin/second-factor`.
+ */
+export type SecondFactorPolicyUpdate = { requirement: SecondFactorRequirement, };
+
+/**
+ * `GET /admin/second-factor`.
+ */
+export type SecondFactorPolicyView = { requirement: SecondFactorRequirement,
+/**
+ * The server can keep a secret (`MIMORYA_MASTER_KEY`): without one, no
+ * second factor can be required.
+ */
+secretsAvailable: boolean, };
+
+/**
+ * Who must have a second factor to sign in with a password.
+ */
+export type SecondFactorRequirement = "optional" | "administrators" | "everyone";
+
+/**
  * `GET /account/second-factor`: one's own second factor.
  */
 export type SecondFactorStatus = {
@@ -2907,7 +2927,12 @@ applicable: boolean,
 /**
  * The server can keep a secret (`MIMORYA_MASTER_KEY`).
  */
-available: boolean, enabled: boolean, enabledAt: string | null,
+available: boolean,
+/**
+ * The company requires one of this account (ADR-201): it cannot be
+ * turned off.
+ */
+required: boolean, enabled: boolean, enabledAt: string | null,
 /**
  * Recovery codes not used yet.
  */
@@ -2924,12 +2949,14 @@ export type Sensitivity = "public" | "internal" | "confidential" | "restricted";
 export type ShareableUnit = { id: string, parentId: string | null, name: string, };
 
 /**
- * `POST /auth/login`, `POST /auth/password-reset/complete`: whether the
- * session is open, or waits for the second factor.
+ * `POST /auth/login`, `POST /auth/password-reset/complete`,
+ * `POST /auth/invitation/accept`: whether the session is open, or waits
+ * for the second factor. `GET /auth/second-factor`: what the pending
+ * sign-in waits for.
  */
 export type SignIn = { next: SignInNext, };
 
-export type SignInNext = "signed_in" | "second_factor";
+export type SignInNext = "signed_in" | "second_factor" | "second_factor_enrolment";
 
 /**
  * Body of `PUT /admin/skills/{id}/activation`: the version made active.

@@ -2,9 +2,11 @@
 //! is checked, an account whose second factor is on gets no session but a
 //! challenge, held in a cookie of the browser for five minutes; the code
 //! of its app or a recovery code completes it, once, and opens the
-//! session. A password changed or an account disabled meanwhile ends it
-//! (trigger of migration 0089); codes refused count against the account,
-//! however many challenges are open.
+//! session. An account the company requires one of, without one, gets a
+//! challenge to enrol first (`sign_in_enrolment.rs`, ADR-201). A password
+//! changed or an account disabled meanwhile ends it (trigger of migration
+//! 0089); codes refused count against the account, however many challenges
+//! are open.
 
 use axum::http::HeaderMap;
 use chrono::{Duration, Utc};
@@ -57,56 +59,81 @@ pub fn cleared_challenge_cookie(secure: bool) -> String {
 pub enum Opened {
     /// A session: its token, for the session cookie.
     Session(String),
-    /// A challenge for the second factor: its token, for its own cookie.
-    Challenge(String),
+    /// A challenge for the second factor, to prove or to enrol first: its
+    /// token, for its own cookie.
+    Challenge(String, ChallengePurpose),
 }
 
-/// After the password of `user_id` was checked (a login, a reset), in its
-/// transaction, the account's row locked: a session, or a challenge when
-/// its second factor is on.
+/// After the password of `user_id` was checked (a login, a reset, an
+/// accepted invitation), in its transaction, the account's row locked: a
+/// session, or a challenge when its second factor is on, or when the
+/// company requires one it has not (`required`, ADR-201).
 pub async fn open_after_password(
     tx: &mut TenantTx,
     user_id: Uuid,
+    required: bool,
     context: &RequestContext,
     headers: &HeaderMap,
 ) -> sqlx::Result<Opened> {
     let state = second_factor_state(tx, user_id).await?;
-    if state.is_some_and(|state| state.enabled_at.is_some()) {
-        return Ok(Opened::Challenge(open_challenge(tx, user_id).await?));
-    }
-    Ok(Opened::Session(
-        open_session(tx, user_id, context, headers).await?,
-    ))
+    let purpose = if state.is_some_and(|state| state.enabled_at.is_some()) {
+        ChallengePurpose::Verify
+    } else if required {
+        ChallengePurpose::Enrol
+    } else {
+        return Ok(Opened::Session(
+            open_session(tx, user_id, context, headers).await?,
+        ));
+    };
+    let token = open_challenge(tx, user_id, purpose).await?;
+    Ok(Opened::Challenge(token, purpose))
 }
 
 /// A challenge for `user_id` instead of a session: its token, for the
 /// cookie.
-async fn open_challenge(tx: &mut TenantTx, user_id: Uuid) -> sqlx::Result<String> {
+async fn open_challenge(
+    tx: &mut TenantTx,
+    user_id: Uuid,
+    purpose: ChallengePurpose,
+) -> sqlx::Result<String> {
     let (token, token_hash) = new_session_token();
     let tenant_id = tx.tenant_id();
     let challenge = NewLoginChallenge {
         tenant_id,
         user_id,
         token_hash: &token_hash,
-        purpose: ChallengePurpose::Verify,
+        purpose,
         expires_at: Utc::now() + CHALLENGE_LIFETIME,
     };
     put_login_challenge(tx, challenge).await?;
     Ok(token)
 }
 
-async fn pending(db: &Database, token_hash: &str) -> anyhow::Result<LoginChallengeRecord> {
+/// The challenge whose token's digest is `token_hash`, still pending, for
+/// `purpose` if one is named.
+pub(super) async fn pending(
+    db: &Database,
+    token_hash: &str,
+    purpose: Option<ChallengePurpose>,
+) -> anyhow::Result<LoginChallengeRecord> {
     match find_login_challenge(db.pool(), token_hash).await? {
         Some(record)
             if record.expires_at > Utc::now()
                 && record.user_status == "active"
                 && record.tenant_status == "active"
-                && ChallengePurpose::parse(&record.purpose) == Some(ChallengePurpose::Verify) =>
+                && ChallengePurpose::parse(&record.purpose)
+                    .is_some_and(|found| purpose.is_none_or(|wanted| wanted == found)) =>
         {
             Ok(record)
         }
         _ => Err(DomainError::unauthenticated(EXPIRED).into()),
     }
+}
+
+/// What the pending challenge of `token` asks for.
+pub async fn challenge_purpose(db: &Database, token: &str) -> anyhow::Result<ChallengePurpose> {
+    let record = pending(db, &hash_token(token), None).await?;
+    Ok(ChallengePurpose::parse(&record.purpose).unwrap_or(ChallengePurpose::Verify))
 }
 
 /// What completing a challenge needs.
@@ -127,7 +154,7 @@ pub async fn complete_challenge(
     code: &SecondFactorCode,
 ) -> ApiResult<String> {
     let token_hash = hash_token(token);
-    let record = pending(completion.db, &token_hash).await?;
+    let record = pending(completion.db, &token_hash, Some(ChallengePurpose::Verify)).await?;
     let account = record.user_id.to_string();
     if !completion.refusals.allow(&account).await? {
         return Err(ApiError::RateLimited);

@@ -1,18 +1,18 @@
 //! Invitation links, before sign-in (ADR-027): what a link opens, then the
-//! password its holder chooses, which opens a session. The token travels in
-//! the request body, never in a URL; both routes are limited per client
-//! like logins.
+//! password its holder chooses, which opens a session (or first the
+//! enrolment of a second factor the company requires, ADR-201). The token
+//! travels in the request body, never in a URL; both routes are limited per
+//! client like logins.
 
 use axum::extract::State;
 use axum::http::HeaderMap;
-use axum::http::header::SET_COOKIE;
-use axum::response::{AppendHeaders, IntoResponse};
+use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
 
+use super::second_factor_sign_in::signed_in;
 use crate::app::AppState;
-use crate::auth::cookies::session_cookie;
-use crate::contract::{Done, InvitationDetails, LinkPassword, LinkToken};
+use crate::contract::{InvitationDetails, LinkPassword, LinkToken};
 use crate::http::{ApiError, ApiResult, Body};
 use crate::plugins::RequestContext;
 use crate::services::invitations::{accept_invitation, inspect_invitation};
@@ -44,7 +44,9 @@ async fn accept(
     if !state.limits.login.allow(&context.client_key()).await? {
         return Err(ApiError::RateLimited);
     }
-    let session = accept_invitation(
+    // A session, or the enrolment of a second factor the company requires
+    // first (ADR-201).
+    let opened = accept_invitation(
         &state.db,
         &state.access,
         &body.token,
@@ -53,6 +55,5 @@ async fn accept(
         &headers,
     )
     .await?;
-    let cookie = session_cookie(&session, state.config.secure_cookies);
-    Ok((AppendHeaders([(SET_COOKIE, cookie)]), Json(Done::OK)))
+    Ok(signed_in(opened, state.config.secure_cookies))
 }

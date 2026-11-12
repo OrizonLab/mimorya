@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use validator::Validate;
 
-/// `POST /auth/login`, `POST /auth/password-reset/complete`: whether the
-/// session is open, or waits for the second factor.
+/// `POST /auth/login`, `POST /auth/password-reset/complete`,
+/// `POST /auth/invitation/accept`: whether the session is open, or waits
+/// for the second factor. `GET /auth/second-factor`: what the pending
+/// sign-in waits for.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct SignIn {
@@ -22,6 +24,10 @@ pub enum SignInNext {
     /// A code of the account's second factor is asked for
     /// (`POST /auth/second-factor`); only then does the session open.
     SecondFactor,
+    /// The company requires a second factor the account has not: it enrols
+    /// first (`POST /auth/second-factor/enrolment`, then
+    /// `…/enrolment/confirmation`), which opens the session (ADR-201).
+    SecondFactorEnrolment,
 }
 
 impl SignIn {
@@ -30,6 +36,9 @@ impl SignIn {
     };
     pub const SECOND_FACTOR: SignIn = SignIn {
         next: SignInNext::SecondFactor,
+    };
+    pub const SECOND_FACTOR_ENROLMENT: SignIn = SignIn {
+        next: SignInNext::SecondFactorEnrolment,
     };
 }
 
@@ -42,6 +51,9 @@ pub struct SecondFactorStatus {
     pub applicable: bool,
     /// The server can keep a secret (`MIMORYA_MASTER_KEY`).
     pub available: bool,
+    /// The company requires one of this account (ADR-201): it cannot be
+    /// turned off.
+    pub required: bool,
     pub enabled: bool,
     pub enabled_at: Option<String>,
     /// Recovery codes not used yet.

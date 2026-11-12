@@ -45,7 +45,8 @@ impl Proof {
 pub enum Refusal {
     /// Not the account's code, or one already used.
     Wrong,
-    /// A hundred app codes refused in a row: only a recovery code passes.
+    /// A hundred codes refused in a row, of the app or recovery codes:
+    /// only a recovery code passes.
     TooMany,
     /// The secret does not open here (no master key, or another one).
     Unreadable,

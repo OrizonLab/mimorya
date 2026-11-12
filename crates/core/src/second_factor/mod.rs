@@ -1,16 +1,19 @@
 //! The second factor of the accounts that sign in with a password
 //! (ADR-200): six-digit time-based codes (RFC 6238) from an authenticator
 //! app, given its secret by an `otpauth://` address, and recovery codes for
-//! whoever lost it. What a person types is one or the other.
+//! whoever lost it. What a person types is one or the other. What a company
+//! requires of whom (ADR-201).
 
 mod enrolment;
 mod recovery;
+mod requirement;
 mod totp;
 
 pub use enrolment::{ISSUER, base32, otpauth_uri, read_base32};
 pub use recovery::{
     CODE_BYTES, RECOVERY_CODES, read_recovery_code, recovery_code, recovery_digest,
 };
+pub use requirement::{ADMINISTRATION_PERMISSIONS, Requirement, administers};
 pub use totp::{DIGITS, SECRET_LEN, STEP_SECONDS, accepted_step, code_at, read_code, step_at};
 
 /// Codes refused in a row, of the app or recovery codes, after which only

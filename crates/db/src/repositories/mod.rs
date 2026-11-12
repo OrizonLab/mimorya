@@ -72,6 +72,7 @@ pub mod run_queue;
 pub mod runs;
 pub mod scheduled_tasks;
 pub mod scim_users;
+pub mod second_factor_settings;
 pub mod second_factors;
 pub mod secrets;
 pub mod skill_eval_cases;

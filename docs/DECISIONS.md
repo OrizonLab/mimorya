@@ -13824,7 +13824,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       (NIST SP 800-63B §5.2.2), seuls les codes de secours sont acceptés ; un code
       accepté remet la série à zéro. Seul un code vérifié et refusé compte : un refus
       sans vérification (série atteinte, secret illisible sur ce serveur, aucun second
-      facteur actif) rend sa place ; À cinq essais par quart d'heure, cent refus prennent cinq heures,
+      facteur actif) rend sa place. À cinq essais par quart d'heure, cent refus prennent cinq heures,
       et cent essais ont environ trois chances sur dix mille de tomber sur un code valable ;
     - un défi n'a donc pas son propre compteur : en ouvrir plusieurs ne donne pas plus
       d'essais. Le premier code de l'activation, le renouvellement des codes de secours
@@ -13873,3 +13873,90 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - une session « partielle » au lieu d'un défi : chaque route aurait dû la refuser ;
   - une bibliothèque TOTP : le calcul tient en quelques lignes sur `ring`, déjà
     utilisé, et se vérifie sur les vecteurs de la RFC.
+
+## ADR-201 — Second facteur exigé par l'entreprise, enrôlé à la connexion (chantier 2, lot 68b)
+
+- **Statut** : accepté (2026-11-12) · complète ADR-200.
+- **Contexte** : le second facteur de l'ADR-200 reste un choix de chacun. Une entreprise
+  doit pouvoir l'exiger de ses administrateurs ou de tous ses comptes à mot de passe.
+  L'exigence doit s'appliquer dès la prochaine connexion de chacun : aucune session ne
+  s'ouvre pour un compte concerné sans second facteur. Elle ne doit pas non plus passer
+  par le mot de passe oublié ou par une invitation.
+- **Décision** :
+  - **la politique** (`tenant_second_factor_settings`, migration 0090) :
+    - `optional` (personne, par défaut et sans ligne), `administrators` ou `everyone` ;
+    - réglée par qui gère les paramètres de l'entreprise (`settings:manage`, sur toute
+      l'entreprise) : `GET` et `PUT /admin/second-factor` ;
+    - un changement est tracé (`settings.second_factor_requirement_configured`, avec
+      l'ancienne et la nouvelle valeur), un réglage identique ne l'est pas ;
+    - sans clé maîtresse, rien ne peut être exigé (503 expliqué) : aucun second facteur
+      ne pourrait être enrôlé ;
+  - **qui est administrateur** (`crates/core/src/second_factor/requirement.rs`) :
+    - un compte qui détient une permission d'administration, sur n'importe quel
+      périmètre ;
+    - ces permissions sont les non délégables, sauf `approval:decide` (valider les
+      actions de son équipe) et `document:write` (déposer des documents), qui
+      n'administrent rien. Un responsable d'équipe n'est donc pas concerné ;
+    - un test compare la liste aux permissions non délégables : une nouvelle doit être
+      classée sciemment ;
+    - les rôles d'un compte invité comptent avant son acceptation (`holds_any`, sans
+      condition de statut), puisque sa première connexion est son acceptation ;
+  - **l'exigence lue avant tout verrou**, comme le fournisseur obligatoire (ADR-066), à
+    chaque ouverture par mot de passe :
+    - connexion, fin d'un mot de passe oublié, acceptation d'une invitation ;
+    - un compte au second facteur actif reçoit le défi de l'ADR-200 ;
+    - un compte concerné sans second facteur reçoit un défi d'enrôlement (`purpose =
+'enrol'`), jamais une session. Ces trois routes répondent `{ "next":
+"second_factor_enrolment" }` ;
+  - **l'enrôlement à la connexion**, par le défi seul :
+    - `GET /auth/second-factor` dit ce qu'attend la connexion. Cette lecture ne vérifie
+      rien : elle ne compte pas dans la limite des connexions par client (la limite
+      globale la compte), pour qu'une page rechargée ne coûte pas une des étapes ;
+    - le défi est lu avant tout le reste : à qui n'en tient pas, rien n'est dit du
+      serveur, pas même qu'il manque sa clé maîtresse ;
+    - `POST /auth/second-factor/enrolment` donne le secret. Le mot de passe vient d'être
+      vérifié : il n'est pas redemandé ;
+    - `POST /auth/second-factor/enrolment/confirmation` prend le premier code. Il active
+      le second facteur, donne les codes de secours, ferme les autres sessions du
+      compte, consomme le défi et ouvre la session ;
+    - un premier code refusé compte dans la limite par compte et il est tracé
+      (« Activation à la connexion : code refusé ») ;
+    - un défi de vérification ne sert pas à enrôler, et inversement ;
+    - sans clé maîtresse, l'enrôlement est refusé et le dit : l'exploitant doit la
+      configurer ;
+  - **exigé, il ne se désactive pas** depuis « Mon compte » (409, avant toute
+    vérification de code ni tentative comptée). Le service ne désactive qu'avec la
+    permission que donne `deactivable` : aucun appelant ne peut l'oublier. Pour changer
+    d'application, un administrateur le réinitialise (lot 68c). L'état du second facteur
+    dit s'il est exigé (`required`) ;
+  - **suites de l'audit de l'ADR-200** :
+    - l'activation depuis « Mon compte » verrouille d'abord la ligne du compte, comme une
+      connexion. Une connexion simultanée a soit ouvert sa session avant, et elle est
+      fermée, soit trouve le second facteur actif et reçoit un défi (testé dans les deux
+      ordres) ;
+    - la restitution de la place est testée sur les routes de session ;
+    - un enrôlement et ses deux étapes sont partagés entre « Mon compte » et la
+      connexion (`activation.rs`).
+- **Conséquences** :
+  - l'exigence s'applique à la prochaine connexion par mot de passe : les sessions déjà
+    ouvertes restent jusqu'à leur fin, sept jours au plus. Il en va de même d'un compte
+    connecté qui reçoit un rôle d'administration : sa session reste, sa prochaine
+    connexion l'enrôle ;
+  - un compte SSO n'est jamais concerné : son fournisseur demande son second facteur ;
+  - perdre la clé maîtresse bloque l'enrôlement des comptes concernés jusqu'à ce que
+    l'exploitant la rétablisse. Les comptes déjà enrôlés passent par leurs codes de
+    secours (ADR-200) ;
+  - jusqu'aux écrans du lot 68d, l'interface ne suit pas la réponse `next` d'une
+    connexion : une entreprise qui réglerait une exigence par l'API avant eux laisserait
+    ses comptes concernés sans moyen de se connecter depuis l'application. La politique
+    ne se règle encore que par l'API, et ne doit pas l'être avant ces écrans ;
+  - des tests tentent de contourner l'exigence : un administrateur d'une seule équipe
+    ne la lit ni ne la règle ; un administrateur invité, même d'une seule équipe,
+    s'enrôle avant sa première session ; un défi de vérification ne démarre ni ne
+    confirme aucun enrôlement ; une entreprise ne lit ni n'écrit l'exigence d'une
+    autre.
+- **Écartés** :
+  - une session « limitée à l'enrôlement » : chaque route aurait dû la refuser ;
+  - redemander le mot de passe à l'enrôlement par le défi, qui vient de le prouver ;
+  - forcer la fermeture des sessions ouvertes au changement de politique, qui
+    déconnecterait toute l'entreprise sans gain : la prochaine connexion l'exige.

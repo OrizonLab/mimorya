@@ -169,6 +169,26 @@ impl AccessService {
         }))
     }
 
+    /// Whether the account holds one of `permissions` in some scope,
+    /// whatever its status: an invited account's roles count before it
+    /// accepts (ADR-201).
+    pub async fn holds_any(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        permissions: &[&str],
+    ) -> anyhow::Result<bool> {
+        let tenant = self.tenant_access(tenant_id).await?;
+        let mut tx = self.db.begin(tenant_id).await?;
+        let access = load_user_access(&mut tx, user_id).await?;
+        tx.commit().await?;
+        Ok(access.is_some_and(|access| {
+            permissions
+                .iter()
+                .any(|p| tenant.engine.has(&access.subject, p, &Actor::user()))
+        }))
+    }
+
     async fn tenant_access(&self, tenant_id: Uuid) -> anyhow::Result<Arc<TenantAccess>> {
         // The generation is read before loading: an invalidation that happens
         // while the data loads then keeps the (possibly older) data out of the cache.
