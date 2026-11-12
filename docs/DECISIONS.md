@@ -13946,6 +13946,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - perdre la clé maîtresse bloque l'enrôlement des comptes concernés jusqu'à ce que
     l'exploitant la rétablisse. Les comptes déjà enrôlés passent par leurs codes de
     secours (ADR-200) ;
+  - l'enrôlement à la connexion fait confiance à qui connaît le mot de passe d'un compte
+    concerné pas encore enrôlé : il peut y lier sa propre application et fermer les
+    sessions du titulaire. C'est le compromis de tout enrôlement à la première
+    connexion. La trace `account.second_factor_enabled {atSignIn: true}` le montre, et
+    un administrateur réinitialise alors le second facteur (ADR-202) ;
   - jusqu'aux écrans du lot 68d, l'interface ne suit pas la réponse `next` d'une
     connexion : une entreprise qui réglerait une exigence par l'API avant eux laisserait
     ses comptes concernés sans moyen de se connecter depuis l'application. La politique
@@ -13960,3 +13965,43 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - redemander le mot de passe à l'enrôlement par le défi, qui vient de le prouver ;
   - forcer la fermeture des sessions ouvertes au changement de politique, qui
     déconnecterait toute l'entreprise sans gain : la prochaine connexion l'exige.
+
+## ADR-202 — Second facteur réinitialisé par un administrateur (chantier 2, lot 68c)
+
+- **Statut** : accepté (2026-11-12) · complète ADR-200 et ADR-201. L'ADR-200 l'annonçait
+  au lot 68b, qui a porté la politique de l'entreprise (ADR-201) : la réinitialisation
+  vient au lot 68c, les écrans au lot 68d.
+- **Contexte** : une personne qui a perdu son application et ses codes de secours ne
+  peut plus se connecter. Là où l'entreprise exige un second facteur, personne ne peut
+  non plus le désactiver pour changer d'application (ADR-201). Il faut une sortie, qui
+  ne soit pas un contournement.
+- **Décision** :
+  - `DELETE /admin/users/{id}/second-factor`, par qui gère les comptes de toute
+    l'entreprise (`user:manage`, vérifié sous le verrou d'administration), comme la
+    réinitialisation d'un mot de passe ; jamais sur son propre compte (403) ;
+  - la ligne du compte est verrouillée d'abord, comme à une connexion ou une activation
+    : une connexion qui croise la réinitialisation a ouvert sa session avant, qui est
+    fermée, ou ne trouve plus de second facteur ;
+  - le second facteur et ses codes de secours sont supprimés, les connexions qui
+    attendent un code sont terminées, toutes les sessions du compte sont fermées ;
+  - sa prochaine connexion par mot de passe ouvre une session, ou d'abord un enrôlement
+    si l'entreprise l'exige (ADR-201) ;
+  - un compte sans second facteur actif répond 409 et rien ne change : un enrôlement
+    qui attend n'en est pas un ; un compte inconnu ou d'une autre entreprise, 404 ;
+  - trace `user.second_factor_reset` au nom de l'administrateur, avec le nombre de
+    sessions fermées et de connexions terminées ;
+  - l'annuaire dit aux seuls gestionnaires des comptes (`user:manage`) quels comptes ont
+    un second facteur actif (`secondFactor`).
+- **Conséquences** :
+  - qui gère les comptes peut déjà réinitialiser un mot de passe : réinitialiser aussi le
+    second facteur ne lui donne pas plus de pouvoir sur un compte, et chaque geste est
+    tracé à son nom ;
+  - la personne l'apprend à sa prochaine connexion : ses sessions sont fermées et, si
+    l'entreprise l'exige, elle enrôle une nouvelle application.
+- **Écartés** :
+  - un e-mail à la personne : la réinitialisation d'un mot de passe par un
+    administrateur n'en envoie pas non plus. La fermeture des sessions et la trace
+    suffisent pour ce lot ;
+  - garder les sessions ouvertes : un second facteur perdu peut être un appareil volé ;
+  - une réinitialisation par un administrateur d'une seule équipe : la règle reste celle
+    des mots de passe, sur toute l'entreprise.

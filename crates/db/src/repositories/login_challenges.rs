@@ -105,6 +105,16 @@ pub async fn take_login_challenge(
     .await
 }
 
+/// Ends every sign-in of `user_id` that waits for its second factor, as a
+/// reset by an administrator does (ADR-202); how many.
+pub async fn end_login_challenges(conn: &mut PgConnection, user_id: Uuid) -> sqlx::Result<u64> {
+    let ended = sqlx::query("delete from login_challenges where user_id = $1")
+        .bind(user_id)
+        .execute(conn)
+        .await?;
+    Ok(ended.rows_affected())
+}
+
 /// Deletes, in every company, the expired challenges and the enrolments
 /// left waiting a day; returns how many.
 pub async fn purge_second_factor_leftovers(pool: &PgPool) -> sqlx::Result<i32> {

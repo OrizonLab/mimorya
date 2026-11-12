@@ -126,9 +126,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   `approval:decide` et `document:write`) ou de tous (ADR-201, `settings:manage`, refusé
   sans clé maîtresse) : à la prochaine connexion par mot de passe, par un mot de passe
   oublié ou par une invitation, le compte concerné reçoit un défi d'enrôlement, jamais
-  une session, et ne peut plus le désactiver. Activation, désactivation,
-  renouvellement des codes de secours, code refusé et code de secours utilisé sont
-  audités, jamais un code ni le secret.
+  une session, et ne peut plus le désactiver. Qui gère les comptes de toute
+  l'entreprise (`user:manage`) réinitialise le second facteur d'un autre compte, jamais
+  le sien (ADR-202) : second facteur et codes de secours supprimés, connexions qui
+  attendent un code terminées, toutes les sessions du compte fermées ; sa prochaine
+  connexion l'enrôle de nouveau si l'entreprise l'exige. Activation, désactivation,
+  renouvellement des codes de secours, code refusé, code de secours utilisé et
+  réinitialisation par un administrateur sont audités, jamais un code ni le secret.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
   requêtes modifiantes + vérification d'`Origin`. Quatre exceptions, que des tests tentent
   de contourner : la réception des réponses SAML (ADR-068, ci-dessous), l'envoi d'un

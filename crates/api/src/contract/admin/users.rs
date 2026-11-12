@@ -88,6 +88,11 @@ pub struct DirectoryUser {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub invitation_expires_at: Option<Option<String>>,
+    /// To account managers only: whether its second factor is on, which
+    /// they may reset (ADR-202).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub second_factor: Option<bool>,
     /// To role managers only.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]

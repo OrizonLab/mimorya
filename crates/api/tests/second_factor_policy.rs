@@ -13,30 +13,17 @@ use mimorya_core::demo::{tenant, user};
 use mimorya_core::second_factor::{DIGITS, code_at, read_base32, step_at};
 use serde_json::{Value, json};
 use support::accounts::{INVITED_PASSWORD, accept, invite_account};
-use support::llm::MASTER_KEY;
 use support::mail::link_in;
 use support::resets::{RESET_PASSWORD, complete_reset, new_reset_token};
 use support::second_factor::{
-    challenge_of, enrolment_step, not_its_code, opens_a_session, password_step, second_step, traced,
+    KEYED, POLICY, challenge_of, enrolment_step, not_its_code, opens_a_session, password_step,
+    require, second_step, traced, waiting_for,
 };
-use support::{Client, PASSWORD, TestApi, TestResponse, email};
-
-const KEYED: [(&str, &str); 1] = [("MIMORYA_MASTER_KEY", MASTER_KEY)];
-const POLICY: &str = "/admin/second-factor";
-
-async fn require(admin: &Client<'_>, requirement: &str) -> TestResponse {
-    admin
-        .put(POLICY, json!({ "requirement": requirement }))
-        .await
-}
+use support::{PASSWORD, TestApi, email};
 
 /// The sign-in's answer, the browser holding the challenge.
 async fn waiting(api: &TestApi, challenge: &str) -> Value {
-    let request = axum::http::Request::get("/auth/second-factor")
-        .header("cookie", format!("mimorya_challenge={challenge}"))
-        .body(axum::body::Body::empty())
-        .unwrap();
-    api.send(request).await.json()
+    waiting_for(api, Some(challenge)).await.json()
 }
 
 #[tokio::test]
@@ -239,6 +226,14 @@ async fn without_a_master_key_nothing_can_be_required_or_enrolled() {
     assert!(refused.error_message().contains("MIMORYA_MASTER_KEY"));
     // Whoever holds no challenge is told nothing of the server.
     let unknown = enrolment_step(&api, "inconnu", "/auth/second-factor/enrolment", json!({})).await;
+    assert_eq!(unknown.status, StatusCode::UNAUTHORIZED);
+    let unknown = enrolment_step(
+        &api,
+        "inconnu",
+        "/auth/second-factor/enrolment/confirmation",
+        json!({ "code": "123456" }),
+    )
+    .await;
     assert_eq!(unknown.status, StatusCode::UNAUTHORIZED);
     // The sign-in waits, and says why it cannot go on.
     let challenge = password_step_for_enrolment(&api, user::EMMA).await;

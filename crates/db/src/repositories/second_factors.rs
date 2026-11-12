@@ -218,3 +218,11 @@ pub async fn delete_second_factor(conn: &mut PgConnection, user_id: Uuid) -> sql
     .await?;
     Ok(enabled == Some(true))
 }
+
+/// The accounts of the company whose second factor is on (ADR-202), as the
+/// directory shows them to account managers.
+pub async fn second_factor_holders(conn: &mut PgConnection) -> sqlx::Result<Vec<Uuid>> {
+    sqlx::query_scalar("select user_id from second_factors where enabled_at is not null")
+        .fetch_all(conn)
+        .await
+}

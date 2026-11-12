@@ -16,16 +16,14 @@ use mimorya_core::second_factor::{DIGITS, code_at, read_base32, step_at};
 use serde_json::json;
 use support::erasure::rows_naming;
 use support::limits::forget_counts;
-use support::llm::MASTER_KEY;
 use support::owner::owner_runs;
 use support::resets::{RESET_PASSWORD, complete_reset, new_reset_token};
 use support::second_factor::{
-    challenge_of, enrol, kept_factor, not_its_code, opens_a_session, password_step, second_step,
-    traced,
+    KEYED, challenge_of, enrol, kept_factor, not_its_code, opens_a_session, password_step,
+    second_step, traced,
 };
 use support::{PASSWORD, TestApi, email};
 
-const KEYED: [(&str, &str); 1] = [("MIMORYA_MASTER_KEY", MASTER_KEY)];
 /// A recovery code nobody was given.
 const NOBODY_S: &str = "AAAA-BBBB-CCCC-DDDD";
 

@@ -10,46 +10,16 @@
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_core::authz::AssignmentScope;
-use mimorya_core::demo::{role, tenant, unit, user};
-use mimorya_db::repositories::role_assignments::{NewRoleAssignment, create_role_assignment};
+use mimorya_core::demo::user;
 use serde_json::{Value, json};
-use support::accounts::{INVITED_PASSWORD, accept, activate, create_partial_admin, invite_account};
-use support::llm::MASTER_KEY;
-use support::second_factor::{
-    enrol, enrolment_step, kept_factor, opens_a_session, password_step, second_step,
+use support::accounts::{
+    INVITED_PASSWORD, accept, activate, create_partial_admin, grant_team_admin, invite_account,
 };
-use support::{Client, PASSWORD, TestApi, TestResponse, email};
-use uuid::Uuid;
-
-const KEYED: [(&str, &str); 1] = [("MIMORYA_MASTER_KEY", MASTER_KEY)];
-const POLICY: &str = "/admin/second-factor";
-
-async fn require(admin: &Client<'_>, requirement: &str) -> TestResponse {
-    admin
-        .put(POLICY, json!({ "requirement": requirement }))
-        .await
-}
-
-/// The technical administrator's role on the north team only, written
-/// directly, as if granted before the company-wide rule existed.
-async fn administrator_of_one_team(api: &TestApi, user_id: Uuid) {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    create_role_assignment(
-        &mut tx,
-        NewRoleAssignment {
-            tenant_id: tenant::ID,
-            user_id,
-            role_id: role::TENANT_ADMIN,
-            scope: AssignmentScope::subtree(unit::TEAM_NORTH),
-            granted_by_user_id: None,
-            expires_at: None,
-        },
-    )
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-}
+use support::second_factor::{
+    KEYED, POLICY, enrol, enrolment_step, kept_factor, opens_a_session, password_step, require,
+    second_step, waiting_for,
+};
+use support::{PASSWORD, TestApi, email};
 
 fn link(invitation: &Value) -> &str {
     invitation["link"].as_str().expect("link without a relay")
@@ -63,7 +33,7 @@ async fn an_invited_administrator_enrols_before_its_first_session() {
     let (administrator, invitation) = invite_account(&paul, "administrateur.invite").await;
     let (_, welcome) = invite_account(&paul, "collegue.invite").await;
     // Its rights count before it accepts, whatever their scope.
-    administrator_of_one_team(&api, administrator.id).await;
+    grant_team_admin(&api, administrator.id).await;
     assert_eq!(
         require(&paul, "administrators").await.status,
         StatusCode::OK
@@ -151,16 +121,6 @@ async fn an_administrator_of_one_team_neither_reads_nor_sets_it() {
         "administrators"
     );
     assert_eq!(require(&paul, "optional").await.status, StatusCode::OK);
-}
-
-/// `GET /auth/second-factor`, with the challenge `challenge` in its cookie.
-async fn waiting_for(api: &TestApi, challenge: Option<&str>) -> TestResponse {
-    let mut request = axum::http::Request::get("/auth/second-factor");
-    if let Some(challenge) = challenge {
-        request = request.header("cookie", format!("mimorya_challenge={challenge}"));
-    }
-    api.send(request.body(axum::body::Body::empty()).unwrap())
-        .await
 }
 
 #[tokio::test]
