@@ -126,9 +126,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   `approval:decide` et `document:write`) ou de tous (ADR-201, `settings:manage`, refusé
   sans clé maîtresse) : à la prochaine connexion par mot de passe, par un mot de passe
   oublié ou par une invitation, le compte concerné reçoit un défi d'enrôlement, jamais
-  une session, et ne peut plus le désactiver. Activation, désactivation,
-  renouvellement des codes de secours, code refusé et code de secours utilisé sont
-  audités, jamais un code ni le secret.
+  une session, et ne peut plus le désactiver. Qui gère les comptes de toute
+  l'entreprise (`user:manage`) réinitialise le second facteur d'un autre compte, jamais
+  le sien (ADR-202) : second facteur et codes de secours supprimés, connexions qui
+  attendent un code terminées, toutes les sessions du compte fermées ; sa prochaine
+  connexion l'enrôle de nouveau si l'entreprise l'exige. Activation, désactivation,
+  renouvellement des codes de secours, code refusé, code de secours utilisé et
+  réinitialisation par un administrateur sont audités, jamais un code ni le secret.
 - Protection CSRF : `SameSite=Lax` + exigence d'un en-tête personnalisé sur toutes les
   requêtes modifiantes + vérification d'`Origin`. Quatre exceptions, que des tests tentent
   de contourner : la réception des réponses SAML (ADR-068, ci-dessous), l'envoi d'un
@@ -633,8 +637,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
       lui attribuer un rôle d'administration et agir par ce compte ; la
       réinitialisation par mot de passe provisoire lui permet de se connecter à la place
       de la personne (y compris un autre administrateur) et donc de lire ses conversations et
-      sa mémoire personnelle. Tout est tracé (`user.created`, `role.assigned`,
-      `user.password_reset`…). La double validation des politiques d'autorisation est
+      sa mémoire personnelle. Le second facteur n'y fait pas obstacle : suivie de sa
+      réinitialisation (ADR-202), elle ouvre aussi un compte qui en a un, et là où
+      l'entreprise l'exige, l'administrateur y enrôle sa propre application. Tout est
+      tracé (`user.created`, `role.assigned`, `user.password_reset`,
+      `user.second_factor_reset`…). La double validation des politiques d'autorisation est
       faite (ADR-168), mais un administrateur qui peut ainsi faire seul un second
       administrateur des politiques, ou prendre la place de l'autre (réinitialisation de
       son mot de passe), l'accomplit seul ; celle des autres actions d'administration est

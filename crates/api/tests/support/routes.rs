@@ -51,6 +51,7 @@ pub const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("PATCH", "/admin/users/{id}"),
     ("POST", "/admin/users/{id}/password"),
     ("POST", "/admin/users/{id}/password-link"),
+    ("DELETE", "/admin/users/{id}/second-factor"),
     ("POST", "/admin/users/{id}/invitation"),
     ("POST", "/admin/users/{id}/erasure"),
     ("POST", "/admin/users/{id}/assignments"),

@@ -136,12 +136,19 @@ pub async fn holder_of<'a>(
 /// only, written directly in the database (the API refuses such a grant).
 pub async fn create_partial_admin(api: &TestApi, admin: &Client<'_>, login: &str) -> NewAccount {
     let account = create_account(admin, login).await;
+    grant_team_admin(api, account.id).await;
+    account
+}
+
+/// Gives `user_id` the technical administrator role on the north team only,
+/// written directly, as if granted before the company-wide rule existed.
+pub async fn grant_team_admin(api: &TestApi, user_id: Uuid) {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     create_role_assignment(
         &mut tx,
         NewRoleAssignment {
             tenant_id: tenant::ID,
-            user_id: account.id,
+            user_id,
             role_id: role::TENANT_ADMIN,
             scope: AssignmentScope::subtree(unit::TEAM_NORTH),
             granted_by_user_id: None,
@@ -151,7 +158,6 @@ pub async fn create_partial_admin(api: &TestApi, admin: &Client<'_>, login: &str
     .await
     .unwrap();
     tx.commit().await.unwrap();
-    account
 }
 
 pub fn permissions(me: &Value) -> Vec<String> {

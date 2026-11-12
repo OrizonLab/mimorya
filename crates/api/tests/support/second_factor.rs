@@ -9,7 +9,30 @@ use mimorya_core::second_factor::{DIGITS, code_at, read_base32, step_at};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::llm::MASTER_KEY;
 use super::{Client, PASSWORD, TestApi, TestResponse, WEB_ORIGIN, owner_url};
+
+/// A server that can keep a second factor: its master key set.
+pub const KEYED: [(&str, &str); 1] = [("MIMORYA_MASTER_KEY", MASTER_KEY)];
+/// What the company requires of its password accounts (ADR-201).
+pub const POLICY: &str = "/admin/second-factor";
+
+/// Sets what the company requires, as `admin`.
+pub async fn require(admin: &Client<'_>, requirement: &str) -> TestResponse {
+    admin
+        .put(POLICY, json!({ "requirement": requirement }))
+        .await
+}
+
+/// `GET /auth/second-factor`, with the challenge `challenge` in its cookie:
+/// what the sign-in waits for.
+pub async fn waiting_for(api: &TestApi, challenge: Option<&str>) -> TestResponse {
+    let mut request = Request::get("/auth/second-factor");
+    if let Some(challenge) = challenge {
+        request = request.header("cookie", format!("mimorya_challenge={challenge}"));
+    }
+    api.send(request.body(Body::empty()).unwrap()).await
+}
 
 /// An account's app: its secret, and the step of the last code it gave.
 pub struct App {

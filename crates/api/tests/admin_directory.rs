@@ -1,6 +1,7 @@
 //! The user directory shows each field only to those entitled to it, on
 //! every entry: readers see who is who; account managers also see sign-ins,
-//! units, clearance, attributes and pending invitations; role managers also
+//! units, clearance, attributes, pending invitations and whether a second
+//! factor is on (ADR-202); role managers also
 //! see sign-ins, units, clearance and roles; who erases accounts also sees
 //! whether each account may be erased, as the domain says it, and the
 //! address of a disabled account, to type it again, and nothing else
@@ -19,7 +20,7 @@ use support::{Client, TestApi};
 
 const READER: &[&str] = &["id", "displayName", "jobTitle", "status", "orgUnit"];
 const MANAGER: &[&str] = &["email", "lastLoginAt", "orgUnitId", "clearance"];
-const ACCOUNTS: &[&str] = &["attributes", "invitationExpiresAt"];
+const ACCOUNTS: &[&str] = &["attributes", "invitationExpiresAt", "secondFactor"];
 const ROLES: &[&str] = &["grants", "assignments"];
 const ERASURE: &[&str] = &["erasable"];
 

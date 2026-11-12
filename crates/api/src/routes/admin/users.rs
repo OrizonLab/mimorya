@@ -1,11 +1,12 @@
 //! The user directory (`user:read`) and account management (`user:manage`,
 //! company-wide): a new account gets an invitation link (ADR-027), e-mailed
 //! or shown once; a password is reset by an e-mailed link (ADR-029) or a
-//! temporary password shown once. Emails, logins and rights are only shown
+//! temporary password shown once; a second factor is reset (ADR-202).
+//! Emails, logins, rights and whether a second factor is on are only shown
 //! to administrators. A disabled account is erased, its address typed again
 //! (`user:erase`, ADR-189).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::Json;
 use axum::extract::State;
@@ -14,6 +15,7 @@ use axum::http::header::CACHE_CONTROL;
 use mimorya_core::account_erasure::erasable_status;
 use mimorya_db::repositories::invitations::pending_invitations;
 use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_assignments};
+use mimorya_db::repositories::second_factors::second_factor_holders;
 use mimorya_db::repositories::users::list_users;
 
 use super::connectors::{admin, secrets};
@@ -30,7 +32,7 @@ use crate::plugins::Auth;
 use crate::services::access::{AccessContext, describe_scope};
 use crate::services::admin::{
     LinkSender, NewUserInput, UserChanges, create_user, erase_account, issue_invitation,
-    reset_password, send_reset_link, update_user,
+    reset_password, reset_second_factor, send_reset_link, update_user,
 };
 use crate::services::permission_catalog::permission_catalog;
 
@@ -50,10 +52,11 @@ pub async fn list(
     } else {
         Vec::new()
     };
-    let invitations = if manage_users {
-        pending_invitations(&mut tx).await?
+    let (invitations, second_factors) = if manage_users {
+        let holders: HashSet<_> = second_factor_holders(&mut tx).await?.into_iter().collect();
+        (pending_invitations(&mut tx).await?, holders)
     } else {
-        HashMap::new()
+        (HashMap::new(), HashSet::new())
     };
     tx.commit().await?;
 
@@ -81,6 +84,7 @@ pub async fn list(
                 // Only to those who set them (ADR-023).
                 attributes: manage_users.then(|| u.attributes.clone()),
                 invitation_expires_at: manage_users.then(|| invitations.get(&u.id).map(iso)),
+                second_factor: manage_users.then(|| second_factors.contains(&u.id)),
                 grants: manage_roles.then(|| own.iter().map(|a| grant_label(&access, a)).collect()),
                 assignments: manage_roles
                     .then(|| own.iter().map(|a| assignment_view(&access, a)).collect()),
@@ -214,6 +218,18 @@ pub async fn reset(
     Ok(secret(TemporaryPassword {
         temporary_password: password,
     }))
+}
+
+/// Resets the account's second factor (ADR-202): its sessions close, its
+/// next sign-in enrols again where the company requires one.
+pub async fn reset_second_factor_of(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+) -> ApiResult<Json<Done>> {
+    let access = state.access.context(identity).await?;
+    reset_second_factor(&state.db, &access, id).await?;
+    Ok(Json(Done::OK))
 }
 
 /// A reset link e-mailed to the account (ADR-029); the administrator never

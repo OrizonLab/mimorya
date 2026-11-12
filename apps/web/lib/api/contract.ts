@@ -640,6 +640,11 @@ attributes?: Record<string, unknown>,
  */
 invitationExpiresAt?: string | null,
 /**
+ * To account managers only: whether its second factor is on, which
+ * they may reset (ADR-202).
+ */
+secondFactor?: boolean,
+/**
  * To role managers only.
  */
 grants?: Array<string>, assignments?: Array<Assignment>,
