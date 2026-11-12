@@ -12,7 +12,7 @@ export function SecondFactorResetNotice({ who, onClose }: { who: string; onClose
       </p>
       <p className="text-sm">
         Ses sessions sont fermées. À sa prochaine connexion, son mot de passe suffit, ou il lui est
-        demandé d’enrôler une nouvelle application si l’entreprise exige un second facteur.
+        demandé d’enrôler une nouvelle application si l’entreprise l’exige de lui.
       </p>
       <Button variant="secondary" className="w-fit" onClick={onClose}>
         Fermer

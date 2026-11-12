@@ -45,9 +45,15 @@ export function UserRow({
           <p className="font-medium">{user.displayName}</p>
           <p className="text-xs text-muted">{user.jobTitle}</p>
           {user.email && <p className="text-xs text-muted">{user.email}</p>}
-          {user.status !== 'active' && <LabelBadge labels={ACCOUNT_STATUS} value={user.status} />}
-          {/* To account managers only (ADR-202). */}
-          {user.secondFactor && <Badge tone="ok">Second facteur</Badge>}
+          {(user.status !== 'active' || user.secondFactor) && (
+            <div className="flex flex-wrap gap-1">
+              {user.status !== 'active' && (
+                <LabelBadge labels={ACCOUNT_STATUS} value={user.status} />
+              )}
+              {/* To account managers only (ADR-202). */}
+              {user.secondFactor && <Badge tone="ok">Second facteur</Badge>}
+            </div>
+          )}
           {user.status === 'invited' && canManage.users && (
             <p className="text-xs text-muted">{invitationState(user.invitationExpiresAt)}</p>
           )}

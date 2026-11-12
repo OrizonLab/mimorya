@@ -14,12 +14,10 @@ export function SecondFactorReset({
   user,
   action,
   onNotice,
-  onReset,
 }: {
   user: DirectoryUser;
   action: Action;
   onNotice: (notice: AccountNotice) => void;
-  onReset: () => void;
 }) {
   async function reset() {
     if (
@@ -29,10 +27,8 @@ export function SecondFactorReset({
     )
       return;
     const done = await action.run(() => api.delete<Done>(`/admin/users/${user.id}/second-factor`));
-    if (done) {
-      onNotice({ kind: 'secondFactorReset', who: user.displayName });
-      onReset();
-    }
+    // The notice reads the directory again, as for the other credentials.
+    if (done) onNotice({ kind: 'secondFactorReset', who: user.displayName });
   }
 
   return (

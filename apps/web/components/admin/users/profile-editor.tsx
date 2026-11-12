@@ -112,9 +112,7 @@ export function ProfileEditor({
           action={action}
           onNotice={onNotice}
         />
-        {user.secondFactor && (
-          <SecondFactorReset user={user} action={action} onNotice={onNotice} onReset={onChanged} />
-        )}
+        {user.secondFactor && <SecondFactorReset user={user} action={action} onNotice={onNotice} />}
         <Button type="button" variant={active ? 'danger' : 'secondary'} onClick={toggleStatus}>
           {active ? 'Désactiver le compte' : 'Réactiver le compte'}
         </Button>
