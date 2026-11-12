@@ -27,5 +27,5 @@ pub use own::{
     own_second_factor, renew_recovery_codes, start_enrolment,
 };
 pub use proof::{Proof, Refusal};
-pub use requirement::{company_requirement, required_of, second_factor_required};
+pub use requirement::{company_requirement, second_factor_required};
 pub use sign_in_enrolment::{EnrolledSignIn, complete_sign_in_enrolment, start_sign_in_enrolment};

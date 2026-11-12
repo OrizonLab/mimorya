@@ -13879,9 +13879,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 - **Statut** : accepté (2026-11-12) · complète ADR-200.
 - **Contexte** : le second facteur de l'ADR-200 reste un choix de chacun. Une entreprise
   doit pouvoir l'exiger de ses administrateurs ou de tous ses comptes à mot de passe.
-  L'exigence doit s'appliquer à la première connexion de chacun, sans période où un
-  compte concerné aurait une session sans second facteur. Elle ne doit pas non plus
-  passer par le mot de passe oublié ou par une invitation.
+  L'exigence doit s'appliquer dès la prochaine connexion de chacun : aucune session ne
+  s'ouvre pour un compte concerné sans second facteur. Elle ne doit pas non plus passer
+  par le mot de passe oublié ou par une invitation.
 - **Décision** :
   - **la politique** (`tenant_second_factor_settings`, migration 0090) :
     - `optional` (personne, par défaut et sans ligne), `administrators` ou `everyone` ;
@@ -13912,6 +13912,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `GET /auth/second-factor` dit ce qu'attend la connexion. Cette lecture ne vérifie
       rien : elle ne compte pas dans la limite des connexions par client (la limite
       globale la compte), pour qu'une page rechargée ne coûte pas une des étapes ;
+    - le défi est lu avant tout le reste : à qui n'en tient pas, rien n'est dit du
+      serveur, pas même qu'il manque sa clé maîtresse ;
     - `POST /auth/second-factor/enrolment` donne le secret. Le mot de passe vient d'être
       vérifié : il n'est pas redemandé ;
     - `POST /auth/second-factor/enrolment/confirmation` prend le premier code. Il active
@@ -13937,7 +13939,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       connexion (`activation.rs`).
 - **Conséquences** :
   - l'exigence s'applique à la prochaine connexion par mot de passe : les sessions déjà
-    ouvertes restent jusqu'à leur fin, sept jours au plus ;
+    ouvertes restent jusqu'à leur fin, sept jours au plus. Il en va de même d'un compte
+    connecté qui reçoit un rôle d'administration : sa session reste, sa prochaine
+    connexion l'enrôle ;
   - un compte SSO n'est jamais concerné : son fournisseur demande son second facteur ;
   - perdre la clé maîtresse bloque l'enrôlement des comptes concernés jusqu'à ce que
     l'exploitant la rétablisse. Les comptes déjà enrôlés passent par leurs codes de
@@ -13946,10 +13950,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     connexion : une entreprise qui réglerait une exigence par l'API avant eux laisserait
     ses comptes concernés sans moyen de se connecter depuis l'application. La politique
     ne se règle encore que par l'API, et ne doit pas l'être avant ces écrans ;
-  - des tests tentent de contourner l'exigence : un administrateur invité, même d'une
-    seule équipe, s'enrôle avant sa première session ; un défi de vérification ne
-    démarre ni ne confirme aucun enrôlement ; une entreprise ne lit ni n'écrit
-    l'exigence d'une autre.
+  - des tests tentent de contourner l'exigence : un administrateur d'une seule équipe
+    ne la lit ni ne la règle ; un administrateur invité, même d'une seule équipe,
+    s'enrôle avant sa première session ; un défi de vérification ne démarre ni ne
+    confirme aucun enrôlement ; une entreprise ne lit ni n'écrit l'exigence d'une
+    autre.
 - **Écartés** :
   - une session « limitée à l'enrôlement » : chaque route aurait dû la refuser ;
   - redemander le mot de passe à l'enrôlement par le défi, qui vient de le prouver ;

@@ -38,8 +38,10 @@ pub async fn start_sign_in_enrolment(
     cipher: Option<&SecretCipher>,
     token: &str,
 ) -> anyhow::Result<Enrolment> {
-    let cipher = cipher_of(cipher)?;
+    // The challenge first: nothing is said of the server to whoever holds
+    // none.
     let record = pending(db, &hash_token(token), Some(ChallengePurpose::Enrol)).await?;
+    let cipher = cipher_of(cipher)?;
     let mut tx = db.begin(record.tenant_id).await?;
     let account = get_user(&mut tx, record.user_id)
         .await?
@@ -78,9 +80,9 @@ pub async fn complete_sign_in_enrolment(
     token: &str,
     code: u32,
 ) -> ApiResult<EnrolledSignIn> {
-    let cipher = cipher_of(completion.cipher)?;
     let token_hash = hash_token(token);
     let record = pending(completion.db, &token_hash, Some(ChallengePurpose::Enrol)).await?;
+    let cipher = cipher_of(completion.cipher)?;
     let account = record.user_id.to_string();
     if !completion.refusals.allow(&account).await? {
         return Err(ApiError::RateLimited);

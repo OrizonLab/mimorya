@@ -237,6 +237,9 @@ async fn without_a_master_key_nothing_can_be_required_or_enrolled() {
     let refused = require(&admin, "administrators").await;
     assert_eq!(refused.status, StatusCode::SERVICE_UNAVAILABLE);
     assert!(refused.error_message().contains("MIMORYA_MASTER_KEY"));
+    // Whoever holds no challenge is told nothing of the server.
+    let unknown = enrolment_step(&api, "inconnu", "/auth/second-factor/enrolment", json!({})).await;
+    assert_eq!(unknown.status, StatusCode::UNAUTHORIZED);
     // The sign-in waits, and says why it cannot go on.
     let challenge = password_step_for_enrolment(&api, user::EMMA).await;
     let started =

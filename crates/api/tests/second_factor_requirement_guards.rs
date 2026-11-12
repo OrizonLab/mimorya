@@ -1,8 +1,11 @@
-//! What keeps the company's requirement from being got round (ADR-201): an
-//! invited account the company counts among its administrators, even of one
-//! team, enrols before its first session, as it accepts its invitation; a
-//! sign-in waiting for a code cannot enrol another app in its place, nor
-//! open a session, and the app already enrolled still proves it.
+//! What keeps the company's requirement from being got round (ADR-201): it
+//! is read and set only by who manages the settings company-wide, not of
+//! one team; an invited account the company counts among its
+//! administrators, even of one team, enrols before its first session, as it
+//! accepts its invitation; a sign-in waiting for a code cannot enrol another
+//! app in its place, nor open a session, and the app already enrolled still
+//! proves it. What a sign-in waits for is told to the browser holding its
+//! challenge alone, without spending a login.
 
 mod support;
 
@@ -10,8 +13,8 @@ use axum::http::StatusCode;
 use mimorya_core::authz::AssignmentScope;
 use mimorya_core::demo::{role, tenant, unit, user};
 use mimorya_db::repositories::role_assignments::{NewRoleAssignment, create_role_assignment};
-use serde_json::json;
-use support::accounts::{INVITED_PASSWORD, accept, invite_account};
+use serde_json::{Value, json};
+use support::accounts::{INVITED_PASSWORD, accept, activate, create_partial_admin, invite_account};
 use support::llm::MASTER_KEY;
 use support::second_factor::{
     enrol, enrolment_step, kept_factor, opens_a_session, password_step, second_step,
@@ -20,13 +23,11 @@ use support::{Client, PASSWORD, TestApi, TestResponse, email};
 use uuid::Uuid;
 
 const KEYED: [(&str, &str); 1] = [("MIMORYA_MASTER_KEY", MASTER_KEY)];
+const POLICY: &str = "/admin/second-factor";
 
 async fn require(admin: &Client<'_>, requirement: &str) -> TestResponse {
     admin
-        .put(
-            "/admin/second-factor",
-            json!({ "requirement": requirement }),
-        )
+        .put(POLICY, json!({ "requirement": requirement }))
         .await
 }
 
@@ -50,7 +51,7 @@ async fn administrator_of_one_team(api: &TestApi, user_id: Uuid) {
     tx.commit().await.unwrap();
 }
 
-fn link(invitation: &serde_json::Value) -> &str {
+fn link(invitation: &Value) -> &str {
     invitation["link"].as_str().expect("link without a relay")
 }
 
@@ -117,6 +118,85 @@ async fn a_sign_in_waiting_for_a_code_cannot_enrol_another_app() {
     let signed_in = second_step(&api, &challenge, &app.next_code()).await;
     assert_eq!(signed_in.status, StatusCode::OK, "{}", signed_in.text());
     assert!(opens_a_session(&signed_in));
+    let session = api.session_from(&signed_in);
+    let off = session
+        .post(
+            "/account/second-factor/deactivation",
+            json!({ "code": codes[0] }),
+        )
+        .await;
+    assert_eq!(off.status, StatusCode::OK, "{}", off.text());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_administrator_of_one_team_neither_reads_nor_sets_it() {
+    let api = TestApi::start_with(&KEYED).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let mut partial = create_partial_admin(&api, &paul, "admin.equipe.second.facteur").await;
+    let partial = activate(&api, &mut partial).await;
+    assert_eq!(
+        require(&paul, "administrators").await.status,
+        StatusCode::OK
+    );
+
+    assert_eq!(partial.get(POLICY).await.status, StatusCode::FORBIDDEN);
+    for requirement in ["optional", "everyone"] {
+        let refused = require(&partial, requirement).await;
+        assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.text());
+    }
+    // What the company requires stays as set.
+    assert_eq!(
+        paul.get(POLICY).await.json()["requirement"],
+        "administrators"
+    );
+    assert_eq!(require(&paul, "optional").await.status, StatusCode::OK);
+}
+
+/// `GET /auth/second-factor`, with the challenge `challenge` in its cookie.
+async fn waiting_for(api: &TestApi, challenge: Option<&str>) -> TestResponse {
+    let mut request = axum::http::Request::get("/auth/second-factor");
+    if let Some(challenge) = challenge {
+        request = request.header("cookie", format!("mimorya_challenge={challenge}"));
+    }
+    api.send(request.body(axum::body::Body::empty()).unwrap())
+        .await
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn what_a_sign_in_waits_for_is_told_without_spending_a_login() {
+    // Three logins a minute: the sign-in, the password step and the code.
+    let mut env = KEYED.to_vec();
+    env.push(("LOGIN_RATE_LIMIT_PER_MINUTE", "3"));
+    let api = TestApi::start_with(&env).await;
+    let lea = api.sign_in(user::LEA).await;
+    let (_, mut app, codes) = enrol(&lea).await;
+
+    let challenge = password_step(&api, &email(user::LEA), PASSWORD).await;
+    // Asked again and again, as a page reloaded: no login spent.
+    for _ in 0..5 {
+        let told = waiting_for(&api, Some(&challenge)).await;
+        assert_eq!(told.status, StatusCode::OK, "{}", told.text());
+        assert_eq!(told.json(), json!({ "next": "second_factor" }));
+    }
+    // Without a challenge, or with one nobody was given, nothing is told.
+    assert_eq!(
+        waiting_for(&api, None).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    let unknown = waiting_for(&api, Some("inconnu")).await;
+    assert_eq!(unknown.status, StatusCode::UNAUTHORIZED);
+    assert!(unknown.json().get("next").is_none());
+
+    // The code still has its login left.
+    let signed_in = second_step(&api, &challenge, &app.next_code()).await;
+    assert_eq!(signed_in.status, StatusCode::OK, "{}", signed_in.text());
+    // Completed, the challenge is told no more.
+    assert_eq!(
+        waiting_for(&api, Some(&challenge)).await.status,
+        StatusCode::UNAUTHORIZED
+    );
     let session = api.session_from(&signed_in);
     let off = session
         .post(
