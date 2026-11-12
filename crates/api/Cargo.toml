@@ -40,6 +40,7 @@ mimorya-core.workspace = true
 mimorya-db.workspace = true
 mimorya-extract.workspace = true
 openidconnect.workspace = true
+qrcode.workspace = true
 reqwest-mcp.workspace = true
 ring.workspace = true
 hickory-resolver.workspace = true

@@ -30,7 +30,7 @@ use crate::services::AccessContext;
 const NO_PASSWORD: &str = "Votre compte se connecte par le fournisseur d’identité de votre \
      entreprise : c’est lui qui demande un second facteur.";
 const REQUIRED: &str = "Votre entreprise exige un second facteur : il ne peut pas être \
-     désactivé.";
+     désactivé. Pour changer d’application, demandez à un administrateur de le réinitialiser.";
 
 /// One's own second factor, as « Mon compte » shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]

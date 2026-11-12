@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { Button, Card, ErrorNote } from '@/components/ui';
-import { api, useAction, type InvitationDetails, type LinkPassword } from '@/lib/api';
+import { api, useAction, type InvitationDetails, type LinkPassword, type SignIn } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { EMPTY_NEW_PASSWORD, NewPasswordFields, passwordsDiffer } from './new-password-fields';
 import { SsoSignIn } from './sso-sign-in';
@@ -11,7 +11,8 @@ import { SsoSignIn } from './sso-sign-in';
  * The invited person chooses a password, or, when the company signs in
  * through its identity provider, activates the account with it (ADR-064),
  * the only way when the company requires it (ADR-066); either way the API
- * activates the account and signs it in.
+ * activates the account and signs it in, or first asks for the second
+ * factor the company requires (ADR-201).
  */
 export function InvitationForm({
   token,
@@ -20,7 +21,7 @@ export function InvitationForm({
 }: {
   token: string;
   invitation: InvitationDetails;
-  onAccepted: () => void;
+  onAccepted: (answer: SignIn) => void;
 }) {
   const [chosen, setChosen] = useState(EMPTY_NEW_PASSWORD);
   // Its company requires the provider (ADR-066): no password to choose.
@@ -32,12 +33,12 @@ export function InvitationForm({
     event.preventDefault();
     if (mismatch) return;
     const accepted = await action.run(() =>
-      api.post('/auth/invitation/accept', {
+      api.post<SignIn>('/auth/invitation/accept', {
         token,
         password: chosen.password,
       } satisfies LinkPassword),
     );
-    if (accepted) onAccepted();
+    if (accepted) onAccepted(accepted);
   }
 
   return (

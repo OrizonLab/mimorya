@@ -1,6 +1,7 @@
 'use client';
 
 import { LinkPage, ResetPasswordForm, useLinkToken } from '@/components/account';
+import { pathAfterSignIn } from '@/lib/sign-in';
 import type { ResetDetails } from '@/lib/api';
 
 /** Opened from a password reset link (`/reset-password#<token>`), before any sign-in. */
@@ -15,7 +16,7 @@ export default function ResetPasswordPage() {
         <ResetPasswordForm
           token={token}
           reset={reset}
-          onReset={() => window.location.assign('/chat')}
+          onReset={(answer) => window.location.assign(pathAfterSignIn(answer))}
         />
       )}
     </LinkPage>

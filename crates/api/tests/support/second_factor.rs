@@ -75,6 +75,12 @@ pub async fn enrol(person: &Client<'_>) -> (Value, App, Vec<String>) {
         .await;
     assert_eq!(started.status, StatusCode::OK, "{}", started.text());
     let shown = started.json();
+    // The QR code the server draws, as an image the page shows (ADR-203).
+    let qr_code = shown["qrCode"].as_str().unwrap();
+    assert!(
+        qr_code.starts_with("data:image/svg+xml;base64,"),
+        "{qr_code}"
+    );
     let secret = read_base32(shown["secret"].as_str().unwrap()).unwrap();
     // The step before now: the next code is the current one.
     let mut app = App {

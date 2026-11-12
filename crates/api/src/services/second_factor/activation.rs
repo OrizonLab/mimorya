@@ -4,6 +4,7 @@
 //! of the app, which turns it on. The second factor's row is locked: two
 //! first codes at once turn it on once.
 
+use anyhow::Context;
 use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_core::second_factor::{accepted_step, base32, otpauth_uri, step_at};
@@ -13,6 +14,7 @@ use mimorya_db::repositories::second_factors::{
 };
 use uuid::Uuid;
 
+use super::qr_code::qr_code;
 use super::secret::{new_recovery_codes, new_secret, open_secret};
 use crate::secrets::SecretCipher;
 
@@ -27,6 +29,8 @@ const ALREADY_ON: &str = "Le second facteur est déjà actif sur ce compte";
 pub struct Enrolment {
     pub secret: String,
     pub uri: String,
+    /// The QR code of `uri`, a `data:` image (ADR-203).
+    pub qr_code: String,
 }
 
 /// Starts the enrolment of `user_id`, whose address is `email`, with a new
@@ -42,9 +46,12 @@ pub(super) async fn begin(
     if !put_pending_second_factor(tx, tenant_id, user_id, &sealed).await? {
         return Err(DomainError::conflict(ALREADY_ON).into());
     }
+    let uri = otpauth_uri(&secret, email);
+    let qr_code = qr_code(&uri).context("otpauth address too long for a QR code")?;
     Ok(Enrolment {
         secret: base32(&secret),
-        uri: otpauth_uri(&secret, email),
+        uri,
+        qr_code,
     })
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { InvitationForm, LinkPage, useLinkToken } from '@/components/account';
+import { pathAfterSignIn } from '@/lib/sign-in';
 import type { InvitationDetails } from '@/lib/api';
 
 /** Opened from an invitation link (`/invitation#<token>`), before any sign-in. */
@@ -15,7 +16,7 @@ export default function InvitationPage() {
         <InvitationForm
           token={token}
           invitation={invitation}
-          onAccepted={() => window.location.assign('/chat')}
+          onAccepted={(answer) => window.location.assign(pathAfterSignIn(answer))}
         />
       )}
     </LinkPage>

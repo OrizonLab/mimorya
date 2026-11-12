@@ -2892,7 +2892,12 @@ secret: string,
 /**
  * The `otpauth://` address its QR code holds.
  */
-uri: string, };
+uri: string,
+/**
+ * That QR code, drawn by the server as a `data:image/svg+xml` address
+ * (ADR-203).
+ */
+qrCode: string, };
 
 /**
  * Body of `POST /account/second-factor/enrolment`: the account's password,

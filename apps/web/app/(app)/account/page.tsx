@@ -8,6 +8,7 @@ import {
   PasswordForm,
   ServerAuthorizations,
 } from '@/components/account';
+import { AccountSecondFactor } from '@/components/second-factor';
 import { Card, PageHeader } from '@/components/ui';
 import { useMe } from '@/lib/me-context';
 
@@ -18,7 +19,10 @@ export default function AccountPage() {
       <PageHeader title="Mon compte" description={`${me.user.displayName} · ${me.user.email}`} />
       <div className="flex flex-col gap-6">
         {me.user.hasPassword ? (
-          <PasswordForm />
+          <>
+            <PasswordForm />
+            <AccountSecondFactor />
+          </>
         ) : (
           // Accepted through the company's identity provider (ADR-064).
           <Card className="max-w-md p-4 text-sm">

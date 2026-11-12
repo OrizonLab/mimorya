@@ -14005,13 +14005,18 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     la double validation des actions d'administration reste prévue en phase 3 ;
   - la personne l'apprend à sa prochaine connexion : ses sessions sont fermées et, si
     l'entreprise l'exige, elle enrôle une nouvelle application ;
+  - une entreprise dont un seul compte gère les comptes (`user:manage`) n'a pas de sortie
+    s'il perd son application et ses codes de secours : il ne réinitialise pas le sien.
+    Seul l'exploitant le débloque, en base ; en donner la permission à un second compte
+    l'évite ;
   - la limite des codes refusés par compte (cinq par quart d'heure) n'est pas remise à
     zéro : une personne qui l'a épuisée attend au plus quinze minutes avant de confirmer
     son nouvel enrôlement ;
-  - les identités Slack, Telegram ou Teams reliées au compte restent : seule la personne
-    les retire. Un téléphone volé qui les porte peut encore parler à l'agent et presser
-    les boutons de validation ; les retirer avec le second facteur pourra venir plus
-    tard si le besoin s'en fait sentir.
+  - les identités Slack, Telegram ou Teams reliées au compte restent : un téléphone volé
+    qui les porte peut encore parler à l'agent et presser les boutons de validation.
+    Seule la personne les retire, ou la désactivation du compte (ADR-125), le geste d'un
+    administrateur face à un téléphone volé ; les retirer avec le second facteur pourra
+    venir plus tard si le besoin s'en fait sentir.
 - **Écartés** :
   - un e-mail à la personne : la réinitialisation d'un mot de passe par un
     administrateur n'en envoie pas non plus. La fermeture des sessions et la trace
@@ -14019,3 +14024,54 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - garder les sessions ouvertes : un second facteur perdu peut être un appareil volé ;
   - une réinitialisation par un administrateur d'une seule équipe : la règle reste celle
     des mots de passe, sur toute l'entreprise.
+
+## ADR-203 — Écrans du second facteur, QR code dessiné par le serveur (chantier 2, lot 68d)
+
+- **Statut** : accepté (2026-11-12) · complète ADR-200, ADR-201 et ADR-202.
+- **Contexte** : l'API du second facteur existe (ADR-200 à ADR-202), mais l'interface ne
+  suivait pas la réponse `next` d'une connexion : elle allait droit à `/chat`. Pour
+  enrôler une application, il faut aussi lui donner un QR code, sans bibliothèque de
+  plus dans le navigateur et sans que le secret quitte la réponse qui le porte.
+- **Décision** :
+  - **QR code** : le serveur dessine l'adresse `otpauth://` en SVG
+    (`services/second_factor/qr_code.rs`), avec le crate `qrcode` 0.14.1 (MIT ou
+    Apache-2.0) réduit à son rendu SVG (`default-features = false, features =
+["svg"]`), sans autre dépendance. Il est donné dans la réponse d'enrôlement
+    (`qrCode`, adresse `data:image/svg+xml`), que la politique de la page admet déjà
+    (`img-src 'self' data:`). Noir sur blanc quel que soit le thème, marge comprise ;
+  - **connexion en deux temps** : la connexion, la fin d'un mot de passe oublié et
+    l'acceptation d'une invitation suivent la réponse (`lib/sign-in.ts`) : l'application
+    si la session est ouverte, sinon la page `/login/second-factor`. Cette page lit
+    ce qu'attend la connexion (`GET /auth/second-factor`) et montre :
+    - le code de l'application, ou un code de secours pour qui ne l'a plus ;
+    - ou l'enrôlement que l'entreprise exige : QR code, clé à saisir à la main,
+      premier code, puis les codes de secours, montrés une fois, avant l'application ;
+    - une connexion expirée ou terminée renvoie au mot de passe, et un lien y ramène à
+      chaque étape (le défi ne vaut que cinq minutes) ;
+  - **« Mon compte »** (section « Second facteur », comptes à mot de passe) : activation
+    avec le mot de passe retapé, puis les mêmes étapes ; une fois actif, sa date, les
+    codes de secours restants et s'il est exigé, de nouveaux codes de secours et la
+    désactivation, chacun avec un code courant ; la désactivation n'est pas proposée là
+    où l'entreprise l'exige, qui renvoie à un administrateur ;
+  - les écrans sont dans `components/second-factor/` ; ceux de l'administration
+    (politique dans « Connexion », réinitialisation dans « Utilisateurs ») viennent au
+    lot 68e.
+- **Conséquences** :
+  - l'exigence de l'entreprise peut désormais être réglée (par l'API jusqu'au lot 68e) :
+    l'interface conduit les comptes concernés à leur enrôlement ;
+  - les tests de bout en bout jouent une application d'authentification
+    (`e2e/support/totp.ts`, RFC 6238) : enrôlement depuis « Mon compte » (QR code
+    dessiné), connexion avec le code, rejeu refusé, code de secours, nouveaux codes de
+    secours qui remplacent les anciens, mot de passe oublié qui demande le second
+    facteur, désactivation ; page ouverte sans connexion en attente ; enrôlement imposé
+    à l'acceptation d'une invitation ;
+  - la lecture du QR code par une vraie application ne se vérifie qu'en conditions
+    réelles.
+- **Écartés** :
+  - une bibliothèque de QR code dans le navigateur : une dépendance de plus dans
+    l'interface, pour un dessin que le serveur fait sans rien ajouter à la page ;
+  - une image PNG : le rendu SVG du crate n'a aucune dépendance, celui en PNG tire
+    `image` ;
+  - un enrôlement sans QR code (clé seule) : la saisie d'une clé de 32 caractères est
+    la source d'erreurs que le QR code évite ; la clé reste montrée pour qui n'a pas
+    d'appareil photo.

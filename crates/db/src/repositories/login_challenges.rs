@@ -2,7 +2,9 @@
 //! still to prove. `find_login_challenge` is a read before sign-in (a
 //! SECURITY DEFINER function), with the periodic purge of expired ones; the
 //! rest runs in the account's company. A change of password or status
-//! deletes the account's challenges (trigger of migration 0089).
+//! deletes the account's challenges (trigger of migration 0089), as a reset
+//! of its second factor by an administrator does (ADR-202); a completion
+//! reads its challenge again under the account's lock.
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgConnection, PgPool};
@@ -107,14 +109,16 @@ pub async fn take_login_challenge(
 
 /// Whether the challenge `challenge_id`, of this very token, still waits:
 /// read under the account's lock, a reset or a password changed meanwhile
-/// has ended it (ADR-202).
+/// has ended it (ADR-202), and it may have expired while the lock was
+/// awaited.
 pub async fn login_challenge_stands(
     conn: &mut PgConnection,
     challenge_id: Uuid,
     token_hash: &str,
 ) -> sqlx::Result<bool> {
     sqlx::query_scalar(
-        "select exists (select 1 from login_challenges where id = $1 and token_hash = $2)",
+        "select exists (select 1 from login_challenges where id = $1 and token_hash = $2 \
+         and expires_at > statement_timestamp())",
     )
     .bind(challenge_id)
     .bind(token_hash)
