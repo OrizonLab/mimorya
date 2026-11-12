@@ -14,7 +14,7 @@ use mimorya_db::repositories::connectors::{NewConnectorInstance, create_connecto
 use serde_json::json;
 use uuid::Uuid;
 
-use super::connector_config::{operation_names, prefix_taken};
+use super::added_connectors::{operation_names, prefix_taken};
 use super::connectors::{ConnectorAdmin, PERMISSION};
 use super::{audit_entry, begin_change};
 use crate::services::AccessContext;

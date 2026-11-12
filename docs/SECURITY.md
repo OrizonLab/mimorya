@@ -1019,6 +1019,11 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   seulement avec le réseau privé permis : le mandataire résout les noms, et c'est à lui
   de refuser ce que la plateforme ne doit pas joindre. Ses identifiants ne sont jamais
   écrits (journaux, débogage, refus de la configuration).
+- Messagerie standard d'une entreprise (ADR-205) : déclarée une fois par entreprise par
+  qui détient `connector:manage` sur toute l'entreprise, sans aucun secret (chacun s'y
+  connectera avec son propre compte, aucun jeton ne s'y saisit), ses serveurs vérifiés
+  contre la politique réseau à la déclaration, à chaque changement et à chaque démarrage ;
+  ses outils exigent `connector:use`.
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée
@@ -1031,8 +1036,9 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   un compte refusé est dit sans son mot de passe, retiré de ce que le serveur répond sous
   chacune de ses formes puis masqué encore. Les enregistrements de la bibliothèque IMAP
   sont écartés au pont de `log` vers `tracing` (`init_logs`), avant tout filtre, et
-  coupés encore par le filtre, quel que soit `LOG_LEVEL` ; ceux de lettre ne sont pas
-  compilés.
+  coupés encore par le filtre, quel que soit `LOG_LEVEL` (`crates/api/tests/logs.rs`) ;
+  aucun enregistrement plus fin que le filtre n'est même formé ; ceux de lettre ne sont
+  pas compilés.
 - Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais
   dans celui de l'API, lancé avec un environnement vide et borné par lui-même avant de
   rien lire (1 Gio de mémoire, 20 s de processeur, aucun fichier écrit), tué au bout de

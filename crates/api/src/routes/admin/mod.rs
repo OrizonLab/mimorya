@@ -168,6 +168,10 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             post(connector_applications::create_google_workspace),
         )
         .route(
+            "/admin/connectors/mail-server",
+            post(connector_applications::create_mail_server),
+        )
+        .route(
             "/admin/connectors/rest/import",
             post(connectors::import_rest),
         )

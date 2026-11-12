@@ -17,6 +17,7 @@ mod google_workspace;
 mod identity_providers;
 mod knowledge_shares;
 mod llm;
+mod mail_server;
 mod mcp_oauth;
 mod memory_settings;
 mod microsoft365;
@@ -67,6 +68,9 @@ pub use identity_providers::{
 };
 pub use knowledge_shares::{KnowledgeShareView, KnowledgeShares, NewKnowledgeShare, ShareableUnit};
 pub use llm::{LlmChoice, LlmSettingsView, LlmTestResult, LlmView, PlatformModel, ProviderKind};
+pub use mail_server::{
+    MailImapServer, MailServerView, MailSmtpSecurity, MailSmtpServer, NewMailServerConnector,
+};
 pub use mcp_oauth::{
     McpOAuth, McpOAuthAuthorization, McpOAuthDeclaration, McpOAuthHolder, OAuthAuthorizationStart,
     OAuthClientAuth,

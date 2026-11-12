@@ -2,8 +2,9 @@
 //! their state, trying an MCP server before adding it (ADR-050), adding it
 //! over HTTPS, adding a REST API (ADR-112) whose operations an OpenAPI
 //! description may offer first (ADR-114), changing any of them, the
-//! company's Microsoft 365 and Google Workspace applications too
-//! (`connector_applications`, ADR-116, ADR-121) (address, token or
+//! company's Microsoft 365 and Google Workspace applications and its
+//! standard mail too (`connector_applications`, ADR-116, ADR-121, ADR-205)
+//! (address, servers, token or
 //! secret, per-tool policies, activation; a REST API's token header and
 //! operations), deleting it and testing it. Tokens are write-only. OAuth
 //! on an MCP server: `connector_oauth` (ADR-171).
@@ -29,9 +30,10 @@ use crate::plugins::Auth;
 use crate::secrets::SecretStore;
 use crate::services::admin::NewRestConnector as RestInput;
 use crate::services::admin::{
-    ConnectorAdmin, ConnectorChanges, Editable, McpTrial, NewMcpConnector, OAuthSeen, RestChanges,
-    TokenChange, TrialServices, create_mcp_connector, create_rest_connector, delete_connector,
-    oauth_redirect_uri, read_openapi, test_connector, try_mcp_connector, update_connector,
+    ConnectorAdmin, ConnectorChanges, Editable, MailChanges, McpTrial, NewMcpConnector, OAuthSeen,
+    RestChanges, TokenChange, TrialServices, create_mcp_connector, create_rest_connector,
+    delete_connector, oauth_redirect_uri, read_openapi, test_connector, try_mcp_connector,
+    update_connector,
 };
 use crate::services::connectors::token_secret_name;
 use crate::services::permission_catalog::permission_catalog;
@@ -93,6 +95,7 @@ pub async fn list(
                         revokes_grants: LinkKind::Microsoft365.revokes(),
                     });
                 }
+                Editable::MailServer(config) => details.mail_server = Some(config.into()),
                 Editable::GoogleWorkspace(config) => {
                     details.google_workspace = Some(GoogleWorkspaceApp {
                         client_id: config.client_id,
@@ -228,6 +231,13 @@ pub async fn update(
                 .map(|operations| operations.into_iter().map(Into::into).collect()),
         }),
         write_tools: body.write_tools,
+        mail: (body.imap.is_some() || body.smtp.is_some() || body.caldav.is_some()).then(|| {
+            MailChanges {
+                imap: body.imap.map(Into::into),
+                smtp: body.smtp.map(Into::into),
+                caldav: body.caldav,
+            }
+        }),
     };
     update_connector(&admin(&state, &store, &catalog), &access, id, changes).await?;
     Ok(Json(Done::OK))

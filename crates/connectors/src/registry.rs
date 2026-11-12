@@ -7,6 +7,7 @@ use crate::google_workspace::GoogleWorkspaceConnector;
 use crate::mcp::McpConnector;
 use crate::microsoft365::Microsoft365Connector;
 use crate::rest::RestConnector;
+use crate::standard_mail::MailServerConnector;
 use crate::types::Connector;
 
 pub fn connector_types() -> Vec<Arc<dyn Connector>> {
@@ -16,6 +17,7 @@ pub fn connector_types() -> Vec<Arc<dyn Connector>> {
         Arc::new(RestConnector),
         Arc::new(Microsoft365Connector),
         Arc::new(GoogleWorkspaceConnector),
+        Arc::new(MailServerConnector),
     ]
 }
 

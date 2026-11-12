@@ -254,6 +254,7 @@ macro_rules! request_bodies {
             admin::NewRestConnector,
             admin::NewMicrosoft365Connector,
             admin::NewGoogleWorkspaceConnector,
+            admin::NewMailServerConnector,
             admin::NewSlackGateway,
             admin::NewTeamsGateway,
             admin::NewTelegramGateway,

@@ -2,13 +2,11 @@
 //! address of an MCP server it added (ADR-025), the address, token header
 //! and operations of a REST API (ADR-112), the secret of the company's
 //! Microsoft 365 application (ADR-116) or Google Workspace client (ADR-121),
-//! whose addresses are the platform's, and whether its tools may write
-//! (ADR-119).
+//! whose addresses are the platform's, the servers of its standard mail
+//! (`mail_server`, ADR-205), and whether its tools may write (ADR-119).
 //! An MCP server's OAuth declaration (ADR-171) is kept while its address
 //! is. The demo connector and the servers the operator wrote change only
 //! their name and activation here.
-//! Tool prefixes never overlap within a kind, operator-written servers
-//! included.
 
 use std::collections::HashMap;
 
@@ -16,15 +14,18 @@ use mimorya_connectors::google_workspace::{GOOGLE_WORKSPACE_TOOLS, GoogleWorkspa
 use mimorya_connectors::mcp::oauth::OAuthDeclaration;
 use mimorya_connectors::microsoft365::{MICROSOFT365_TOOLS, Microsoft365Config};
 use mimorya_connectors::outbound::NetworkPolicy;
+use mimorya_connectors::standard_mail::{
+    MAIL_NAMESPACE, MAIL_SERVER, MAIL_TOOLS, MailServerConfig,
+};
 use mimorya_connectors::{mcp, rest};
 use mimorya_core::DomainError;
 use mimorya_core::account_links::{GOOGLE_WORKSPACE, LinkKind, MICROSOFT365};
 use mimorya_core::authz::PermissionInfo;
-use mimorya_db::repositories::connectors::{ConnectorInstanceRow, list_connector_instances};
+use mimorya_db::repositories::connectors::ConnectorInstanceRow;
 use serde_json::Value;
-use sqlx::PgConnection;
 
 use super::connector_rules::{PolicyScope, ToolPolicyInput, checked_policies};
+use super::mail_server::{MailChanges, mail_changed};
 use super::mcp_config::{mcp_config, stored_oauth};
 
 /// A REST API's changes: `None` keeps what is stored.
@@ -33,6 +34,16 @@ pub struct RestChanges {
     /// `Some(None)`: back to `Authorization: Bearer`.
     pub token_header: Option<Option<String>>,
     pub operations: Option<Vec<rest::RestOperation>>,
+}
+
+/// What a change says of a configuration: `None` keeps each part.
+#[derive(Default)]
+pub struct ConfigChanges {
+    pub url: Option<String>,
+    pub rest: Option<RestChanges>,
+    /// The servers of the standard mail (ADR-205).
+    pub mail: Option<MailChanges>,
+    pub write_tools: Option<bool>,
 }
 
 /// The policies a change stores, if it changes them, and the tools whose
@@ -57,6 +68,9 @@ pub enum Editable {
     Microsoft365(Microsoft365Config),
     /// The company's Google Workspace client: the same.
     GoogleWorkspace(GoogleWorkspaceConfig),
+    /// The company's standard mail: its servers and whether its tools may
+    /// write; no secret.
+    MailServer(MailServerConfig),
 }
 
 /// Microsoft 365's tools are named `m365_<tool>` (ADR-116), Google
@@ -82,6 +96,7 @@ impl Editable {
             GOOGLE_WORKSPACE => GoogleWorkspaceConfig::read(config)
                 .ok()
                 .map(Self::GoogleWorkspace),
+            MAIL_SERVER => MailServerConfig::read(config).ok().map(Self::MailServer),
             _ => None,
         }
     }
@@ -92,6 +107,8 @@ impl Editable {
             Self::Rest(config) => &config.url,
             Self::Microsoft365(config) => &config.graph,
             Self::GoogleWorkspace(config) => &config.gmail,
+            // Its servers change one by one: an address never does.
+            Self::MailServer(config) => &config.imap.host,
         }
     }
 
@@ -146,6 +163,7 @@ impl Editable {
             Self::GoogleWorkspace(_) => {
                 return Some(GOOGLE_WORKSPACE_TOOLS.map(String::from).to_vec());
             }
+            Self::MailServer(_) => return Some(MAIL_TOOLS.map(String::from).to_vec()),
             Self::Mcp { .. } => return None,
         };
         let operations = operations.unwrap_or(&config.operations);
@@ -177,6 +195,10 @@ impl Editable {
                 namespace: GOOGLE_WORKSPACE_NAMESPACE.into(),
                 replaceable_descriptions: false,
             },
+            Self::MailServer(_) => PolicyScope {
+                namespace: MAIL_NAMESPACE.into(),
+                replaceable_descriptions: false,
+            },
         }
     }
 
@@ -201,9 +223,9 @@ impl Editable {
                     .cloned()
             });
             if let Some(unknown) = unknown {
-                let refusal = match self.link_kind() {
-                    Some(_) => format!("Outil inconnu de ce connecteur : {unknown}"),
-                    None => format!("Opération inconnue de cette API : {unknown}"),
+                let refusal = match self {
+                    Self::Rest(_) => format!("Opération inconnue de cette API : {unknown}"),
+                    _ => format!("Outil inconnu de ce connecteur : {unknown}"),
                 };
                 return Err(DomainError::validation(refusal));
             }
@@ -234,15 +256,18 @@ impl Editable {
     /// API as a whole. The address is checked by the caller for an MCP server.
     pub fn changed(
         self,
-        url: Option<String>,
-        changes: Option<RestChanges>,
-        write_tools: Option<bool>,
+        changes: ConfigChanges,
         network: NetworkPolicy,
     ) -> Result<Value, DomainError> {
-        if write_tools.is_some() && self.link_kind().is_none() {
+        if changes.write_tools.is_some() && !self.writes() {
             return Err(DomainError::validation(
-                "Seules les applications Microsoft 365 et Google Workspace ont des outils \
-                 d’écriture à permettre",
+                "Seules les applications Microsoft 365 et Google Workspace et la messagerie \
+                 standard ont des outils d’écriture à permettre",
+            ));
+        }
+        if changes.mail.is_some() && !matches!(self, Self::MailServer(_)) {
+            return Err(DomainError::validation(
+                "Seule la messagerie standard a des serveurs IMAP, SMTP et CalDAV",
             ));
         }
         match self {
@@ -251,25 +276,26 @@ impl Editable {
                 url: current,
                 oauth,
             } => {
-                if changes.is_some() {
+                if changes.rest.is_some() {
                     return Err(DomainError::validation(
                         "Seule une API REST a un en-tête de jeton et des opérations",
                     ));
                 }
+                let url = changes.url;
                 // The declaration goes with the address it was found for.
                 let oauth = oauth.filter(|_| url.as_ref().is_none_or(|url| *url == current));
                 let url = url.unwrap_or(current);
                 Ok(mcp_config(&prefix, &url, oauth.as_ref()))
             }
             Self::Rest(mut config) => {
-                if let Some(url) = url {
+                if let Some(url) = changes.url {
                     config.url = url;
                 }
-                let changes = changes.unwrap_or_default();
-                if let Some(header) = changes.token_header {
+                let rest = changes.rest.unwrap_or_default();
+                if let Some(header) = rest.token_header {
                     config.token_header = header;
                 }
-                if let Some(operations) = changes.operations {
+                if let Some(operations) = rest.operations {
                     config.operations = operations;
                 }
                 if let Some(problem) = rest::config_problem(&config, network) {
@@ -280,18 +306,19 @@ impl Editable {
             }
             Self::Microsoft365(mut config) => {
                 let kind = LinkKind::Microsoft365;
-                config.write_tools = application_changed(kind, url, changes, write_tools)?
-                    .unwrap_or(config.write_tools);
+                config.write_tools =
+                    application_changed(kind, changes)?.unwrap_or(config.write_tools);
                 serde_json::to_value(&config)
                     .map_err(|_| DomainError::validation("Déclaration illisible"))
             }
             Self::GoogleWorkspace(mut config) => {
                 let kind = LinkKind::GoogleWorkspace;
-                config.write_tools = application_changed(kind, url, changes, write_tools)?
-                    .unwrap_or(config.write_tools);
+                config.write_tools =
+                    application_changed(kind, changes)?.unwrap_or(config.write_tools);
                 serde_json::to_value(&config)
                     .map_err(|_| DomainError::validation("Déclaration illisible"))
             }
+            Self::MailServer(config) => mail_changed(config, changes, network),
         }
     }
 
@@ -300,8 +327,19 @@ impl Editable {
         match self {
             Self::Microsoft365(_) => Some(LinkKind::Microsoft365),
             Self::GoogleWorkspace(_) => Some(LinkKind::GoogleWorkspace),
-            Self::Mcp { .. } | Self::Rest(_) => None,
+            Self::Mcp { .. } | Self::Rest(_) | Self::MailServer(_) => None,
         }
+    }
+
+    /// Whether it has tools that write, which the company lets or not.
+    fn writes(&self) -> bool {
+        self.link_kind().is_some() || matches!(self, Self::MailServer(_))
+    }
+
+    /// Whether it holds no secret at all: each person signs in with their
+    /// own account at the standard mail.
+    pub fn holds_no_secret(&self) -> bool {
+        matches!(self, Self::MailServer(_))
     }
 
     /// Whether its secret is required, never removed: the application's.
@@ -314,60 +352,18 @@ impl Editable {
 /// may write, if said; its addresses are the platform's.
 fn application_changed(
     kind: LinkKind,
-    url: Option<String>,
-    changes: Option<RestChanges>,
-    write_tools: Option<bool>,
+    changes: ConfigChanges,
 ) -> Result<Option<bool>, DomainError> {
-    if url.is_some() {
+    if changes.url.is_some() {
         return Err(DomainError::validation(format!(
             "Les adresses de {} sont celles de la plateforme : elles ne changent pas",
             kind.product()
         )));
     }
-    if changes.is_some() {
+    if changes.rest.is_some() {
         return Err(DomainError::validation(
             "Seule une API REST a un en-tête de jeton et des opérations",
         ));
     }
-    Ok(write_tools)
-}
-
-/// Whether the administration added this connector, and may delete it.
-pub fn added_here(instance: &ConnectorInstanceRow) -> bool {
-    instance.connector_type == "rest"
-        || LinkKind::of(&instance.connector_type).is_some()
-        || (instance.connector_type == "mcp" && instance.config["transport"] == "http")
-}
-
-/// The namespace of a kind's tools under this prefix.
-fn namespace(connector_type: &str, prefix: &str) -> Option<String> {
-    match connector_type {
-        "mcp" => Some(mcp::tool_namespace(prefix)),
-        "rest" => Some(rest::tool_namespace(prefix)),
-        _ => None,
-    }
-}
-
-/// Whether another connector of this kind already names its tools with a
-/// prefix that overlaps this one.
-pub async fn prefix_taken(
-    conn: &mut PgConnection,
-    connector_type: &str,
-    prefix: &str,
-) -> anyhow::Result<bool> {
-    let Some(wanted) = namespace(connector_type, prefix) else {
-        return Ok(false);
-    };
-    Ok(list_connector_instances(conn, false)
-        .await?
-        .iter()
-        .filter(|instance| instance.connector_type == connector_type)
-        .filter_map(|instance| instance.config["prefix"].as_str())
-        .filter_map(|other| namespace(connector_type, other))
-        .any(|other| other.starts_with(&wanted) || wanted.starts_with(&other)))
-}
-
-/// The names of the operations, for the audit.
-pub fn operation_names(operations: &[rest::RestOperation]) -> Vec<&str> {
-    operations.iter().map(|o| o.name.as_str()).collect()
+    Ok(changes.write_tools)
 }

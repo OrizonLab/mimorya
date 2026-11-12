@@ -10,23 +10,25 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use mimorya_connectors::outbound::{token_problem, url_problem};
+use mimorya_connectors::standard_mail::MAIL_SERVER;
 use mimorya_core::DomainError;
-use mimorya_core::account_links::LinkKind;
 use mimorya_core::authz::PermissionInfo;
 use mimorya_db::repositories::account_links::take_account_links_of_connector;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::connectors::{
-    ConnectorPatch, NewConnectorInstance, create_connector_instance, delete_connector_instance,
-    get_connector_instance, update_connector_instance,
+    ConnectorInstanceRow, ConnectorPatch, NewConnectorInstance, create_connector_instance,
+    delete_connector_instance, get_connector_instance, update_connector_instance,
 };
 use mimorya_db::{Database, is_unique_violation};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use super::added_connectors::{added_here, operation_names, prefix_taken, unchangeable};
 use super::connector_authorization::{revoke, take_authorizations};
-use super::connector_config::{Editable, RestChanges, added_here, operation_names, prefix_taken};
+use super::connector_config::{ConfigChanges, Editable, RestChanges};
 use super::connector_rules::{ToolPolicyInput, mcp_addition_problem};
-use super::mcp_config::{mcp_config, oauth_unreadable};
+use super::mail_server::MailChanges;
+use super::mcp_config::mcp_config;
 use super::policy_changes::policy_changes;
 use super::{audit_entry, begin_change};
 use crate::secrets::SecretStore;
@@ -132,9 +134,11 @@ pub struct ConnectorChanges {
     pub tool_policies: Option<HashMap<String, ToolPolicyInput>>,
     /// A REST API's token header and operations (ADR-112).
     pub rest: Option<RestChanges>,
-    /// Whether the tools of a Microsoft 365 application or a Google Workspace
-    /// client may write (ADR-119, ADR-123).
+    /// Whether the tools of a Microsoft 365 application, a Google Workspace
+    /// client or the standard mail may write (ADR-119, ADR-123, ADR-205).
     pub write_tools: Option<bool>,
+    /// The servers of the standard mail (ADR-205).
+    pub mail: Option<MailChanges>,
 }
 
 pub async fn update_connector(
@@ -182,31 +186,29 @@ pub async fn update_connector(
     let mut dropped = Vec::new();
     let mut oauth = None;
     let mut taken = None;
-    let configured =
-        changes.url.is_some() || changes.rest.is_some() || changes.write_tools.is_some();
+    let mail_servers = changes
+        .mail
+        .as_ref()
+        .and_then(|mail| mail.audited(&instance.config));
+    let configured = changes.url.is_some()
+        || changes.rest.is_some()
+        || changes.write_tools.is_some()
+        || changes.mail.is_some();
     if configured || changes.token.is_some() || changes.tool_policies.is_some() {
         let Some(editable) = Editable::of(&instance) else {
-            let refusal = if instance.connector_type == "rest" {
-                "Déclaration de cette API illisible : supprimez-la puis ajoutez-la de nouveau"
-            } else if oauth_unreadable(&instance) {
-                "Déclaration OAuth de ce serveur illisible : retirez-la, puis déclarez-la de \
-                 nouveau"
-            } else if let Some(kind) = LinkKind::of(&instance.connector_type) {
-                &format!(
-                    "Déclaration {} illisible : supprimez le connecteur puis ajoutez-le de \
-                     nouveau",
-                    kind.product()
-                )
-            } else {
-                "Ce connecteur est réglé par l’exploitant : seuls son nom et son activation \
-                 changent ici"
-            };
-            return Err(DomainError::validation(refusal).into());
+            return Err(DomainError::validation(unchangeable(&instance)).into());
         };
         if editable.oauth().is_some() && matches!(changes.token, Some(TokenChange::Replace(_))) {
             return Err(DomainError::validation(
                 "Ce serveur est déclaré avec OAuth : retirez la déclaration OAuth avant de saisir \
                  un jeton",
+            )
+            .into());
+        }
+        if editable.holds_no_secret() && changes.token.is_some() {
+            return Err(DomainError::validation(
+                "La messagerie standard n’a pas de jeton : chacun s’y connecte avec son propre \
+                 compte",
             )
             .into());
         }
@@ -241,15 +243,17 @@ pub async fn update_connector(
         let rehomed = header
             .as_ref()
             .is_some_and(|header| header.as_deref() != editable.token_header());
-        patch.reachability_changed = moved || rehomed || changes.token.is_some();
+        patch.reachability_changed =
+            moved || rehomed || changes.token.is_some() || mail_servers.is_some();
         if configured {
             let network = admin.connectors.network();
-            let config = editable.changed(
-                changes.url.clone(),
-                changes.rest,
-                changes.write_tools,
-                network,
-            )?;
+            let config_changes = ConfigChanges {
+                url: changes.url.clone(),
+                rest: changes.rest,
+                mail: changes.mail,
+                write_tools: changes.write_tools,
+            };
+            let config = editable.changed(config_changes, network)?;
             patch.config = Some(config);
             previous_url = changes.url.as_ref().map(|_| current_url);
         }
@@ -282,6 +286,7 @@ pub async fn update_connector(
         "tokenHeader": header,
         "operations": operations,
         "writeTools": changes.write_tools,
+        "mailServers": mail_servers,
         // Only what changed, a description only when it did (ADR-160).
         "toolPolicies": patch
             .tool_policies
@@ -321,8 +326,9 @@ pub async fn delete_connector(
     };
     if !added_here(&instance) {
         return Err(DomainError::validation(
-            "Seuls les serveurs MCP, les API REST et les applications Microsoft 365 et Google \
-             Workspace ajoutés ici se suppriment ici ; désactivez plutôt ce connecteur",
+            "Seuls les serveurs MCP, les API REST, les applications Microsoft 365 et Google \
+             Workspace et la messagerie standard ajoutés ici se suppriment ici ; désactivez \
+             plutôt ce connecteur",
         )
         .into());
     }
@@ -343,7 +349,7 @@ pub async fn delete_connector(
         &mut tx,
         audit_entry(access, "connector.deleted", "connector", id).metadata(json!({
             "name": instance.name,
-            "config": public_config(&instance.config),
+            "config": public_config(&instance),
         })),
     )
     .await?;
@@ -362,7 +368,12 @@ pub async fn delete_connector(
 }
 
 /// What an audit entry may keep of a configuration: no environment of a
-/// child process (it may carry credentials).
-fn public_config(config: &Value) -> Value {
+/// child process (it may carry credentials); the standard mail's servers,
+/// in which no credential is kept.
+fn public_config(instance: &ConnectorInstanceRow) -> Value {
+    let config = &instance.config;
+    if instance.connector_type == MAIL_SERVER {
+        return json!({ "imap": config["imap"], "smtp": config["smtp"], "caldav": config["caldav"] });
+    }
     json!({ "transport": config["transport"], "prefix": config["prefix"], "url": config["url"] })
 }

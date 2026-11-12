@@ -14116,6 +14116,23 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **un connecteur « Messagerie standard »** est déclaré une fois par entreprise par un
     administrateur. La déclaration nomme son serveur IMAP, son serveur SMTP et, si
     l'entreprise en a un, son agenda CalDAV. Elle ne contient aucun secret ;
+  - **sa déclaration** (lot 69c1) se fait par `POST /admin/connectors/mail-server`, avec
+    `connector:manage` sur toute l'entreprise :
+    - une seule par entreprise (index unique partiel, comme Microsoft 365 et Google
+      Workspace) ;
+    - ses serveurs sont vérifiés contre la politique réseau à la déclaration, à chaque
+      changement et à chaque démarrage, l'exploitant ayant pu la restreindre depuis ;
+    - aucun jeton ne s'y saisit ni ne s'y retire : le refus le dit avant toute autre
+      règle du jeton ;
+    - ses serveurs changent un à un (`PATCH`, champs `imap`, `smtp` et `caldav`, `null`
+      retirant l'agenda), jamais par une adresse unique. Un serveur changé remet son
+      état à « non testé », et l'audit garde chaque serveur changé, avant et après ;
+    - ses outils portent des noms fixés par la plateforme (`mail_search`, `mail_read`,
+      `mail_calendar_events`, `mail_send`, `mail_calendar_event_create`), que ses
+      politiques peuvent nommer. Ceux qui écrivent ne sont offerts que si l'entreprise
+      le permet (`writeTools`). Comme ceux de tout connecteur qu'une entreprise ajoute,
+      ils exigent `connector:use` ;
+    - sa suppression garde dans l'audit les serveurs qui partent ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
     refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM
@@ -14189,15 +14206,15 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       pas ces serveurs (ADR-153) ;
   - **découpage** :
 
-    | Lot | Contenu                                                                         |
-    | --- | ------------------------------------------------------------------------------- |
-    | 69a | Connexion TCP et TLS, tunnel, autorité des tests                                |
-    | 69b | Connexion IMAP et SMTP vérifiée, serveurs simulés                               |
-    | 69c | Déclaration par l'entreprise et identifiants scellés par personne (base et API) |
-    | 69d | Lecture IMAP                                                                    |
-    | 69e | Envoi SMTP                                                                      |
-    | 69f | Agenda CalDAV                                                                   |
-    | 69g | Écrans et tests de bout en bout                                                 |
+    | Lot | Contenu                                                                       |
+    | --- | ----------------------------------------------------------------------------- |
+    | 69a | Connexion TCP et TLS, tunnel, autorité des tests                              |
+    | 69b | Connexion IMAP et SMTP vérifiée, serveurs simulés                             |
+    | 69c | Déclaration par l'entreprise (69c1), identifiants scellés par personne (69c2) |
+    | 69d | Lecture IMAP                                                                  |
+    | 69e | Envoi SMTP                                                                    |
+    | 69f | Agenda CalDAV                                                                 |
+    | 69g | Écrans et tests de bout en bout                                               |
 - **Conséquences** :
   - un mot de passe de messagerie est un secret plus large qu'un jeton OAuth : il
     ouvre la boîte entière, pas seulement les permissions accordées. Il n'est descellé

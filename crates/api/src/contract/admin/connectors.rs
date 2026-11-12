@@ -15,6 +15,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use super::google_workspace::GoogleWorkspaceApp;
+use super::mail_server::{MailImapServer, MailServerView, MailSmtpServer};
 use super::mcp_oauth::McpOAuth;
 use super::microsoft365::Microsoft365App;
 use super::rest_connectors::{RestApi, RestOperation};
@@ -93,6 +94,8 @@ pub struct ConnectorView {
     pub microsoft365: Option<Microsoft365App>,
     /// A company's Google Workspace client (ADR-121).
     pub google_workspace: Option<GoogleWorkspaceApp>,
+    /// A company's standard mail (ADR-205).
+    pub mail_server: Option<MailServerView>,
     /// An MCP server whose OAuth declaration can no longer be read: it is
     /// withdrawn (`DELETE …/oauth`) before anything else changes (ADR-171).
     pub oauth_unreadable: bool,
@@ -107,6 +110,7 @@ pub struct ConnectorDetails {
     pub rest: Option<RestApi>,
     pub microsoft365: Option<Microsoft365App>,
     pub google_workspace: Option<GoogleWorkspaceApp>,
+    pub mail_server: Option<MailServerView>,
 }
 
 impl ConnectorView {
@@ -116,6 +120,7 @@ impl ConnectorView {
             rest,
             microsoft365,
             google_workspace,
+            mail_server,
         } = details;
         Ok(Self {
             id: i.id,
@@ -129,6 +134,7 @@ impl ConnectorView {
             rest,
             microsoft365,
             google_workspace,
+            mail_server,
             oauth_unreadable: oauth_unreadable(i),
             updated_at: iso(&i.updated_at),
         })
@@ -336,9 +342,23 @@ pub struct ConnectorUpdate {
     #[serde(default)]
     #[ts(optional)]
     pub operations: Option<Vec<RestOperation>>,
-    /// A Microsoft 365 application's or a Google Workspace client's: whether
-    /// its tools may send e-mail and create events (ADR-119, ADR-123).
+    /// A Microsoft 365 application's, a Google Workspace client's or the
+    /// standard mail's: whether its tools may send e-mail and create events
+    /// (ADR-119, ADR-123, ADR-205).
     #[serde(default)]
     #[ts(optional)]
     pub write_tools: Option<bool>,
+    /// The standard mail's IMAP server (ADR-205).
+    #[serde(default)]
+    #[ts(optional)]
+    pub imap: Option<MailImapServer>,
+    /// The standard mail's SMTP server (ADR-205).
+    #[serde(default)]
+    #[ts(optional)]
+    pub smtp: Option<MailSmtpServer>,
+    /// The standard mail's CalDAV agenda: a text replaces its address,
+    /// `null` or blank removes it (ADR-205).
+    #[serde(default, deserialize_with = "trimmed_nullable")]
+    #[ts(optional)]
+    pub caldav: Option<Option<String>>,
 }

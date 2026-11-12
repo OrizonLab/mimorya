@@ -12,6 +12,8 @@
 
 use std::ffi::OsStr;
 
+use tracing::level_filters::LevelFilter;
+use tracing_log::AsLog;
 use tracing_subscriber::EnvFilter;
 
 /// Whether the logs are coloured: written to a terminal (`terminal`), and
@@ -27,7 +29,8 @@ const SILENCED: [&str; 2] = ["async_imap", "imap_proto"];
 /// Sets the server's logs up: `tracing` filtered by `level`, coloured as
 /// told, and the `log` records of the libraries bridged into it, those of
 /// `SILENCED` dropped first, so that no directive (a span's included) lets
-/// them through.
+/// them through, and none finer than the filter lets through formatted at
+/// all.
 pub fn init_logs(level: &str, colours: bool) -> anyhow::Result<()> {
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(log_filter(level)?)
@@ -35,6 +38,7 @@ pub fn init_logs(level: &str, colours: bool) -> anyhow::Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
     tracing_log::LogTracer::builder()
+        .with_max_level(LevelFilter::current().as_log())
         .ignore_all(SILENCED)
         .init()?;
     Ok(())
