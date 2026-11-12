@@ -3,12 +3,14 @@
 import { ErasedNotice } from './erased-notice';
 import { InvitationNotice } from './invitation-notice';
 import { ResetLinkNotice } from './reset-link-notice';
+import { SecondFactorResetNotice } from './second-factor-reset-notice';
 import { TemporaryPassword } from './temporary-password';
 import type { AccountNotice } from './types';
 
 /**
  * The temporary password, invitation or reset link an administrator just
- * issued, or what went with the account they just erased.
+ * issued, what went with the account they just erased, or the second factor
+ * they just reset.
  */
 export function AccountNoticeCard({
   notice,
@@ -19,6 +21,9 @@ export function AccountNoticeCard({
 }) {
   if (notice.kind === 'password') {
     return <TemporaryPassword who={notice.who} password={notice.password} onClose={onClose} />;
+  }
+  if (notice.kind === 'secondFactorReset') {
+    return <SecondFactorResetNotice who={notice.who} onClose={onClose} />;
   }
   if (notice.kind === 'erased') {
     return <ErasedNotice who={notice.who} erased={notice.erased} onClose={onClose} />;

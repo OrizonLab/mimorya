@@ -2,7 +2,6 @@
 
 import { Card, Loaded } from '@/components/ui';
 import { useApiData, type SecondFactorStatus } from '@/lib/api';
-import { formatDate } from '@/lib/format';
 import { AccountEnrolment } from './account-enrolment';
 import { AccountSecondFactorOn } from './account-second-factor-on';
 
@@ -39,17 +38,7 @@ function SecondFactorState({
     );
   }
   if (status.enabled) {
-    return (
-      <>
-        <p role="status" className="text-sm">
-          Activé{status.enabledAt ? ` le ${formatDate(status.enabledAt)}` : ''} ·{' '}
-          {status.recoveryCodesLeft} code{status.recoveryCodesLeft > 1 ? 's' : ''} de secours
-          restant{status.recoveryCodesLeft > 1 ? 's' : ''}
-          {status.required ? ' · exigé par votre entreprise' : ''}
-        </p>
-        <AccountSecondFactorOn required={status.required} onChange={onChange} />
-      </>
-    );
+    return <AccountSecondFactorOn status={status} onChange={onChange} />;
   }
   if (!status.available) {
     return (

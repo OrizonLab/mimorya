@@ -124,6 +124,8 @@ test('an account enrols from « Mon compte » and signs in with its app or a rec
   await renew.getByRole('button', { name: 'Remplacer mes codes de secours' }).click();
   const fresh = section.getByRole('list', { name: 'Codes de secours' }).getByRole('listitem');
   await expect(fresh).toHaveCount(10);
+  // The former count is not shown beside the new codes.
+  await expect(section.getByRole('status')).toHaveCount(0);
   const renewed = await fresh.allInnerTexts();
   expect(renewed.filter((code) => codes.includes(code))).toEqual([]);
   await section.getByRole('button', { name: 'J’ai noté mes nouveaux codes' }).click();

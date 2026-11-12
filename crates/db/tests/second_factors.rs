@@ -1,8 +1,10 @@
 //! Second factors and sign-ins waiting for one in the database (ADR-200):
 //! a company cannot store, read, use or delete another company's, nor name
 //! another company's account in its own; a password or status change ends
-//! the changed account's challenges alone; the maintenance purges what is
-//! left waiting, in every company.
+//! the changed account's challenges alone, as a reset ends its account's
+//! (ADR-202); a challenge read again stands only unexpired, of its very
+//! token and in its company; the maintenance purges what is left waiting,
+//! in every company.
 
 mod support;
 
@@ -10,8 +12,8 @@ use chrono::{Duration, Utc};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::Database;
 use mimorya_db::repositories::login_challenges::{
-    ChallengePurpose, NewLoginChallenge, find_login_challenge, purge_second_factor_leftovers,
-    put_login_challenge,
+    ChallengePurpose, NewLoginChallenge, end_login_challenges, find_login_challenge,
+    login_challenge_stands, purge_second_factor_leftovers, put_login_challenge,
 };
 use mimorya_db::repositories::second_factors::{
     accept_step, delete_second_factor, enable_second_factor, lock_second_factor,
@@ -221,4 +223,74 @@ async fn the_maintenance_purges_what_is_left_waiting_in_every_company() {
     assert!(!left.contains(&user::LEA));
     assert!(left.contains(&user::MARC) && left.contains(&user::CLAIRE));
     owner.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_challenge_stands_unexpired_of_its_token_until_its_account_s_reset() {
+    let db = app().await;
+    challenge(&db, tenant::ID, user::NADIA, "defi-nadia").await;
+    challenge(&db, tenant::ID, user::ISABELLE, "defi-isabelle").await;
+    let nadia = find_login_challenge(db.pool(), "defi-nadia")
+        .await
+        .unwrap()
+        .unwrap()
+        .challenge_id;
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    assert!(
+        login_challenge_stands(&mut tx, nadia, "defi-nadia")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !login_challenge_stands(&mut tx, nadia, "defi-isabelle")
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    // Not from another company.
+    let mut tx = db.begin(OTHER_TENANT_ID).await.unwrap();
+    assert!(
+        !login_challenge_stands(&mut tx, nadia, "defi-nadia")
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+
+    // Expired while a lock was awaited: it stands no more.
+    let owner = sqlx::PgPool::connect(&support::urls(|_| {}).owner)
+        .await
+        .unwrap();
+    sqlx::query(
+        "update login_challenges set expires_at = now() - interval '1 second' \
+         where token_hash = 'defi-nadia'",
+    )
+    .execute(&owner)
+    .await
+    .unwrap();
+    owner.close().await;
+    let mut tx = db.begin(tenant::ID).await.unwrap();
+    assert!(
+        !login_challenge_stands(&mut tx, nadia, "defi-nadia")
+            .await
+            .unwrap()
+    );
+
+    // A reset ends its account's challenges alone.
+    assert_eq!(end_login_challenges(&mut tx, user::NADIA).await.unwrap(), 1);
+    let isabelle = find_login_challenge(db.pool(), "defi-isabelle")
+        .await
+        .unwrap()
+        .unwrap()
+        .challenge_id;
+    assert!(
+        login_challenge_stands(&mut tx, isabelle, "defi-isabelle")
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        end_login_challenges(&mut tx, user::ISABELLE).await.unwrap(),
+        1
+    );
+    tx.commit().await.unwrap();
 }
