@@ -155,9 +155,19 @@ async fn the_company_declares_its_mail_servers_once() {
         audited.contains("smtp.neo-maintenance.example"),
         "{audited}"
     );
-    // Declared again once gone.
-    let again = declared(&paul, declaration()).await;
-    let removed = paul.delete(&format!("/admin/connectors/{again}")).await;
+    // Declared again once gone; a blank agenda is none.
+    let mut blank = declaration();
+    blank["caldav"] = json!("   ");
+    let again = declared(&paul, blank).await;
+    assert_eq!(mail_view(&paul).await["mailServer"]["caldav"], Value::Null);
+    // Without a master key all the same, no token is ever its to keep:
+    // refused as such before any rule of a token.
+    let path = format!("/admin/connectors/{again}");
+    for token in [json!("court"), json!("jeton-quelconque-1234"), Value::Null] {
+        let refused = paul.patch(&path, json!({ "token": token })).await;
+        refused_as(refused, StatusCode::BAD_REQUEST, "pas de jeton");
+    }
+    let removed = paul.delete(&path).await;
     assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());
 }
 

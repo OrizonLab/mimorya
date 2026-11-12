@@ -36,10 +36,6 @@ pub struct MailChanges {
 }
 
 impl MailChanges {
-    pub fn is_empty(&self) -> bool {
-        self.imap.is_none() && self.smtp.is_none() && self.caldav.is_none()
-    }
-
     /// What the audit keeps of it: each server it changes, before and
     /// after.
     pub fn audited(&self, stored: &Value) -> Option<Value> {
@@ -211,7 +207,6 @@ mod tests {
             ..MailChanges::default()
         };
         assert_eq!(same.audited(&stored), None);
-        assert!(MailChanges::default().is_empty());
     }
 
     #[test]

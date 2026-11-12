@@ -151,16 +151,9 @@ pub async fn update_connector(
     let problem = changes
         .url
         .as_deref()
-        .and_then(|url| url_problem(url, admin.connectors.network()))
-        .or_else(|| match &changes.token {
-            Some(TokenChange::Replace(token)) => token_problem(token),
-            _ => None,
-        });
+        .and_then(|url| url_problem(url, admin.connectors.network()));
     if let Some(problem) = problem {
         return Err(DomainError::validation(problem).into());
-    }
-    if matches!(changes.token, Some(TokenChange::Replace(_))) {
-        admin.secrets.require()?;
     }
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(admin.db, access, PERMISSION).await?;
@@ -205,12 +198,19 @@ pub async fn update_connector(
             )
             .into());
         }
+        // Before any rule of a token: none is kept here, whatever it is.
         if editable.holds_no_secret() && changes.token.is_some() {
             return Err(DomainError::validation(
                 "La messagerie standard n’a pas de jeton : chacun s’y connecte avec son propre \
                  compte",
             )
             .into());
+        }
+        if let Some(TokenChange::Replace(token)) = &changes.token {
+            if let Some(problem) = token_problem(token) {
+                return Err(DomainError::validation(problem).into());
+            }
+            admin.secrets.require()?;
         }
         if editable.requires_secret() && matches!(changes.token, Some(TokenChange::Remove)) {
             return Err(DomainError::validation(

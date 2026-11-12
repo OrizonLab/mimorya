@@ -20,8 +20,6 @@ pub const MAIL_TOOLS: [&str; 5] = [
     "mail_send",
     "mail_calendar_event_create",
 ];
-/// Those that write, offered when the company lets them.
-pub const MAIL_WRITE_TOOLS: [&str; 2] = ["mail_send", "mail_calendar_event_create"];
 /// Its tools are named `mail_<tool>`.
 pub const MAIL_NAMESPACE: &str = "mail_";
 
@@ -140,13 +138,8 @@ mod tests {
 
     #[test]
     fn its_tools_are_in_its_namespace() {
-        for tool in MAIL_TOOLS.iter().chain(&MAIL_WRITE_TOOLS) {
+        for tool in MAIL_TOOLS {
             assert!(tool.starts_with(MAIL_NAMESPACE), "{tool}");
         }
-        assert!(
-            MAIL_WRITE_TOOLS
-                .iter()
-                .all(|tool| MAIL_TOOLS.contains(tool))
-        );
     }
 }

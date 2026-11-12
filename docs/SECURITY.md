@@ -1037,7 +1037,7 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   chacune de ses formes puis masqué encore. Les enregistrements de la bibliothèque IMAP
   sont écartés au pont de `log` vers `tracing` (`init_logs`), avant tout filtre, et
   coupés encore par le filtre, quel que soit `LOG_LEVEL` (`crates/api/tests/logs.rs`) ;
-  aucun enregistrement plus fin que le filtre n'est même formé ; ceux de lettre ne sont
+  aucun enregistrement plus fin que le filtre n'est même formé (`crates/api/tests/logs_level.rs`) ; ceux de lettre ne sont
   pas compilés.
 - Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais
   dans celui de l'API, lancé avec un environnement vide et borné par lui-même avant de

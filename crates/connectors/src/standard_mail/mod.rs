@@ -17,9 +17,7 @@ mod starttls;
 mod wire;
 
 pub use connector::MailServerConnector;
-pub use declaration::{
-    MAIL_NAMESPACE, MAIL_SERVER, MAIL_TOOLS, MAIL_WRITE_TOOLS, MailServerConfig,
-};
+pub use declaration::{MAIL_NAMESPACE, MAIL_SERVER, MAIL_TOOLS, MailServerConfig};
 pub use imap::{ImapSession, check_imap, imap_session};
 pub use login::{MAX_PASSWORD_CHARS, MAX_USERNAME_CHARS, MailLogin};
 pub use servers::{ImapServer, SmtpSecurity, SmtpServer};

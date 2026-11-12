@@ -77,7 +77,7 @@ pub async fn create_mail_server(
         config: MailServerConfig {
             imap: body.imap.into(),
             smtp: body.smtp.into(),
-            caldav: body.caldav,
+            caldav: body.caldav.filter(|address| !address.is_empty()),
             write_tools: body.write_tools.unwrap_or(false),
         },
         enabled: body.enabled.unwrap_or(true),
