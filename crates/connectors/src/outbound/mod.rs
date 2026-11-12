@@ -6,6 +6,7 @@
 //! is masked in whatever the server sends back, and how a failure to reach
 //! it is told.
 
+mod bounded;
 mod failure;
 mod network;
 mod prefix;
@@ -16,6 +17,7 @@ mod tls;
 mod token;
 mod tunnel;
 
+pub use bounded::{ReadBudget, TOO_LONG, bounded};
 pub use failure::{
     ACCESS_DENIED, Cause, NOT_PUBLIC, TOO_SLOW, UNREACHABLE, explained, request_cause, too_slow,
 };

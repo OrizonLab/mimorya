@@ -2,7 +2,9 @@
 //! bound authorization. The demo connector serves FICTIONAL data; MCP
 //! servers and REST APIs are those a company connects itself (`outbound`);
 //! Microsoft 365 and Google Workspace reach each person's own mailbox with
-//! the access they granted (`microsoft365`, `google_workspace`). Slack,
+//! the access they granted (`microsoft365`, `google_workspace`); a
+//! company's own mail servers are reached with each person's account over
+//! IMAP and SMTP (`standard_mail`, ADR-205). Slack,
 //! Telegram and Microsoft Teams are reached by a company's gateway, not by
 //! tools (`slack`, ADR-125, `telegram`, ADR-133, `teams`, ADR-138).
 
@@ -15,6 +17,7 @@ pub mod outbound;
 pub mod registry;
 pub mod rest;
 pub mod slack;
+pub mod standard_mail;
 pub mod teams;
 pub mod telegram;
 #[cfg(feature = "testing")]

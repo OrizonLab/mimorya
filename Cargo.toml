@@ -28,7 +28,9 @@ dotenvy = "0.15"
 # Text of e-mails in the charset they declare (ADR-122).
 encoding_rs = "0.8"
 futures = "0.3"
-# Invitation e-mails over SMTP: TLS by rustls (ring, webpki roots).
+# SMTP: the platform's own e-mails, and a person's sent through their
+# company's server (ADR-205): TLS by rustls (ring, webpki roots). Its
+# `tracing` feature stays off: it would write `AUTH PLAIN <credentials>`.
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "hostname", "pool", "smtp-transport", "tokio1-rustls-tls"] }
 regex = "1"
 rmcp = { version = "3.5.1", features = ["client", "macros", "server", "transport-child-process", "transport-io", "transport-streamable-http-client-reqwest"] }
@@ -62,6 +64,9 @@ webpki-roots = "1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 hyper-util = { version = "0.1.21", default-features = false, features = ["client-proxy"] }
 http = "1"
+# IMAP (ADR-205): the Delta Chat client, over the connection the platform
+# opened itself, without its default executor.
+async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
 # Certificates of the tests' simulated mail servers, made at their start.
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 schemars = { version = "1", features = ["chrono04", "uuid1"] }
@@ -85,6 +90,9 @@ tower = { version = "0.5", features = ["util"] }
 ts-rs = { version = "12", features = ["uuid-impl", "no-serde-warnings"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+# The bridge of `log` records into `tracing`, set up by hand to drop the
+# records of the libraries that would write secrets (ADR-205).
+tracing-log = "0.2"
 url = "2"
 uuid = { version = "1", features = ["serde", "v4"] }
 validator = { version = "0.21", features = ["derive"] }

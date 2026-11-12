@@ -17,4 +17,4 @@ pub mod services;
 
 pub use app::{App, AppState, BuildOptions, Services, build_app};
 pub use config::{AppConfig, ProcessRole};
-pub use logging::{log_colours, log_filter};
+pub use logging::{init_logs, log_colours, log_filter};

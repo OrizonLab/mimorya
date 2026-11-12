@@ -14123,14 +14123,41 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     jamais montré, exporté ni écrit dans un journal, et il part avec la liaison, la
     désactivation du compte, son effacement ou la suppression de l'entreprise ;
   - **TLS obligatoire, jamais de clair** :
-    - IMAP en TLS implicite (le port 993 habituellement) ;
+    - IMAP en TLS implicite (le port 993 habituellement). Un compte au-delà de l'ASCII
+      se connecte par `AUTHENTICATE PLAIN` là où le serveur l'offre (une chaîne entre
+      guillemets est ASCII en IMAP4rev1), sinon par `LOGIN` ;
     - SMTP en TLS implicite (465) ou par STARTTLS (587). Un serveur qui n'offre pas
-      STARTTLS est refusé avant que rien ne soit envoyé, et aucun identifiant ne part
-      en clair ;
+      STARTTLS est refusé avant qu'aucun identifiant ne parte : il n'entend que `EHLO`
+      et `QUIT`, même s'il annonce `AUTH` ;
+    - STARTTLS est dit par la plateforme elle-même : accueil, `EHLO`, `STARTTLS` et son
+      accord, lus octet par octet. Ce que le serveur, ou quelqu'un sur le chemin, glisse
+      en clair après l'accord n'est jamais pris pour une réponse : il atteint la
+      négociation TLS, qui échoue. Le TLS qui suit est celui de la plateforme, le même
+      qu'en TLS implicite, et lettre ne parle SMTP qu'ensuite ;
+    - ce qu'un serveur envoie est borné : 64 Kio pendant la connexion d'une personne
+      (accueil, capacités, négociation TLS, réponses), une ligne SMTP en clair à
+      1 000 octets. Au-delà, le refus dit « réponse trop longue » ;
+    - le mot de passe ne sort d'aucun refus : il est retiré de ce que le serveur répond
+      ou que la bibliothèque écrit, sous chacune de ses formes (telle quelle, entre
+      guillemets IMAP, et chacune écrite par `{:?}` ou par `escape_debug`, qui
+      diffèrent sur l'apostrophe), puis masqué encore par l'appelant ;
+    - les journaux de la bibliothèque IMAP ne sont jamais écrits : à son niveau
+      `trace`, elle écrirait chaque commande, `LOGIN` et son mot de passe compris. Ses
+      enregistrements `log` sont écartés là où ils passent dans `tracing`, avant tout
+      filtre, et le filtre les coupe encore. La fonctionnalité `tracing` de lettre reste
+      coupée pour la même raison (`AUTH PLAIN`). La plateforme se nomme `[127.0.0.1]`
+      dans `EHLO`, sans dire le nom de sa machine ;
+    - aucun mécanisme d'authentification commun (ni PLAIN ni LOGIN) est dit tel quel
+      avant que rien ne parte ; un refus pour l'instant (`4xx`) invite à réessayer ;
+      `BAD` à la connexion IMAP dit que la forme de l'identifiant ou du mot de passe
+      est refusée ;
     - CalDAV en `https://`, comme toute adresse que nomme une entreprise ;
     - le certificat doit remonter aux racines webpki et nommer le serveur. Les racines
       des serveurs simulés ne sont reconnues que dans les tests (`test_roots` de la
       politique réseau, jamais lu de l'environnement) ;
+    - la connexion d'une personne, de l'ouverture de la connexion à l'acceptation de
+      son compte, tient dans un délai d'ensemble de 30 s, quels que soient les délais
+      de chaque étape (connexion, mandataire, TLS) ;
   - **réseau** : la connexion d'un serveur de messagerie suit les règles du client HTTP
     (`outbound/tcp.rs`) :
     - une adresse littérale privée est refusée ;
