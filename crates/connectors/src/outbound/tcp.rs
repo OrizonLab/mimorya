@@ -9,14 +9,14 @@
 
 use std::fmt;
 use std::net::{IpAddr, SocketAddr};
-use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 use super::failure::{Cause, NOT_PUBLIC, TOO_SLOW, UNREACHABLE};
-use super::network::{NetworkPolicy, is_public_ip, public_addrs};
+use super::network::{CONNECT_TIMEOUT, NetworkPolicy, Unresolved, is_public_ip, public_addrs};
+use super::proxy::Route;
 use super::tunnel;
 
 /// What a connection is, plain or secured, direct or tunnelled.
@@ -29,13 +29,18 @@ pub type Connection = Box<dyn Stream>;
 
 /// A host's longest name (RFC 1035).
 pub const MAX_HOST_CHARS: usize = 253;
-/// How long reaching a server (or the proxy) may take.
-pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// What a server named in a form no server has is told.
+pub const INVALID_HOST: &str = "Serveur mal désigné : nom ou port invalide";
 
 /// Why a company may not name this server (in French), if it may not: a
 /// host name or a literal address, public unless the operator allows
 /// private ones or it is one of the tests' servers.
 pub fn host_problem(host: &str, port: u16, policy: NetworkPolicy) -> Option<String> {
+    form_problem(host, port).or_else(|| private_problem(host, port, policy))
+}
+
+/// What makes `host:port` no server's name, if anything does.
+fn form_problem(host: &str, port: u16) -> Option<String> {
     if host.is_empty() {
         return Some("Nom de serveur attendu".into());
     }
@@ -48,14 +53,21 @@ pub fn host_problem(host: &str, port: u16, policy: NetworkPolicy) -> Option<Stri
         return Some("Port entre 1 et 65535 attendu".into());
     }
     match host.parse::<IpAddr>() {
-        Ok(ip) if !is_public_ip(ip) && !allowed_privately(ip, port, policy) => {
-            Some("Adresse d’un réseau privé : refusée sur ce serveur".into())
-        }
         Ok(_) => None,
         Err(_) if !is_host_name(host) => Some(
             "Nom de serveur invalide : lettres, chiffres et tirets, séparés par des points".into(),
         ),
         Err(_) => None,
+    }
+}
+
+/// A literal private address the policy does not allow.
+fn private_problem(host: &str, port: u16, policy: NetworkPolicy) -> Option<String> {
+    match host.parse::<IpAddr>() {
+        Ok(ip) if !is_public_ip(ip) && !allowed_privately(ip, port, policy) => {
+            Some("Adresse d’un réseau privé : refusée sur ce serveur".into())
+        }
+        _ => None,
     }
 }
 
@@ -81,7 +93,13 @@ fn is_host_name(host: &str) -> bool {
 /// operator's proxy unless its bypass names the host, else straight to the
 /// addresses checked. Why it cannot be opened, if it cannot.
 pub async fn connect(host: &str, port: u16, policy: NetworkPolicy) -> Result<Connection, Cause> {
-    if let Some(problem) = host_problem(host, port, policy) {
+    if let Some(problem) = form_problem(host, port) {
+        return Err(Cause {
+            summary: INVALID_HOST,
+            detail: problem,
+        });
+    }
+    if let Some(problem) = private_problem(host, port, policy) {
         return Err(Cause {
             summary: NOT_PUBLIC,
             detail: problem,
@@ -94,9 +112,13 @@ pub async fn connect(host: &str, port: u16, policy: NetworkPolicy) -> Result<Con
             summary: UNREACHABLE,
             detail: "mandataire sans réseau privé permis".into(),
         }),
-        Some(proxy) => match proxy.intercept(host, port) {
-            Some(intercept) => tunnel::through(&intercept, host, port, policy).await,
-            None => direct(host, port, policy).await,
+        Some(proxy) => match proxy.route(host, port) {
+            Ok(Route::Proxy(intercept)) => tunnel::through(&intercept, host, port, policy).await,
+            Ok(Route::Direct) => direct(host, port, policy).await,
+            Err(detail) => Err(Cause {
+                summary: INVALID_HOST,
+                detail,
+            }),
         },
         None => direct(host, port, policy).await,
     }
@@ -116,13 +138,12 @@ async fn direct(host: &str, port: u16, policy: NetworkPolicy) -> Result<Connecti
             .collect(),
         Err(_) => public_addrs(host)
             .await
-            .map_err(|detail| Cause {
-                summary: if detail.contains("aucune adresse publique") {
-                    NOT_PUBLIC
-                } else {
-                    UNREACHABLE
+            .map_err(|unresolved| Cause {
+                summary: match unresolved {
+                    Unresolved::PrivateOnly(_) => NOT_PUBLIC,
+                    Unresolved::Failed(_) => UNREACHABLE,
                 },
-                detail,
+                detail: unresolved.to_string(),
             })?
             .into_iter()
             .map(|addr| SocketAddr::new(addr.ip(), port))
@@ -195,7 +216,14 @@ mod tests {
 
     #[test]
     fn a_private_address_is_refused_unless_allowed_or_tested() {
-        for host in ["127.0.0.1", "10.0.0.8", "192.168.1.20", "::1", "fd00::1"] {
+        for host in [
+            "127.0.0.1",
+            "10.0.0.8",
+            "192.168.1.20",
+            "::1",
+            "fd00::1",
+            "::ffff:127.0.0.1",
+        ] {
             let problem = host_problem(host, 993, SAAS).unwrap_or_default();
             assert!(problem.contains("réseau privé"), "{host}: {problem}");
         }
@@ -213,7 +241,9 @@ mod tests {
             ..SAAS
         };
         assert_eq!(host_problem("127.0.0.1", 1993, tests), None);
-        // Another port of the same address is no test server.
+        // Another port of the same address, or the same address written
+        // as an IPv4-mapped IPv6 one, is no test server.
         assert!(host_problem("127.0.0.1", 993, tests).is_some());
+        assert!(host_problem("::ffff:127.0.0.1", 1993, tests).is_some());
     }
 }

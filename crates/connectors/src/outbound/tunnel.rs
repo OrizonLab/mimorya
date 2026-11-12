@@ -14,8 +14,8 @@ use tokio::net::TcpStream;
 use tokio::time::timeout;
 
 use super::failure::{Cause, TOO_SLOW, UNREACHABLE};
-use super::network::NetworkPolicy;
-use super::tcp::{CONNECT_TIMEOUT, Connection};
+use super::network::{CONNECT_TIMEOUT, NetworkPolicy};
+use super::tcp::Connection;
 use super::tls::secured;
 
 /// What a tunnel the proxy refused is told.
@@ -55,7 +55,13 @@ pub(super) async fn through(
     .map_err(|error| unreachable(format!("mandataire : {error}")))?;
     let mut stream: Connection = Box::new(tcp);
     if encrypted {
-        stream = secured(stream, proxy_host, policy).await?;
+        // Said as the proxy's, not the mail server's.
+        stream = secured(stream, proxy_host, policy)
+            .await
+            .map_err(|cause| Cause {
+                detail: format!("mandataire : {}", cause.detail),
+                ..cause
+            })?;
     }
     let target = authority(host, port);
     let mut request = format!("CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n");

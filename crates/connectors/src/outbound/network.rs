@@ -34,8 +34,8 @@ pub struct NetworkPolicy {
     /// never read from the environment, empty in production.
     pub test_servers: &'static [SocketAddr],
     /// The roots the certificates of the tests' simulated servers chain to,
-    /// trusted beside the webpki roots (`BuildOptions`): never read from
-    /// the environment, empty in production.
+    /// trusted beside the webpki roots: set by the tests alone, never read
+    /// from the environment, empty in production.
     pub test_roots: &'static [CertificateDer<'static>],
 }
 
@@ -54,7 +54,8 @@ impl NetworkPolicy {
 }
 
 pub const MAX_URL_CHARS: usize = 2000;
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long reaching a server (or the proxy) may take.
+pub(super) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Whether an address belongs to the public Internet.
 pub fn is_public_ip(ip: IpAddr) -> bool {
@@ -140,15 +141,36 @@ pub fn url_problem(url: &str, policy: NetworkPolicy) -> Option<String> {
     None
 }
 
-/// The public addresses of a name; an error when it has none.
-pub(super) async fn public_addrs(host: &str) -> Result<Vec<SocketAddr>, String> {
+/// Why a name gave no address to connect to.
+#[derive(Debug)]
+pub(super) enum Unresolved {
+    /// The name could not be resolved.
+    Failed(String),
+    /// It resolved to private addresses only.
+    PrivateOnly(String),
+}
+
+impl std::fmt::Display for Unresolved {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Failed(detail) => write!(f, "{detail}"),
+            // Read back by the HTTP client's failures (`request_cause`).
+            Self::PrivateOnly(host) => write!(f, "{host} : aucune adresse publique"),
+        }
+    }
+}
+
+impl std::error::Error for Unresolved {}
+
+/// The public addresses of a name; why it has none, if it has none.
+pub(super) async fn public_addrs(host: &str) -> Result<Vec<SocketAddr>, Unresolved> {
     let found: Vec<SocketAddr> = tokio::net::lookup_host((host, 0))
         .await
-        .map_err(|error| format!("{host} : {error}"))?
+        .map_err(|error| Unresolved::Failed(format!("{host} : {error}")))?
         .filter(|addr| is_public_ip(addr.ip()))
         .collect();
     if found.is_empty() {
-        return Err(format!("{host} : aucune adresse publique"));
+        return Err(Unresolved::PrivateOnly(host.to_string()));
     }
     Ok(found)
 }

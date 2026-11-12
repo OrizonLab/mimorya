@@ -80,15 +80,22 @@ impl OutboundProxy {
         Ok(Proxy::all(self.url.as_str())?.no_proxy(bypass))
     }
 
-    /// The proxy a connection to `host:port` goes through, with its
-    /// credentials; `None` when the bypass names the host.
-    pub(super) fn intercept(&self, host: &str, port: u16) -> Option<Intercept> {
+    /// How a connection to `host:port` goes: through the proxy, with its
+    /// credentials, or straight when the bypass names the host. A host
+    /// that cannot be read as an address is no reason to go straight: it
+    /// is refused.
+    pub(super) fn route(&self, host: &str, port: u16) -> Result<Route, String> {
         let host = match host.parse::<std::net::IpAddr>() {
             Ok(std::net::IpAddr::V6(_)) => format!("[{host}]"),
             _ => host.to_string(),
         };
-        let destination: http::Uri = format!("https://{host}:{port}").parse().ok()?;
-        self.matcher.intercept(&destination)
+        let destination: http::Uri = format!("https://{host}:{port}")
+            .parse()
+            .map_err(|_| format!("{host}:{port} : adresse illisible"))?;
+        Ok(match self.matcher.intercept(&destination) {
+            Some(intercept) => Route::Proxy(intercept),
+            None => Route::Direct,
+        })
     }
 
     /// Its scheme, host and port: what may be written of it.
@@ -104,6 +111,14 @@ impl OutboundProxy {
     pub fn bypass(&self) -> Option<&str> {
         self.bypass.as_deref()
     }
+}
+
+/// How a connection reaches its server.
+pub(super) enum Route {
+    /// Through the proxy this names.
+    Proxy(Intercept),
+    /// Straight: the bypass names the host.
+    Direct,
 }
 
 impl fmt::Debug for OutboundProxy {

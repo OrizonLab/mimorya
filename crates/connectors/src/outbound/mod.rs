@@ -23,7 +23,7 @@ pub use network::{MAX_URL_CHARS, NetworkPolicy, http_client, is_public_ip, url_p
 pub use prefix::prefix_problem;
 pub use proxy::OutboundProxy;
 pub use redact::{MASK, Redactor};
-pub use tcp::{Connection, MAX_HOST_CHARS, Stream, connect, host_problem};
+pub use tcp::{Connection, INVALID_HOST, MAX_HOST_CHARS, Stream, connect, host_problem};
 pub use tls::{NOT_SECURE, client_config, secured};
 pub use token::{MAX_TOKEN_CHARS, MIN_TOKEN_CHARS, token_problem};
 pub use tunnel::PROXY_REFUSED;

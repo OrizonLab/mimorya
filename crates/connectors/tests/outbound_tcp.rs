@@ -2,21 +2,25 @@
 //! server whose certificate chains to the trusted roots and names it,
 //! refused otherwise (another authority, another name, no TLS at all, no
 //! answer in time); a private address or name refused unless allowed, a
-//! test server reached by its exact address alone; through the operator's
-//! proxy, plain or over TLS, given its credentials, refused without them and
-//! told without them, a host of its bypass reached without it.
+//! test server reached by its exact address alone, a name no server has
+//! told as such; through the operator's proxy, plain or over TLS, given its
+//! credentials, refused without them and told without them, a host of its
+//! bypass reached without it. A proxy that never opens the tunnel, refuses
+//! it, or answers endlessly or unreadably is told so, never waited for
+//! longer than its delay nor read further than its bound.
 
 use std::net::SocketAddr;
 
 use mimorya_connectors::outbound::{
-    Cause, Connection, NOT_PUBLIC, NOT_SECURE, NetworkPolicy, OutboundProxy, PROXY_REFUSED,
-    TOO_SLOW, UNREACHABLE, connect, secured,
+    Cause, Connection, INVALID_HOST, NOT_PUBLIC, NOT_SECURE, NetworkPolicy, OutboundProxy,
+    PROXY_REFUSED, TOO_SLOW, UNREACHABLE, connect, secured,
 };
 use mimorya_connectors::testing::{
     TestAuthority, serve_mute, serve_proxy, serve_tls_echo, serve_tls_proxy,
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
+use tokio::sync::oneshot;
 
 const LOCAL: NetworkPolicy = NetworkPolicy {
     allow_private_network: true,
@@ -75,6 +79,31 @@ async fn exchange(connection: Connection) -> (String, String) {
     let mut answer = String::new();
     lines.read_line(&mut answer).await.expect("answer");
     (greeting.trim_end().into(), answer.trim_end().into())
+}
+
+/// A proxy that reads one request's head, says so, then answers `answer`
+/// (nothing at all if `None`) and holds the connection; its address.
+async fn scripted_proxy(answer: Option<Vec<u8>>) -> (String, oneshot::Receiver<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = format!("http://{}", listener.local_addr().unwrap());
+    let (heard, told) = oneshot::channel();
+    tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return;
+        };
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") && socket.read(&mut byte).await.unwrap_or(0) == 1 {
+            head.push(byte[0]);
+        }
+        let _ = heard.send(());
+        if let Some(answer) = answer {
+            let _ = socket.write_all(&answer).await;
+        }
+        let mut held = [0u8; 64];
+        while socket.read(&mut held).await.unwrap_or(0) > 0 {}
+    });
+    (address, told)
 }
 
 fn refused<T>(result: Result<T, Cause>) -> Cause {
@@ -172,6 +201,14 @@ async fn a_private_address_or_name_is_refused_unless_allowed() {
 }
 
 #[tokio::test]
+async fn a_name_no_server_has_is_told_as_such() {
+    for (host, port) in [("imap..example.com", 993), ("imap.example.com", 0)] {
+        let cause = refused(connect(host, port, LOCAL).await);
+        assert_eq!(cause.summary, INVALID_HOST, "{host}:{port}: {cause:?}");
+    }
+}
+
+#[tokio::test]
 async fn a_server_is_reached_through_the_proxy_given_its_credentials() {
     let authority = TestAuthority::new();
     let server = serve_tls_echo(&authority, GREETING).await;
@@ -230,7 +267,54 @@ async fn an_https_proxy_is_reached_over_tls_with_a_trusted_certificate() {
     let policy = through(trusting(&authority), &proxy, CREDENTIALS, None);
     let cause = refused(connect("127.0.0.1", server.port(), policy).await);
     assert_eq!(cause.summary, NOT_SECURE, "{cause:?}");
+    // Said as the proxy's certificate, not the mail server's.
+    assert!(cause.detail.starts_with("mandataire"), "{cause:?}");
     assert!(proxied.targets().is_empty());
+}
+
+#[tokio::test]
+async fn a_proxy_that_never_opens_the_tunnel_is_too_slow() {
+    let (proxy, heard) = scripted_proxy(None).await;
+    let policy = through(LOCAL, &proxy, CREDENTIALS, None);
+    let attempt = tokio::spawn(async move { connect("imap.example.com", 993, policy).await });
+    // Asked: from there, only the tunnel's delay runs out.
+    heard.await.unwrap();
+    tokio::time::pause();
+    let cause = refused(attempt.await.unwrap());
+    assert_eq!(cause.summary, TOO_SLOW, "{cause:?}");
+    assert!(cause.detail.contains("tunnel"), "{cause:?}");
+}
+
+#[tokio::test]
+async fn a_tunnel_the_proxy_refuses_is_told_by_its_code_alone() {
+    for code in ["403 Forbidden", "502 Bad Gateway"] {
+        let answer = format!("HTTP/1.1 {code}\r\nX-Detail: secret-du-mandataire\r\n\r\n");
+        let (proxy, _) = scripted_proxy(Some(answer.into_bytes())).await;
+        let policy = through(LOCAL, &proxy, CREDENTIALS, None);
+        let cause = refused(connect("imap.example.com", 993, policy).await);
+        assert_eq!(cause.summary, PROXY_REFUSED, "{cause:?}");
+        let number = &code[..3];
+        assert_eq!(cause.detail, format!("réponse {number}"), "{cause:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_endless_or_unreadable_proxy_answer_is_cut_short() {
+    // More than the bound, without the blank line that ends a head.
+    let endless = format!("HTTP/1.1 200 {}", "a".repeat(9 * 1024)).into_bytes();
+    let unreadable = b"SSH-2.0-OpenSSH_9.6\r\n\r\n".to_vec();
+    for (answer, said) in [(endless, "incomplète"), (unreadable, "illisible")] {
+        let (proxy, _) = scripted_proxy(Some(answer)).await;
+        let policy = through(LOCAL, &proxy, CREDENTIALS, None);
+        let cause = refused(connect("imap.example.com", 993, policy).await);
+        assert_eq!(cause.summary, UNREACHABLE, "{cause:?}");
+        assert!(cause.detail.contains(said), "{cause:?}");
+        let told = format!("{cause:?}");
+        assert!(
+            !told.contains("secret") && !told.contains("compte"),
+            "{told}"
+        );
+    }
 }
 
 #[tokio::test]
