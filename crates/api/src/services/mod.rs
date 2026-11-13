@@ -17,6 +17,7 @@ pub mod inbound_hooks;
 pub mod invalidations;
 pub mod invitations;
 pub mod llm;
+pub mod mail_accounts;
 pub mod missions;
 pub mod notification_settings;
 pub mod password_reset;

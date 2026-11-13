@@ -167,7 +167,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             network: NetworkPolicy {
                 // Only a test builds a server with some (`BuildOptions`).
                 test_servers: Vec::leak(options.connector_test_servers),
-                test_roots: &[],
+                test_roots: Vec::leak(options.connector_test_roots),
                 ..config.mcp_network
             },
             start_timeout: config.mcp_start_timeout,

@@ -1,8 +1,10 @@
 //! What the person linked or authorized, in their export (ADR-187): the
 //! accounts, messaging identities and MCP servers, each by its name and
-//! who it says the person is, and the messaging thread a conversation is
-//! held in; never a token.
+//! who it says the person is, their account at the company's standard
+//! mail by its identifier (ADR-205), and the messaging thread a
+//! conversation is held in; never a token nor a password.
 
+use mimorya_db::repositories::mail_accounts::ExportedMailAccount;
 use mimorya_db::repositories::personal_content::ExportedThread;
 use mimorya_db::repositories::personal_data::{
     ExportedAuthorization, ExportedIdentity, ExportedLink,
@@ -59,6 +61,26 @@ pub struct ExportAuthorization {
     pub connector: String,
     pub scopes: String,
     pub authorized_at: String,
+}
+
+/// The person's account at the company's standard mail, without its
+/// password (ADR-205).
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportMailAccount {
+    pub connector: String,
+    pub username: String,
+    pub linked_at: String,
+}
+
+impl From<ExportedMailAccount> for ExportMailAccount {
+    fn from(account: ExportedMailAccount) -> Self {
+        Self {
+            connector: account.connector,
+            username: account.username,
+            linked_at: iso(&account.linked_at),
+        }
+    }
 }
 
 impl From<ExportedLink> for ExportLink {

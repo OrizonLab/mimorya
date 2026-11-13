@@ -6,6 +6,7 @@
 use chrono::Utc;
 use mimorya_core::DomainError;
 use mimorya_db::TenantTx;
+use mimorya_db::repositories::mail_accounts::exported_mail_accounts;
 use mimorya_db::repositories::notification_settings::notification_settings;
 use mimorya_db::repositories::personal_access::{
     exported_invitation, exported_provisioning, exported_sessions, exported_sign_ins,
@@ -88,6 +89,7 @@ pub(super) async fn read_export(
         linked_accounts: into_all(exported_links(snapshot, user_id).await?),
         messaging_identities: into_all(exported_identities(snapshot, user_id).await?),
         server_authorizations: into_all(exported_authorizations(snapshot, user_id).await?),
+        mail_accounts: into_all(exported_mail_accounts(snapshot, user_id).await?),
     })
 }
 

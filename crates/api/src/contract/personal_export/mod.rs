@@ -21,7 +21,7 @@ use activity::{ExportApproval, ExportDecision, ExportRun, ExportUsage};
 use content::{
     ExportConversation, ExportDeliverable, ExportMemory, ExportMission, ExportTask, ExportTrigger,
 };
-use links::{ExportAuthorization, ExportIdentity, ExportLink};
+use links::{ExportAuthorization, ExportIdentity, ExportLink, ExportMailAccount};
 
 use super::NotificationSettings;
 use crate::http::iso;
@@ -58,6 +58,8 @@ pub struct PersonalExport {
     pub linked_accounts: Vec<ExportLink>,
     pub messaging_identities: Vec<ExportIdentity>,
     pub server_authorizations: Vec<ExportAuthorization>,
+    /// The account linked at the company's standard mail (ADR-205).
+    pub mail_accounts: Vec<ExportMailAccount>,
 }
 
 impl PersonalExport {

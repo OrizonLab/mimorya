@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use url::Url;
 
 use super::{ImapServer, SmtpServer};
 use crate::outbound::{NetworkPolicy, url_problem};
@@ -47,6 +48,27 @@ impl MailServerConfig {
                  de nouveau"
             )
         })
+    }
+
+    /// The hosts a person's password goes to, in lower case: its IMAP
+    /// server's, its SMTP server's and its agenda's. An account is kept for
+    /// these alone: it never follows the mail to another host.
+    pub fn hosts(&self) -> Vec<String> {
+        let agenda = self.caldav.as_deref().map(|address| {
+            Url::parse(address)
+                .ok()
+                .and_then(|url| url.host_str().map(String::from))
+                .unwrap_or_else(|| address.to_string())
+        });
+        [
+            Some(self.imap.host.clone()),
+            Some(self.smtp.host.clone()),
+            agenda,
+        ]
+        .into_iter()
+        .flatten()
+        .map(|host| host.to_ascii_lowercase())
+        .collect()
     }
 
     /// Why one of its servers may not be used (in French), if one may not.
@@ -134,6 +156,22 @@ mod tests {
             let problem = agenda.problem(SAAS).unwrap();
             assert!(problem.starts_with("Agenda CalDAV"), "{caldav}: {problem}");
         }
+    }
+
+    #[test]
+    fn names_the_hosts_a_password_goes_to() {
+        let mut moved = declared();
+        assert_eq!(
+            moved.hosts(),
+            ["imap.example.com", "smtp.example.com", "dav.example.com"]
+        );
+        // A port, a security or an agenda's path is the same host.
+        moved.smtp.port = 465;
+        moved.smtp.security = SmtpSecurity::Tls;
+        moved.caldav = Some("https://DAV.example.com:8443/autre/".into());
+        assert_eq!(moved.hosts(), declared().hosts());
+        moved.caldav = None;
+        assert_eq!(moved.hosts(), ["imap.example.com", "smtp.example.com"]);
     }
 
     #[test]

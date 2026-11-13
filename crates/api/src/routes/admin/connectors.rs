@@ -17,12 +17,14 @@ use mimorya_connectors::rest::RestConfig;
 use mimorya_core::account_links::LinkKind;
 use mimorya_db::repositories::account_links::count_account_links;
 use mimorya_db::repositories::connectors::list_connector_instances;
+use mimorya_db::repositories::mail_accounts::count_mail_accounts;
 
 use crate::app::AppState;
 use crate::contract::admin::{
     ConnectorDetails, ConnectorTest, ConnectorTrial, ConnectorUpdate, ConnectorView, Connectors,
-    DelegablePermission, GoogleWorkspaceApp, McpEndpoint, McpOAuth, Microsoft365App, NewConnector,
-    NewRestConnector, OpenApiDescription, RestApi, RestImport, risks,
+    DelegablePermission, GoogleWorkspaceApp, MailServerView, McpEndpoint, McpOAuth,
+    Microsoft365App, NewConnector, NewRestConnector, OpenApiDescription, RestApi, RestImport,
+    risks,
 };
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId};
@@ -95,7 +97,10 @@ pub async fn list(
                         revokes_grants: LinkKind::Microsoft365.revokes(),
                     });
                 }
-                Editable::MailServer(config) => details.mail_server = Some(config.into()),
+                Editable::MailServer(config) => {
+                    let accounts = count_mail_accounts(&mut tx, i.id).await?;
+                    details.mail_server = Some(MailServerView::new(config, accounts));
+                }
                 Editable::GoogleWorkspace(config) => {
                     details.google_workspace = Some(GoogleWorkspaceApp {
                         client_id: config.client_id,

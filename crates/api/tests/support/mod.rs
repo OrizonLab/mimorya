@@ -38,6 +38,7 @@ pub mod link_revocations;
 pub mod llm;
 pub mod locks;
 pub mod mail;
+pub mod mail_servers;
 pub mod mailbox;
 pub mod manager_approvals;
 pub mod mcp;
@@ -105,6 +106,7 @@ use mimorya_api::mail::Mailer;
 use mimorya_api::services::EmbeddingFactory;
 use mimorya_api::services::runs::LeaseTiming;
 use mimorya_api::{App, AppConfig, BuildOptions, build_app};
+use mimorya_connectors::outbound::TrustedRoot;
 
 /// How a test app differs from `start`'s.
 #[derive(Default)]
@@ -123,6 +125,8 @@ struct Setup<'a> {
     teams_api: Option<String>,
     /// The scripted model priced (`llm::SCRIPTED_CALL_MICROS` a call).
     priced: bool,
+    /// The roots of the simulated mail servers' authority (ADR-205).
+    connector_test_roots: Vec<TrustedRoot>,
 }
 
 pub struct TestApi {
@@ -243,6 +247,7 @@ impl TestApi {
             telegram_api,
             teams_api,
             priced,
+            connector_test_roots,
         } = setup;
         limits::forget_counts().await;
         let mut vars: HashMap<&str, String> = HashMap::from([
@@ -298,6 +303,7 @@ impl TestApi {
             teams_api,
             prices: priced.then(llm::scripted_prices),
             connector_test_servers: Vec::new(),
+            connector_test_roots,
         };
         let app = build_app(config, options).await.expect("app");
         Self {

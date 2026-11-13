@@ -14133,6 +14133,34 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       le permet (`writeTools`). Comme ceux de tout connecteur qu'une entreprise ajoute,
       ils exigent `connector:use` ;
     - sa suppression garde dans l'audit les serveurs qui partent ;
+    - sa déclaration passe par le chemin commun à ce qu'une entreprise déclare une seule
+      fois (`declare_once`), avec Microsoft 365 et Google Workspace : seul le secret
+      diffère, la messagerie n'en ayant aucun ;
+  - **le compte de chacun** (lot 69c2) se relie, se lit et se retire dans « Mon compte »
+    (`GET`, `PUT` et `DELETE /account/mail`) :
+    - seul le relie qui détient `connector:use`, la messagerie active et une clé
+      maîtresse présente ;
+    - il est vérifié sur le serveur IMAP puis sur le serveur SMTP avant d'être gardé. Un
+      refus est audité, sans le mot de passe, et rien n'est gardé ;
+    - dix essais par heure et par personne, chacun compté, accepté ou non, puisque
+      chacun se connecte aux serveurs de l'entreprise. Un identifiant mal formé est
+      refusé avant de compter ;
+    - le mot de passe est scellé sous le nom `mail-account/<connecteur>/<personne>`
+      (AES-256-GCM, lié à l'entreprise). Hors d'une connexion, seul `sealed_with` le
+      remet, à la fonction qui le scelle ;
+    - il n'est gardé que pour les hôtes vérifiés : la ligne du connecteur est
+      verrouillée pendant l'écriture, et un changement de serveurs survenu pendant la
+      vérification est refusé ;
+    - il part avec son retrait par la personne, la désactivation de son compte, son
+      effacement, le connecteur et l'entreprise. Il part aussi quand un serveur change
+      d'hôte (pas pour un port ni une sécurité) : un mot de passe ne suit jamais la
+      messagerie vers un hôte où la personne ne s'est pas connectée, et l'audit du
+      changement compte les comptes retirés ;
+    - l'audit dit qui a relié, retiré ou vu refuser un compte, jamais l'identifiant ni
+      le mot de passe. L'export de la personne dit l'identifiant et la date, jamais le
+      mot de passe. L'administration voit combien de personnes ont relié un compte,
+      jamais lesquelles ;
+    - aucun outil ne le descelle encore : la lecture IMAP vient au lot 69d ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
     refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM
