@@ -4,8 +4,9 @@
 //! without it (`smtp`), with the e-mails it took (`delivery`) and what it
 //! may do instead of answering a command (`instead`), each with a
 //! certificate of a test authority and its accounts, and each noting what it
-//! heard, never a password.
+//! heard, never a password; and a CalDAV agenda over HTTPS (`caldav`).
 
+mod caldav;
 mod delivery;
 mod imap;
 mod instead;
@@ -13,6 +14,7 @@ mod lines;
 mod mailbox;
 mod smtp;
 
+pub use caldav::{AGENDA_PATH, CalDavBehaviour, FakeCalDav};
 pub use delivery::{AfterData, Deliveries, Delivery};
 pub use imap::{FakeImap, ImapBehaviour, ImapSetup};
 pub use instead::Instead;

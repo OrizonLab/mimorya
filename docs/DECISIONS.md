@@ -14150,8 +14150,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       remet, à la fonction qui le scelle ;
     - il n'est gardé que pour les hôtes de la messagerie au moment de la
       vérification : les serveurs IMAP et SMTP où la personne vient de se connecter,
-      et l'agenda déclaré, que « Mon compte » lui montre avant qu'elle relie (il n'est
-      vérifié à la liaison qu'avec le lot 69f) ;
+      et l'agenda déclaré, que « Mon compte » lui montre avant qu'elle relie, et où la
+      liaison trouve un agenda de rendez-vous (lot 69f1) ;
     - il est écrit sous le verrou d'administration de l'entreprise, que tient tout
       changement du connecteur et toute désactivation d'un compte, puis sous le
       verrou de la ligne du compte de la personne et de celle du connecteur : un
@@ -14303,6 +14303,56 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - l'e-mail n'est pas copié dans le dossier des envoyés (aucun `APPEND` IMAP). Beaucoup
       d'hébergeurs le gardent eux-mêmes, et il le serait deux fois. La description de
       l'outil le dit ;
+  - **l'agenda** (lot 69f1) se lit par `mail_calendar_events`, offert seulement si
+    l'entreprise a déclaré une adresse CalDAV, qui exige `connector:use` :
+    - l'adresse est en `https://`, même là où la politique réseau permet HTTP : le mot
+      de passe de chacun y part (authentification Basic), jamais en clair. La
+      déclaration le refuse, comme le client. Une déclaration plus ancienne en `http://`
+      sur un réseau privé est refusée à son démarrage, comme une adresse que la politique
+      ne permet plus : l'administrateur la corrige ;
+    - le compte de la personne servie s'ouvre comme pour la lecture et l'envoi, et
+      l'agenda est joint par le client HTTP durci des connecteurs : pas de redirection
+      suivie (dite à l'administrateur, qui déclare l'adresse finale), adresses publiques
+      seules sauf permission de l'exploitant, son mandataire ;
+    - la plateforme cherche les agendas de la personne : l'adresse déclarée si c'est un
+      calendrier, sinon son calendrier personnel (`calendar-home-set`), nommé par
+      l'adresse ou par son principal (`current-user-principal`, RFC 5397), ou l'adresse
+      déclarée elle-même quand ni elle ni le principal n'en nomme, puis les calendriers
+      de rendez-vous qu'il contient (`VEVENT`), dix au plus. Toute adresse
+      qu'une réponse nomme est résolue sur le serveur déclaré : un principal ou un
+      calendrier personnel sur un autre serveur arrête la recherche, et rien ne lui est
+      envoyé ; un calendrier ailleurs est laissé ;
+    - les rendez-vous d'une période (31 jours au plus) sont demandés par un rapport
+      `calendar-query` (RFC 4791) borné à la période, chaque occurrence d'un rendez-vous
+      répétitif développée par le serveur (`expand`). La plateforme ne se fie pas à son
+      filtre : ce qui tombe hors de la période est laissé, ses bornes exclues comme le
+      veut la RFC 4791 (9.9) : un rendez-vous qui finit à minuit le premier jour ou
+      commence à minuit après le dernier n'en est pas. Un rendez-vous répétitif qu'un
+      serveur n'a pas développé est gardé dès qu'il a commencé avant la fin de la
+      période, dit tel, daté de sa première occurrence ;
+    - le XML est lu par quick-xml sans entité ni DTD (seules celles de XML et les
+      références de caractères), une réponse coupée refusée. L'iCalendar est lu par la
+      plateforme (`caldav/ical.rs`) : lignes dépliées, objet, début, fin ou durée, lieu,
+      description, statut, organisateur et participants, texte déséchappé. Une durée
+      est lue strictement (semaines seules, ou jours puis heures, minutes et secondes,
+      chacune une fois) ; une fin au-delà de ce qu'un instant peut tenir est laissée,
+      sans jamais arrêter le run. Un fuseau
+      IANA (`TZID`) est appliqué par chrono-tz : une heure qui tombe dans le trou d'un
+      changement d'heure prend le décalage d'avant (RFC 5545, 3.3.5), celle d'un
+      chevauchement la première des deux. Une heure sans fuseau, ou d'un fuseau inconnu,
+      est lue à l'heure de la plateforme, selon la même règle. Une fin qui ne suit pas
+      le début n'est pas donnée. Les rendez-vous sont rendus à l'heure de Paris, les plus tôt d'abord,
+      50 au plus, chaque occurrence d'un rendez-vous répétitif nommée
+      (`RECURRENCE-ID`) ;
+    - ce que le serveur envoie est borné : 256 Kio par recherche d'agenda, 512 Kio par
+      rapport, 500 rendez-vous par objet iCalendar et 4 000 caractères par valeur ;
+    - un mot de passe que l'agenda refuse (`401`) retire le compte, audité avec le
+      serveur `caldav`. Un refus d'accès (`403`) ou pour l'instant (`429`, `503`) le
+      garde ;
+    - **la liaison d'un compte** le vérifie aussi sur l'agenda déclaré, après IMAP et
+      SMTP : il n'est gardé qu'une fois un agenda de rendez-vous trouvé avec lui. Un refus
+      est audité avec le serveur `caldav`, sans le mot de passe ;
+    - la création d'un rendez-vous (`mail_calendar_event_create`) vient au lot 69f2 ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
     refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM

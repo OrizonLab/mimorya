@@ -1029,7 +1029,7 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   audité ; seuls dix essais par heure et par personne sont permis. Il part avec son retrait,
   la désactivation du compte, le connecteur, l'entreprise, et dès qu'un serveur change
   d'hôte : il ne suit jamais la messagerie vers un hôte qui n'était pas le sien quand la
-  personne l'a relié (IMAP et SMTP vérifiés, agenda montré, vérifié au lot 69f). Il est
+  personne l'a relié (IMAP, SMTP et agenda déclaré vérifiés à la liaison). Il est
   écrit sous le verrou d'administration, que tient tout changement du connecteur et toute
   désactivation : un changement d'hôte ou une désactivation de la messagerie ou du compte,
   survenus pendant la vérification, ne le laissent pas gardé. Les outils `mail_search` et
@@ -1056,7 +1056,10 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   boîte reliée par la personne servie, ou son adresse sur la plateforme, jamais une
   adresse que le modèle choisit. Un envoi dont le serveur n'a pas confirmé la prise est
   dit « peut-être parti » et jamais réessayé ; un mot de passe que le serveur SMTP refuse
-  retire le compte, audité avec le serveur qui l'a refusé.
+  retire le compte, audité avec le serveur qui l'a refusé. L'agenda CalDAV n'est joint
+  qu'en HTTPS, même là où HTTP est permis, sans redirection suivie, et jamais ailleurs
+  que sur le serveur déclaré, quoi que ses réponses nomment ; son XML est lu sans entité
+  ni DTD et ce qu'il envoie est borné.
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée

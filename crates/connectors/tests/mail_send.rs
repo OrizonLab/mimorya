@@ -63,7 +63,7 @@ async fn the_e_mail_leaves_as_validated_from_the_linked_mailbox() {
         assert_eq!(result.content["de"], USER);
         assert_eq!(
             result.summary.as_deref(),
-            Some("E-mail envoyé à 3 destinataire(s)")
+            Some("E-mail envoyé à 2 destinataire(s)")
         );
         let delivered = smtp.deliveries.all();
         assert_eq!(delivered.len(), 1, "{mode:?}");
@@ -118,9 +118,11 @@ async fn nothing_the_model_writes_adds_a_header_nor_a_recipient() {
     assert!(!result.is_error, "{:?}", result.content);
     let delivered = smtp.deliveries.all();
     assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].from, USER);
     assert_eq!(delivered[0].to, ["claire@exemple.fr", "marc@exemple.fr"]);
     let text = &delivered[0].text;
     assert!(!text.contains("Bcc") && !text.contains("tous@"), "{text}");
+    assert!(!text.contains("From: direction@"), "{text}");
     assert_eq!(decoded_body(text), body.replace('\n', "\r\n"));
     // A subject that would end its header is refused before any connection.
     let mut header = email();
@@ -135,6 +137,19 @@ async fn nothing_the_model_writes_adds_a_header_nor_a_recipient() {
         mimorya_agent::tools::ToolCallEvaluation::Deny { .. }
     );
     assert!(denied, "a subject ending its header was not refused");
+    // Nor does the model choose whom it is sent from.
+    let mut sender = email();
+    sender["from"] = json!("direction@exemple.fr");
+    let evaluation = paul.evaluate(&mimorya_agent::llm::LlmToolCall {
+        id: "c".into(),
+        name: "mail_send".into(),
+        input: sender,
+    });
+    let denied = matches!(
+        evaluation,
+        mimorya_agent::tools::ToolCallEvaluation::Deny { .. }
+    );
+    assert!(denied, "a sender chosen by the model was not refused");
     assert_eq!(smtp.deliveries.all().len(), 1);
 }
 
