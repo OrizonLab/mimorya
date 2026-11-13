@@ -1,12 +1,15 @@
 //! The account each person links at their company's standard mail
 //! (ADR-205): what they see of it in their account (`mail_account_of`),
-//! linking it once the company's servers accepted it (`link`), and removing
-//! it. Its password is sealed by the server's master key for this company,
-//! connector and person alone, never shown nor written to the audit.
+//! linking it once the company's servers accepted it (`link`), removing it,
+//! and opening it for a run that serves them (`opened`). Its password is
+//! sealed by the server's master key for this company, connector and person
+//! alone, never shown nor written to the audit.
 
 mod link;
+mod opened;
 
 pub use link::{MailLinking, link_mail_account};
+pub use opened::{MAIL_ACCOUNT_REFUSED, opened_mail_account, refused_mail_account};
 
 use chrono::{DateTime, Utc};
 use mimorya_connectors::standard_mail::{MAIL_SERVER, MailServerConfig};
@@ -30,6 +33,12 @@ pub struct MailAccountSeen {
     /// The hosts the person's password would go to.
     pub hosts: Vec<String>,
     pub linked: Option<(String, DateTime<Utc>)>,
+}
+
+/// The name a password is sealed under: it opens for this company,
+/// connector and person only.
+fn sealed_name(connector_id: Uuid, user_id: Uuid) -> String {
+    format!("mail-account/{connector_id}/{user_id}")
 }
 
 /// The company's standard mail, if declared, whatever its state.

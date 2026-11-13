@@ -1,8 +1,9 @@
 //! What changes while a person's account is checked at their company's
 //! mail servers (ADR-205): their account disabled, or a server moved to
-//! another host, nothing is kept. The account is written under the
-//! administration lock, which every change of the connector holds: a change
-//! in progress is waited for, then seen, never crossed.
+//! another host, or the mail disabled, nothing is kept. The account is
+//! written under the administration lock, which every change of the
+//! connector holds: a change in progress is waited for, then seen, never
+//! crossed.
 
 mod support;
 
@@ -133,4 +134,30 @@ async fn an_account_waits_for_a_change_in_progress_then_sees_it() {
     let (linked, ()) = tokio::join!(paul.put(MAIL, account(USERNAME)), change);
     assert_eq!(linked.status, StatusCode::CONFLICT, "{}", linked.text());
     assert_eq!(stored(&api.app, user::PAUL).await, None);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_mail_disabled_during_the_check_keeps_nothing() {
+    let hold = Arc::new(Hold::default());
+    let servers = MailServers::held(vec![(USERNAME.into(), PASSWORD.into())], hold.clone()).await;
+    let api = TestApi::start_with_mail_servers(&servers).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let connector = declare(&paul, &servers).await;
+    let since = latest_entry(&api).await;
+    let disable = async {
+        hold.holding().await;
+        let disabled = paul
+            .patch(
+                &format!("/admin/connectors/{connector}"),
+                json!({ "enabled": false }),
+            )
+            .await;
+        assert_eq!(disabled.status, StatusCode::OK, "{}", disabled.text());
+        hold.release();
+    };
+    let (linked, ()) = tokio::join!(paul.put(MAIL, account(USERNAME)), disable);
+    assert_eq!(linked.status, StatusCode::CONFLICT, "{}", linked.text());
+    assert_eq!(stored(&api.app, user::PAUL).await, None);
+    assert!(!linked_since(&api, since).await);
 }

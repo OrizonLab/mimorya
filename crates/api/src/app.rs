@@ -96,6 +96,13 @@ pub struct Services {
     pub shutdown: watch::Sender<bool>,
 }
 
+impl Services {
+    /// The company secrets, sealed under the master key.
+    pub fn secret_store(&self) -> SecretStore {
+        SecretStore::new(self.config.secrets.clone())
+    }
+}
+
 pub type AppState = Arc<Services>;
 
 pub struct App {

@@ -1031,8 +1031,13 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   d'hôte : il ne suit jamais la messagerie vers un hôte qui n'était pas le sien quand la
   personne l'a relié (IMAP et SMTP vérifiés, agenda montré, vérifié au lot 69f). Il est
   écrit sous le verrou d'administration, que tient tout changement du connecteur et toute
-  désactivation : ni l'un ni l'autre, survenus pendant la vérification, ne le laissent
-  gardé.
+  désactivation : un changement d'hôte ou une désactivation de la messagerie ou du compte,
+  survenus pendant la vérification, ne le laissent pas gardé. Les outils `mail_search` et
+  `mail_read` n'ouvrent que le compte de la personne servie, pour un appel, sur les
+  serveurs lus avec lui et revérifiés contre la politique réseau, et ne marquent rien
+  comme lu. Un compte que le serveur refuse est retiré, pour ne pas être réessayé. Aucun
+  mot ne termine une commande IMAP, et aucun littéral annoncé au-delà du budget de
+  lecture n'est attendu (ADR-205).
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée

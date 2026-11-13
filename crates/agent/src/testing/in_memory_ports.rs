@@ -5,11 +5,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use mimorya_core::skill_proposals::SkillProposal;
 use mimorya_core::tools::{Deliverable, DeliverableInput, DeliverableService, DeliverableStatus};
 use uuid::Uuid;
 
-use super::in_memory_accounts::Link;
+use super::in_memory_accounts::{Link, MailLink};
 use super::in_memory_documents::DocumentFixture;
 use super::in_memory_skills::SkillFixture;
 use super::in_memory_sub_runs::OpenedSubRun;
@@ -57,6 +58,10 @@ pub(super) struct State {
     pub(super) linked_accounts: HashMap<String, Link>,
     /// The kinds of connector whose token a tool reported refused.
     pub(super) rejected_accounts: Vec<String>,
+    /// The person's account at the company's standard mail (ADR-205).
+    pub(super) mail_account: Option<MailLink>,
+    /// When the accounts a tool reported refused were linked.
+    pub(super) refused_mail_accounts: Vec<DateTime<Utc>>,
 }
 
 pub struct InMemoryPorts {
@@ -108,6 +113,7 @@ impl InMemoryPorts {
             documents: state.documents.clone(),
             unroutable: state.unroutable.clone(),
             linked_accounts: state.linked_accounts.clone(),
+            mail_account: state.mail_account.clone(),
             ..State::default()
         };
         Arc::new(Self {

@@ -14168,7 +14168,53 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       le mot de passe. L'export de la personne dit l'identifiant et la date, jamais le
       mot de passe. L'administration voit combien de personnes ont relié un compte,
       jamais lesquelles ;
-    - aucun outil ne le descelle encore : la lecture IMAP vient au lot 69d ;
+    - l'audit d'une liaison dit si l'identifiant est l'adresse du compte de la personne
+      (`ownAddress`), jamais l'identifiant. Rien ne prouve qu'une boîte est la sienne
+      (aucun OAuth) : l'administration repère ainsi un compte relié sous un autre nom ;
+    - `connector:use` est vérifié au début d'une liaison, pas sous le verrou. Un compte
+      relié par qui le perd pendant la vérification n'est lu par aucun outil, qui
+      l'exigent à chaque appel ;
+  - **la lecture** (lot 69d) passe par deux outils, `mail_search` et `mail_read`, qui
+    exigent `connector:use` à chaque appel :
+    - ils agissent comme la personne servie par le run. Le port `LinkedAccounts` leur
+      donne son compte (`mail_account`), ouvert pour un appel, avec la déclaration lue
+      dans la même transaction. Ils se connectent aux serveurs de cette déclaration,
+      jamais à ceux de l'instance gardée en mémoire, qui peut dater d'avant un
+      changement d'hôte ; ces serveurs sont revérifiés contre la politique réseau à
+      chaque appel ;
+    - une connexion par appel, laissée à la fin. L'appel entier (compte ouvert,
+      connexion, lecture) tient dans le délai d'un appel d'outil ;
+    - les dossiers sont examinés (`EXAMINE`), jamais sélectionnés, et lus par
+      `BODY.PEEK` : rien n'est marqué comme lu ;
+    - un e-mail est nommé par son dossier (réception ou envoyés), la validité du dossier
+      (`UIDVALIDITY`) et son UID : un numéro redonné à un autre e-mail n'est jamais pris
+      pour lui. Le dossier des envoyés est celui que le serveur marque `\Sent`
+      (RFC 6154), sinon un nom courant ;
+    - `mail_search` cherche chaque mot (`TEXT`) et un jour (`SINCE`). Les mots perdent
+      guillemets, barres obliques et caractères de contrôle : un saut de ligne ne termine
+      jamais la commande. Un mot au-delà de l'ASCII part en UTF-8 (`CHARSET UTF-8`), en
+      littéral sans pause (`{n+}`, RFC 7888) là où le serveur l'offre, sinon entre
+      guillemets. Sans critère, les derniers e-mails sont lus par leur place, sans
+      recherche. Les plus récents d'abord, 25 au plus ;
+    - `mail_read` lit le premier mégaoctet de l'e-mail : son texte (un HTML converti en
+      texte), tronqué au-delà de 20 000 caractères, ses destinataires et ses pièces
+      jointes, nommées, jamais lues. Au-delà du mégaoctet, la réponse le dit ;
+    - ce que le serveur envoie est borné à chaque étape : 256 Kio pour la liste des
+      dossiers, 1 Mio pour le résultat d'une recherche, 16 Kio par résumé, un mégaoctet
+      et 64 Kio pour un e-mail lu. Un e-mail envoyé sans être demandé est lu puis
+      laissé ;
+    - un littéral annoncé au-delà de ce que la session peut encore lire est refusé dès
+      son annonce : la bibliothèque IMAP réserverait sinon la place annoncée, jusqu'à
+      512 Mio, avant d'en recevoir un octet (`literals.rs`). Cette garde vaut aussi pour
+      la connexion d'une personne ;
+    - les e-mails sont lus par mail-parser (jeux de caractères par encoding_rs, mots
+      encodés, MIME), chaque champ borné. Le résultat est une donnée non fiable, comme
+      celui de tout outil ;
+    - un compte que le serveur refuse est retiré, sauf s'il a été relié de nouveau
+      depuis, et audité (`mail_account.refused_by_server`, par le système au nom de la
+      personne). Un mot de passe changé ailleurs n'est pas réessayé à chaque run, ce qui
+      pourrait faire bannir l'adresse de la plateforme par le serveur de l'entreprise ;
+    - l'évaluation d'une compétence ne lit aucune boîte ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
     refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM

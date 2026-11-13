@@ -1,10 +1,13 @@
 //! The accounts the in-memory ports' person linked (ADR-117): a token per
 //! kind of connector, set by the test, with the permissions it grants
-//! (ADR-119). For tests only.
+//! (ADR-119); and their account at the company's standard mail, with the
+//! servers it was checked against (ADR-205). For tests only.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use mimorya_core::account_links::LinkKind;
-use mimorya_core::tools::{AccountAccessError, LinkedAccounts};
+use mimorya_core::tools::{AccountAccessError, LinkedAccounts, MailAccount};
+use serde_json::Value;
 
 use super::in_memory_ports::InMemoryPorts;
 
@@ -13,6 +16,16 @@ use super::in_memory_ports::InMemoryPorts;
 pub(crate) struct Link {
     token: String,
     granted: Option<String>,
+}
+
+/// An account at the standard mail: the declaration it goes with, the
+/// account, when it was linked.
+#[derive(Clone)]
+pub(crate) struct MailLink {
+    servers: Value,
+    username: String,
+    password: String,
+    linked_at: DateTime<Utc>,
 }
 
 impl InMemoryPorts {
@@ -41,6 +54,28 @@ impl InMemoryPorts {
     /// The kinds of connector whose token a tool reported refused.
     pub fn rejected_accounts(&self) -> Vec<String> {
         self.state().rejected_accounts.clone()
+    }
+
+    /// The person linked this account at the company's standard mail,
+    /// declared as `servers`, on `linked_at`.
+    pub fn link_mail_account(
+        &self,
+        servers: Value,
+        username: &str,
+        password: &str,
+        linked_at: DateTime<Utc>,
+    ) {
+        self.state().mail_account = Some(MailLink {
+            servers,
+            username: username.into(),
+            password: password.into(),
+            linked_at,
+        });
+    }
+
+    /// When the mail accounts a tool reported refused were linked.
+    pub fn refused_mail_accounts(&self) -> Vec<DateTime<Utc>> {
+        self.state().refused_mail_accounts.clone()
     }
 }
 
@@ -71,5 +106,31 @@ impl LinkedAccounts for InMemoryPorts {
 
     async fn rejected(&self, connector_type: &str) {
         self.state().rejected_accounts.push(connector_type.into());
+    }
+
+    async fn mail_account(&self) -> Result<MailAccount, AccountAccessError> {
+        let link = self
+            .state()
+            .mail_account
+            .clone()
+            .ok_or(AccountAccessError::NotLinked)?;
+        Ok(MailAccount::new(
+            link.servers,
+            link.username,
+            link.password,
+            link.linked_at,
+        ))
+    }
+
+    async fn mail_account_refused(&self, linked_at: DateTime<Utc>) {
+        let mut state = self.state();
+        state.refused_mail_accounts.push(linked_at);
+        if state
+            .mail_account
+            .as_ref()
+            .is_some_and(|link| link.linked_at == linked_at)
+        {
+            state.mail_account = None;
+        }
     }
 }

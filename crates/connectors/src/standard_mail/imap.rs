@@ -3,7 +3,8 @@
 //! before anything is said (implicit TLS: IMAP over STARTTLS is not
 //! offered), the server's greeting read, then `LOGIN`, or `AUTHENTICATE
 //! PLAIN` for an account beyond ASCII where the greeting offers it (a
-//! quoted string is ASCII in IMAP4rev1), all within one delay. A refused
+//! quoted string is ASCII in IMAP4rev1), all within one delay; no literal
+//! announced past what the session may read is made room for. A refused
 //! account is told as such; what the server says is the caller's to mask
 //! (`MailLogin::redactor`).
 
@@ -14,6 +15,7 @@ use async_imap::error::Error as ImapError;
 use async_imap::imap_proto::{Capability, Response, ResponseCode, Status};
 use tokio::time::timeout;
 
+use super::literals::guarded;
 use super::{
     CREDENTIALS_REFUSED, FORM_REFUSED, ImapServer, LEAVE_TIMEOUT, MailLogin, NOT_A_MAIL_SERVER,
     SIGN_IN_READ_LIMIT, SIGN_IN_TIMEOUT,
@@ -74,7 +76,8 @@ async fn sign_in(
         false => cause,
     };
     let secured = secured(plain, &server.host, policy).await.map_err(told)?;
-    let mut client = async_imap::Client::new(secured);
+    // Nothing announced past the budget is made room for.
+    let mut client = async_imap::Client::new(guarded(secured, budget.clone()));
     let offers_plain = greeted(&mut client).await.map_err(told)?;
     let ascii = login.username().is_ascii() && login.password().is_ascii();
     let session = if !ascii && offers_plain {

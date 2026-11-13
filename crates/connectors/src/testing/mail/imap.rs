@@ -1,10 +1,11 @@
 //! An IMAP server for the tests (ADR-205): implicit TLS with a certificate
 //! of a test authority, the accounts it accepts, `CAPABILITY`, `LOGIN`
 //! (quoted strings as RFC 3501 writes them), `AUTHENTICATE PLAIN` where it
-//! offers it, `NOOP` and `LOGOUT`. It notes each command, never a password.
-//! It may refuse at its greeting, fall silent once it has greeted, greet
-//! without end, quote the password it refused (what the platform must
-//! mask), or hold its answer to an account until the test lets it through.
+//! offers it, `NOOP` and `LOGOUT`, and, once signed in, the folders the test
+//! gives (`mailbox`). It notes each command, never a password. It may refuse
+//! at its greeting, fall silent once it has greeted, greet without end,
+//! quote the password it refused (what the platform must mask), or hold its
+//! answer to an account until the test lets it through.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,7 +15,8 @@ use base64::engine::general_purpose::STANDARD;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
-use super::lines::next_line;
+use super::lines::{next_command, next_line};
+use super::mailbox::{FetchBehaviour, Mailboxes};
 use super::{Accounts, Heard, accepts};
 use crate::testing::{Hold, TestAuthority};
 
@@ -55,6 +57,14 @@ impl ImapSetup {
     }
 }
 
+/// What a server holds besides its accounts: the folders they see, and
+/// what holds its answer to an account.
+#[derive(Clone, Default)]
+struct Extras {
+    mailboxes: Mailboxes,
+    hold: Option<Arc<Hold>>,
+}
+
 /// A running IMAP server and what it heard.
 pub struct FakeImap {
     pub address: SocketAddr,
@@ -76,20 +86,38 @@ impl FakeImap {
     }
 
     pub async fn with(authority: &TestAuthority, accounts: Accounts, setup: ImapSetup) -> Self {
-        Self::serve(authority, accounts, setup, None).await
+        Self::serve(authority, accounts, setup, Extras::default()).await
     }
 
     /// A server answering an account only once `hold` lets it through.
     pub async fn held(authority: &TestAuthority, accounts: Accounts, hold: Arc<Hold>) -> Self {
         let setup = ImapSetup::new(ImapBehaviour::Answers);
-        Self::serve(authority, accounts, setup, Some(hold)).await
+        let extras = Extras {
+            hold: Some(hold),
+            ..Extras::default()
+        };
+        Self::serve(authority, accounts, setup, extras).await
+    }
+
+    /// A server whose accounts each see `mailboxes`.
+    pub async fn holding(
+        authority: &TestAuthority,
+        accounts: Accounts,
+        setup: ImapSetup,
+        mailboxes: Mailboxes,
+    ) -> Self {
+        let extras = Extras {
+            mailboxes,
+            hold: None,
+        };
+        Self::serve(authority, accounts, setup, extras).await
     }
 
     async fn serve(
         authority: &TestAuthority,
         accounts: Accounts,
         setup: ImapSetup,
-        hold: Option<Arc<Hold>>,
+        extras: Extras,
     ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("local port");
         let address = listener.local_addr().expect("local address");
@@ -97,15 +125,15 @@ impl FakeImap {
         let (acceptor, noted) = (authority.acceptor(), heard.clone());
         tokio::spawn(async move {
             while let Ok((socket, _)) = listener.accept().await {
-                let (acceptor, noted, accounts, hold) = (
+                let (acceptor, noted, accounts, extras) = (
                     acceptor.clone(),
                     noted.clone(),
                     accounts.clone(),
-                    hold.clone(),
+                    extras.clone(),
                 );
                 tokio::spawn(async move {
                     if let Ok(stream) = acceptor.accept(socket).await {
-                        converse(stream, &accounts, (setup, hold), &noted).await;
+                        converse(stream, (&accounts, &extras), setup, &noted).await;
                     }
                 });
             }
@@ -116,8 +144,8 @@ impl FakeImap {
 
 async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
     stream: S,
-    accounts: &Accounts,
-    (setup, hold): (ImapSetup, Option<Arc<Hold>>),
+    (accounts, extras): (&Accounts, &Extras),
+    setup: ImapSetup,
     heard: &Heard,
 ) {
     let mut stream = BufReader::new(stream);
@@ -136,7 +164,8 @@ async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
     {
         return;
     }
-    while let Some(line) = next_line(&mut stream).await {
+    let (mut signed_in, mut examined) = (false, None);
+    while let Some(line) = next_command(&mut stream).await {
         let (tag, rest) = line.split_once(' ').unwrap_or((line.as_str(), ""));
         let (command, arguments) = rest.split_once(' ').unwrap_or((rest, ""));
         let command = command.to_ascii_uppercase();
@@ -146,6 +175,7 @@ async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
                 strings(arguments).first().cloned().unwrap_or_default()
             )),
             "AUTHENTICATE" => heard.note(format!("AUTHENTICATE {}", arguments.to_uppercase())),
+            "UID" | "EXAMINE" | "SELECT" | "FETCH" => heard.note(format!("{command} {arguments}")),
             _ => heard.note(command.clone()),
         }
         if setup.behaviour == ImapBehaviour::FallsSilent {
@@ -167,15 +197,32 @@ async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
             }
             _ => None,
         };
-        if let (Some(hold), Some(_)) = (&hold, &account) {
+        if let (Some(hold), Some(_)) = (&extras.hold, &account) {
             hold.wait().await;
         }
+        let mailboxes = &extras.mailboxes;
+        let fetching = command == "FETCH" || arguments.to_ascii_uppercase().starts_with("FETCH");
+        if signed_in && fetching && mailboxes.fetch == FetchBehaviour::Endless {
+            let _ = stream
+                .write_all(b"* 1 FETCH (UID 1 BODY[] {400000000}\r\n")
+                .await;
+            while stream.write_all(&[b'a'; 4096]).await.is_ok() {}
+            return;
+        }
+        let folders = signed_in
+            .then(|| mailboxes.answer(tag, &command, arguments, &mut examined))
+            .flatten();
         let answer = match (command.as_str(), account) {
+            _ if folders.is_some() => folders.unwrap_or_default(),
             ("LOGIN", _) if setup.refuses_login_form => format!("{tag} BAD chaîne invalide\r\n"),
+            ("CAPABILITY", _) if mailboxes.literal_plus => {
+                format!("* CAPABILITY IMAP4rev1 LITERAL+\r\n{tag} OK terminé\r\n")
+            }
             ("CAPABILITY", _) => format!("* CAPABILITY IMAP4rev1\r\n{tag} OK terminé\r\n"),
             ("NOOP", _) => format!("{tag} OK NOOP terminé\r\n"),
             ("LOGIN" | "AUTHENTICATE", Some((user, password))) => {
                 if accepts(accounts, &user, &password) {
+                    signed_in = true;
                     format!("{tag} OK connecté\r\n")
                 } else if setup.quotes_refused_password {
                     let quoted = password.replace('\\', "\\\\").replace('"', "\\\"");
@@ -207,7 +254,7 @@ fn plain(payload: &str) -> Option<(String, String)> {
 
 /// The strings of a command's arguments: atoms, or quoted strings whose `\`
 /// escapes the next character.
-fn strings(arguments: &str) -> Vec<String> {
+pub(super) fn strings(arguments: &str) -> Vec<String> {
     let mut found = Vec::new();
     let mut chars = arguments.chars().peekable();
     while let Some(&next) = chars.peek() {

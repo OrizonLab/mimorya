@@ -4,14 +4,17 @@
 //! the application's secret, and refuses a tool whose permissions the
 //! person did not grant (ADR-119); a token kept from this link serves until
 //! shortly before it expires; otherwise the link's sealed refresh token is
-//! renewed at the provider (`renewal.rs`).
+//! renewed at the provider (`renewal.rs`). The person's account at the
+//! company's standard mail is opened by its own module (ADR-205,
+//! `services/mail_accounts/opened.rs`).
 
 use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use mimorya_core::account_links::{LinkKind, sealed_as};
-use mimorya_core::tools::{AccountAccessError, LinkedAccounts};
+use mimorya_core::tools::{AccountAccessError, LinkedAccounts, MailAccount};
 use mimorya_db::repositories::account_links::{AccountLinkRow, get_account_link};
 use mimorya_db::repositories::connectors::list_connector_instances;
 use uuid::Uuid;
@@ -21,6 +24,7 @@ use super::application::LinkApp;
 use super::tokens::LinkVersion;
 use crate::secrets::SecretRead;
 use crate::services::connectors::token_secret_name;
+use crate::services::mail_accounts::{opened_mail_account, refused_mail_account};
 
 /// The accounts a run's person linked, as its tools reach them.
 pub struct PersonAccounts {
@@ -58,6 +62,19 @@ impl LinkedAccounts for PersonAccounts {
     /// renews its own.
     async fn rejected(&self, _connector_type: &str) {
         self.service.tokens.forget(self.tenant_id, self.user_id);
+    }
+
+    async fn mail_account(&self) -> Result<MailAccount, AccountAccessError> {
+        let cipher = self.service.cipher.as_deref();
+        opened_mail_account(&self.service.db, cipher, self.tenant_id, self.user_id).await
+    }
+
+    async fn mail_account_refused(&self, linked_at: DateTime<Utc>) {
+        let db = &self.service.db;
+        if let Err(error) = refused_mail_account(db, self.tenant_id, self.user_id, linked_at).await
+        {
+            tracing::error!(error = %error, "Refused mail account not removed");
+        }
     }
 }
 

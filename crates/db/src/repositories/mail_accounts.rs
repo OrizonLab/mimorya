@@ -133,6 +133,25 @@ pub async fn delete_mail_account(
     Ok(deleted.rows_affected() > 0)
 }
 
+/// Removes the account `user_id` linked at `connector_id` on `linked_at`,
+/// which the company's server refused: one linked again since stays.
+pub async fn delete_refused_mail_account(
+    conn: &mut PgConnection,
+    connector_id: Uuid,
+    user_id: Uuid,
+    linked_at: DateTime<Utc>,
+) -> sqlx::Result<bool> {
+    let deleted = sqlx::query(
+        "delete from mail_accounts where connector_id = $1 and user_id = $2 and linked_at = $3",
+    )
+    .bind(connector_id)
+    .bind(user_id)
+    .bind(linked_at)
+    .execute(conn)
+    .await?;
+    Ok(deleted.rows_affected() > 0)
+}
+
 /// Removes every account `user_id` linked: their account is disabled.
 pub async fn delete_mail_accounts_of_user(
     conn: &mut PgConnection,

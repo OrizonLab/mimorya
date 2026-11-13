@@ -67,6 +67,9 @@ http = "1"
 # IMAP (ADR-205): the Delta Chat client, over the connection the platform
 # opened itself, without its default executor.
 async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
+# E-mails read from IMAP (ADR-205): Stalwart's parser, every character set
+# (encoding_rs, already used for documents).
+mail-parser = { version = "0.11", default-features = false, features = ["full_encoding"] }
 # Certificates of the tests' simulated mail servers, made at their start.
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 schemars = { version = "1", features = ["chrono04", "uuid1"] }

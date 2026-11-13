@@ -6,7 +6,10 @@
 use std::sync::Arc;
 
 use mimorya_api::App;
-use mimorya_connectors::testing::{Accounts, FakeImap, FakeSmtp, Hold, SmtpMode, TestAuthority};
+use mimorya_connectors::testing::{
+    Accounts, FakeImap, FakeSmtp, Hold, ImapBehaviour, ImapSetup, Mailboxes, SmtpMode,
+    TestAuthority,
+};
 use mimorya_core::demo::tenant;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -27,8 +30,14 @@ pub struct MailServers {
 
 impl MailServers {
     pub async fn start(accounts: Accounts) -> Self {
+        Self::holding(accounts, Mailboxes::default()).await
+    }
+
+    /// The same, each account seeing `mailboxes`.
+    pub async fn holding(accounts: Accounts, mailboxes: Mailboxes) -> Self {
         let authority = TestAuthority::new();
-        let imap = FakeImap::start(&authority, accounts.clone()).await;
+        let setup = ImapSetup::new(ImapBehaviour::Answers);
+        let imap = FakeImap::holding(&authority, accounts.clone(), setup, mailboxes).await;
         let smtp = FakeSmtp::start(&authority, SmtpMode::StartTls, accounts).await;
         Self {
             authority,

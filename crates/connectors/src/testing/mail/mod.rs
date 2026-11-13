@@ -1,14 +1,16 @@
 //! A company's mail servers as the tests simulate them (ADR-205): an IMAP
-//! server over implicit TLS (`imap`), an SMTP server over implicit TLS, over
-//! STARTTLS, or in clear without it (`smtp`), each with a certificate of a
-//! test authority and its accounts, and each noting what it heard, never a
-//! password.
+//! server over implicit TLS (`imap`), with the folders a test gives
+//! (`mailbox`), an SMTP server over implicit TLS, over STARTTLS, or in clear
+//! without it (`smtp`), each with a certificate of a test authority and its
+//! accounts, and each noting what it heard, never a password.
 
 mod imap;
 mod lines;
+mod mailbox;
 mod smtp;
 
 pub use imap::{FakeImap, ImapBehaviour, ImapSetup};
+pub use mailbox::{FetchBehaviour, Mailboxes, TestFolder, TestMessage};
 pub use smtp::{FakeSmtp, SmtpMode, SmtpSetup};
 
 use std::sync::{Arc, Mutex};
