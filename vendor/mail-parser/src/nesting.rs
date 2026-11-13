@@ -10,10 +10,15 @@
 /// The e-mails a part may be enclosed in: real messages forward a handful.
 pub const MAX_NESTED_MESSAGES: usize = 16;
 
-/// Whether a part is too deep to be read as an e-mail itself: enclosed in
-/// the e-mails the parser holds on its `stack` while it reads what they
-/// enclose, and in the `decoded` ones it reads by calling itself.
-pub(crate) fn too_deep<S, M>(stack: &[(S, Option<M>)], decoded: usize) -> bool {
-    let held = stack.iter().filter(|(_, message)| message.is_some()).count();
-    held + decoded >= MAX_NESTED_MESSAGES
+/// The e-mails the parser holds on its `stack` while it reads what they
+/// enclose.
+pub(crate) fn held<S, M>(stack: &[(S, Option<M>)]) -> usize {
+    stack.iter().filter(|(_, message)| message.is_some()).count()
+}
+
+/// Whether a part enclosed in `enclosing` e-mails, those the parser holds
+/// and those it decoded and reads by calling itself, is too deep to be read
+/// as an e-mail itself.
+pub(crate) fn too_deep(enclosing: usize) -> bool {
+    enclosing >= MAX_NESTED_MESSAGES
 }

@@ -208,7 +208,18 @@ mod tests {
              {}\r\n--b--\r\n",
             lines.join("\r\n")
         );
-        for raw in [quoted, base64, plain] {
+        // As they are, then decoded, at each level: every e-mail enclosing
+        // the part counts, whatever its encoding.
+        let mut mixed = chain(20);
+        for as_they_are in [6, 6, 6] {
+            mixed = format!(
+                "Subject: Dedans\r\n{}Content-Type: message/rfc822\r\n\
+                 Content-Transfer-Encoding: quoted-printable\r\n\r\n{mixed}",
+                "Content-Type: message/rfc822\r\n\r\n".repeat(as_they_are)
+            );
+        }
+        let mixed = format!("{HEAD}Content-Type: message/rfc822\r\n\r\n{mixed}");
+        for raw in [mixed, quoted, base64, plain] {
             assert!(raw.len() < 1024 * 1024);
             let message = parsed(raw.as_bytes()).unwrap();
             assert_eq!(message.subject(), Some("Emboîtés"));

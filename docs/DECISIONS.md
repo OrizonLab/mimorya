@@ -14245,7 +14245,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       publiée ne le borne : la plateforme garde une copie de mail-parser 0.11.9
       (`vendor/mail-parser`, par `[patch.crates-io]`) où une partie déjà jointe à 16
       e-mails n'est plus lue comme un e-mail mais gardée comme une pièce jointe, quel
-      que soit son encodage. L'arbre reste peu profond pour sa lecture, sa conversion
+      que soit son encodage : les e-mails qui l'englobent sont comptés à travers les
+      décodages, chacun ne repartant pas de zéro. L'arbre reste peu profond pour sa lecture, sa conversion
       et sa libération, et l'e-mail lu est de plus libéré à plat, ses e-mails joints
       détachés un à un (`Parsed`, `tools/message.rs`) ;
     - un compte que le serveur refuse est retiré, sauf s'il a été relié de nouveau

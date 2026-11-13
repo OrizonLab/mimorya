@@ -109,7 +109,8 @@ impl MessageParser {
     /// if no headers are found None is returned.
     ///
     pub fn parse<'x>(&self, raw_message: &'x (impl AsRef<[u8]> + ?Sized)) -> Option<Message<'x>> {
-        self.parse_(raw_message.as_ref(), MAX_NESTED_ENCODED, false)
+        // Patch of the Mimorya platform (ADR-205): enclosed e-mails bounded.
+        self.parse_(raw_message.as_ref(), MAX_NESTED_ENCODED, false, 0)
     }
 
     /// Parses a byte slice containing the RFC5322 raw message and returns a
@@ -118,7 +119,8 @@ impl MessageParser {
         &self,
         raw_message: &'x (impl AsRef<[u8]> + ?Sized),
     ) -> Option<Message<'x>> {
-        self.parse_(raw_message.as_ref(), MAX_NESTED_ENCODED, true)
+        // Patch of the Mimorya platform (ADR-205): enclosed e-mails bounded.
+        self.parse_(raw_message.as_ref(), MAX_NESTED_ENCODED, true, 0)
     }
 
     fn parse_<'x>(
@@ -126,6 +128,9 @@ impl MessageParser {
         raw_message: &'x [u8],
         depth: usize,
         skip_body: bool,
+        // Patch of the Mimorya platform (ADR-205): the e-mails enclosing
+        // `raw_message`, whatever their encoding.
+        enclosing: usize,
     ) -> Option<Message<'x>> {
         let mut stream = MessageStream::new(raw_message);
 
@@ -159,7 +164,7 @@ impl MessageParser {
 
             // Patch of the Mimorya platform (ADR-205): enclosed e-mails bounded.
             if mime_type == MimeType::Message
-                && crate::nesting::too_deep(&state_stack, MAX_NESTED_ENCODED - depth)
+                && crate::nesting::too_deep(enclosing + crate::nesting::held(&state_stack))
             {
                 mime_type = MimeType::Other;
             }
@@ -361,7 +366,11 @@ impl MessageParser {
                 message.attachments.push(message.parts.len() as u32);
 
                 if depth != 0 {
-                    if let Some(nested_message) = self.parse_(bytes.as_ref(), depth - 1, false) {
+                    // Patch of the Mimorya platform (ADR-205): enclosed e-mails bounded.
+                    let enclosing = enclosing + crate::nesting::held(&state_stack) + 1;
+                    if let Some(nested_message) =
+                        self.parse_(bytes.as_ref(), depth - 1, false, enclosing)
+                    {
                         PartType::Message(Message {
                             html_body: nested_message.html_body,
                             text_body: nested_message.text_body,
