@@ -14235,11 +14235,19 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       version publiée bornera elle-même l'imbrication (`vendor/imap-proto/MIMORYA.md`) ;
     - les e-mails sont lus par mail-parser (jeux de caractères par encoding_rs, mots
       encodés, MIME), chaque champ borné. Le résultat est une donnée non fiable, comme
-      celui de tout outil. mail-parser lit sans s'appeler lui-même, mais garde chaque
-      e-mail joint (`message/rfc822`) dans celui qui le joint : libérés l'un dans
-      l'autre, vingt mille e-mails joints, en moins d'un mégaoctet que n'importe quel
-      expéditeur peut envoyer, déborderaient la pile et arrêteraient le processus. Ils
-      sont détachés un à un avant d'être libérés (`Parsed`, `tools/message.rs`) ;
+      celui de tout outil. mail-parser garde chaque e-mail joint (`message/rfc822`)
+      dans celui qui le joint. Non encodé, il le lit sans s'appeler lui-même ; encodé
+      (quoted-printable, base64), il le décode et le lit en s'appelant lui-même, puis le
+      convertit (`into_owned`) en s'appelant une fois par e-mail joint dans ce qu'il a
+      décodé, et libérer l'arbre s'appelle aussi une fois par niveau. Quelques milliers
+      d'e-mails joints, en moins d'un mégaoctet que n'importe quel expéditeur peut
+      envoyer, déborderaient la pile et arrêteraient le processus. Aucune version
+      publiée ne le borne : la plateforme garde une copie de mail-parser 0.11.9
+      (`vendor/mail-parser`, par `[patch.crates-io]`) où une partie déjà jointe à 16
+      e-mails n'est plus lue comme un e-mail mais gardée comme une pièce jointe, quel
+      que soit son encodage. L'arbre reste peu profond pour sa lecture, sa conversion
+      et sa libération, et l'e-mail lu est de plus libéré à plat, ses e-mails joints
+      détachés un à un (`Parsed`, `tools/message.rs`) ;
     - un compte que le serveur refuse est retiré, sauf s'il a été relié de nouveau
       depuis, et audité (`mail_account.refused_by_server`, par le système au nom de la
       personne). Un mot de passe changé ailleurs n'est pas réessayé à chaque run, ce qui
@@ -14311,7 +14319,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `lettre`, déjà utilisé pour les e-mails de la plateforme, pour SMTP, sur la
       connexion de la plateforme (`connect_with_transport`, STARTTLS exigé) ;
     - `mail-parser` 0.11 (Stalwart) pour lire les messages bruts RFC 5322 : jeux de
-      caractères, mots encodés, MIME ;
+      caractères, mots encodés, MIME ; gardé par la plateforme avec les e-mails joints
+      bornés (voir la lecture, lot 69d) ;
     - pour CalDAV, aucune bibliothèque mûre : un client WebDAV minimal (`PROPFIND`,
       `REPORT` avec `expand`, `PUT`) sur le client HTTP durci, le XML lu par
       `quick-xml`, les événements lus et écrits par la plateforme ;

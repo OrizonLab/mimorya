@@ -120,3 +120,7 @@ opt-level = 3
 # stack on a server's parentheses (ADR-205, vendor/imap-proto/MIMORYA.md).
 [patch.crates-io]
 imap-proto = { path = "vendor/imap-proto" }
+# mail-parser with the e-mails a part may be enclosed in bounded: an e-mail
+# enclosing thousands would otherwise overflow the stack (ADR-205,
+# vendor/mail-parser/MIMORYA.md).
+mail-parser = { path = "vendor/mail-parser" }

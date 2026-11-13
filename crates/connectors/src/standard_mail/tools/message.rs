@@ -153,19 +153,70 @@ pub fn citation(id: &str, message: Option<&Message<'_>>) -> Citation {
 mod tests {
     use super::*;
 
+    /// `count` e-mails, each enclosing the next, after the headers of
+    /// the e-mail holding them.
+    fn chain(count: usize) -> String {
+        let mut raw = "Subject: Dedans\r\n".to_string();
+        raw.push_str(&"Content-Type: message/rfc822\r\n\r\n".repeat(count));
+        raw + "Fin\r\n"
+    }
+
+    /// How many e-mails deep a parsed e-mail encloses others, counted
+    /// without calling itself.
+    fn enclosed_depth(message: &Message<'_>) -> usize {
+        let mut deepest = 0;
+        let mut pending = vec![(message, 0)];
+        while let Some((message, depth)) = pending.pop() {
+            deepest = deepest.max(depth);
+            for part in &message.parts {
+                if let PartType::Message(inner) = &part.body {
+                    pending.push((inner, depth + 1));
+                }
+            }
+        }
+        deepest
+    }
+
     #[test]
-    fn e_mails_enclosed_without_end_are_let_go_of_one_by_one() {
-        // Thirty thousand e-mails, each enclosing the next, in less than a
-        // megabyte: dropped one within another, they would overflow the
-        // stack of the thread reading them.
-        let mut raw = String::from("From: renee@exemple.fr\r\nSubject: Emboîtés\r\n");
-        raw.push_str(&"Content-Type: message/rfc822\r\n\r\n".repeat(30_000));
-        raw.push_str("Fin\r\n");
-        assert!(raw.len() < 1024 * 1024);
-        let message = parsed(raw.as_bytes()).unwrap();
-        assert_eq!(message.subject(), Some("Emboîtés"));
-        assert!(matches!(message.parts[0].body, PartType::Message(_)));
-        drop(message);
+    fn e_mails_enclosed_without_end_are_read_a_bounded_depth() {
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD;
+
+        const HEAD: &str = "From: renee@exemple.fr\r\nSubject: Emboîtés\r\n";
+        // As they are, quoted-printable (decoded, then read by the parser
+        // calling itself), base64 within a multipart: thousands of e-mails
+        // each enclosing the next, in less than a megabyte any sender may
+        // send, would overflow the stack as they are read or let go of.
+        let plain = format!(
+            "{HEAD}Content-Type: message/rfc822\r\n\r\n{}",
+            chain(30_000)
+        );
+        let quoted = format!(
+            "{HEAD}Content-Type: message/rfc822\r\n\
+             Content-Transfer-Encoding: quoted-printable\r\n\r\n{}",
+            chain(30_000)
+        );
+        let encoded = STANDARD.encode(chain(20_000));
+        let lines: Vec<&str> = encoded
+            .as_bytes()
+            .chunks(76)
+            .map(|line| std::str::from_utf8(line).unwrap())
+            .collect();
+        let base64 = format!(
+            "{HEAD}Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n--b\r\n\
+             Content-Type: message/rfc822\r\nContent-Transfer-Encoding: base64\r\n\r\n\
+             {}\r\n--b--\r\n",
+            lines.join("\r\n")
+        );
+        for raw in [quoted, base64, plain] {
+            assert!(raw.len() < 1024 * 1024);
+            let message = parsed(raw.as_bytes()).unwrap();
+            assert_eq!(message.subject(), Some("Emboîtés"));
+            // Past the bound, an enclosed e-mail is an attachment.
+            let bound = mail_parser::nesting::MAX_NESTED_MESSAGES;
+            assert_eq!(enclosed_depth(&message), bound, "{:.120}", raw);
+            drop(message);
+        }
     }
 
     const RAW: &str = "From: =?UTF-8?Q?Ren=C3=A9e_Dupont?= <renee@exemple.fr>\r\n\

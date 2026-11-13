@@ -2,24 +2,21 @@
 //! a search finds, the most recent first; one e-mail read, decoded, its
 //! attachments named; all in folders examined read only, as the person the
 //! run serves, on the servers their account was checked against. What the
-//! model writes never ends a command; what the server sends unasked, or
-//! without end, is left.
+//! model writes never ends a command. What a hostile server or sender
+//! sends is tried in `mail_tools_hostile.rs`.
 
 mod support;
 
-use mimorya_connectors::outbound::{NetworkPolicy, TOO_LONG};
-use mimorya_connectors::standard_mail::{NOT_A_MAIL_SERVER, TRY_LATER};
-use mimorya_connectors::testing::{
-    FakeImap, FetchBehaviour, ImapBehaviour, ImapSetup, TestAuthority,
-};
+use mimorya_connectors::outbound::NetworkPolicy;
+use mimorya_connectors::standard_mail::TRY_LATER;
+use mimorya_connectors::testing::{FakeImap, ImapBehaviour, ImapSetup, TestAuthority};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::demo::user;
-use mimorya_core::tools::LinkedAccounts;
 use serde_json::json;
-use support::linked_accounts::{call, error_of, mailbox_executor};
+use support::linked_accounts::{call, error_of};
 use support::mail::{MAIL_LOCAL, PASSWORD, USER, WRONG, accounts, hides, trusting};
 use support::mailboxes::{
-    VALIDITY, declaration, enclosing_without_end, folders, linked_at, linked_paul, server, tools,
+    VALIDITY, declaration, folders, linked_at, linked_paul, server, started_on, tools,
 };
 
 #[tokio::test]
@@ -191,58 +188,6 @@ async fn sent_e_mails_are_found_where_the_server_keeps_them() {
 }
 
 #[tokio::test]
-async fn what_the_server_sends_unasked_or_without_end_is_left() {
-    let authority = TestAuthority::new();
-    let mut adding = folders(None);
-    adding.fetch = FetchBehaviour::AddsTheFirst;
-    let (_, _, paul) = linked_paul(&authority, adding).await;
-    let result = call(&paul, "mail_search", json!({ "query": "relance" })).await;
-    let ids: Vec<&str> = result.content["emails"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|e| e["id"].as_str().unwrap())
-        .collect();
-    assert_eq!(ids, [format!("i{VALIDITY}.12")]);
-    // Asked, then sent once more unasked: shown once.
-    let result = call(&paul, "mail_search", json!({ "query": "facture" })).await;
-    let ids: Vec<&str> = result.content["emails"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|e| e["id"].as_str().unwrap())
-        .collect();
-    assert_eq!(ids, [format!("i{VALIDITY}.12"), format!("i{VALIDITY}.3")]);
-
-    let mut endless = folders(None);
-    endless.fetch = FetchBehaviour::Endless;
-    let (_, _, paul) = linked_paul(&authority, endless).await;
-    let result = call(
-        &paul,
-        "mail_read",
-        json!({ "id": format!("i{VALIDITY}.8") }),
-    )
-    .await;
-    assert!(
-        error_of(&result).starts_with(TOO_LONG),
-        "{:?}",
-        result.content
-    );
-}
-
-/// Paul's tools started on `declared` under `network`, his account linked
-/// at `imap`'s server.
-async fn started_on(
-    declared: &serde_json::Value,
-    network: NetworkPolicy,
-    ports: &std::sync::Arc<mimorya_agent::testing::InMemoryPorts>,
-) -> mimorya_agent::tools::ToolExecutor {
-    let tools = tools(declared, network).await;
-    let accounts: std::sync::Arc<dyn LinkedAccounts> = ports.clone();
-    mailbox_executor(tools, user::PAUL, ports, accounts)
-}
-
-#[tokio::test]
 async fn the_servers_are_those_the_account_was_checked_against() {
     let authority = TestAuthority::new();
     let (imap, ports) = server(&authority, folders(None), PASSWORD).await;
@@ -320,47 +265,6 @@ async fn a_server_refusing_for_now_keeps_the_account() {
     assert!(ports.refused_mail_accounts().is_empty());
     let again = call(&paul, "mail_search", json!({})).await;
     assert!(error_of(&again).starts_with(TRY_LATER));
-}
-
-#[tokio::test]
-async fn a_structure_nested_without_end_is_refused_the_account_kept() {
-    let authority = TestAuthority::new();
-    let mut nested = folders(None);
-    nested.fetch = FetchBehaviour::Nested;
-    let imap = FakeImap::holding(
-        &authority,
-        accounts(),
-        ImapSetup::new(ImapBehaviour::Answers),
-        nested,
-    )
-    .await;
-    let ports = mimorya_agent::testing::InMemoryPorts::new(user::PAUL, uuid::Uuid::new_v4());
-    ports.link_mail_account(declaration(imap.address), USER, PASSWORD, linked_at());
-    let paul = started_on(&declaration(imap.address), trusting(&authority), &ports).await;
-    // Read by a parser calling itself for each parenthesis, a thousand of
-    // them would end the process: refused, the process goes on.
-    let refused = call(&paul, "mail_search", json!({ "query": "facture" })).await;
-    assert!(
-        error_of(&refused).starts_with(NOT_A_MAIL_SERVER),
-        "{:?}",
-        refused.content
-    );
-    assert!(ports.refused_mail_accounts().is_empty());
-}
-
-#[tokio::test]
-async fn an_e_mail_enclosing_e_mails_without_end_is_read_not_the_process_ended() {
-    let authority = TestAuthority::new();
-    let mut mailboxes = folders(None);
-    mailboxes.folders[0]
-        .messages
-        .push(enclosing_without_end(20));
-    let (_, _, paul) = linked_paul(&authority, mailboxes).await;
-    // Let go of one within another, they would overflow this thread's stack.
-    let id = format!("i{VALIDITY}.20");
-    let result = call(&paul, "mail_read", json!({ "id": id })).await;
-    assert!(!result.is_error, "{:?}", result.content);
-    assert_eq!(result.content["objet"], "Emboîtés");
 }
 
 #[tokio::test]

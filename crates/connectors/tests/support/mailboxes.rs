@@ -6,6 +6,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use base64::Engine;
 use chrono::{DateTime, NaiveDate, Utc};
 use mimorya_agent::testing::InMemoryPorts;
 use mimorya_agent::tools::ToolExecutor;
@@ -63,12 +64,37 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b1--\r\n";
     }
 }
 
-/// An e-mail enclosing an e-mail thirty thousand deep, in less than a
-/// megabyte, as anyone may send one.
-pub fn enclosing_without_end(uid: u32) -> TestMessage {
-    let mut raw = format!("From: renee@exemple.fr\r\nTo: {USER}\r\nSubject: Emboîtés\r\n");
-    raw.push_str(&"Content-Type: message/rfc822\r\n\r\n".repeat(30_000));
-    raw.push_str("Fin\r\n");
+/// How an e-mail sends the e-mails it encloses.
+#[derive(Debug, Clone, Copy)]
+pub enum Enclosed {
+    AsTheyAre,
+    QuotedPrintable,
+    Base64,
+}
+
+/// An e-mail enclosing e-mails twenty thousand deep, sent as `enclosed`
+/// says, in less than a megabyte, as anyone may send one.
+pub fn enclosing_without_end(uid: u32, enclosed: Enclosed) -> TestMessage {
+    let mut chain = "Subject: Dedans\r\n".to_string();
+    chain.push_str(&"Content-Type: message/rfc822\r\n\r\n".repeat(20_000));
+    chain.push_str("Fin\r\n");
+    let (encoding, body) = match enclosed {
+        Enclosed::AsTheyAre => ("7bit", chain),
+        Enclosed::QuotedPrintable => ("quoted-printable", chain),
+        Enclosed::Base64 => {
+            let encoded = base64::engine::general_purpose::STANDARD.encode(chain);
+            let lines: Vec<String> = encoded
+                .as_bytes()
+                .chunks(76)
+                .map(|line| String::from_utf8_lossy(line).into_owned())
+                .collect();
+            ("base64", lines.join("\r\n"))
+        }
+    };
+    let raw = format!(
+        "From: renee@exemple.fr\r\nTo: {USER}\r\nSubject: Emboîtés\r\n\
+         Content-Type: message/rfc822\r\nContent-Transfer-Encoding: {encoding}\r\n\r\n{body}"
+    );
     TestMessage {
         uid,
         seen: false,
@@ -171,4 +197,16 @@ pub async fn linked_paul(
     let (imap, ports) = server(authority, mailboxes, PASSWORD).await;
     let executor = paul(authority, &imap, &ports).await;
     (imap, ports, executor)
+}
+
+/// Paul's tools started on `declared` under `network`, his account linked
+/// at the server it names.
+pub async fn started_on(
+    declared: &Value,
+    network: NetworkPolicy,
+    ports: &Arc<InMemoryPorts>,
+) -> ToolExecutor {
+    let tools = tools(declared, network).await;
+    let accounts: Arc<dyn LinkedAccounts> = ports.clone();
+    mailbox_executor(tools, user::PAUL, ports, accounts)
 }

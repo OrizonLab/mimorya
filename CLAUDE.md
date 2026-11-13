@@ -15,16 +15,16 @@ Lire d'abord : `docs/PRODUCT_VISION.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.
 Le serveur est un espace de travail Cargo (Rust, édition 2024) ; l'interface est
 l'unique paquet Node (ADR-018).
 
-| Chemin              | Rôle                                                                                                     | Règle                                                                        |
-| ------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, règles de mémoire, démo            | Aucune E/S (ni base, ni réseau, ni fichier).                                 |
-| `crates/db`         | Migrations SQL (sqlx), RLS, dépôts, seed                                                                 | Tout accès tenant passe par `Database::begin(tenant_id)`.                    |
-| `crates/agent`      | Fournisseurs LLM, boucle, PEP, budgets, vérification, outils mémoire/compétences                         | Dépend de ports (`runtime/ports.rs`), jamais de `db`.                        |
-| `crates/connectors` | Connecteurs (démo, MCP)                                                                                  | Chaque outil filtre ses données avec `ctx.authz`.                            |
-| `crates/extract`    | Lecture des documents déposés (PDF, Word, texte), dans le processus `mimorya-extract`                    | Lit l'entrée standard, écrit la sortie ; jamais dans l'API.                  |
-| `crates/api`        | axum : sessions, routes, SSE, orchestration des runs, binaires `mimorya-api`/`-admin`/`-seed`/`-extract` | Compose les crates ; aucune règle métier dupliquée.                          |
-| `apps/web`          | Next.js                                                                                                  | Parle uniquement à `/api/*` (relayé vers l'API).                             |
-| `vendor/imap-proto` | Analyseur IMAP d'async-imap gardé par la plateforme, imbrication bornée (ADR-205, `MIMORYA.md`)          | Trois ajouts marqués ; retiré quand une version publiée borne l'imbrication. |
+| Chemin              | Rôle                                                                                                                                                                       | Règle                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, règles de mémoire, démo                                                                              | Aucune E/S (ni base, ni réseau, ni fichier).                      |
+| `crates/db`         | Migrations SQL (sqlx), RLS, dépôts, seed                                                                                                                                   | Tout accès tenant passe par `Database::begin(tenant_id)`.         |
+| `crates/agent`      | Fournisseurs LLM, boucle, PEP, budgets, vérification, outils mémoire/compétences                                                                                           | Dépend de ports (`runtime/ports.rs`), jamais de `db`.             |
+| `crates/connectors` | Connecteurs (démo, MCP)                                                                                                                                                    | Chaque outil filtre ses données avec `ctx.authz`.                 |
+| `crates/extract`    | Lecture des documents déposés (PDF, Word, texte), dans le processus `mimorya-extract`                                                                                      | Lit l'entrée standard, écrit la sortie ; jamais dans l'API.       |
+| `crates/api`        | axum : sessions, routes, SSE, orchestration des runs, binaires `mimorya-api`/`-admin`/`-seed`/`-extract`                                                                   | Compose les crates ; aucune règle métier dupliquée.               |
+| `apps/web`          | Next.js                                                                                                                                                                    | Parle uniquement à `/api/*` (relayé vers l'API).                  |
+| `vendor/`           | Crates gardés par la plateforme avec un correctif : analyseur IMAP d'async-imap, imbrication bornée ; mail-parser, e-mails joints bornés (ADR-205, `MIMORYA.md` de chacun) | Ajouts marqués ; chacun retiré quand une version publiée corrige. |
 
 Repères à l'intérieur des crates :
 

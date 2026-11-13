@@ -1045,8 +1045,10 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   centaines de parenthèses d'un serveur ne débordent plus la pile du processus, que
   partagent les entreprises. Ce qu'il ne sait pas lire est refusé, jamais lu par la
   bibliothèque. Un e-mail fait d'e-mails joints les uns dans les autres, que n'importe
-  quel expéditeur peut envoyer, est libéré sans que mail-parser s'appelle lui-même pour
-  chacun (ADR-205).
+  quel expéditeur peut envoyer, tels quels ou encodés, n'est lu comme tel que sur 16
+  niveaux : mail-parser, gardé par la plateforme (`vendor/mail-parser`), garde les
+  suivants comme une pièce jointe, et ni sa lecture, ni sa conversion, ni sa libération
+  ne débordent la pile du processus (ADR-205).
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée
