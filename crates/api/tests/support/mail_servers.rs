@@ -3,8 +3,10 @@
 //! lets through, their certificates trusted as the authority's roots; a
 //! master key seals the accounts people link there.
 
+use std::sync::Arc;
+
 use mimorya_api::App;
-use mimorya_connectors::testing::{Accounts, FakeImap, FakeSmtp, SmtpMode, TestAuthority};
+use mimorya_connectors::testing::{Accounts, FakeImap, FakeSmtp, Hold, SmtpMode, TestAuthority};
 use mimorya_core::demo::tenant;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -27,6 +29,19 @@ impl MailServers {
     pub async fn start(accounts: Accounts) -> Self {
         let authority = TestAuthority::new();
         let imap = FakeImap::start(&authority, accounts.clone()).await;
+        let smtp = FakeSmtp::start(&authority, SmtpMode::StartTls, accounts).await;
+        Self {
+            authority,
+            imap,
+            smtp,
+        }
+    }
+
+    /// The same, the IMAP server answering an account only once `hold`
+    /// lets it through.
+    pub async fn held(accounts: Accounts, hold: Arc<Hold>) -> Self {
+        let authority = TestAuthority::new();
+        let imap = FakeImap::held(&authority, accounts.clone(), hold).await;
         let smtp = FakeSmtp::start(&authority, SmtpMode::StartTls, accounts).await;
         Self {
             authority,

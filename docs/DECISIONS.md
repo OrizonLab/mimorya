@@ -14148,14 +14148,22 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - le mot de passe est scellé sous le nom `mail-account/<connecteur>/<personne>`
       (AES-256-GCM, lié à l'entreprise). Hors d'une connexion, seul `sealed_with` le
       remet, à la fonction qui le scelle ;
-    - il n'est gardé que pour les hôtes vérifiés : la ligne du connecteur est
-      verrouillée pendant l'écriture, et un changement de serveurs survenu pendant la
-      vérification est refusé ;
+    - il n'est gardé que pour les hôtes de la messagerie au moment de la
+      vérification : les serveurs IMAP et SMTP où la personne vient de se connecter,
+      et l'agenda déclaré, que « Mon compte » lui montre avant qu'elle relie (il n'est
+      vérifié à la liaison qu'avec le lot 69f) ;
+    - il est écrit sous le verrou d'administration de l'entreprise, que tient tout
+      changement du connecteur et toute désactivation d'un compte, puis sous le
+      verrou de la ligne du compte de la personne et de celle du connecteur : un
+      changement d'hôte ou une désactivation survenus pendant la vérification sont
+      refusés (409 et 403), jamais croisés ;
     - il part avec son retrait par la personne, la désactivation de son compte, son
       effacement, le connecteur et l'entreprise. Il part aussi quand un serveur change
       d'hôte (pas pour un port ni une sécurité) : un mot de passe ne suit jamais la
-      messagerie vers un hôte où la personne ne s'est pas connectée, et l'audit du
-      changement compte les comptes retirés ;
+      messagerie vers un hôte qui n'était pas le sien quand la personne l'a relié, et
+      l'audit du changement compte les comptes retirés ;
+    - le relier de nouveau (un mot de passe changé chez l'hébergeur) remplace celui
+      gardé, et l'audit le dit (`replaced`) ;
     - l'audit dit qui a relié, retiré ou vu refuser un compte, jamais l'identifiant ni
       le mot de passe. L'export de la personne dit l'identifiant et la date, jamais le
       mot de passe. L'administration voit combien de personnes ont relié un compte,

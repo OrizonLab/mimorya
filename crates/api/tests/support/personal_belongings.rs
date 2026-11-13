@@ -10,11 +10,12 @@ use uuid::Uuid;
 use super::personal_export::mission;
 use super::retention::owner;
 
-/// What a company's people share: a connector, a Telegram bot and an
-/// identity provider.
+/// What a company's people share: a connector, its standard mail, a
+/// Telegram bot and an identity provider.
 pub struct CompanyParts {
     pub tenant_id: Uuid,
     connector: Uuid,
+    mail: Uuid,
     gateway: Uuid,
     provider: Uuid,
 }
@@ -25,13 +26,29 @@ pub struct Owned {
     pub run: Uuid,
 }
 
-/// The connector, bot and identity provider of the company `tenant_id`;
-/// `bot` is the bot's Telegram number.
+/// The connector, standard mail (the company's own if it has one: one per
+/// company), bot and identity provider of the company `tenant_id`; `bot` is
+/// the bot's Telegram number.
 pub async fn company_parts(tenant_id: Uuid, mark: &str, bot: u64) -> CompanyParts {
     let owner = owner().await;
     let connector = sqlx::query_scalar(
         "insert into connector_instances (tenant_id, type, name) \
          values ($1, 'mcp', 'connecteur-' || $2) returning id",
+    )
+    .bind(tenant_id)
+    .bind(mark)
+    .fetch_one(&owner)
+    .await
+    .unwrap();
+    let mail = sqlx::query_scalar(
+        "with found as (select id from connector_instances \
+         where tenant_id = $1 and type = 'mail_server'), \
+         made as (insert into connector_instances (tenant_id, type, name, config) \
+         select $1, 'mail_server', 'messagerie-' || $2, \
+         '{\"imap\": {\"host\": \"imap.exemple.test\", \"port\": 993}, \
+         \"smtp\": {\"host\": \"smtp.exemple.test\", \"port\": 465, \"security\": \"tls\"}}' \
+         where not exists (select 1 from found) returning id) \
+         select id from found union all select id from made",
     )
     .bind(tenant_id)
     .bind(mark)
@@ -62,6 +79,7 @@ pub async fn company_parts(tenant_id: Uuid, mark: &str, bot: u64) -> CompanyPart
     CompanyParts {
         tenant_id,
         connector,
+        mail,
         gateway,
         provider,
     }
@@ -71,8 +89,8 @@ pub async fn company_parts(tenant_id: Uuid, mark: &str, bot: u64) -> CompanyPart
 /// summary and its Telegram thread) seen by `unit` when given, a personal memory, a task, a
 /// trigger, a mission, a run with its tool call, validation, deliverable
 /// and consumption (`tokens` in, half as many out), a session, a linked
-/// account, a server authorization, a Telegram identity (`telegram`), a
-/// sign-in and a SCIM account.
+/// account, an account at the standard mail, a server authorization, a
+/// Telegram identity (`telegram`), a sign-in and a SCIM account.
 pub async fn belongings(
     parts: &CompanyParts,
     person: Uuid,
@@ -233,9 +251,23 @@ async fn run(
     run
 }
 
-/// The person's linked account, server authorization, Telegram identity
-/// and sign-in, through the company's parts.
+/// The person's linked account, account at the standard mail, server
+/// authorization, Telegram identity and sign-in, through the company's
+/// parts.
 async fn links(owner: &PgPool, parts: &CompanyParts, person: Uuid, mark: &str, telegram: u64) {
+    sqlx::query(
+        "insert into mail_accounts (tenant_id, connector_id, user_id, username, \
+         password_ciphertext, password_iv, password_tag, key_version) \
+         values ($1, $2, $3, 'compte-' || $4, convert_to('chiffré-' || $4, 'UTF8'), '\\x00', \
+         '\\x00', 1)",
+    )
+    .bind(parts.tenant_id)
+    .bind(parts.mail)
+    .bind(person)
+    .bind(mark)
+    .execute(owner)
+    .await
+    .unwrap();
     sqlx::query(
         "insert into account_links (tenant_id, connector_id, user_id, subject, address, scopes, \
          refresh_ciphertext, refresh_iv, refresh_auth_tag, refresh_key_version) \

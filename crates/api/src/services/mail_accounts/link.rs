@@ -5,8 +5,10 @@
 //! SMTP server each signed in to, over TLS, before anything is kept. A
 //! refused account is never kept. The password is sealed for this company,
 //! connector and person alone, and kept only while the servers it was
-//! checked against are still the company's: a change made meanwhile is
-//! refused, never followed.
+//! checked against are still the company's and the person's account is
+//! still active: a change made meanwhile is refused, never followed. The
+//! account is written under the administration lock, which every change of
+//! the connector and every deactivation holds: neither can cross it.
 
 use mimorya_connectors::outbound::{Cause, NetworkPolicy};
 use mimorya_connectors::standard_mail::{
@@ -15,6 +17,7 @@ use mimorya_connectors::standard_mail::{
 };
 use mimorya_core::DomainError;
 use mimorya_db::Database;
+use mimorya_db::repositories::account_links::lock_active_account;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::mail_accounts::{lock_mail_connector, put_mail_account};
 use serde_json::json;
@@ -61,9 +64,13 @@ impl MailLinking<'_> {
         let mut tx = self.db.begin(tenant_id).await?;
         let instance = mail_server_of(&mut tx).await?;
         tx.commit().await?;
-        let instance = instance
-            .filter(|instance| instance.enabled)
-            .ok_or_else(no_mail_server)?;
+        let instance = instance.ok_or_else(no_mail_server)?;
+        if !instance.enabled {
+            return Err(DomainError::unavailable(
+                "La messagerie standard de l’entreprise est désactivée",
+            )
+            .into());
+        }
         let config = MailServerConfig::read(&instance.config)
             .map_err(|error| DomainError::unavailable(error.to_string()))?;
         let login = MailLogin::new(username, password).map_err(DomainError::validation)?;
@@ -111,6 +118,11 @@ pub async fn link_mail_account(
     let name = sealed_name(connector_id, user_id);
     let sealed = login.sealed_with(|password| cipher.seal(tenant_id, &name, password))?;
     let mut tx = linking.db.begin(tenant_id).await?;
+    // No change of the connector nor deactivation crosses the writing.
+    tx.lock_administration().await?;
+    if !lock_active_account(&mut tx, user_id).await? {
+        return Err(DomainError::forbidden("Compte désactivé pendant la vérification").into());
+    }
     // The servers it was checked against, still the company's.
     let current = lock_mail_connector(&mut tx, connector_id, MAIL_SERVER).await?;
     let unchanged = current.is_some_and(|(enabled, stored)| {

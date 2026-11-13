@@ -133,6 +133,28 @@ async fn an_account_is_kept_once_both_servers_accept_it() {
     assert!(exported.contains(USERNAME), "{exported}");
     assert!(!exported.contains(PASSWORD));
 
+    // Linked again (a password changed at the host): replaced, one kept.
+    let since = latest_entry(&api).await;
+    let again = paul.put(MAIL, account(USERNAME, PASSWORD)).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", again.text());
+    let (_, resealed) = stored(&api.app, user::PAUL).await.unwrap();
+    assert_ne!(resealed, sealed);
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let kept: i64 = sqlx::query_scalar("select count(*) from mail_accounts")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    let said: Value = sqlx::query_scalar(
+        "select metadata from audit_log where id > $1 and action = 'mail_account.linked'",
+    )
+    .bind(since)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(kept, 1);
+    assert_eq!(said, json!({ "replaced": true }));
+
     // Removed by its person: gone, and said so the second time.
     let since = latest_entry(&api).await;
     let removed = paul.delete(MAIL).await;
