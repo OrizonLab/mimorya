@@ -2,11 +2,14 @@
 //! authority: over implicit TLS, over STARTTLS, or in clear offering no
 //! STARTTLS but `AUTH` all the same (what a client must never answer). It
 //! takes `EHLO`, `STARTTLS`, `AUTH PLAIN` and `AUTH LOGIN` (those it
-//! offers) for its accounts, `NOOP`, `RSET` and `QUIT`, and notes each
+//! offers) for its accounts, `NOOP`, `RSET` and `QUIT`, and, once an account
+//! signed in, an e-mail (`MAIL`, `RCPT`, `DATA`, `delivery`). It notes each
 //! command with the layer it came over (`clair` or `tls`), never a
 //! credential. It may also slip answers in clear after its STARTTLS
-//! go-ahead, fall silent once it has greeted, greet without end, or quote
-//! the password it refused.
+//! go-ahead, fall silent once it has greeted, greet without end, quote the
+//! password it refused, refuse a recipient, or refuse an e-mail, or leave
+//! without answer, once its text is handed; and, on hearing a command,
+//! leave, fall silent or answer at length instead (`instead`).
 
 use std::net::SocketAddr;
 
@@ -15,6 +18,8 @@ use base64::engine::general_purpose::STANDARD;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
+use super::delivery::{AfterData, Deliveries, Delivery, Envelope, data_text, path};
+use super::instead::{Instead, lengthened};
 use super::lines::next_line;
 use super::{Accounts, Heard, accepts};
 use crate::testing::TestAuthority;
@@ -47,6 +52,12 @@ pub struct SmtpSetup {
     pub quotes_refused_password: bool,
     /// Whether it refuses `AUTH` for now (`454`).
     pub refuses_for_now: bool,
+    /// The recipient it refuses (`550`), if any.
+    pub refuses_recipient: Option<&'static str>,
+    /// What it does once an e-mail's text is handed.
+    pub after_data: AfterData,
+    /// What it does on hearing this command, instead of answering it.
+    pub instead: Option<(&'static str, Instead)>,
 }
 
 impl SmtpSetup {
@@ -59,14 +70,18 @@ impl SmtpSetup {
             greets_endlessly: false,
             quotes_refused_password: false,
             refuses_for_now: false,
+            refuses_recipient: None,
+            after_data: AfterData::Takes,
+            instead: None,
         }
     }
 }
 
-/// A running SMTP server and what it heard.
+/// A running SMTP server, what it heard and the e-mails it took.
 pub struct FakeSmtp {
     pub address: SocketAddr,
     pub heard: Heard,
+    pub deliveries: Deliveries,
 }
 
 impl FakeSmtp {
@@ -77,17 +92,19 @@ impl FakeSmtp {
     pub async fn with(authority: &TestAuthority, setup: SmtpSetup, accounts: Accounts) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("local port");
         let address = listener.local_addr().expect("local address");
-        let heard = Heard::default();
-        let (acceptor, noted) = (authority.acceptor(), heard.clone());
+        let (heard, deliveries) = (Heard::default(), Deliveries::default());
+        let (acceptor, noted, taken) = (authority.acceptor(), heard.clone(), deliveries.clone());
         tokio::spawn(async move {
             while let Ok((socket, _)) = listener.accept().await {
                 let (acceptor, noted, accounts) =
                     (acceptor.clone(), noted.clone(), accounts.clone());
+                let taken = taken.clone();
                 tokio::spawn(async move {
                     let server = Server {
                         setup,
                         accounts: &accounts,
                         heard: &noted,
+                        deliveries: &taken,
                     };
                     if setup.mode == SmtpMode::ImplicitTls {
                         if let Ok(tls) = acceptor.accept(socket).await {
@@ -101,7 +118,11 @@ impl FakeSmtp {
                 });
             }
         });
-        Self { address, heard }
+        Self {
+            address,
+            heard,
+            deliveries,
+        }
     }
 }
 
@@ -116,6 +137,7 @@ struct Server<'a> {
     setup: SmtpSetup,
     accounts: &'a Accounts,
     heard: &'a Heard,
+    deliveries: &'a Deliveries,
 }
 
 impl Server<'_> {
@@ -139,6 +161,7 @@ impl Server<'_> {
         {
             return End::Closed;
         }
+        let (mut signed_in, mut envelope) = (false, Envelope::default());
         while let Some(line) = next_line(&mut stream).await {
             let (verb, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
             let verb = verb.to_ascii_uppercase();
@@ -149,6 +172,12 @@ impl Server<'_> {
             }
             if self.setup.falls_silent {
                 continue;
+            }
+            let instead = self.setup.instead.filter(|(at, _)| *at == verb);
+            match instead.map(|(_, instead)| instead) {
+                Some(Instead::Drops) => return End::Closed,
+                Some(Instead::Hangs) => return std::future::pending().await,
+                _ => {}
             }
             let answer = match verb.as_str() {
                 "EHLO" | "HELO" => self.capabilities(secure),
@@ -164,25 +193,92 @@ impl Server<'_> {
                 }
                 "AUTH" if self.setup.refuses_for_now => "454 4.7.0 réessayez plus tard".into(),
                 "AUTH" => match self.authenticated(&mut stream, argument).await {
-                    Some(Ok(())) => "235 2.7.0 authentifié".into(),
+                    Some(Ok(())) => {
+                        signed_in = true;
+                        "235 2.7.0 authentifié".into()
+                    }
                     Some(Err(password)) if self.setup.quotes_refused_password => {
                         format!("535 5.7.8 {password} refusé")
                     }
                     Some(Err(_)) => "535 5.7.8 identifiants invalides".into(),
                     None => return End::Closed,
                 },
-                "NOOP" | "RSET" => "250 2.0.0 ok".into(),
+                "MAIL" | "RCPT" | "DATA" if !signed_in => {
+                    "530 5.7.0 authentification exigée".into()
+                }
+                "MAIL" => match path(argument, "FROM") {
+                    Some(from) => {
+                        envelope = Envelope {
+                            from: Some(from),
+                            to: Vec::new(),
+                        };
+                        "250 2.1.0 ok".into()
+                    }
+                    None => "501 5.5.4 expéditeur illisible".into(),
+                },
+                "RCPT" => match (path(argument, "TO"), &envelope.from) {
+                    (Some(to), Some(_)) if self.setup.refuses_recipient == Some(to.as_str()) => {
+                        "550 5.1.1 destinataire inconnu".into()
+                    }
+                    (Some(to), Some(_)) => {
+                        envelope.to.push(to);
+                        "250 2.1.5 ok".into()
+                    }
+                    _ => "503 5.5.1 expéditeur d’abord".into(),
+                },
+                "DATA" if envelope.to.is_empty() => "503 5.5.1 destinataire d’abord".into(),
+                "DATA" => match self.data(&mut stream, std::mem::take(&mut envelope)).await {
+                    Some(answer) => answer.into(),
+                    None => return End::Closed,
+                },
+                "RSET" => {
+                    envelope = Envelope::default();
+                    "250 2.0.0 ok".into()
+                }
+                "NOOP" => "250 2.0.0 ok".into(),
                 "QUIT" => {
                     let _ = say(&mut stream, "221 2.0.0 au revoir").await;
                     return End::Closed;
                 }
                 _ => "502 5.5.2 commande non prise en charge".into(),
             };
+            let answer = match instead {
+                Some(_) => lengthened(&answer),
+                None => answer,
+            };
             if say(&mut stream, &answer).await.is_err() {
                 return End::Closed;
             }
         }
         End::Closed
+    }
+
+    /// The text of the e-mail `envelope` names, then what the server does
+    /// with it: its answer, or `None` once it leaves without one.
+    async fn data<S: AsyncRead + AsyncWrite + Unpin>(
+        &self,
+        stream: &mut BufReader<S>,
+        envelope: Envelope,
+    ) -> Option<&'static str> {
+        say(stream, "354 texte, fini par un point seul")
+            .await
+            .ok()?;
+        let text = data_text(stream).await?;
+        match self.setup.after_data {
+            AfterData::Takes => {
+                let from = envelope.from.unwrap_or_default();
+                let to = envelope.to;
+                self.deliveries.add(Delivery { from, to, text });
+                Some("250 2.0.0 pris en charge")
+            }
+            AfterData::Refuses => Some("554 5.7.1 e-mail refusé"),
+            AfterData::RefusesForNow => Some("451 4.3.0 réessayez plus tard"),
+            AfterData::Drops => None,
+            AfterData::Hangs => {
+                std::future::pending::<()>().await;
+                None
+            }
+        }
     }
 
     /// What `EHLO` lists: STARTTLS while in clear if offered, `AUTH` once

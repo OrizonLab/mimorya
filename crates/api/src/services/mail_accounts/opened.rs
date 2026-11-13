@@ -8,10 +8,11 @@
 //! banned by its server.
 
 use chrono::{DateTime, Utc};
-use mimorya_core::tools::{AccountAccessError, MailAccount};
+use mimorya_core::tools::{AccountAccessError, MailAccount, MailServerRole};
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::mail_accounts::{delete_refused_mail_account, get_mail_account};
+use mimorya_db::repositories::users::get_user;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -56,8 +57,11 @@ pub async fn opened_mail_account(
     let account = get_mail_account(&mut tx, instance.id, user_id)
         .await
         .map_err(internal)?;
+    // What the person sends from: their account's address.
+    let person = get_user(&mut tx, user_id).await.map_err(internal)?;
     tx.commit().await.map_err(internal)?;
     let account = account.ok_or(AccountAccessError::NotLinked)?;
+    let address = person.ok_or(AccountAccessError::NotLinked)?.email;
     let password = cipher
         .open(
             tenant_id,
@@ -67,6 +71,7 @@ pub async fn opened_mail_account(
         .map_err(internal)?;
     Ok(MailAccount::new(
         instance.config,
+        address,
         account.username,
         password,
         account.linked_at,
@@ -74,12 +79,13 @@ pub async fn opened_mail_account(
 }
 
 /// Removes, audited, the account `user_id` linked on `linked_at`, which
-/// the company's server refused; one linked again since stays.
+/// the company's `server` refused; one linked again since stays.
 pub async fn refused_mail_account(
     db: &Database,
     tenant_id: Uuid,
     user_id: Uuid,
     linked_at: DateTime<Utc>,
+    server: MailServerRole,
 ) -> anyhow::Result<bool> {
     let mut tx = db.begin(tenant_id).await?;
     let Some(instance) = mail_server_of(&mut tx).await? else {
@@ -93,7 +99,7 @@ pub async fn refused_mail_account(
             AuditEntry::new(tenant_id, "system", MAIL_ACCOUNT_REFUSED, "success")
                 .on_behalf_of(user_id)
                 .resource("connector", instance.id)
-                .metadata(json!({ "server": "imap" })),
+                .metadata(json!({ "server": server.as_str() })),
         )
         .await?;
     }

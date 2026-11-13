@@ -5,7 +5,7 @@ mod accounts;
 mod contract;
 mod typed;
 
-pub use accounts::{AccountAccessError, LinkedAccounts, MailAccount};
+pub use accounts::{AccountAccessError, LinkedAccounts, MailAccount, MailServerRole};
 pub use contract::{
     BoundAuthorization, Citation, Deliverable, DeliverableInput, DeliverableService,
     DeliverableStatus, Tool, ToolContext, ToolInfo, ToolRef, ToolResult, ToolServices,

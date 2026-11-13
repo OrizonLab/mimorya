@@ -14,7 +14,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use mimorya_core::account_links::{LinkKind, sealed_as};
-use mimorya_core::tools::{AccountAccessError, LinkedAccounts, MailAccount};
+use mimorya_core::tools::{AccountAccessError, LinkedAccounts, MailAccount, MailServerRole};
 use mimorya_db::repositories::account_links::{AccountLinkRow, get_account_link};
 use mimorya_db::repositories::connectors::list_connector_instances;
 use uuid::Uuid;
@@ -69,10 +69,10 @@ impl LinkedAccounts for PersonAccounts {
         opened_mail_account(&self.service.db, cipher, self.tenant_id, self.user_id).await
     }
 
-    async fn mail_account_refused(&self, linked_at: DateTime<Utc>) {
+    async fn mail_account_refused(&self, linked_at: DateTime<Utc>, server: MailServerRole) {
         let db = &self.service.db;
-        if let Err(error) = refused_mail_account(db, self.tenant_id, self.user_id, linked_at).await
-        {
+        let (tenant_id, user_id) = (self.tenant_id, self.user_id);
+        if let Err(error) = refused_mail_account(db, tenant_id, user_id, linked_at, server).await {
             tracing::error!(error = %error, "Refused mail account not removed");
         }
     }

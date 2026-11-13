@@ -12,6 +12,7 @@ use mimorya_connectors::standard_mail::TRY_LATER;
 use mimorya_connectors::testing::{FakeImap, ImapBehaviour, ImapSetup, TestAuthority};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::demo::user;
+use mimorya_core::tools::MailServerRole;
 use serde_json::json;
 use support::linked_accounts::{call, error_of};
 use support::mail::{MAIL_LOCAL, PASSWORD, USER, WRONG, accounts, hides, trusting};
@@ -231,7 +232,7 @@ async fn a_refused_account_is_reported_once_and_not_tried_again() {
     let said = error_of(&refused);
     assert!(said.contains("refuse le compte relié"), "{said}");
     hides(&said, WRONG);
-    assert_eq!(ports.refused_mail_accounts(), [linked_at()]);
+    assert_eq!(ports.mail_refusals(), [(linked_at(), MailServerRole::Imap)]);
     // Removed: the next call reaches no server.
     let again = call(&paul, "mail_search", json!({})).await;
     assert!(error_of(&again).contains("n’a relié aucun compte"));

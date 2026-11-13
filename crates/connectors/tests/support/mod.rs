@@ -10,6 +10,7 @@ pub mod mcp;
 pub mod microsoft365;
 pub mod oauth;
 pub mod rest;
+pub mod sending;
 
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -1,72 +1,23 @@
-//! The e-mail Gmail sends (ADR-123), written as RFC 5322 asks: its
-//! recipients, plain addresses only, its subject in encoded words
-//! (RFC 2047) and its text in UTF-8, both in base 64, so that nothing the
-//! model wrote can end a header or add one, whatever the validation let
-//! through; then the whole in URL-safe base 64, as Gmail reads it (`raw`).
-//! Gmail adds the sender (the person whose token sends it), the date and
-//! the message's identifier.
+//! The e-mail Gmail sends (ADR-123): its text as the platform writes it
+//! (`delegated::message_text`, ADR-205), without a sender's header, since
+//! Gmail adds the sender (the person whose token sends it), the date and the
+//! message's identifier; then the whole in URL-safe base 64, as Gmail reads
+//! it (`raw`).
 
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE};
+use base64::engine::general_purpose::URL_SAFE;
 
-use crate::delegated::{NewMail, is_plain_address};
-
-/// The bytes of one encoded word: 39 encode to 52 characters, a word of 64
-/// with its `=?UTF-8?B?` and `?=`; after `Subject: `, its line keeps
-/// within the 76 characters RFC 2047 allows a line of encoded words.
-const WORD_BYTES: usize = 39;
-/// The characters of a line of the text in base 64 (RFC 2045).
-const LINE_CHARS: usize = 76;
+use crate::delegated::{NewMail, message_text};
 
 /// The message, as Gmail's `raw`; none when an address is not a plain one
 /// (the validation refuses it first).
 pub fn raw_message(mail: &NewMail) -> Option<String> {
-    let all = mail.to.iter().chain(&mail.cc);
-    if all.clone().any(|address| !is_plain_address(address)) {
-        return None;
-    }
-    let mut message = format!("To: {}\r\n", folded(&mail.to));
-    if !mail.cc.is_empty() {
-        message.push_str(&format!("Cc: {}\r\n", folded(&mail.cc)));
-    }
-    message.push_str(&format!("Subject: {}\r\n", encoded_words(&mail.subject)));
-    message.push_str("MIME-Version: 1.0\r\n");
-    message.push_str("Content-Type: text/plain; charset=\"UTF-8\"\r\n");
-    message.push_str("Content-Transfer-Encoding: base64\r\n\r\n");
-    let text = STANDARD.encode(mail.body.replace('\n', "\r\n"));
-    for line in text.as_bytes().chunks(LINE_CHARS) {
-        message.push_str(&String::from_utf8_lossy(line));
-        message.push_str("\r\n");
-    }
-    Some(URL_SAFE.encode(message))
-}
-
-/// Addresses one per line, so that ten long ones keep each line short.
-fn folded(addresses: &[String]) -> String {
-    addresses.join(",\r\n ")
-}
-
-/// A text as encoded words, one per line, each cut between characters:
-/// readers join them back whole (RFC 2047, 6.2).
-fn encoded_words(text: &str) -> String {
-    let mut words = Vec::new();
-    let mut word = String::new();
-    for c in text.chars() {
-        if word.len() + c.len_utf8() > WORD_BYTES {
-            words.push(std::mem::take(&mut word));
-        }
-        word.push(c);
-    }
-    words.push(word);
-    words
-        .iter()
-        .map(|word| format!("=?UTF-8?B?{}?=", STANDARD.encode(word)))
-        .collect::<Vec<_>>()
-        .join("\r\n ")
+    message_text(mail, &[]).map(|text| URL_SAFE.encode(text))
 }
 
 #[cfg(test)]
 mod tests {
+    use base64::engine::general_purpose::STANDARD;
     use serde_json::json;
 
     use super::*;

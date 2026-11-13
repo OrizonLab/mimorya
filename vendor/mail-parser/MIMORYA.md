@@ -32,8 +32,16 @@ lisent.
 Les tests de `crates/connectors` vérifient la borne (`standard_mail::tools::message`) :
 30 000 e-mails joints tels quels ou en quoted-printable, 20 000 en base64 dans un
 multipart, et une chaîne qui alterne e-mails tels quels et e-mails décodés, chacun lu à
-une profondeur d'exactement 16. `mail_read` lit 20 000 e-mails joints sous chacune des
-trois premières formes à travers le faux serveur IMAP (`mail_tools_hostile.rs`).
+une profondeur d'exactement 16 ; une chaîne qui alterne `multipart/digest` (partie sans
+type), `message/global` et base64, lue à 28 niveaux sans la borne, l'est à 16 au plus
+(la borne peut y couper un niveau plus tôt, jamais plus tard). `mail_read` lit 20 000 e-mails joints
+tels quels, en quoted-printable et en base64 (directement dans l'e-mail) à travers le
+faux serveur IMAP (`mail_tools_hostile.rs`).
+
+Les `debug_assert!` d'origine de mail-parser peuvent paniquer sur du MIME imbriqué mal
+formé, dans une construction de debug seulement : le correctif n'en ajoute aucune dans la
+borne, et la production est construite en `--release`, où elles n'existent pas. Une API
+lancée en debug ne doit pas lire de boîtes hostiles.
 
 ## Mettre à jour
 

@@ -33,7 +33,7 @@ Repères à l'intérieur des crates :
   (ce qu'une politique peut dire, ADR-022 ; ce qu'une autorisation accorde et le délai de
   sa proposition, `grants.rs`, ADR-168), `core/src/tools/`
   (contrat d'outil, outils typés, comptes reliés de la personne servie : `accounts.rs`,
-  ADR-117, et son compte à la messagerie standard, ouvert pour un appel, ADR-205), `core/src/time_zone.rs` (fuseau de la plateforme : date donnée au modèle,
+  ADR-117, et son compte à la messagerie standard, ouvert pour un appel, le serveur qui le refuse nommé (`MailServerRole`), ADR-205), `core/src/time_zone.rs` (fuseau de la plateforme : date donnée au modèle,
   jours des outils), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/account_links/` (comptes que chacun relie :
   application Microsoft 365 ou client Google Workspace déclaré, permissions déléguées,
@@ -143,7 +143,7 @@ Repères à l'intérieur des crates :
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
   de l'exploitant, `proxy.rs`, ADR-162 ; connexion hors HTTP aux serveurs de messagerie d'une entreprise, aux mêmes règles (`tcp.rs`), chiffrée par TLS (`tls.rs`) et passant par le mandataire (`tunnel.rs`), ce qu'elle lit borné (`bounded.rs`), ADR-205),
-  `connectors/src/standard_mail/` (messagerie standard déclarée par l'entreprise, une par entreprise, sans secret, et noms de ses outils, `declaration.rs`, son type de connecteur, `connector.rs`, serveurs de messagerie d'une entreprise, IMAP et SMTP, `servers.rs`, compte d'une personne, son mot de passe jamais écrit, `login.rs`, connexion IMAP en TLS implicite, `imap.rs`, et SMTP en TLS implicite ou STARTTLS exigé, `smtp.rs`, STARTTLS dit par la plateforme octet par octet, `starttls.rs`, connexion donnée à lettre, `wire.rs`, littéraux IMAP annoncés au-delà du budget refusés avant toute réservation et réponses illisibles refusées, lues par l'analyseur même d'async-imap, `literals.rs`, et ses outils, `mail_search` et `mail_read`, qui lisent la boîte de la personne servie : sa session IMAP, son compte ouvert pour l'appel (`tools/person.rs`), dossiers examinés et noms des e-mails (`tools/folders.rs`), mots cherchés (`tools/criteria.rs`), e-mails lus par mail-parser (`tools/message.rs`), ADR-205),
+  `connectors/src/standard_mail/` (messagerie standard déclarée par l'entreprise, une par entreprise, sans secret, et noms de ses outils, `declaration.rs`, son type de connecteur, `connector.rs`, serveurs de messagerie d'une entreprise, IMAP et SMTP, `servers.rs`, compte d'une personne, son mot de passe jamais écrit, `login.rs`, connexion IMAP en TLS implicite, `imap.rs`, et SMTP en TLS implicite ou STARTTLS exigé, `smtp.rs`, STARTTLS dit par la plateforme octet par octet, `starttls.rs`, connexion donnée à lettre, `wire.rs`, littéraux IMAP annoncés au-delà du budget refusés avant toute réservation et réponses illisibles refusées, lues par l'analyseur même d'async-imap, `literals.rs`, et ses outils, `mail_search` et `mail_read`, qui lisent la boîte de la personne servie : sa session IMAP, son compte ouvert pour l'appel (`tools/person.rs`), dossiers examinés et noms des e-mails (`tools/folders.rs`), mots cherchés (`tools/criteria.rs`), e-mails lus par mail-parser (`tools/message.rs`), et `mail_send`, qui envoie depuis elle ce qu'elle valide (`tools/send.rs`), son expéditeur, son texte et son enveloppe (`tools/outgoing.rs`), remis au serveur SMTP, ce qu'on sait d'un échec dit, rien parti ou peut-être parti (`tools/submission.rs`), ADR-205),
   `connectors/src/rest/` (API REST décrites par l'entreprise : déclaration et ses
   règles, requête, réponse bornée, outil d'une opération, ADR-112 ; opérations lues
   d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`
@@ -156,7 +156,7 @@ Repères à l'intérieur des crates :
   `connectors/src/delegated/` (ce que partagent les outils d'un compte relié : client
   borné du fournisseur, jeton de la personne et refus dits en français, champs gardés,
   ADR-117, ADR-122 ; e-mail et rendez-vous écrits en son nom, ce qu'ils envoient ne
-  cachant rien (`compose.rs`, `new_mail.rs`, `new_event.rs`), ADR-119, ADR-123),
+  cachant rien (`compose.rs`, `new_mail.rs`, `new_event.rs`), ADR-119, ADR-123 ; texte d'un e-mail écrit par la plateforme, commun à Gmail et à la messagerie standard (`message_text.rs`), ADR-205),
   `connectors/src/slack/` (API Web de Slack telle que la passerelle d'une entreprise
   l'atteint, ADR-125), `connectors/src/telegram/` (API des bots de Telegram, son jeton
   jamais écrit, ADR-133), `connectors/src/teams/` (Microsoft tel qu'un bot Teams
@@ -168,7 +168,7 @@ Repères à l'intérieur des crates :
   OAuth avec son serveur d'autorisation, hostile à volonté, qui enregistre des clients (`oauth/`, ADR-171, ADR-173), fournisseur OpenID Connect quand un test y connecte quelqu'un (`oauth/openid.rs`, ADR-175), ses métadonnées retenues jusqu'à ce que le test les laisse passer (`oauth/metadata_endpoint.rs`), et sa configuration OpenID de même, mandataire
   HTTP qui note où il va (`proxy.rs`), API REST, Microsoft Graph, Gmail et agenda Google,
   Slack, qui signe les événements comme lui, Telegram, Microsoft pour Teams, qui signe
-  les activités avec une clé de test, autorité de certificats des tests et serveur qui parle TLS, mandataire joint en TLS, `tls.rs`, serveurs IMAP et SMTP simulés en TLS, en STARTTLS ou en clair, qui notent ce qu'ils entendent sans les mots de passe, et peuvent se taire, répondre sans fin, glisser des réponses en clair ou recopier un mot de passe refusé, retenir sa réponse à un compte, `mail/`, dossiers d'un serveur IMAP simulé, recherchés et lus, `mail/mailbox.rs`, ADR-205).
+  les activités avec une clé de test, autorité de certificats des tests et serveur qui parle TLS, mandataire joint en TLS, `tls.rs`, serveurs IMAP et SMTP simulés en TLS, en STARTTLS ou en clair, qui notent ce qu'ils entendent sans les mots de passe, et peuvent se taire, répondre sans fin, glisser des réponses en clair ou recopier un mot de passe refusé, retenir sa réponse à un compte, `mail/`, e-mails que le serveur SMTP simulé prend, refuse ou laisse sans réponse, `mail/delivery.rs`, et ce qu'il fait au lieu de répondre à une commande, partir, se taire ou répondre longuement, `mail/instead.rs`, dossiers d'un serveur IMAP simulé, recherchés et lus, `mail/mailbox.rs`, ADR-205).
 - `api/src/plugins/` (contexte de requête, limitation de débit (globale par processus ;
   d'authentification partagée par PostgreSQL, clés en HMAC sous une clé dérivée de la clé maître, `shared_limit.rs`, ADR-088, ADR-152), CSRF (sauf la réception
   des réponses SAML, ADR-068, l'envoi à un déclencheur, ADR-109, les événements de
