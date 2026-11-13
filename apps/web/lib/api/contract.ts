@@ -99,6 +99,16 @@ revokesGrants: boolean, linked: LinkedAccount | null, };
  */
 export type AccountLinks = { connectors: Array<AccountLinkView>, };
 
+/**
+ * `GET /account/mail`.
+ */
+export type AccountMail = {
+/**
+ * The company's standard mail, if the person may link an account
+ * there or linked one.
+ */
+mail: MailAccountView | null, };
+
 export type AccountStatus = "active" | "invited" | "disabled";
 
 /**
@@ -1018,6 +1028,12 @@ export type ExportLink = { connector: string,
  */
 subject: string, address: string, scopes: string, createdAt: string, };
 
+/**
+ * The person's account at the company's standard mail, without its
+ * password (ADR-205).
+ */
+export type ExportMailAccount = { connector: string, username: string, linkedAt: string, };
+
 export type ExportMemory = { kind: string, title: string, content: string, status: string, createdAt: string, expiresAt: string | null, };
 
 export type ExportMessage = {
@@ -1532,6 +1548,8 @@ toGrant: Array<string>,
  */
 can: Array<string>, linkedAt: string, };
 
+export type LinkedMailAccount = { username: string, linkedAt: string, };
+
 /**
  * Body of `PUT /admin/llm` and `PUT /admin/llm/verification`: a provider of
  * the company's own.
@@ -1591,6 +1609,25 @@ verification: LlmSettingsView | null, providers: Array<ProviderKind>,
 endpoints: Array<string>, };
 
 /**
+ * Body of `PUT /account/mail`: the identifier and password the person
+ * signs in with at their company's mail servers. The password is taken
+ * as typed, spaces included, and never printed.
+ */
+export type MailAccountLink = { username: string, password: string, };
+
+export type MailAccountView = { connectorId: string, name: string,
+/**
+ * An account may be linked: the mail is enabled and the person may
+ * use connectors.
+ */
+available: boolean,
+/**
+ * The hosts the person's password goes to: its IMAP and SMTP servers'
+ * and its agenda's.
+ */
+hosts: Array<string>, linked: LinkedMailAccount | null, };
+
+/**
  * The IMAP server, over implicit TLS (993 usually).
  */
 export type MailImapServer = { host: string, port: number, };
@@ -1602,7 +1639,11 @@ export type MailServerView = { imap: MailImapServer, smtp: MailSmtpServer, calda
 /**
  * Its tools may send e-mail and create events.
  */
-writeTools: boolean, };
+writeTools: boolean,
+/**
+ * How many people linked their account there.
+ */
+accounts: number, };
 
 /**
  * How the SMTP server is secured: TLS from the first byte (465 usually),
@@ -2467,7 +2508,11 @@ approvals: Array<ExportApproval>,
 /**
  * The decisions the person gave on others' runs: theirs alone.
  */
-decisions: Array<ExportDecision>, usage: Array<ExportUsage>, absences: Array<ExportAbsence>, linkedAccounts: Array<ExportLink>, messagingIdentities: Array<ExportIdentity>, serverAuthorizations: Array<ExportAuthorization>, };
+decisions: Array<ExportDecision>, usage: Array<ExportUsage>, absences: Array<ExportAbsence>, linkedAccounts: Array<ExportLink>, messagingIdentities: Array<ExportIdentity>, serverAuthorizations: Array<ExportAuthorization>,
+/**
+ * The account linked at the company's standard mail (ADR-205).
+ */
+mailAccounts: Array<ExportMailAccount>, };
 
 /**
  * The provider the platform offers every company.

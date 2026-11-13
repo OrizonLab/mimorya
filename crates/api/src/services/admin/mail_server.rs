@@ -5,19 +5,14 @@
 //! servers change one by one (`mail_changed`, for `connector_config`).
 
 use mimorya_connectors::outbound::NetworkPolicy;
-use mimorya_connectors::standard_mail::{ImapServer, MAIL_SERVER, MailServerConfig, SmtpServer};
+use mimorya_connectors::standard_mail::{ImapServer, MailServerConfig, SmtpServer};
 use mimorya_core::DomainError;
-use mimorya_db::is_unique_violation;
-use mimorya_db::repositories::audit::append_audit;
-use mimorya_db::repositories::connectors::{
-    NewConnectorInstance, create_connector_instance, list_connector_instances,
-};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use super::connector_config::ConfigChanges;
 use super::connectors::{ConnectorAdmin, PERMISSION};
-use super::{audit_entry, begin_change};
+use super::link_applications::{Declaration, Declared, declare_once};
 use crate::services::AccessContext;
 
 pub struct NewMailServer {
@@ -68,58 +63,34 @@ pub async fn create_mail_server_connector(
     if let Some(problem) = input.config.problem(admin.connectors.network()) {
         return Err(DomainError::validation(problem).into());
     }
-    let tenant_id = access.subject.tenant_id;
-    let mut tx = begin_change(admin.db, access, PERMISSION).await?;
-    let declared = list_connector_instances(&mut tx, false)
-        .await?
-        .iter()
-        .any(|instance| instance.connector_type == MAIL_SERVER);
-    if declared {
-        return Err(DomainError::conflict(
-            "La messagerie standard de l’entreprise est déjà déclarée : modifiez-la, ou \
-             supprimez-la avant d’en déclarer une autre",
-        )
-        .into());
-    }
     let config = serde_json::to_value(&input.config)?;
-    let created = create_connector_instance(
-        &mut tx,
-        NewConnectorInstance {
-            tenant_id,
-            connector_type: MAIL_SERVER,
-            name: &input.name,
-            enabled: input.enabled,
-            config: &config,
-        },
-    )
-    .await;
-    let id = match created {
-        Ok(id) => id,
-        // The name, or another declaration made meanwhile.
-        Err(error) if is_unique_violation(&error) => {
-            return Err(DomainError::conflict(
-                "Un connecteur porte déjà ce nom, ou la messagerie standard est déjà déclarée",
-            )
-            .into());
-        }
-        Err(error) => return Err(error.into()),
+    let declaration = Declaration {
+        declared: Declared::MailServer,
+        name: input.name,
+        enabled: input.enabled,
+        config,
+        secret: None,
+        audited: Map::from_iter([
+            ("imap".into(), json!(input.config.imap)),
+            ("smtp".into(), json!(input.config.smtp)),
+            ("caldav".into(), json!(input.config.caldav)),
+            ("writeTools".into(), json!(input.config.write_tools)),
+        ]),
     };
-    let metadata = json!({
-        "name": input.name,
-        "type": MAIL_SERVER,
-        "enabled": input.enabled,
-        "imap": input.config.imap,
-        "smtp": input.config.smtp,
-        "caldav": input.config.caldav,
-        "writeTools": input.config.write_tools,
-    });
-    append_audit(
-        &mut tx,
-        audit_entry(access, "connector.created", "connector", id).metadata(metadata),
-    )
-    .await?;
-    tx.commit().await?;
-    Ok(id)
+    declare_once(admin, access, declaration).await
+}
+
+/// Whether a change moves the mail to another host, one a person's
+/// password would then go to without their having signed in there: the
+/// accounts linked at it are let go.
+pub(super) fn hosts_moved(before: &Value, after: &Value) -> bool {
+    match (
+        MailServerConfig::read(before),
+        MailServerConfig::read(after),
+    ) {
+        (Ok(before), Ok(after)) => before.hosts() != after.hosts(),
+        _ => false,
+    }
 }
 
 /// The configuration once these changes apply, its servers checked again.
@@ -207,6 +178,23 @@ mod tests {
             ..MailChanges::default()
         };
         assert_eq!(same.audited(&stored), None);
+    }
+
+    #[test]
+    fn only_another_host_lets_the_accounts_go() {
+        let before = serde_json::to_value(declared()).unwrap();
+        let mut ported = declared();
+        ported.smtp.port = 587;
+        ported.smtp.security = SmtpSecurity::StartTls;
+        ported.write_tools = true;
+        let ported = serde_json::to_value(ported).unwrap();
+        assert!(!hosts_moved(&before, &ported));
+        let mut moved = declared();
+        moved.imap.host = "mail.example.org".into();
+        assert!(hosts_moved(&before, &serde_json::to_value(moved).unwrap()));
+        let mut agenda = declared();
+        agenda.caldav = Some("https://dav.example.com/".into());
+        assert!(hosts_moved(&before, &serde_json::to_value(agenda).unwrap()));
     }
 
     #[test]

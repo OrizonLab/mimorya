@@ -1,7 +1,7 @@
 //! A company's standard mail as the administration declares and reads it
 //! (`connector:manage`, ADR-205): its IMAP and SMTP servers and its CalDAV
-//! agenda, if any. It holds no secret: each person signs in with their own
-//! account.
+//! agenda, if any, and how many people linked their account there. It
+//! holds no secret: each person signs in with their own account.
 
 use mimorya_connectors::standard_mail::{ImapServer, MailServerConfig, SmtpSecurity, SmtpServer};
 use serde::{Deserialize, Serialize};
@@ -72,6 +72,8 @@ pub struct MailServerView {
     pub caldav: Option<String>,
     /// Its tools may send e-mail and create events.
     pub write_tools: bool,
+    /// How many people linked their account there.
+    pub accounts: i64,
 }
 
 impl From<MailImapServer> for ImapServer {
@@ -118,13 +120,14 @@ impl From<SmtpServer> for MailSmtpServer {
     }
 }
 
-impl From<MailServerConfig> for MailServerView {
-    fn from(config: MailServerConfig) -> Self {
+impl MailServerView {
+    pub fn new(config: MailServerConfig, accounts: i64) -> Self {
         Self {
             imap: config.imap.into(),
             smtp: config.smtp.into(),
             caldav: config.caldav,
             write_tools: config.write_tools,
+            accounts,
         }
     }
 }

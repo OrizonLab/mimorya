@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn keeps_the_rate_limit_windows_past_the_longest() {
         use crate::plugins::rate_limit::{
-            FAILED_LOGIN_WINDOW, RESET_REQUEST_WINDOW, SECOND_FACTOR_WINDOW,
+            FAILED_LOGIN_WINDOW, MAIL_SIGN_IN_WINDOW, RESET_REQUEST_WINDOW, SECOND_FACTOR_WINDOW,
         };
         let kept = RATE_LIMITS_KEPT.to_std().unwrap();
         // The purge itself keeps two hours, whatever it is asked (ADR-152).
@@ -251,6 +251,7 @@ mod tests {
             FAILED_LOGIN_WINDOW,
             RESET_REQUEST_WINDOW,
             SECOND_FACTOR_WINDOW,
+            MAIL_SIGN_IN_WINDOW,
         ] {
             assert!(kept > window, "{window:?}");
         }

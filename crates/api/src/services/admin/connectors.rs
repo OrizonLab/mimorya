@@ -19,6 +19,7 @@ use mimorya_db::repositories::connectors::{
     ConnectorInstanceRow, ConnectorPatch, NewConnectorInstance, create_connector_instance,
     delete_connector_instance, get_connector_instance, update_connector_instance,
 };
+use mimorya_db::repositories::mail_accounts::delete_mail_accounts_of_connector;
 use mimorya_db::{Database, is_unique_violation};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -27,7 +28,7 @@ use super::added_connectors::{added_here, operation_names, prefix_taken, unchang
 use super::connector_authorization::{revoke, take_authorizations};
 use super::connector_config::{ConfigChanges, Editable, RestChanges};
 use super::connector_rules::{ToolPolicyInput, mcp_addition_problem};
-use super::mail_server::MailChanges;
+use super::mail_server::{MailChanges, hosts_moved};
 use super::mcp_config::mcp_config;
 use super::policy_changes::policy_changes;
 use super::{audit_entry, begin_change};
@@ -179,6 +180,7 @@ pub async fn update_connector(
     let mut dropped = Vec::new();
     let mut oauth = None;
     let mut taken = None;
+    let mut accounts_removed = None;
     let mail_servers = changes
         .mail
         .as_ref()
@@ -254,6 +256,10 @@ pub async fn update_connector(
                 write_tools: changes.write_tools,
             };
             let config = editable.changed(config_changes, network)?;
+            // A password never follows the mail to another host (ADR-205).
+            if instance.connector_type == MAIL_SERVER && hosts_moved(&instance.config, &config) {
+                accounts_removed = Some(delete_mail_accounts_of_connector(&mut tx, id).await?);
+            }
             patch.config = Some(config);
             previous_url = changes.url.as_ref().map(|_| current_url);
         }
@@ -287,6 +293,7 @@ pub async fn update_connector(
         "operations": operations,
         "writeTools": changes.write_tools,
         "mailServers": mail_servers,
+        "mailAccountsRemoved": accounts_removed,
         // Only what changed, a description only when it did (ADR-160).
         "toolPolicies": patch
             .tool_policies

@@ -16,6 +16,10 @@ use rustls::pki_types::CertificateDer;
 use super::proxy::OutboundProxy;
 use super::tls::client_config;
 
+/// A root certificate a policy trusts beside the webpki roots: one of the
+/// tests' authorities alone.
+pub type TrustedRoot = CertificateDer<'static>;
+
 /// What the operator allows (environment), never the companies.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NetworkPolicy {

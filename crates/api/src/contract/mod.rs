@@ -4,6 +4,7 @@
 //! A request body is strict: an unknown field is refused, not ignored.
 
 mod account_links;
+mod account_mail;
 pub mod admin;
 mod approval_delegation;
 mod approvals;
@@ -33,6 +34,7 @@ mod stored;
 mod typescript;
 
 pub use account_links::{AccountLinkStart, AccountLinkView, AccountLinks, LinkedAccount};
+pub use account_mail::{AccountMail, LinkedMailAccount, MailAccountLink, MailAccountView};
 pub use approval_delegation::{Absence, ApprovalDelegations, Delegation};
 pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalPerson, ApprovalVerdict};
 pub use audit_export::{AuditExport, ExportedAuditEntry};
@@ -117,6 +119,7 @@ pub fn typescript() -> String {
     declarations.add::<PersonalExport>();
     declarations.add::<AccountLinks>();
     declarations.add::<AccountLinkStart>();
+    declarations.add::<AccountMail>();
     declarations.add::<PersonAuthorizations>();
     declarations.add::<AccountGateways>();
     declarations.add::<GatewayLinkPreview>();
@@ -207,6 +210,7 @@ macro_rules! request_bodies {
     ($apply:ident) => {
         $apply!(
             Credentials,
+            MailAccountLink,
             SsoLookup,
             SsoLinkLookup,
             PasswordUpdate,

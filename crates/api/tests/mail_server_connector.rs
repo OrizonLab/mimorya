@@ -127,7 +127,10 @@ async fn the_company_declares_its_mail_servers_once() {
     });
     assert_eq!(config, servers);
     let view = mail_view(&paul).await;
-    assert_eq!(view["mailServer"], servers, "{view}");
+    // And how many linked an account there: none yet.
+    let mut seen = servers.clone();
+    seen["accounts"] = json!(0);
+    assert_eq!(view["mailServer"], seen, "{view}");
     assert_eq!(view["googleWorkspace"], Value::Null);
     let audited = audit_text_since(&api, tenant::ID, since).await;
     assert!(audited.contains("mail_server"), "{audited}");
@@ -231,6 +234,7 @@ async fn its_servers_change_one_by_one_and_it_holds_no_token() {
             "smtp": { "host": "smtp.neo-maintenance.example", "port": 465, "security": "tls" },
             "caldav": "https://dav.neo-maintenance.example/",
             "writeTools": true,
+            "accounts": 0,
         }),
         "{view}"
     );

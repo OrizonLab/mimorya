@@ -35,6 +35,10 @@ pub(crate) const FAILED_LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
 /// window (ADR-200).
 const SECOND_FACTOR_FAILURES_PER_ACCOUNT: u32 = 5;
 pub(crate) const SECOND_FACTOR_WINDOW: Duration = Duration::from_secs(15 * 60);
+/// Accounts a person may try at their company's standard mail in the
+/// window, each connecting to its servers (ADR-205).
+const MAIL_SIGN_INS_PER_ACCOUNT: u32 = 10;
+pub(crate) const MAIL_SIGN_IN_WINDOW: Duration = Duration::from_secs(60 * 60);
 /// Password reset links an address may ask for in the window.
 const RESET_REQUESTS_PER_ADDRESS: u32 = 3;
 pub(crate) const RESET_REQUEST_WINDOW: Duration = Duration::from_secs(60 * 60);
@@ -112,6 +116,10 @@ pub struct RateLimits {
     /// accepted: only refusals count, however many sign-ins are under way
     /// (ADR-200).
     pub second_factor_failures: SharedLimiter,
+    /// Accounts tried at the company's standard mail, per person, each
+    /// counted, accepted or not: every try signs in to its servers
+    /// (ADR-205).
+    pub mail_sign_ins: SharedLimiter,
 }
 
 impl RateLimits {
@@ -159,6 +167,11 @@ impl RateLimits {
                 "second_factor_failures",
                 SECOND_FACTOR_FAILURES_PER_ACCOUNT,
                 SECOND_FACTOR_WINDOW,
+            ),
+            mail_sign_ins: shared(
+                "mail_sign_ins",
+                MAIL_SIGN_INS_PER_ACCOUNT,
+                MAIL_SIGN_IN_WINDOW,
             ),
         })
     }

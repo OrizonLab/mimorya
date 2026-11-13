@@ -219,6 +219,11 @@ async fn an_export_holds_exactly_the_person_s_own_data() {
         json!([{ "kind": "telegram", "gateway": "bot-neo", "externalId": "11",
                  "displayName": "nom-de-marc", "address": null }])
     );
+    // His account at the standard mail: its identifier, never its password.
+    assert_eq!(
+        timeless(&export["mailAccounts"]),
+        json!([{ "connector": "messagerie-neo", "username": "compte-de-marc" }])
+    );
     assert_eq!(
         timeless(&export["serverAuthorizations"]),
         json!([{ "connector": "connecteur-neo", "scopes": "portée-de-marc" }])

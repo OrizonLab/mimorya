@@ -3,10 +3,11 @@
 //! (quoted strings as RFC 3501 writes them), `AUTHENTICATE PLAIN` where it
 //! offers it, `NOOP` and `LOGOUT`. It notes each command, never a password.
 //! It may refuse at its greeting, fall silent once it has greeted, greet
-//! without end, or quote the password it refused (what the platform must
-//! mask).
+//! without end, quote the password it refused (what the platform must
+//! mask), or hold its answer to an account until the test lets it through.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -15,7 +16,7 @@ use tokio::net::TcpListener;
 
 use super::lines::next_line;
 use super::{Accounts, Heard, accepts};
-use crate::testing::TestAuthority;
+use crate::testing::{Hold, TestAuthority};
 
 /// How the server behaves once a client is connected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,17 +76,36 @@ impl FakeImap {
     }
 
     pub async fn with(authority: &TestAuthority, accounts: Accounts, setup: ImapSetup) -> Self {
+        Self::serve(authority, accounts, setup, None).await
+    }
+
+    /// A server answering an account only once `hold` lets it through.
+    pub async fn held(authority: &TestAuthority, accounts: Accounts, hold: Arc<Hold>) -> Self {
+        let setup = ImapSetup::new(ImapBehaviour::Answers);
+        Self::serve(authority, accounts, setup, Some(hold)).await
+    }
+
+    async fn serve(
+        authority: &TestAuthority,
+        accounts: Accounts,
+        setup: ImapSetup,
+        hold: Option<Arc<Hold>>,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("local port");
         let address = listener.local_addr().expect("local address");
         let heard = Heard::default();
         let (acceptor, noted) = (authority.acceptor(), heard.clone());
         tokio::spawn(async move {
             while let Ok((socket, _)) = listener.accept().await {
-                let (acceptor, noted, accounts) =
-                    (acceptor.clone(), noted.clone(), accounts.clone());
+                let (acceptor, noted, accounts, hold) = (
+                    acceptor.clone(),
+                    noted.clone(),
+                    accounts.clone(),
+                    hold.clone(),
+                );
                 tokio::spawn(async move {
                     if let Ok(stream) = acceptor.accept(socket).await {
-                        converse(stream, &accounts, setup, &noted).await;
+                        converse(stream, &accounts, (setup, hold), &noted).await;
                     }
                 });
             }
@@ -97,7 +117,7 @@ impl FakeImap {
 async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
     stream: S,
     accounts: &Accounts,
-    setup: ImapSetup,
+    (setup, hold): (ImapSetup, Option<Arc<Hold>>),
     heard: &Heard,
 ) {
     let mut stream = BufReader::new(stream);
@@ -147,6 +167,9 @@ async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
             }
             _ => None,
         };
+        if let (Some(hold), Some(_)) = (&hold, &account) {
+            hold.wait().await;
+        }
         let answer = match (command.as_str(), account) {
             ("LOGIN", _) if setup.refuses_login_form => format!("{tag} BAD chaîne invalide\r\n"),
             ("CAPABILITY", _) => format!("* CAPABILITY IMAP4rev1\r\n{tag} OK terminé\r\n"),

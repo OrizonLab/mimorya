@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use mimorya_agent::llm::{LlmProvider, PriceTable};
-use mimorya_connectors::outbound::NetworkPolicy;
+use mimorya_connectors::outbound::{NetworkPolicy, TrustedRoot};
 
 use crate::mail::Mailer;
 use crate::services::runs::LeaseTiming;
@@ -71,4 +71,8 @@ pub struct BuildOptions {
     /// and its authorization server, ADR-171), while every other private
     /// address stays refused.
     pub connector_test_servers: Vec<SocketAddr>,
+    /// The roots the certificates of the tests' simulated mail servers chain
+    /// to, trusted beside the webpki roots (ADR-205): set by tests alone,
+    /// never read from the environment.
+    pub connector_test_roots: Vec<TrustedRoot>,
 }

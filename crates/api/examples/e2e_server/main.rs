@@ -224,6 +224,7 @@ async fn main() -> anyhow::Result<()> {
             teams_api: Some(teams.url.clone()),
             prices: None,
             connector_test_servers,
+            connector_test_roots: Vec::new(),
         },
     )
     .await?;

@@ -1023,7 +1023,16 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   qui détient `connector:manage` sur toute l'entreprise, sans aucun secret (chacun s'y
   connectera avec son propre compte, aucun jeton ne s'y saisit), ses serveurs vérifiés
   contre la politique réseau à la déclaration, à chaque changement et à chaque démarrage ;
-  ses outils exigent `connector:use`.
+  ses outils exigent `connector:use`. Le compte de chacun (identifiant et mot de passe) n'est
+  gardé qu'une fois accepté par le serveur IMAP puis le serveur SMTP. Son mot de passe est
+  scellé pour l'entreprise, le connecteur et la personne, et n'est jamais montré, exporté ni
+  audité ; seuls dix essais par heure et par personne sont permis. Il part avec son retrait,
+  la désactivation du compte, le connecteur, l'entreprise, et dès qu'un serveur change
+  d'hôte : il ne suit jamais la messagerie vers un hôte qui n'était pas le sien quand la
+  personne l'a relié (IMAP et SMTP vérifiés, agenda montré, vérifié au lot 69f). Il est
+  écrit sous le verrou d'administration, que tient tout changement du connecteur et toute
+  désactivation : ni l'un ni l'autre, survenus pendant la vérification, ne le laissent
+  gardé.
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée

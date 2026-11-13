@@ -2,8 +2,9 @@
 //! administrator (ADR-035) or the company's identity provider through SCIM
 //! (ADR-183). In the change's transaction: its sessions, its pending
 //! invitation, the accounts it linked at its company's providers (ADR-116),
-//! its identities on the gateways (ADR-125), and its own authorizations of
-//! MCP servers (ADR-174), taken; once committed, those revoked at their
+//! its identities on the gateways (ADR-125), its accounts at the company's
+//! standard mail (ADR-205), and its own authorizations of MCP servers
+//! (ADR-174), taken; once committed, those revoked at their
 //! authorization servers, its linked accounts' grants at a provider that
 //! revokes one (ADR-194), and its kept connector sessions forgotten.
 
@@ -11,6 +12,7 @@ use mimorya_db::TenantTx;
 use mimorya_db::repositories::account_links::take_account_links_of;
 use mimorya_db::repositories::gateway_identities::delete_gateway_identities_of;
 use mimorya_db::repositories::invitations::delete_invitation_of;
+use mimorya_db::repositories::mail_accounts::delete_mail_accounts_of_user;
 use mimorya_db::repositories::users::revoke_user_sessions;
 use uuid::Uuid;
 
@@ -45,6 +47,8 @@ pub(crate) async fn take_access(
     let links = admin.account_links.let_go_of(tx, links).await?;
     // Nor may their identity on a gateway speak for them (ADR-125).
     delete_gateway_identities_of(tx, user_id).await?;
+    // Nor their password open their mailbox (ADR-205).
+    delete_mail_accounts_of_user(tx, user_id).await?;
     // Nor may what they authorized MCP servers to do for them be used
     // (ADR-174): taken now, revoked once committed.
     let revocations = take_persons_of_user(tx, admin, tenant_id, user_id).await?;

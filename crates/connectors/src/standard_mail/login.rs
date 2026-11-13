@@ -56,6 +56,12 @@ impl MailLogin {
         &self.password
     }
 
+    /// Hands the password to `seal`, which keeps it sealed: the only way
+    /// it leaves here but for a sign-in.
+    pub fn sealed_with<T>(&self, seal: impl FnOnce(&str) -> T) -> T {
+        seal(&self.password)
+    }
+
     /// `text` without the password, however a server quoted it back or a
     /// library wrote it: as is, quoted as IMAP quotes a string, and each of
     /// these as `{:?}` writes it (an apostrophe kept) or as `escape_debug`

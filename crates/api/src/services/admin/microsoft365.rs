@@ -13,7 +13,7 @@ use serde_json::{Map, json};
 use uuid::Uuid;
 
 use super::connectors::{ConnectorAdmin, PERMISSION};
-use super::link_applications::{Declaration, declare_application};
+use super::link_applications::{Declaration, Declared, declare_once};
 use crate::services::AccessContext;
 
 pub struct NewMicrosoft365 {
@@ -43,16 +43,16 @@ pub async fn create_microsoft365_connector(
         write_tools: input.write_tools,
     })?;
     let declaration = Declaration {
-        kind: LinkKind::Microsoft365,
+        declared: Declared::Application(LinkKind::Microsoft365),
         name: input.name,
         enabled: input.enabled,
         config,
-        secret: input.client_secret,
+        secret: Some(input.client_secret),
         audited: Map::from_iter([
             ("directory".into(), json!(application.directory)),
             ("clientId".into(), json!(application.client_id)),
             ("writeTools".into(), json!(input.write_tools)),
         ]),
     };
-    declare_application(admin, access, declaration).await
+    declare_once(admin, access, declaration).await
 }

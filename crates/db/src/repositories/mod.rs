@@ -44,6 +44,7 @@ pub mod invitations;
 pub mod knowledge_shares;
 pub mod llm_settings;
 pub mod login_challenges;
+pub mod mail_accounts;
 pub mod memory;
 pub mod memory_embeddings;
 pub mod memory_search;

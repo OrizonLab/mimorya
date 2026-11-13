@@ -21,7 +21,9 @@ pub use bounded::{ReadBudget, TOO_LONG, bounded};
 pub use failure::{
     ACCESS_DENIED, Cause, NOT_PUBLIC, TOO_SLOW, UNREACHABLE, explained, request_cause, too_slow,
 };
-pub use network::{MAX_URL_CHARS, NetworkPolicy, http_client, is_public_ip, url_problem};
+pub use network::{
+    MAX_URL_CHARS, NetworkPolicy, TrustedRoot, http_client, is_public_ip, url_problem,
+};
 pub use prefix::prefix_problem;
 pub use proxy::OutboundProxy;
 pub use redact::{MASK, Redactor};
