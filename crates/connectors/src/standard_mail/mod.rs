@@ -6,9 +6,10 @@
 //! words in clear in `starttls`), both on a connection the network policy
 //! allows, secured by the platform's own TLS before any credential, what
 //! the server sends bounded, no literal announced past it made room for
-//! (`literals`). Its tools (`tools`) act as the person a run
-//! serves, with the account they linked.
+//! (`literals`); its CalDAV agenda over HTTPS (`caldav`). Its tools
+//! (`tools`) act as the person a run serves, with the account they linked.
 
+pub mod caldav;
 mod connector;
 mod declaration;
 mod imap;
@@ -20,6 +21,7 @@ mod starttls;
 mod tools;
 mod wire;
 
+pub use caldav::check_caldav;
 pub use connector::MailServerConnector;
 pub use declaration::{MAIL_NAMESPACE, MAIL_SERVER, MAIL_TOOLS, MailServerConfig};
 pub use imap::{ImapSession, check_imap, imap_session};
@@ -46,8 +48,9 @@ pub const TRY_LATER: &str = "Le serveur refuse pour l’instant : réessayez plu
 /// How long signing in may take, from the connection to the account's
 /// acceptance, whatever each step's own delay.
 pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(30);
-/// How long leaving a server, the answer known, may take.
-const LEAVE_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long leaving a server, the answer known, may take: after the call's
+/// delay for `mail_send`, which a run's executor gives room for.
+pub const LEAVE_TIMEOUT: Duration = Duration::from_secs(5);
 /// What a server may send while a person signs in: greeting, capabilities,
 /// TLS handshake and answers.
 const SIGN_IN_READ_LIMIT: usize = 64 * 1024;

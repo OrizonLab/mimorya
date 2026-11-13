@@ -4,8 +4,10 @@
 //! (`criteria`), what they keep of the e-mails the server sends (`fetched`,
 //! `message`); searching (`search`) and reading (`read`) an e-mail; sending
 //! one (`send`), written with its sender and envelope (`outgoing`), handed
-//! to the SMTP server (`submission`).
+//! to the SMTP server (`submission`); the events of their agendas
+//! (`agenda`).
 
+mod agenda;
 mod criteria;
 mod fetched;
 mod folders;
@@ -17,6 +19,7 @@ mod search;
 mod send;
 mod submission;
 
+pub use agenda::MailCalendarEvents;
 pub use person::MailReach;
 pub use read::MailRead;
 pub use search::MailSearch;

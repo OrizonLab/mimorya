@@ -76,7 +76,9 @@ async fn an_account_never_follows_the_mail_to_another_host() {
     change(&paul, connector, agenda).await;
     assert_eq!(stored(&api.app, user::PAUL).await, None);
 
-    // With the connector, its accounts.
+    // With the connector, its accounts. The agenda withdrawn first: one
+    // declared is checked at linking, and nothing serves this one.
+    change(&paul, connector, json!({ "caldav": null })).await;
     assert_eq!(link(&paul, USERNAME, PASSWORD).await, StatusCode::OK);
     let removed = paul.delete(&format!("/admin/connectors/{connector}")).await;
     assert_eq!(removed.status, StatusCode::OK, "{}", removed.text());

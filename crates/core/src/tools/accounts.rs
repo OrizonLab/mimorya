@@ -60,6 +60,7 @@ pub trait LinkedAccounts: Send + Sync {
 pub enum MailServerRole {
     Imap,
     Smtp,
+    CalDav,
 }
 
 impl MailServerRole {
@@ -68,6 +69,7 @@ impl MailServerRole {
         match self {
             Self::Imap => "imap",
             Self::Smtp => "smtp",
+            Self::CalDav => "caldav",
         }
     }
 
@@ -76,6 +78,7 @@ impl MailServerRole {
         match self {
             Self::Imap => "IMAP",
             Self::Smtp => "SMTP",
+            Self::CalDav => "CalDAV",
         }
     }
 }
