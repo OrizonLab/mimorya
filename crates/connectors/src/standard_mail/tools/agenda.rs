@@ -5,7 +5,7 @@
 //! first. Offered only where the company declared an agenda.
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::time_zone::PLATFORM_TIME_ZONE;
 use mimorya_core::tools::{Citation, MailServerRole, ToolContext, ToolInfo, ToolResult, TypedTool};
@@ -165,23 +165,39 @@ fn instant(when: When) -> DateTime<Utc> {
 }
 
 /// Where an event ends: its end, or its start and length, or the day
-/// after a whole day's start.
+/// after a whole day's start; none past what an instant can hold.
 fn end_of(event: &Event) -> Option<When> {
     match (event.end, event.start, event.duration) {
         (Some(end), _, _) => Some(end),
-        (None, Some(start), Some(length)) => Some(When::At(instant(start) + length)),
+        (None, Some(start), Some(length)) => {
+            instant(start).checked_add_signed(length).map(When::At)
+        }
         (None, Some(When::Day(day)), None) => day.succ_opt().map(When::Day),
         _ => None,
     }
 }
 
-/// Whether the event overlaps the period asked.
+/// A recurring event the server gave whole, not its occurrences.
+fn unexpanded(event: &Event) -> bool {
+    event.repeats && event.occurrence.is_none()
+}
+
+/// Whether the event overlaps the period asked, its end excluded as the
+/// period's (RFC 4791, 9.9): one that lasts, from its start to its end;
+/// one with no length, at its start. A recurring event the server did not
+/// expand may recur in it once it has begun.
 fn overlaps(event: &Event, (from, to): (DateTime<Utc>, DateTime<Utc>)) -> bool {
     let Some(start) = event.start.map(instant) else {
         return false;
     };
-    let end = end_of(event).map_or(start, instant);
-    start <= to && end >= from && end - start >= Duration::zero()
+    if unexpanded(event) {
+        return start < to;
+    }
+    let end = end_of(event).map(instant).filter(|end| *end > start);
+    match end {
+        Some(end) => start < to && end > from,
+        None => start >= from && start < to,
+    }
 }
 
 /// A start or an end as the model reads it: a day, or a time of the
@@ -225,9 +241,9 @@ fn event(listed: &Listed) -> Value {
         "apercu": short(&event.description),
         "agenda": short(&listed.agenda),
     });
-    if event.repeats && event.occurrence.is_none() {
+    if unexpanded(event) {
         read["repetition"] = json!(
-            "Rendez-vous répétitif dont le serveur n’a pas donné les occurrences : seule la première est datée"
+            "Rendez-vous répétitif dont le serveur n’a pas donné les occurrences : seule la première est datée, il peut se répéter dans la période"
         );
     }
     read
@@ -258,13 +274,86 @@ mod tests {
         assert!(period_problem(&period("2026-10-02", "2026-10-01")).is_some());
     }
 
+    fn at(day: u32, hour: u32) -> When {
+        When::At(Utc.with_ymd_and_hms(2026, 11, day, hour, 0, 0).unwrap())
+    }
+
+    #[test]
+    fn the_period_s_bounds_exclude_what_ends_or_starts_there() {
+        let (from, to) = (
+            NaiveDate::from_ymd_opt(2026, 11, 16).unwrap(),
+            NaiveDate::from_ymd_opt(2026, 11, 18).unwrap(),
+        );
+        let period = (day_start(from), day_end(to));
+        let day = |d| When::Day(NaiveDate::from_ymd_opt(2026, 11, d).unwrap());
+        let event = |start, end| Event {
+            start: Some(start),
+            end,
+            ..Event::default()
+        };
+        // Whole days before and after, an event ending at the period's
+        // start (midnight in Paris is 23:00 UTC), one starting at its end.
+        assert!(!overlaps(&event(day(15), None), period));
+        assert!(!overlaps(&event(day(19), None), period));
+        assert!(!overlaps(&event(at(15, 22), Some(at(15, 23))), period));
+        assert!(!overlaps(&event(at(18, 23), Some(at(19, 1))), period));
+        // An instant at its start is in; one lasting across it too.
+        assert!(overlaps(&event(at(15, 23), None), period));
+        assert!(overlaps(&event(at(15, 22), Some(at(16, 1))), period));
+        assert!(overlaps(&event(day(18), None), period));
+    }
+
+    #[test]
+    fn a_length_past_an_instant_s_range_ends_nowhere_and_never_panics() {
+        let huge = Event {
+            start: Some(at(16, 8)),
+            duration: chrono::Duration::try_days(99_999_999),
+            ..Event::default()
+        };
+        assert_eq!(end_of(&huge), None);
+        let period = (
+            day_start(NaiveDate::from_ymd_opt(2026, 11, 16).unwrap()),
+            at_utc(17),
+        );
+        assert!(overlaps(&huge, period));
+        assert_eq!(
+            event(&Listed {
+                agenda: None,
+                event: huge
+            })["fin"],
+            Value::Null
+        );
+    }
+
+    fn at_utc(day: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 11, day, 0, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn a_recurring_event_left_whole_is_kept_once_begun_and_said_so() {
+        let weekly = Event {
+            start: Some(at(2, 9)),
+            end: Some(at(2, 10)),
+            repeats: true,
+            ..Event::default()
+        };
+        let period = (at_utc(16), at_utc(19));
+        assert!(overlaps(&weekly, period));
+        assert!(!overlaps(&weekly, (at_utc(1), at_utc(2))));
+        let read = event(&Listed {
+            agenda: None,
+            event: weekly,
+        });
+        assert!(read["repetition"].as_str().unwrap().contains("répéter"));
+    }
+
     #[test]
     fn an_event_reads_in_the_platform_s_zone() {
         let nine = Utc.with_ymd_and_hms(2026, 11, 16, 8, 0, 0).unwrap();
         let timed = Event {
             uid: Some("r1".into()),
             start: Some(When::At(nine)),
-            duration: Some(Duration::minutes(90)),
+            duration: Some(chrono::Duration::minutes(90)),
             ..Event::default()
         };
         let listed = Listed {

@@ -10,13 +10,13 @@ mod ical;
 mod report;
 mod xml;
 
-pub use agendas::{Agenda, MAX_AGENDAS, NO_AGENDA, agendas};
+pub use agendas::{NO_AGENDA, agendas};
 pub use client::{
     ACCESS_REFUSED, CalDav, ELSEWHERE, NO_AGENDA_THERE, NOT_AN_AGENDA, NOT_HTTPS, REDIRECTED,
 };
-pub use ical::{Event, Person, When, events};
+pub use ical::{Event, Person, When};
 pub use report::agenda_events;
-pub use xml::{Found, multistatus};
+pub use xml::Found;
 
 use tokio::time::timeout;
 

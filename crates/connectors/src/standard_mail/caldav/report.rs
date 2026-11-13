@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 
 use super::agendas::Agenda;
 use super::client::CalDav;
-use super::ical::{Event, MAX_EVENTS, events};
+use super::ical::{Event, events};
 use crate::outbound::Cause;
 
 /// What the server may send of one agenda's events.
@@ -32,11 +32,11 @@ pub async fn agenda_events(
     let found = dav
         .ask("REPORT", &agenda.url, "1", query, REPORT_LIMIT)
         .await?;
+    // All of them: the tool keeps those of the period, then bounds them.
     Ok(found
         .iter()
         .filter_map(|found| found.data.as_deref())
         .flat_map(events)
-        .take(MAX_EVENTS)
         .collect())
 }
 

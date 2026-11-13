@@ -3,10 +3,13 @@
 //! person the run serves over a period, with the account they linked, over
 //! HTTPS: their principal, calendar home and agendas of events found on
 //! the declared server, each occurrence asked expanded, the period's events
-//! the earliest first, in Paris time. Nothing is sent to another server,
-//! no redirect is followed, what the server says is bounded, and a refused
-//! password removes the account. A person linking an account finds an
-//! agenda with it (`check_caldav`).
+//! the earliest first, in Paris time, the period's bounds excluded as
+//! RFC 4791 has it, a recurring event left whole kept and said so, a length
+//! past any instant read safely. Nothing is sent to another server
+//! (principal, calendar home or agenda), no redirect is followed, what the
+//! server says is bounded, and a refused password, alone, removes the
+//! account. A person linking an account finds an agenda with it
+//! (`check_caldav`).
 
 mod support;
 
@@ -16,8 +19,9 @@ use std::time::Duration;
 use mimorya_agent::testing::InMemoryPorts;
 use mimorya_agent::tools::ToolExecutor;
 use mimorya_connectors::outbound::TOO_LONG;
-use mimorya_connectors::standard_mail::caldav::{ELSEWHERE, REDIRECTED};
-use mimorya_connectors::standard_mail::{CREDENTIALS_REFUSED, check_caldav};
+use mimorya_connectors::standard_mail::{
+    ACCESS_REFUSED, CREDENTIALS_REFUSED, ELSEWHERE, REDIRECTED, TRY_LATER, check_caldav,
+};
 use mimorya_connectors::testing::{CalDavBehaviour, FakeCalDav, TestAuthority};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::demo::user;
@@ -61,8 +65,17 @@ async fn paul_at(
     behaviour: CalDavBehaviour,
     password: &str,
 ) -> (FakeCalDav, Arc<InMemoryPorts>, ToolExecutor) {
+    paul_holding(behaviour, password, events()).await
+}
+
+/// The same, the agenda holding `held`.
+async fn paul_holding(
+    behaviour: CalDavBehaviour,
+    password: &str,
+    held: Vec<String>,
+) -> (FakeCalDav, Arc<InMemoryPorts>, ToolExecutor) {
     let authority = TestAuthority::new();
-    let agenda = FakeCalDav::start(&authority, accounts(), behaviour, events()).await;
+    let agenda = FakeCalDav::start(&authority, accounts(), behaviour, held).await;
     let declared = declaration(&agenda);
     let ports = InMemoryPorts::new(user::PAUL, Uuid::new_v4());
     ports.link_mail_account(declared.clone(), USER, password, linked_at());
@@ -148,22 +161,80 @@ async fn the_period_s_events_come_earliest_first_in_paris_time() {
 
 #[tokio::test]
 async fn nothing_goes_to_another_server_nor_follows_a_redirect() {
-    let elsewhere = CalDavBehaviour::PrincipalElsewhere("https://agenda.ailleurs.example/p/paul/");
+    let principal = CalDavBehaviour::PrincipalElsewhere("https://agenda.ailleurs.example/p/paul/");
+    let home = CalDavBehaviour::HomeElsewhere("//agenda.ailleurs.example/dav/paul/");
     let refusals = [
-        (elsewhere, ELSEWHERE),
-        (CalDavBehaviour::Redirects, REDIRECTED),
-        (CalDavBehaviour::AnswersAtLength, TOO_LONG),
+        (principal, ELSEWHERE, 1),
+        (home, ELSEWHERE, 2),
+        (CalDavBehaviour::Redirects, REDIRECTED, 1),
+        (CalDavBehaviour::AnswersAtLength, TOO_LONG, 4),
     ];
-    for (behaviour, said) in refusals {
+    for (behaviour, said, requests) in refusals {
         let (agenda, ports, paul) = paul_at(behaviour, PASSWORD).await;
         let error = error_of(&call(&paul, "mail_calendar_events", week()).await);
         assert!(error.starts_with(said), "{behaviour:?}: {error}");
         assert!(ports.refused_mail_accounts().is_empty());
-        let heard = agenda.heard.lines();
-        if behaviour != CalDavBehaviour::AnswersAtLength {
-            assert_eq!(heard, ["PROPFIND /dav/"], "{behaviour:?}");
-        }
+        // Nothing past the answer naming another server.
+        assert_eq!(agenda.heard.lines().len(), requests, "{behaviour:?}");
     }
+    // Agendas listed on other servers (another host, in full or from the
+    // scheme on, the same host on another port) are left: were any asked,
+    // the call would fail.
+    let (agenda, _, paul) = paul_at(CalDavBehaviour::ListsElsewhere, PASSWORD).await;
+    let result = call(&paul, "mail_calendar_events", week()).await;
+    assert!(!result.is_error, "{:?}", result.content);
+    assert_eq!(result.content["nombre"], 3);
+    let reports: Vec<String> = agenda
+        .heard
+        .lines()
+        .into_iter()
+        .filter(|line| line.starts_with("REPORT"))
+        .collect();
+    assert_eq!(reports, ["REPORT /dav/calendars/paul/personnel/ expand"]);
+}
+
+#[tokio::test]
+async fn a_refusal_other_than_the_password_keeps_the_account() {
+    for (code, said) in [(403, ACCESS_REFUSED), (503, TRY_LATER)] {
+        let (_, ports, paul) = paul_at(CalDavBehaviour::Refuses(code), PASSWORD).await;
+        let error = error_of(&call(&paul, "mail_calendar_events", week()).await);
+        assert!(error.starts_with(said), "{code}: {error}");
+        assert!(ports.refused_mail_accounts().is_empty(), "{code}");
+    }
+}
+
+#[tokio::test]
+async fn the_period_s_bounds_lengths_and_recurrences_are_read_safely() {
+    let held = [
+        // Whole days just before and just after the period.
+        "BEGIN:VEVENT\r\nSUMMARY:Veille\r\nDTSTART;VALUE=DATE:20261115\r\nEND:VEVENT\r\n",
+        "BEGIN:VEVENT\r\nSUMMARY:Lendemain\r\nDTSTART;VALUE=DATE:20261119\r\nEND:VEVENT\r\n",
+        // Ending at the period's start (midnight in Paris).
+        "BEGIN:VEVENT\r\nSUMMARY:Finie avant\r\nDTSTART:20261115T220000Z\r\n\
+         DTEND:20261115T230000Z\r\nEND:VEVENT\r\n",
+        // A length past any instant, and a malformed one.
+        "BEGIN:VEVENT\r\nSUMMARY:Sans fin\r\nDTSTART:20261116T080000Z\r\n\
+         DURATION:P99999999D\r\nEND:VEVENT\r\n",
+        "BEGIN:VEVENT\r\nSUMMARY:Durée illisible\r\nDTSTART:20261117T080000Z\r\n\
+         DURATION:P106751991167D1D\r\nEND:VEVENT\r\n",
+        // A weekly meeting begun earlier, which the server did not expand.
+        "BEGIN:VEVENT\r\nSUMMARY:Point hebdomadaire\r\nDTSTART:20261102T090000Z\r\n\
+         DTEND:20261102T100000Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\n",
+    ]
+    .map(String::from)
+    .to_vec();
+    let (_, _, paul) = paul_holding(CalDavBehaviour::Answers, PASSWORD, held).await;
+    let result = call(&paul, "mail_calendar_events", week()).await;
+    assert!(!result.is_error, "{:?}", result.content);
+    let read = result.content["rendezVous"].as_array().unwrap().clone();
+    let subjects: Vec<&str> = read.iter().map(|e| e["objet"].as_str().unwrap()).collect();
+    assert_eq!(
+        subjects,
+        ["Point hebdomadaire", "Sans fin", "Durée illisible"]
+    );
+    assert!(read[0]["repetition"].as_str().unwrap().contains("répéter"));
+    assert_eq!(read[1]["fin"], Value::Null);
+    assert_eq!(read[2]["fin"], Value::Null);
 }
 
 #[tokio::test]

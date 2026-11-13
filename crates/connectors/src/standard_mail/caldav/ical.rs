@@ -186,19 +186,22 @@ fn kept(value: &str) -> String {
 /// A text value unescaped (RFC 5545, 3.3.11), bounded.
 fn text(value: &str) -> String {
     let mut out = String::new();
+    let mut kept = 0;
     let mut chars = value.chars();
     while let Some(c) = chars.next() {
-        if out.chars().count() >= MAX_VALUE_CHARS {
+        if kept == MAX_VALUE_CHARS {
             break;
         }
-        match (c, c == '\\') {
-            (_, true) => match chars.next() {
-                Some('n' | 'N') => out.push('\n'),
-                Some(other) => out.push(other),
-                None => {}
+        let read = match c {
+            '\\' => match chars.next() {
+                Some('n' | 'N') => '\n',
+                Some(other) => other,
+                None => break,
             },
-            (c, false) => out.push(c),
-        }
+            c => c,
+        };
+        out.push(read);
+        kept += 1;
     }
     out.trim().to_string()
 }
@@ -231,40 +234,65 @@ fn when(line: &Line<'_>) -> Option<When> {
     })
 }
 
-/// A duration (RFC 5545, 3.3.6): weeks, or days and a time.
+/// A duration (RFC 5545, 3.3.6), read strictly: weeks alone, or days then
+/// a time of hours, minutes and seconds in that order, each once; none when
+/// it is malformed or past what an instant can hold.
 fn duration(value: &str) -> Option<Duration> {
     let value = value.trim();
     let (negative, value) = match value.strip_prefix('-') {
         Some(rest) => (true, rest),
         None => (false, value.strip_prefix('+').unwrap_or(value)),
     };
-    let mut rest = value.strip_prefix('P')?;
+    let rest = value.strip_prefix('P')?;
+    let total = match rest.strip_suffix('W') {
+        Some(weeks) => Duration::try_weeks(count(weeks)?)?,
+        None => days_and_time(rest)?,
+    };
+    Some(if negative { -total } else { total })
+}
+
+/// A length of so many units.
+type Length = fn(i64) -> Option<Duration>;
+
+/// `nD`, `TnHnMnS`, or both: each part at most once, in order.
+fn days_and_time(text: &str) -> Option<Duration> {
+    let (days, time) = match text.split_once('T') {
+        Some((days, time)) => (days, Some(time)),
+        None => (text, None),
+    };
+    if days.is_empty() && time.is_none() {
+        return None;
+    }
     let mut total = Duration::zero();
-    let mut in_time = false;
-    while !rest.is_empty() {
-        if let Some(after) = rest.strip_prefix('T') {
-            in_time = true;
-            rest = after;
-            continue;
+    if !days.is_empty() {
+        total = Duration::try_days(count(days.strip_suffix('D')?)?)?;
+    }
+    if let Some(mut rest) = time {
+        if rest.is_empty() {
+            return None;
         }
-        let digits = rest.find(|c: char| !c.is_ascii_digit())?;
-        let count: i64 = rest[..digits].parse().ok()?;
-        let unit = rest[digits..].chars().next()?;
-        total += match (unit, in_time) {
-            ('W', false) => Duration::try_weeks(count)?,
-            ('D', false) => Duration::try_days(count)?,
-            ('H', true) => Duration::try_hours(count)?,
-            ('M', true) => Duration::try_minutes(count)?,
-            ('S', true) => Duration::try_seconds(count)?,
-            _ => return None,
-        };
-        rest = &rest[digits + unit.len_utf8()..];
-        // Weeks stand alone.
-        if unit == 'W' && !rest.is_empty() {
+        let units: [(char, Length); 3] = [
+            ('H', Duration::try_hours),
+            ('M', Duration::try_minutes),
+            ('S', Duration::try_seconds),
+        ];
+        for (unit, length) in units {
+            if let Some(at) = rest.find(unit) {
+                total = total.checked_add(&length(count(&rest[..at])?)?)?;
+                rest = &rest[at + 1..];
+            }
+        }
+        if !rest.is_empty() {
             return None;
         }
     }
-    Some(if negative { -total } else { total })
+    Some(total)
+}
+
+/// A count of digits alone.
+fn count(text: &str) -> Option<i64> {
+    let digits = !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit());
+    digits.then(|| text.parse().ok()).flatten()
 }
 
 /// The organizer or an attendee: their common name and their address
@@ -337,9 +365,25 @@ mod tests {
             .and_hms_opt(9, 0, 0)
             .unwrap();
         assert_eq!(read[0].start, Some(When::Floating(nine)));
-        assert_eq!(duration("P1W2D"), None);
         assert_eq!(duration("-PT15M"), Some(-Duration::minutes(15)));
         assert_eq!(duration("P1DT2H"), Some(Duration::hours(26)));
+        assert_eq!(duration("P2W"), Some(Duration::weeks(2)));
+        assert_eq!(duration("PT1H30M"), Some(Duration::minutes(90)));
+        // Malformed, repeated, out of order or past an instant's range.
+        for refused in [
+            "P1W2D",
+            "P",
+            "PT",
+            "P1D1D",
+            "P106751991167D1D",
+            "PT5M2H",
+            "P1H",
+            "P+1D",
+            "PT1H1H",
+            "P99999999999999999999D",
+        ] {
+            assert_eq!(duration(refused), None, "{refused}");
+        }
     }
 
     #[test]

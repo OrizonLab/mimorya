@@ -9,7 +9,7 @@
 //! (`literals`); its CalDAV agenda over HTTPS (`caldav`). Its tools
 //! (`tools`) act as the person a run serves, with the account they linked.
 
-pub mod caldav;
+mod caldav;
 mod connector;
 mod declaration;
 mod imap;
@@ -21,7 +21,10 @@ mod starttls;
 mod tools;
 mod wire;
 
-pub use caldav::check_caldav;
+pub use caldav::{
+    ACCESS_REFUSED, ELSEWHERE, NO_AGENDA, NO_AGENDA_THERE, NOT_AN_AGENDA, NOT_HTTPS, REDIRECTED,
+    check_caldav,
+};
 pub use connector::MailServerConnector;
 pub use declaration::{MAIL_NAMESPACE, MAIL_SERVER, MAIL_TOOLS, MailServerConfig};
 pub use imap::{ImapSession, check_imap, imap_session};

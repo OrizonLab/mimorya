@@ -14324,17 +14324,23 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - les rendez-vous d'une période (31 jours au plus) sont demandés par un rapport
       `calendar-query` (RFC 4791) borné à la période, chaque occurrence d'un rendez-vous
       répétitif développée par le serveur (`expand`). La plateforme ne se fie pas à son
-      filtre : ce qui tombe hors de la période est laissé. Un rendez-vous répétitif
-      qu'un serveur n'a pas développé est dit tel, daté de sa première occurrence ;
+      filtre : ce qui tombe hors de la période est laissé, ses bornes exclues comme le
+      veut la RFC 4791 (9.9) : un rendez-vous qui finit à minuit le premier jour ou
+      commence à minuit après le dernier n'en est pas. Un rendez-vous répétitif qu'un
+      serveur n'a pas développé est gardé dès qu'il a commencé avant la fin de la
+      période, dit tel, daté de sa première occurrence ;
     - le XML est lu par quick-xml sans entité ni DTD (seules celles de XML et les
       références de caractères), une réponse coupée refusée. L'iCalendar est lu par la
       plateforme (`caldav/ical.rs`) : lignes dépliées, objet, début, fin ou durée, lieu,
-      description, statut, organisateur et participants, texte déséchappé. Un fuseau
+      description, statut, organisateur et participants, texte déséchappé. Une durée
+      est lue strictement (semaines seules, ou jours puis heures, minutes et secondes,
+      chacune une fois) ; une fin au-delà de ce qu'un instant peut tenir est laissée,
+      sans jamais arrêter le run. Un fuseau
       IANA (`TZID`) est appliqué par chrono-tz, un fuseau inconnu lu à l'heure de la
       plateforme. Les rendez-vous sont rendus à l'heure de Paris, les plus tôt d'abord,
       50 au plus ;
     - ce que le serveur envoie est borné : 256 Kio par recherche d'agenda, 512 Kio par
-      rapport, 500 rendez-vous et 4 000 caractères par valeur ;
+      rapport, 500 rendez-vous par objet iCalendar et 4 000 caractères par valeur ;
     - un mot de passe que l'agenda refuse (`401`) retire le compte, audité avec le
       serveur `caldav`. Un refus d'accès (`403`) ou pour l'instant (`429`, `503`) le
       garde ;

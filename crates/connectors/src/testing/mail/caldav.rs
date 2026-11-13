@@ -4,8 +4,9 @@
 //! and one of tasks, the events a test gives answered to any `REPORT`
 //! whatever the period (a client keeps those it asked for). It notes each
 //! request (method, path, whether it asked to expand occurrences), never a
-//! credential. It may also name a principal on another server, redirect,
-//! or answer at a length past what a client reads.
+//! credential. It may also name a principal or a calendar home on another
+//! server, list agendas on other servers beside its own, redirect, refuse
+//! with a status, or answer at a length past what a client reads.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -30,6 +31,12 @@ pub enum CalDavBehaviour {
     Answers,
     /// Names, as the principal, this address on another server.
     PrincipalElsewhere(&'static str),
+    /// Names, as the calendar home, this address on another server.
+    HomeElsewhere(&'static str),
+    /// Lists agendas of events on other servers beside its own.
+    ListsElsewhere,
+    /// Answers every request, once signed in, with this status.
+    Refuses(u16),
     /// Redirects the declared address elsewhere.
     Redirects,
     /// Answers a `REPORT` past what a client reads.
@@ -93,9 +100,17 @@ async fn answer(
         let challenge = [(header::WWW_AUTHENTICATE, "Basic realm=\"agenda\"")];
         return (StatusCode::UNAUTHORIZED, challenge).into_response();
     }
+    if let CalDavBehaviour::Refuses(code) = served.behaviour {
+        let status = StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        return status.into_response();
+    }
     let principal = match served.behaviour {
         CalDavBehaviour::PrincipalElsewhere(elsewhere) => elsewhere,
         _ => "/dav/principals/paul/",
+    };
+    let home = match served.behaviour {
+        CalDavBehaviour::HomeElsewhere(elsewhere) => elsewhere,
+        _ => "/dav/calendars/paul/",
     };
     match (method.as_str(), path.as_str(), served.behaviour) {
         ("PROPFIND", "/dav/", CalDavBehaviour::Redirects) => (
@@ -112,9 +127,9 @@ async fn answer(
         )),
         ("PROPFIND", "/dav/principals/paul/", _) => multistatus(&response(
             "/dav/principals/paul/",
-            "<c:calendar-home-set><d:href>/dav/calendars/paul/</d:href></c:calendar-home-set>",
+            &format!("<c:calendar-home-set><d:href>{home}</d:href></c:calendar-home-set>"),
         )),
-        ("PROPFIND", "/dav/calendars/paul/", _) => multistatus(&home()),
+        ("PROPFIND", "/dav/calendars/paul/", behaviour) => multistatus(&listing(behaviour)),
         ("REPORT", AGENDA_PATH, CalDavBehaviour::AnswersAtLength) => {
             multistatus(&"<d:response><d:href>/x</d:href></d:response>".repeat(20_000))
         }
@@ -153,8 +168,17 @@ fn response(href: &str, properties: &str) -> String {
     )
 }
 
-/// The calendar home: itself, an agenda of events, one of tasks.
-fn home() -> String {
+/// Agendas of events on other servers: another host, named in full or
+/// from the scheme on, and the same host on another port.
+pub const ELSEWHERE_AGENDAS: [&str; 3] = [
+    "https://agenda.ailleurs.example/dav/x/",
+    "//agenda.ailleurs.example/dav/y/",
+    "https://127.0.0.1:1/dav/z/",
+];
+
+/// The calendar home: itself, an agenda of events, one of tasks, and
+/// agendas elsewhere if it lists them.
+fn listing(behaviour: CalDavBehaviour) -> String {
     let agenda = |href: &str, name: &str, component: &str| {
         response(
             href,
@@ -173,7 +197,15 @@ fn home() -> String {
         agenda(AGENDA_PATH, "Personnel", "VEVENT"),
         agenda("/dav/calendars/paul/taches/", "Tâches", "VTODO"),
     ]
-    .concat()
+    .into_iter()
+    .chain(match behaviour {
+        CalDavBehaviour::ListsElsewhere => ELSEWHERE_AGENDAS
+            .iter()
+            .map(|href| agenda(href, "Ailleurs", "VEVENT"))
+            .collect(),
+        _ => Vec::new(),
+    })
+    .collect()
 }
 
 /// Each event as a calendar object, its text escaped for XML.
