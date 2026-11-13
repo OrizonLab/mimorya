@@ -121,7 +121,7 @@ fn not_signed_in(error: lettre::transport::smtp::Error) -> Cause {
 }
 
 /// A failure of the exchange itself.
-fn failed(error: lettre::transport::smtp::Error) -> Cause {
+pub(super) fn failed(error: lettre::transport::smtp::Error) -> Cause {
     let summary = if error.is_timeout() {
         TOO_SLOW
     } else if error.is_tls() {

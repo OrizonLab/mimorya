@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use mimorya_core::account_links::LinkKind;
-use mimorya_core::tools::{AccountAccessError, LinkedAccounts, MailAccount};
+use mimorya_core::tools::{AccountAccessError, LinkedAccounts, MailAccount, MailServerRole};
 use serde_json::Value;
 
 use super::in_memory_ports::InMemoryPorts;
@@ -75,6 +75,12 @@ impl InMemoryPorts {
 
     /// When the mail accounts a tool reported refused were linked.
     pub fn refused_mail_accounts(&self) -> Vec<DateTime<Utc>> {
+        let refusals = self.mail_refusals().into_iter();
+        refusals.map(|(linked_at, _)| linked_at).collect()
+    }
+
+    /// The same, each with the server that refused it.
+    pub fn mail_refusals(&self) -> Vec<(DateTime<Utc>, MailServerRole)> {
         self.state().refused_mail_accounts.clone()
     }
 }
@@ -114,17 +120,23 @@ impl LinkedAccounts for InMemoryPorts {
             .mail_account
             .clone()
             .ok_or(AccountAccessError::NotLinked)?;
+        // The person's platform address: their username when it is one.
+        let address = match link.username.contains('@') {
+            true => link.username.clone(),
+            false => format!("{}@neo-maintenance.example", link.username),
+        };
         Ok(MailAccount::new(
             link.servers,
+            address,
             link.username,
             link.password,
             link.linked_at,
         ))
     }
 
-    async fn mail_account_refused(&self, linked_at: DateTime<Utc>) {
+    async fn mail_account_refused(&self, linked_at: DateTime<Utc>, server: MailServerRole) {
         let mut state = self.state();
-        state.refused_mail_accounts.push(linked_at);
+        state.refused_mail_accounts.push((linked_at, server));
         if state
             .mail_account
             .as_ref()
@@ -150,14 +162,20 @@ mod tests {
         let again = Utc::now();
         ports.link_mail_account(json!({}), "paul", "ancien", first);
         ports.link_mail_account(json!({}), "paul", "nouveau", again);
-        ports.mail_account_refused(first).await;
+        ports
+            .mail_account_refused(first, MailServerRole::Imap)
+            .await;
         let kept = ports.mail_account().await.unwrap();
         assert_eq!(kept.password(), "nouveau");
-        ports.mail_account_refused(again).await;
+        ports
+            .mail_account_refused(again, MailServerRole::Smtp)
+            .await;
         assert_eq!(
             ports.mail_account().await.err(),
             Some(AccountAccessError::NotLinked)
         );
         assert_eq!(ports.refused_mail_accounts(), [first, again]);
+        let servers = [(first, MailServerRole::Imap), (again, MailServerRole::Smtp)];
+        assert_eq!(ports.mail_refusals(), servers);
     }
 }

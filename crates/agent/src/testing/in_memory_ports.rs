@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use mimorya_core::skill_proposals::SkillProposal;
-use mimorya_core::tools::{Deliverable, DeliverableInput, DeliverableService, DeliverableStatus};
+use mimorya_core::tools::{
+    Deliverable, DeliverableInput, DeliverableService, DeliverableStatus, MailServerRole,
+};
 use uuid::Uuid;
 
 use super::in_memory_accounts::{Link, MailLink};
@@ -61,7 +63,7 @@ pub(super) struct State {
     /// The person's account at the company's standard mail (ADR-205).
     pub(super) mail_account: Option<MailLink>,
     /// When the accounts a tool reported refused were linked.
-    pub(super) refused_mail_accounts: Vec<DateTime<Utc>>,
+    pub(super) refused_mail_accounts: Vec<(DateTime<Utc>, MailServerRole)>,
 }
 
 pub struct InMemoryPorts {

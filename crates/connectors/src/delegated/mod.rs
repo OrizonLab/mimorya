@@ -5,10 +5,12 @@
 //! the few bounded fields kept of its answers (`shape`); and what their
 //! tools write in the person's name, as the model asks it and the person
 //! validates it, hiding nothing (`compose`, `new_mail`, `new_event`,
-//! ADR-119, ADR-123).
+//! ADR-119, ADR-123), and the text of an e-mail as RFC 5322 asks, which the
+//! standard mail sends too (`message_text`, ADR-205).
 
 mod api;
 mod compose;
+mod message_text;
 mod new_event;
 mod new_mail;
 mod reach;
@@ -16,6 +18,7 @@ pub(crate) mod shape;
 
 pub(crate) use api::ProviderApi;
 pub(crate) use compose::is_plain_address;
+pub(crate) use message_text::message_text;
 pub(crate) use new_event::NewEvent;
 pub(crate) use new_mail::NewMail;
 pub(crate) use reach::{AsPerson, read_as_person, write_as_person};

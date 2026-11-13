@@ -49,10 +49,35 @@ pub trait LinkedAccounts: Send + Sync {
         Err(AccountAccessError::NotLinked)
     }
 
-    /// The company's mail server refused that account (its password changed
-    /// elsewhere): it is removed, unless linked again since, so that no run
-    /// tries it again and gets the company's address banned.
-    async fn mail_account_refused(&self, _linked_at: DateTime<Utc>) {}
+    /// The company's mail `server` refused that account (its password
+    /// changed elsewhere): it is removed, unless linked again since, so that
+    /// no run tries it again and gets the company's address banned.
+    async fn mail_account_refused(&self, _linked_at: DateTime<Utc>, _server: MailServerRole) {}
+}
+
+/// Which of the company's mail servers a tool reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MailServerRole {
+    Imap,
+    Smtp,
+}
+
+impl MailServerRole {
+    /// Its name in the audit log.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Imap => "imap",
+            Self::Smtp => "smtp",
+        }
+    }
+
+    /// Its protocol, as a person reads it.
+    pub fn protocol(self) -> &'static str {
+        match self {
+            Self::Imap => "IMAP",
+            Self::Smtp => "SMTP",
+        }
+    }
 }
 
 /// A person's account at their company's standard mail, opened for one
@@ -61,6 +86,8 @@ pub struct MailAccount {
     /// The company's declaration, as read with the account: the servers its
     /// password was checked against, never another.
     pub servers: Value,
+    /// The address of the person's platform account: what they send from.
+    pub address: String,
     pub username: String,
     password: String,
     /// When it was linked: what a refusal names, so that an account linked
@@ -71,12 +98,14 @@ pub struct MailAccount {
 impl MailAccount {
     pub fn new(
         servers: Value,
+        address: String,
         username: String,
         password: String,
         linked_at: DateTime<Utc>,
     ) -> Self {
         Self {
             servers,
+            address,
             username,
             password,
             linked_at,
@@ -91,6 +120,7 @@ impl MailAccount {
 impl fmt::Debug for MailAccount {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MailAccount")
+            .field("address", &self.address)
             .field("username", &self.username)
             .field("password", &"<masqué>")
             .field("linked_at", &self.linked_at)
@@ -108,6 +138,7 @@ mod tests {
     fn a_mail_account_never_prints_its_password() {
         let account = MailAccount::new(
             json!({}),
+            "paul@exemple.fr".into(),
             "paul".into(),
             "secret-du-test".into(),
             Utc::now(),

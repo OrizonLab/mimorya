@@ -1048,7 +1048,15 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   quel expéditeur peut envoyer, tels quels ou encodés, n'est lu comme tel que sur 16
   niveaux : mail-parser, gardé par la plateforme (`vendor/mail-parser`), garde les
   suivants comme une pièce jointe, et ni sa lecture, ni sa conversion, ni sa libération
-  ne débordent la pile du processus (ADR-205).
+  ne débordent la pile du processus (ADR-205). `mail_send` n'est offert que si
+  l'entreprise permet l'écriture, et chaque envoi est validé, quelles que soient les
+  politiques, puis exécuté tel que validé : la plateforme écrit l'e-mail (objet en mots
+  encodés, texte en base64, adresses simples seules), si bien que rien de ce que le modèle
+  écrit n'ajoute un en-tête, un destinataire ni la fin du texte ; l'expéditeur est la
+  boîte reliée par la personne servie, ou son adresse sur la plateforme, jamais une
+  adresse que le modèle choisit. Un envoi dont le serveur n'a pas confirmé la prise est
+  dit « peut-être parti » et jamais réessayé ; un mot de passe que le serveur SMTP refuse
+  retire le compte, audité avec le serveur qui l'a refusé.
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée

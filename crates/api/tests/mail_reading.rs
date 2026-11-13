@@ -16,6 +16,7 @@ use mimorya_connectors::testing::{
     FakeImap, ImapBehaviour, ImapSetup, Mailboxes, TestFolder, TestMessage,
 };
 use mimorya_core::demo::{tenant, user};
+use mimorya_core::tools::MailServerRole;
 use serde_json::{Value, json};
 use support::Client;
 use support::mail_servers::{MailServers, PASSWORD, USERNAME, declare, stored};
@@ -231,12 +232,20 @@ async fn a_refusal_never_removes_an_account_linked_again_since() {
     assert_ne!(current, refused_one);
     let since = latest_entry(&api).await;
     let db = &api.app.services.db;
-    let removed = refused_mail_account(db, tenant::ID, user::PAUL, refused_one).await;
+    let removed = refused_mail_account(
+        db,
+        tenant::ID,
+        user::PAUL,
+        refused_one,
+        MailServerRole::Imap,
+    )
+    .await;
     assert!(!removed.unwrap());
     assert!(stored(&api.app, user::PAUL).await.is_some());
     assert!(!audited(&api, since, MAIL_ACCOUNT_REFUSED).await);
     // The account refused is the one kept: removed, and audited.
-    let removed = refused_mail_account(db, tenant::ID, user::PAUL, current).await;
+    let removed =
+        refused_mail_account(db, tenant::ID, user::PAUL, current, MailServerRole::Imap).await;
     assert!(removed.unwrap());
     assert_eq!(stored(&api.app, user::PAUL).await, None);
     assert!(audited(&api, since, MAIL_ACCOUNT_REFUSED).await);

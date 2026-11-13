@@ -2,14 +2,15 @@
 //! servers, declared once, where each person links their own account. Its
 //! declaration is checked again against the network policy at each start,
 //! which the operator may have narrowed since it was saved. Its tools read
-//! the mailbox of the person a run serves, with the account they linked.
+//! the mailbox of the person a run serves, with the account they linked,
+//! and send from it what they validate, where the company lets them write.
 
 use anyhow::bail;
 use async_trait::async_trait;
 use mimorya_core::tools::typed_tool;
 use serde_json::Value;
 
-use super::tools::{MailReach, MailRead, MailSearch};
+use super::tools::{MailReach, MailRead, MailSearch, MailSend};
 use super::{MAIL_SERVER, MailServerConfig};
 use crate::types::{Connector, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -41,11 +42,15 @@ impl Connector for MailServerConnector {
             network: context.network,
             call_timeout: context.call_timeout,
         };
+        let mut tools = vec![
+            typed_tool(MailSearch { reach }),
+            typed_tool(MailRead { reach }),
+        ];
+        if config.write_tools {
+            tools.push(typed_tool(MailSend { reach }));
+        }
         Ok(ConnectorRuntime {
-            tools: vec![
-                typed_tool(MailSearch { reach }),
-                typed_tool(MailRead { reach }),
-            ],
+            tools,
             closer: None,
         })
     }
@@ -72,6 +77,12 @@ mod tests {
             .map(|tool| tool.info().name.clone())
             .collect();
         assert_eq!(names, ["mail_search", "mail_read"]);
+        let mut writing = declared.clone();
+        writing["writeTools"] = json!(true);
+        let started = MailServerConnector.instantiate(&writing, context).await;
+        let tools = started.unwrap().tools;
+        let names: Vec<&str> = tools.iter().map(|tool| tool.info().name.as_str()).collect();
+        assert_eq!(names, ["mail_search", "mail_read", "mail_send"]);
         let mut narrowed = declared.clone();
         narrowed["imap"]["host"] = json!("10.1.2.3");
         let refused = MailServerConnector.instantiate(&narrowed, context).await;
