@@ -2,12 +2,14 @@
 //! (ADR-205): requests over HTTPS to the declared server alone (`client`),
 //! the person's agendas found there (`agendas`), their events over a period
 //! (`report`), what the server answers (`xml`) and the events it holds
-//! (`ical`); and an account checked against it when a person links it.
+//! (`ical`), when they start, end and last (`time`); and an account checked
+//! against it when a person links it.
 
 mod agendas;
 mod client;
 mod ical;
 mod report;
+mod time;
 mod xml;
 
 pub use agendas::{NO_AGENDA, agendas};

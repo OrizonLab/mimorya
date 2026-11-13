@@ -6,8 +6,10 @@
 //! left aside. What a server sends is bounded before it reaches here; each
 //! value and the number of events are bounded again.
 
-use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
-use chrono_tz::Tz;
+use chrono::Duration;
+
+pub use super::time::When;
+use super::time::{duration, when};
 
 /// The most events read from one text.
 pub const MAX_EVENTS: usize = 500;
@@ -15,17 +17,6 @@ pub const MAX_EVENTS: usize = 500;
 const MAX_ATTENDEES: usize = 50;
 /// The most characters kept of one value.
 const MAX_VALUE_CHARS: usize = 4_000;
-
-/// When an event starts or ends.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum When {
-    /// A whole day (`VALUE=DATE`).
-    Day(NaiveDate),
-    /// An instant: in UTC, or at a known zone's time.
-    At(DateTime<Utc>),
-    /// A time with no zone, read in the platform's.
-    Floating(NaiveDateTime),
-}
 
 /// Someone an event names: their name, their address.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -165,8 +156,8 @@ fn read_property(event: &mut Event, line: &Line<'_>) {
         "SUMMARY" => event.summary = Some(text(value)),
         "LOCATION" => event.location = Some(text(value)),
         "DESCRIPTION" => event.description = Some(text(value)),
-        "DTSTART" => event.start = when(line),
-        "DTEND" => event.end = when(line),
+        "DTSTART" => event.start = line_when(line),
+        "DTEND" => event.end = line_when(line),
         "DURATION" => event.duration = duration(value),
         "STATUS" => event.cancelled = value.trim().eq_ignore_ascii_case("CANCELLED"),
         "RRULE" | "RDATE" => event.repeats = true,
@@ -206,93 +197,9 @@ fn text(value: &str) -> String {
     out.trim().to_string()
 }
 
-/// A start or an end: a day, an instant in UTC, a zone's time, or a
-/// floating time when its zone is not one the platform knows.
-fn when(line: &Line<'_>) -> Option<When> {
-    let value = line.value.trim();
-    let is_day = line
-        .param("VALUE")
-        .is_some_and(|kind| kind.eq_ignore_ascii_case("DATE"))
-        || value.len() == 8;
-    if is_day {
-        return NaiveDate::parse_from_str(value, "%Y%m%d")
-            .ok()
-            .map(When::Day);
-    }
-    if let Some(utc) = value.strip_suffix('Z') {
-        let at = NaiveDateTime::parse_from_str(utc, "%Y%m%dT%H%M%S").ok()?;
-        return Some(When::At(at.and_utc()));
-    }
-    let at = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S").ok()?;
-    let zone = line.param("TZID").and_then(|name| name.parse::<Tz>().ok());
-    Some(match zone {
-        Some(zone) => match zone.from_local_datetime(&at).earliest() {
-            Some(local) => When::At(local.with_timezone(&Utc)),
-            None => When::Floating(at),
-        },
-        None => When::Floating(at),
-    })
-}
-
-/// A duration (RFC 5545, 3.3.6), read strictly: weeks alone, or days then
-/// a time of hours, minutes and seconds in that order, each once; none when
-/// it is malformed or past what an instant can hold.
-fn duration(value: &str) -> Option<Duration> {
-    let value = value.trim();
-    let (negative, value) = match value.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, value.strip_prefix('+').unwrap_or(value)),
-    };
-    let rest = value.strip_prefix('P')?;
-    let total = match rest.strip_suffix('W') {
-        Some(weeks) => Duration::try_weeks(count(weeks)?)?,
-        None => days_and_time(rest)?,
-    };
-    Some(if negative { -total } else { total })
-}
-
-/// A length of so many units.
-type Length = fn(i64) -> Option<Duration>;
-
-/// `nD`, `TnHnMnS`, or both: each part at most once, in order.
-fn days_and_time(text: &str) -> Option<Duration> {
-    let (days, time) = match text.split_once('T') {
-        Some((days, time)) => (days, Some(time)),
-        None => (text, None),
-    };
-    if days.is_empty() && time.is_none() {
-        return None;
-    }
-    let mut total = Duration::zero();
-    if !days.is_empty() {
-        total = Duration::try_days(count(days.strip_suffix('D')?)?)?;
-    }
-    if let Some(mut rest) = time {
-        if rest.is_empty() {
-            return None;
-        }
-        let units: [(char, Length); 3] = [
-            ('H', Duration::try_hours),
-            ('M', Duration::try_minutes),
-            ('S', Duration::try_seconds),
-        ];
-        for (unit, length) in units {
-            if let Some(at) = rest.find(unit) {
-                total = total.checked_add(&length(count(&rest[..at])?)?)?;
-                rest = &rest[at + 1..];
-            }
-        }
-        if !rest.is_empty() {
-            return None;
-        }
-    }
-    Some(total)
-}
-
-/// A count of digits alone.
-fn count(text: &str) -> Option<i64> {
-    let digits = !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit());
-    digits.then(|| text.parse().ok()).flatten()
+/// A start or an end, with its kind and zone.
+fn line_when(line: &Line<'_>) -> Option<When> {
+    when(line.value, line.param("VALUE"), line.param("TZID"))
 }
 
 /// The organizer or an attendee: their common name and their address
@@ -311,6 +218,8 @@ fn person(line: &Line<'_>) -> Person {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{NaiveDate, TimeZone, Utc};
+
     use super::*;
 
     const AGENDA: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Paris\r\n\
@@ -365,25 +274,6 @@ mod tests {
             .and_hms_opt(9, 0, 0)
             .unwrap();
         assert_eq!(read[0].start, Some(When::Floating(nine)));
-        assert_eq!(duration("-PT15M"), Some(-Duration::minutes(15)));
-        assert_eq!(duration("P1DT2H"), Some(Duration::hours(26)));
-        assert_eq!(duration("P2W"), Some(Duration::weeks(2)));
-        assert_eq!(duration("PT1H30M"), Some(Duration::minutes(90)));
-        // Malformed, repeated, out of order or past an instant's range.
-        for refused in [
-            "P1W2D",
-            "P",
-            "PT",
-            "P1D1D",
-            "P106751991167D1D",
-            "PT5M2H",
-            "P1H",
-            "P+1D",
-            "PT1H1H",
-            "P99999999999999999999D",
-        ] {
-            assert_eq!(duration(refused), None, "{refused}");
-        }
     }
 
     #[test]

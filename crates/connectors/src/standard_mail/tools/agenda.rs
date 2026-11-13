@@ -229,6 +229,7 @@ fn event(listed: &Listed) -> Value {
     let all_day = matches!(event.start, Some(When::Day(_)));
     let mut read = json!({
         "id": short(&event.uid),
+        "occurrence": short(&event.occurrence),
         "objet": short(&event.summary),
         "debut": event.start.map_or(Value::Null, written),
         "fin": end_of(event).map_or(Value::Null, written),

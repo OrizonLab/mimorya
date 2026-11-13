@@ -14336,9 +14336,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       est lue strictement (semaines seules, ou jours puis heures, minutes et secondes,
       chacune une fois) ; une fin au-delà de ce qu'un instant peut tenir est laissée,
       sans jamais arrêter le run. Un fuseau
-      IANA (`TZID`) est appliqué par chrono-tz, un fuseau inconnu lu à l'heure de la
+      IANA (`TZID`) est appliqué par chrono-tz : une heure qui tombe dans le trou d'un
+      changement d'heure prend le décalage d'avant (RFC 5545, 3.3.5), celle d'un
+      chevauchement la première des deux. Un fuseau inconnu est lu à l'heure de la
       plateforme. Les rendez-vous sont rendus à l'heure de Paris, les plus tôt d'abord,
-      50 au plus ;
+      50 au plus, chaque occurrence d'un rendez-vous répétitif nommée
+      (`RECURRENCE-ID`) ;
     - ce que le serveur envoie est borné : 256 Kio par recherche d'agenda, 512 Kio par
       rapport, 500 rendez-vous par objet iCalendar et 4 000 caractères par valeur ;
     - un mot de passe que l'agenda refuse (`401`) retire le compte, audité avec le

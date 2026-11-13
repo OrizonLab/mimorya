@@ -4,9 +4,10 @@
 //! and one of tasks, the events a test gives answered to any `REPORT`
 //! whatever the period (a client keeps those it asked for). It notes each
 //! request (method, path, whether it asked to expand occurrences), never a
-//! credential. It may also name a principal or a calendar home on another
-//! server, list agendas on other servers beside its own, redirect, refuse
-//! with a status, or answer at a length past what a client reads.
+//! credential. It may also be an agenda at its root, name its calendar home
+//! there, name a principal or a calendar home on another server, list
+//! agendas on other servers beside its own or none of events, redirect,
+//! refuse with a status, or answer at a length past what a client reads.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -35,6 +36,12 @@ pub enum CalDavBehaviour {
     HomeElsewhere(&'static str),
     /// Lists agendas of events on other servers beside its own.
     ListsElsewhere,
+    /// Lists no agenda of events: tasks alone.
+    TasksOnly,
+    /// Is an agenda of events at its root, the address declared.
+    DeclaredIsAgenda,
+    /// Names, at its root, this address as the calendar home.
+    DeclaredNamesHome(&'static str),
     /// Answers every request, once signed in, with this status.
     Refuses(u16),
     /// Redirects the declared address elsewhere.
@@ -118,6 +125,13 @@ async fn answer(
             [(header::LOCATION, "https://agenda.ailleurs.example/dav/")],
         )
             .into_response(),
+        ("PROPFIND", "/dav/", CalDavBehaviour::DeclaredIsAgenda) => {
+            multistatus(&agenda("/dav/", "Agenda", "VEVENT"))
+        }
+        ("PROPFIND", "/dav/", CalDavBehaviour::DeclaredNamesHome(named)) => multistatus(&response(
+            "/dav/",
+            &format!("<c:calendar-home-set><d:href>{named}</d:href></c:calendar-home-set>"),
+        )),
         ("PROPFIND", "/dav/", _) => multistatus(&response(
             "/dav/",
             &format!(
@@ -133,7 +147,9 @@ async fn answer(
         ("REPORT", AGENDA_PATH, CalDavBehaviour::AnswersAtLength) => {
             multistatus(&"<d:response><d:href>/x</d:href></d:response>".repeat(20_000))
         }
-        ("REPORT", AGENDA_PATH, _) => multistatus(&events(&served.events)),
+        ("REPORT", AGENDA_PATH, _) | ("REPORT", "/dav/", CalDavBehaviour::DeclaredIsAgenda) => {
+            multistatus(&events(&served.events))
+        }
         _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -179,33 +195,38 @@ pub const ELSEWHERE_AGENDAS: [&str; 3] = [
 /// The calendar home: itself, an agenda of events, one of tasks, and
 /// agendas elsewhere if it lists them.
 fn listing(behaviour: CalDavBehaviour) -> String {
-    let agenda = |href: &str, name: &str, component: &str| {
-        response(
-            href,
-            &format!(
-                "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>\
-                 <d:displayname>{name}</d:displayname><c:supported-calendar-component-set>\
-                 <c:comp name=\"{component}\"/></c:supported-calendar-component-set>"
-            ),
-        )
+    let home = response(
+        "/dav/calendars/paul/",
+        "<d:resourcetype><d:collection/></d:resourcetype>",
+    );
+    let events = match behaviour {
+        CalDavBehaviour::TasksOnly => None,
+        _ => Some(agenda(AGENDA_PATH, "Personnel", "VEVENT")),
     };
-    [
-        response(
-            "/dav/calendars/paul/",
-            "<d:resourcetype><d:collection/></d:resourcetype>",
+    let tasks = agenda("/dav/calendars/paul/taches/", "Tâches", "VTODO");
+    [Some(home), events, Some(tasks)]
+        .into_iter()
+        .flatten()
+        .chain(match behaviour {
+            CalDavBehaviour::ListsElsewhere => ELSEWHERE_AGENDAS
+                .iter()
+                .map(|href| agenda(href, "Ailleurs", "VEVENT"))
+                .collect(),
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+/// An agenda holding `component`s.
+fn agenda(href: &str, name: &str, component: &str) -> String {
+    response(
+        href,
+        &format!(
+            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>\
+             <d:displayname>{name}</d:displayname><c:supported-calendar-component-set>\
+             <c:comp name=\"{component}\"/></c:supported-calendar-component-set>"
         ),
-        agenda(AGENDA_PATH, "Personnel", "VEVENT"),
-        agenda("/dav/calendars/paul/taches/", "Tâches", "VTODO"),
-    ]
-    .into_iter()
-    .chain(match behaviour {
-        CalDavBehaviour::ListsElsewhere => ELSEWHERE_AGENDAS
-            .iter()
-            .map(|href| agenda(href, "Ailleurs", "VEVENT"))
-            .collect(),
-        _ => Vec::new(),
-    })
-    .collect()
+    )
 }
 
 /// Each event as a calendar object, its text escaped for XML.

@@ -20,7 +20,7 @@ use mimorya_agent::testing::InMemoryPorts;
 use mimorya_agent::tools::ToolExecutor;
 use mimorya_connectors::outbound::TOO_LONG;
 use mimorya_connectors::standard_mail::{
-    ACCESS_REFUSED, CREDENTIALS_REFUSED, ELSEWHERE, REDIRECTED, TRY_LATER, check_caldav,
+    ACCESS_REFUSED, CREDENTIALS_REFUSED, ELSEWHERE, NO_AGENDA, REDIRECTED, TRY_LATER, check_caldav,
 };
 use mimorya_connectors::testing::{CalDavBehaviour, FakeCalDav, TestAuthority};
 use mimorya_core::autonomy::ToolRisk;
@@ -118,6 +118,7 @@ async fn the_period_s_events_come_earliest_first_in_paris_time() {
     let result = call(&paul, "mail_calendar_events", week()).await;
     assert!(!result.is_error, "{:?}", result.content);
     let read = &result.content["rendezVous"];
+    assert_eq!(read[0]["occurrence"], Value::Null);
     let subjects: Vec<&str> = read
         .as_array()
         .unwrap()
@@ -163,9 +164,11 @@ async fn the_period_s_events_come_earliest_first_in_paris_time() {
 async fn nothing_goes_to_another_server_nor_follows_a_redirect() {
     let principal = CalDavBehaviour::PrincipalElsewhere("https://agenda.ailleurs.example/p/paul/");
     let home = CalDavBehaviour::HomeElsewhere("//agenda.ailleurs.example/dav/paul/");
+    let named = CalDavBehaviour::DeclaredNamesHome("https://agenda.ailleurs.example/dav/paul/");
     let refusals = [
         (principal, ELSEWHERE, 1),
         (home, ELSEWHERE, 2),
+        (named, ELSEWHERE, 1),
         (CalDavBehaviour::Redirects, REDIRECTED, 1),
         (CalDavBehaviour::AnswersAtLength, TOO_LONG, 4),
     ];
@@ -191,6 +194,47 @@ async fn nothing_goes_to_another_server_nor_follows_a_redirect() {
         .filter(|line| line.starts_with("REPORT"))
         .collect();
     assert_eq!(reports, ["REPORT /dav/calendars/paul/personnel/ expand"]);
+}
+
+#[tokio::test]
+async fn an_agenda_at_the_declared_address_or_a_home_it_names_is_read_there() {
+    let cases = [
+        (
+            CalDavBehaviour::DeclaredIsAgenda,
+            vec!["PROPFIND /dav/", "REPORT /dav/ expand"],
+        ),
+        (
+            CalDavBehaviour::DeclaredNamesHome("/dav/calendars/paul/"),
+            vec![
+                "PROPFIND /dav/",
+                "PROPFIND /dav/calendars/paul/",
+                "REPORT /dav/calendars/paul/personnel/ expand",
+            ],
+        ),
+    ];
+    for (behaviour, asked) in cases {
+        let (agenda, _, paul) = paul_at(behaviour, PASSWORD).await;
+        let result = call(&paul, "mail_calendar_events", week()).await;
+        assert!(!result.is_error, "{behaviour:?}: {:?}", result.content);
+        assert_eq!(result.content["nombre"], 3, "{behaviour:?}");
+        assert_eq!(agenda.heard.lines(), asked, "{behaviour:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_account_with_no_agenda_of_events_is_told_so() {
+    let (_, ports, paul) = paul_at(CalDavBehaviour::TasksOnly, PASSWORD).await;
+    let error = error_of(&call(&paul, "mail_calendar_events", week()).await);
+    assert!(error.starts_with(NO_AGENDA), "{error}");
+    assert!(ports.refused_mail_accounts().is_empty());
+    // Nor is such an account linked.
+    let authority = TestAuthority::new();
+    let behaviour = CalDavBehaviour::TasksOnly;
+    let agenda = FakeCalDav::start(&authority, accounts(), behaviour, vec![]).await;
+    let refused = check_caldav(&agenda.base(), &login(PASSWORD), trusting(&authority))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.summary, NO_AGENDA);
 }
 
 #[tokio::test]
