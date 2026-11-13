@@ -42,8 +42,10 @@ pub fn when(value: &str, kind: Option<&str>, zone: Option<&str>) -> Option<When>
 }
 
 /// The instant `at` is in `zone`: the earlier of two in a change's
-/// overlap, and in its gap the one the offset before it gives.
-fn in_zone(zone: Tz, at: NaiveDateTime) -> Option<DateTime<Utc>> {
+/// overlap, and in its gap the one the offset before it gives, looked for
+/// three hours before (a gap longer than that, as a day skipped, finds
+/// none).
+pub fn in_zone(zone: Tz, at: NaiveDateTime) -> Option<DateTime<Utc>> {
     match zone.from_local_datetime(&at) {
         LocalResult::Single(local) | LocalResult::Ambiguous(local, _) => {
             Some(local.with_timezone(&Utc))
@@ -141,6 +143,14 @@ mod tests {
         assert_eq!(overlap, Some(When::At(earlier)));
         let day = NaiveDate::from_ymd_opt(2026, 11, 18).unwrap();
         assert_eq!(when("20261118", Some("DATE"), None), Some(When::Day(day)));
+        // 02:30 does not exist in Paris on 28 March 2027: with the offset
+        // before the change (+01:00), it is 01:30 UTC.
+        let paris_gap = NaiveDate::from_ymd_opt(2027, 3, 28)
+            .unwrap()
+            .and_hms_opt(2, 30, 0)
+            .unwrap();
+        let expected = Utc.with_ymd_and_hms(2027, 3, 28, 1, 30, 0).unwrap();
+        assert_eq!(in_zone(chrono_tz::Europe::Paris, paris_gap), Some(expected));
     }
 
     #[test]

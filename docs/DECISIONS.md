@@ -14316,8 +14316,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       seules sauf permission de l'exploitant, son mandataire ;
     - la plateforme cherche les agendas de la personne : l'adresse déclarée si c'est un
       calendrier, sinon son calendrier personnel (`calendar-home-set`), nommé par
-      l'adresse ou par son principal (`current-user-principal`, RFC 5397), puis les
-      calendriers de rendez-vous qu'il contient (`VEVENT`), dix au plus. Toute adresse
+      l'adresse ou par son principal (`current-user-principal`, RFC 5397), ou l'adresse
+      déclarée elle-même quand ni elle ni le principal n'en nomme, puis les calendriers
+      de rendez-vous qu'il contient (`VEVENT`), dix au plus. Toute adresse
       qu'une réponse nomme est résolue sur le serveur déclaré : un principal ou un
       calendrier personnel sur un autre serveur arrête la recherche, et rien ne lui est
       envoyé ; un calendrier ailleurs est laissé ;
@@ -14338,8 +14339,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       sans jamais arrêter le run. Un fuseau
       IANA (`TZID`) est appliqué par chrono-tz : une heure qui tombe dans le trou d'un
       changement d'heure prend le décalage d'avant (RFC 5545, 3.3.5), celle d'un
-      chevauchement la première des deux. Un fuseau inconnu est lu à l'heure de la
-      plateforme. Les rendez-vous sont rendus à l'heure de Paris, les plus tôt d'abord,
+      chevauchement la première des deux. Une heure sans fuseau, ou d'un fuseau inconnu,
+      est lue à l'heure de la plateforme, selon la même règle. Une fin qui ne suit pas
+      le début n'est pas donnée. Les rendez-vous sont rendus à l'heure de Paris, les plus tôt d'abord,
       50 au plus, chaque occurrence d'un rendez-vous répétitif nommée
       (`RECURRENCE-ID`) ;
     - ce que le serveur envoie est borné : 256 Kio par recherche d'agenda, 512 Kio par

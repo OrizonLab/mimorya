@@ -1,7 +1,8 @@
 //! A person's agendas at their company's CalDAV server (ADR-205): the
 //! declared address itself when it is a calendar; otherwise their calendar
 //! home, named by the address or by their principal (RFC 5397, RFC 4791,
-//! 6.2.1), and the calendars of events it holds, ten at most. A principal
+//! 6.2.1), or the declared address itself when neither names one, and the
+//! calendars of events it holds, ten at most. A principal
 //! or a home on another server stops the search: nothing is sent there. A
 //! calendar on another server is left out.
 

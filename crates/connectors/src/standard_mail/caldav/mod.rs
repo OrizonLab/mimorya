@@ -18,6 +18,7 @@ pub use client::{
 };
 pub use ical::{Event, Person, When};
 pub use report::agenda_events;
+pub use time::in_zone;
 pub use xml::Found;
 
 use tokio::time::timeout;

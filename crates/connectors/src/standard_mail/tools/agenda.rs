@@ -5,7 +5,7 @@
 //! first. Offered only where the company declared an agenda.
 
 use async_trait::async_trait;
-use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::time_zone::PLATFORM_TIME_ZONE;
 use mimorya_core::tools::{Citation, MailServerRole, ToolContext, ToolInfo, ToolResult, TypedTool};
@@ -18,7 +18,7 @@ use super::person::{MailReach, PersonAccount, refused, told};
 use crate::delegated::shape::{MAX_SHORT_CHARS, bounded, day_end, day_start};
 use crate::outbound::{CONNECTOR_USE, Cause};
 use crate::standard_mail::CREDENTIALS_REFUSED;
-use crate::standard_mail::caldav::{CalDav, Event, Person, When, agenda_events, agendas};
+use crate::standard_mail::caldav::{CalDav, Event, Person, When, agenda_events, agendas, in_zone};
 
 /// The longest period read at once, in days.
 pub const MAX_DAYS: i64 = 31;
@@ -157,10 +157,7 @@ fn instant(when: When) -> DateTime<Utc> {
     match when {
         When::Day(day) => day_start(day),
         When::At(at) => at,
-        When::Floating(at) => PLATFORM_TIME_ZONE
-            .from_local_datetime(&at)
-            .earliest()
-            .map_or_else(|| at.and_utc(), |local| local.with_timezone(&Utc)),
+        When::Floating(at) => in_zone(PLATFORM_TIME_ZONE, at).unwrap_or_else(|| at.and_utc()),
     }
 }
 
@@ -232,7 +229,10 @@ fn event(listed: &Listed) -> Value {
         "occurrence": short(&event.occurrence),
         "objet": short(&event.summary),
         "debut": event.start.map_or(Value::Null, written),
-        "fin": end_of(event).map_or(Value::Null, written),
+        // An end that does not follow the start is none, as `overlaps` reads it.
+        "fin": end_of(event)
+            .filter(|end| event.start.is_some_and(|start| instant(*end) > instant(start)))
+            .map_or(Value::Null, written),
         "journeeEntiere": all_day,
         "annule": event.cancelled,
         "lieu": short(&event.location),
@@ -262,6 +262,8 @@ fn citation(event: &Event) -> Option<Citation> {
 
 #[cfg(test)]
 mod tests {
+    use chrono::TimeZone;
+
     use super::*;
 
     fn period(from: &str, to: &str) -> MailCalendarEventsInput {

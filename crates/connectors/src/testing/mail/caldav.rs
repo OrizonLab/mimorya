@@ -5,9 +5,11 @@
 //! whatever the period (a client keeps those it asked for). It notes each
 //! request (method, path, whether it asked to expand occurrences), never a
 //! credential. It may also be an agenda at its root, name its calendar home
-//! there, name a principal or a calendar home on another server, list
-//! agendas on other servers beside its own or none of events, redirect,
-//! refuse with a status, or answer at a length past what a client reads.
+//! there, name neither a principal nor a home (or a principal naming no
+//! home), its root then listing the agendas, name a principal or a
+//! calendar home on another server, list agendas on other servers beside
+//! its own, eleven agendas or none of events, redirect, refuse with a
+//! status, or answer at a length past what a client reads.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -42,6 +44,13 @@ pub enum CalDavBehaviour {
     DeclaredIsAgenda,
     /// Names, at its root, this address as the calendar home.
     DeclaredNamesHome(&'static str),
+    /// Names neither a principal nor a home at its root, which lists the
+    /// agendas.
+    RootOnly,
+    /// Names a principal that names no home; its root lists the agendas.
+    PrincipalWithoutHome,
+    /// Lists eleven agendas of events.
+    ManyAgendas,
     /// Answers every request, once signed in, with this status.
     Refuses(u16),
     /// Redirects the declared address elsewhere.
@@ -97,6 +106,11 @@ async fn answer(
     body: String,
 ) -> Response {
     let path = uri.path().to_string();
+    let depth = headers
+        .get("Depth")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("0")
+        .to_string();
     let expand = if body.contains("expand") {
         " expand"
     } else {
@@ -119,7 +133,29 @@ async fn answer(
         CalDavBehaviour::HomeElsewhere(elsewhere) => elsewhere,
         _ => "/dav/calendars/paul/",
     };
+    let lists_at_root = matches!(
+        served.behaviour,
+        CalDavBehaviour::RootOnly | CalDavBehaviour::PrincipalWithoutHome
+    );
     match (method.as_str(), path.as_str(), served.behaviour) {
+        ("PROPFIND", "/dav/", behaviour) if lists_at_root && depth == "1" => {
+            multistatus(&listing(behaviour))
+        }
+        ("PROPFIND", "/dav/", CalDavBehaviour::RootOnly) => multistatus(&response(
+            "/dav/",
+            "<d:resourcetype><d:collection/></d:resourcetype>",
+        )),
+        ("PROPFIND", "/dav/principals/paul/", CalDavBehaviour::PrincipalWithoutHome) => {
+            multistatus(&response(
+                "/dav/principals/paul/",
+                "<d:displayname>Paul</d:displayname>",
+            ))
+        }
+        ("REPORT", agenda_path, CalDavBehaviour::ManyAgendas)
+            if agenda_path.starts_with("/dav/calendars/paul/agenda-") =>
+        {
+            multistatus("")
+        }
         ("PROPFIND", "/dav/", CalDavBehaviour::Redirects) => (
             StatusCode::MOVED_PERMANENTLY,
             [(header::LOCATION, "https://agenda.ailleurs.example/dav/")],
@@ -199,14 +235,23 @@ fn listing(behaviour: CalDavBehaviour) -> String {
         "/dav/calendars/paul/",
         "<d:resourcetype><d:collection/></d:resourcetype>",
     );
-    let events = match behaviour {
-        CalDavBehaviour::TasksOnly => None,
-        _ => Some(agenda(AGENDA_PATH, "Personnel", "VEVENT")),
+    let events: Vec<String> = match behaviour {
+        CalDavBehaviour::TasksOnly => Vec::new(),
+        CalDavBehaviour::ManyAgendas => (0..11)
+            .map(|at| {
+                agenda(
+                    &format!("/dav/calendars/paul/agenda-{at}/"),
+                    "Agenda",
+                    "VEVENT",
+                )
+            })
+            .collect(),
+        _ => vec![agenda(AGENDA_PATH, "Personnel", "VEVENT")],
     };
     let tasks = agenda("/dav/calendars/paul/taches/", "Tâches", "VTODO");
-    [Some(home), events, Some(tasks)]
-        .into_iter()
-        .flatten()
+    std::iter::once(home)
+        .chain(events)
+        .chain(std::iter::once(tasks))
         .chain(match behaviour {
             CalDavBehaviour::ListsElsewhere => ELSEWHERE_AGENDAS
                 .iter()
