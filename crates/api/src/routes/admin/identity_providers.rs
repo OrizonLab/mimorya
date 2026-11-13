@@ -20,7 +20,6 @@ use crate::contract::admin::{
 use crate::contract::{Created, Done};
 use crate::http::{ApiResult, Body, PathId, iso};
 use crate::plugins::Auth;
-use crate::secrets::SecretStore;
 use crate::services::admin::{
     ProviderChanges, ProviderDeclaration, change_identity_provider, declare_identity_provider,
     prove_domain as prove, remove_identity_provider,
@@ -29,17 +28,13 @@ use crate::services::sso::client_secret_name;
 
 const PERMISSION: &str = "settings:manage";
 
-fn secrets(state: &AppState) -> SecretStore {
-    SecretStore::new(state.config.secrets.clone())
-}
-
 pub async fn list(
     State(state): State<AppState>,
     Auth(identity): Auth,
 ) -> ApiResult<Json<IdentityProvidersView>> {
     let access = state.access.context(identity).await?;
     access.require_tenant_wide(PERMISSION)?;
-    let store = secrets(&state);
+    let store = state.secret_store();
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = list_identity_providers(&mut tx).await?;
     let verified: BTreeMap<String, String> = list_verified_domains(&mut tx)
@@ -108,7 +103,7 @@ pub async fn create(
     let id = declare_identity_provider(
         &state.db,
         &state.sso,
-        &secrets(&state),
+        &state.secret_store(),
         &access,
         declaration,
     )
@@ -135,7 +130,7 @@ pub async fn update(
     change_identity_provider(
         &state.db,
         &state.sso,
-        &secrets(&state),
+        &state.secret_store(),
         &access,
         id,
         changes,
@@ -150,6 +145,6 @@ pub async fn remove(
     PathId(id): PathId,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    remove_identity_provider(&state.db, &secrets(&state), &access, id).await?;
+    remove_identity_provider(&state.db, &state.secret_store(), &access, id).await?;
     Ok(Json(Done::OK))
 }

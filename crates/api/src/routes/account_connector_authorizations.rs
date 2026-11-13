@@ -10,7 +10,7 @@ use axum::response::{AppendHeaders, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 
-use super::admin::connectors::{admin, secrets};
+use super::admin::connectors::admin;
 use crate::app::AppState;
 use crate::contract::admin::OAuthAuthorizationStart;
 use crate::contract::{Done, PersonAuthorizationView, PersonAuthorizations};
@@ -36,7 +36,7 @@ async fn list(
     Auth(identity): Auth,
 ) -> ApiResult<Json<PersonAuthorizations>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let servers = list_person_servers(&admin(&state, &store, &catalog), &access).await?;
     let servers = servers
         .into_iter()
@@ -67,7 +67,7 @@ async fn start(
         return Err(ApiError::RateLimited);
     }
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     let origin = &state.config.web_origin;
     let started = start_person_authorization(&admin, &access, id, origin).await?;
@@ -86,7 +86,7 @@ async fn remove(
     PathId(id): PathId,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     remove_person_authorization(&admin(&state, &store, &catalog), &access, id).await?;
     Ok(Json(Done::OK))
 }

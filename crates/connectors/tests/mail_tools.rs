@@ -8,13 +8,16 @@
 mod support;
 
 use mimorya_connectors::outbound::{NetworkPolicy, TOO_LONG};
-use mimorya_connectors::testing::{FetchBehaviour, TestAuthority};
+use mimorya_connectors::standard_mail::TRY_LATER;
+use mimorya_connectors::testing::{
+    FakeImap, FetchBehaviour, ImapBehaviour, ImapSetup, TestAuthority,
+};
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::demo::user;
 use mimorya_core::tools::LinkedAccounts;
 use serde_json::json;
 use support::linked_accounts::{call, error_of, mailbox_executor};
-use support::mail::{MAIL_LOCAL, PASSWORD, WRONG, hides, trusting};
+use support::mail::{MAIL_LOCAL, PASSWORD, USER, WRONG, accounts, hides, trusting};
 use support::mailboxes::{VALIDITY, declaration, folders, linked_at, linked_paul, server, tools};
 
 #[tokio::test]
@@ -283,6 +286,29 @@ async fn a_refused_account_is_reported_once_and_not_tried_again() {
         .filter(|l| l.starts_with("LOGIN"))
         .count();
     assert_eq!(logins, 1);
+}
+
+#[tokio::test]
+async fn a_server_refusing_for_now_keeps_the_account() {
+    let authority = TestAuthority::new();
+    let setup = ImapSetup {
+        refuses_for_now: true,
+        ..ImapSetup::new(ImapBehaviour::Answers)
+    };
+    let imap = FakeImap::holding(&authority, accounts(), setup, folders(None)).await;
+    let ports = mimorya_agent::testing::InMemoryPorts::new(user::PAUL, uuid::Uuid::new_v4());
+    ports.link_mail_account(declaration(imap.address), USER, PASSWORD, linked_at());
+    let paul = started_on(&declaration(imap.address), trusting(&authority), &ports).await;
+    let refused = call(&paul, "mail_search", json!({})).await;
+    assert!(
+        error_of(&refused).starts_with(TRY_LATER),
+        "{:?}",
+        refused.content
+    );
+    // Its directory down for a while: the account stays, tried again later.
+    assert!(ports.refused_mail_accounts().is_empty());
+    let again = call(&paul, "mail_search", json!({})).await;
+    assert!(error_of(&again).starts_with(TRY_LATER));
 }
 
 #[tokio::test]

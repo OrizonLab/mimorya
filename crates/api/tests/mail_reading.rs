@@ -10,7 +10,7 @@ mod support;
 use axum::http::StatusCode;
 use chrono::NaiveDate;
 use mimorya_agent::testing::{ScriptedStep, call, last_tool_results};
-use mimorya_api::services::mail_accounts::MAIL_ACCOUNT_REFUSED;
+use mimorya_api::services::mail_accounts::{MAIL_ACCOUNT_REFUSED, refused_mail_account};
 use mimorya_api::services::skill_evaluations::NO_LINKED_ACCOUNT;
 use mimorya_connectors::testing::{
     FakeImap, ImapBehaviour, ImapSetup, Mailboxes, TestFolder, TestMessage,
@@ -202,4 +202,42 @@ async fn an_evaluation_reads_no_ones_mailbox() {
     assert_eq!(logins(&servers.imap), before);
     forget(&api, skill).await;
     paul.delete(&format!("{SKILLS}/{skill}")).await;
+}
+
+/// When Paul's account was linked.
+async fn linked_on(api: &TestApi) -> chrono::DateTime<chrono::Utc> {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let linked = sqlx::query_scalar("select linked_at from mail_accounts where user_id = $1")
+        .bind(user::PAUL)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    linked
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_refusal_never_removes_an_account_linked_again_since() {
+    let servers = MailServers::holding(vec![(USERNAME.into(), PASSWORD.into())], inbox()).await;
+    let api = TestApi::start_with_mail_servers(&servers).await;
+    let paul = api.sign_in(user::PAUL).await;
+    declare(&paul, &servers).await;
+    link(&paul).await;
+    let refused_one = linked_on(&api).await;
+    // Linked again (a new password) while a run was refused the old one.
+    link(&paul).await;
+    let current = linked_on(&api).await;
+    assert_ne!(current, refused_one);
+    let since = latest_entry(&api).await;
+    let db = &api.app.services.db;
+    let removed = refused_mail_account(db, tenant::ID, user::PAUL, refused_one).await;
+    assert!(!removed.unwrap());
+    assert!(stored(&api.app, user::PAUL).await.is_some());
+    assert!(!audited(&api, since, MAIL_ACCOUNT_REFUSED).await);
+    // The account refused is the one kept: removed, and audited.
+    let removed = refused_mail_account(db, tenant::ID, user::PAUL, current).await;
+    assert!(removed.unwrap());
+    assert_eq!(stored(&api.app, user::PAUL).await, None);
+    assert!(audited(&api, since, MAIL_ACCOUNT_REFUSED).await);
 }

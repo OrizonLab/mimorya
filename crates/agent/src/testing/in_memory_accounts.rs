@@ -134,3 +134,30 @@ impl LinkedAccounts for InMemoryPorts {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{Duration, Utc};
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn a_refusal_never_removes_a_mail_account_linked_again_since() {
+        let ports = InMemoryPorts::new(Uuid::new_v4(), Uuid::new_v4());
+        let first = Utc::now() - Duration::minutes(5);
+        let again = Utc::now();
+        ports.link_mail_account(json!({}), "paul", "ancien", first);
+        ports.link_mail_account(json!({}), "paul", "nouveau", again);
+        ports.mail_account_refused(first).await;
+        let kept = ports.mail_account().await.unwrap();
+        assert_eq!(kept.password(), "nouveau");
+        ports.mail_account_refused(again).await;
+        assert_eq!(
+            ports.mail_account().await.err(),
+            Some(AccountAccessError::NotLinked)
+        );
+        assert_eq!(ports.refused_mail_accounts(), [first, again]);
+    }
+}

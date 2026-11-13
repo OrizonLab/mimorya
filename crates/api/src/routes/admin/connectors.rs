@@ -41,17 +41,13 @@ use crate::services::connectors::token_secret_name;
 use crate::services::permission_catalog::permission_catalog;
 
 const PERMISSION: &str = "connector:manage";
-pub(crate) fn secrets(state: &AppState) -> SecretStore {
-    SecretStore::new(state.config.secrets.clone())
-}
-
 pub async fn list(
     State(state): State<AppState>,
     Auth(identity): Auth,
 ) -> ApiResult<Json<Connectors>> {
     let access = state.access.context(identity).await?;
     access.require_tenant_wide(PERMISSION)?;
-    let store = secrets(&state);
+    let store = state.secret_store();
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let instances = list_connector_instances(&mut tx, false).await?;
     let mut views = Vec::with_capacity(instances.len());
@@ -160,7 +156,7 @@ pub async fn create(
     Body(body): Body<NewConnector>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let input = NewMcpConnector {
         name: body.name,
         prefix: body.prefix,
@@ -179,7 +175,7 @@ pub async fn create_rest(
     Body(body): Body<NewRestConnector>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let input = RestInput {
         name: body.name,
         config: RestConfig {
@@ -212,7 +208,7 @@ pub async fn update(
     Body(body): Body<ConnectorUpdate>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let changes = ConnectorChanges {
         name: body.name,
         enabled: body.enabled,
@@ -254,7 +250,7 @@ pub async fn remove(
     PathId(id): PathId,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     delete_connector(&admin(&state, &store, &catalog), &access, id).await?;
     Ok(Json(Done::OK))
 }
@@ -265,7 +261,7 @@ pub async fn test(
     PathId(id): PathId,
 ) -> ApiResult<Json<ConnectorTest>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let outcome = test_connector(&admin(&state, &store, &catalog), &access, id).await?;
     Ok(Json((&outcome).into()))
 }

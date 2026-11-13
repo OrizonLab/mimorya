@@ -18,7 +18,7 @@ use tokio::time::timeout;
 use super::literals::guarded;
 use super::{
     CREDENTIALS_REFUSED, FORM_REFUSED, ImapServer, LEAVE_TIMEOUT, MailLogin, NOT_A_MAIL_SERVER,
-    SIGN_IN_READ_LIMIT, SIGN_IN_TIMEOUT,
+    SIGN_IN_READ_LIMIT, SIGN_IN_TIMEOUT, TRY_LATER,
 };
 use crate::outbound::{
     Cause, Connection, NetworkPolicy, ReadBudget, TOO_LONG, TOO_SLOW, UNREACHABLE, bounded,
@@ -146,9 +146,15 @@ impl Authenticator for Plain<'_> {
     }
 }
 
+/// What a server refusing for now says (RFC 5530): its directory down, a
+/// fault of its own, the account in use, a limit reached. The account is
+/// not taken for refused.
+const FOR_NOW: [&str; 4] = ["[UNAVAILABLE]", "[SERVERBUG]", "[INUSE]", "[LIMIT]"];
+
 /// A refused sign-in, told by what failed.
 fn refused(error: ImapError) -> Cause {
     let (summary, detail): (&'static str, Cow<'_, str>) = match &error {
+        ImapError::No(said) if for_now(said) => (TRY_LATER, said.into()),
         ImapError::No(said) => (CREDENTIALS_REFUSED, said.into()),
         ImapError::Bad(said) => (FORM_REFUSED, said.into()),
         ImapError::Io(error) => (UNREACHABLE, error.to_string().into()),
@@ -159,4 +165,10 @@ fn refused(error: ImapError) -> Cause {
         summary,
         detail: detail.into_owned(),
     }
+}
+
+/// Whether a refusal says the server refuses for now only.
+fn for_now(said: &str) -> bool {
+    let said = said.to_ascii_uppercase();
+    FOR_NOW.iter().any(|code| said.contains(code))
 }

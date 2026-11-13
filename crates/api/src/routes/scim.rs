@@ -26,7 +26,7 @@ use crate::services::scim::{
     remove_scim_user, replace_scim_user,
 };
 
-use super::admin::connectors::{admin, secrets};
+use super::admin::connectors::admin;
 use crate::http::scim::ScimError;
 use crate::services::permission_catalog::permission_catalog;
 
@@ -103,7 +103,7 @@ async fn replace(
     path: Result<Path<String>, PathRejection>,
     ScimBody(body): ScimBody,
 ) -> ScimResult<ScimJson<ScimUser>> {
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     let (token, base) = (bearer(&headers), base(&state));
     let user = replace_scim_user(&admin, token, named(path), body, &base).await?;
@@ -116,7 +116,7 @@ async fn patch(
     path: Result<Path<String>, PathRejection>,
     ScimBody(body): ScimBody,
 ) -> ScimResult<ScimJson<ScimUser>> {
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     let (token, base) = (bearer(&headers), base(&state));
     let user = patch_scim_user(&admin, token, named(path), body, &base).await?;
@@ -128,7 +128,7 @@ async fn remove(
     headers: HeaderMap,
     path: Result<Path<String>, PathRejection>,
 ) -> ScimResult<StatusCode> {
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     remove_scim_user(&admin, bearer(&headers), named(path)).await?;
     Ok(StatusCode::NO_CONTENT)

@@ -14200,20 +14200,30 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       texte), tronqué au-delà de 20 000 caractères, ses destinataires et ses pièces
       jointes, nommées, jamais lues. Au-delà du mégaoctet, la réponse le dit ;
     - ce que le serveur envoie est borné à chaque étape : 256 Kio pour la liste des
-      dossiers, 1 Mio pour le résultat d'une recherche, 16 Kio par résumé, un mégaoctet
-      et 64 Kio pour un e-mail lu. Un e-mail envoyé sans être demandé est lu puis
-      laissé ;
+      dossiers, 1 Mio pour le résultat d'une recherche, 16 Kio par résumé (seuls ces
+      octets des en-têtes sont demandés, `BODY.PEEK[HEADER.FIELDS (…)]<0.16384>`), un
+      mégaoctet et 64 Kio pour un e-mail lu. Un e-mail envoyé sans être demandé est lu
+      puis laissé : seule compte une réponse qui porte l'UID demandé et la partie
+      demandée, une fois par UID ;
     - un littéral annoncé au-delà de ce que la session peut encore lire est refusé dès
       son annonce : la bibliothèque IMAP réserverait sinon la place annoncée, jusqu'à
-      512 Mio, avant d'en recevoir un octet (`literals.rs`). Cette garde vaut aussi pour
-      la connexion d'une personne ;
+      512 Mio, avant d'en recevoir un octet (`literals.rs`). L'annonce est lue comme la
+      bibliothèque la lit : chiffres en nombre quelconque, zéros en tête compris,
+      comptés sans dépasser ; jamais à la fin d'une réponse d'état (`OK`, `NO`, `BAD`,
+      `BYE`, `PREAUTH`) ni d'une demande de suite (`+`), dont la bibliothèque ne lit pas
+      le texte comme un littéral. Les octets d'un littéral passent sans être lus, et une
+      lecture refusée ne transmet rien. Cette garde vaut aussi pour la connexion d'une
+      personne ;
     - les e-mails sont lus par mail-parser (jeux de caractères par encoding_rs, mots
       encodés, MIME), chaque champ borné. Le résultat est une donnée non fiable, comme
       celui de tout outil ;
     - un compte que le serveur refuse est retiré, sauf s'il a été relié de nouveau
       depuis, et audité (`mail_account.refused_by_server`, par le système au nom de la
       personne). Un mot de passe changé ailleurs n'est pas réessayé à chaque run, ce qui
-      pourrait faire bannir l'adresse de la plateforme par le serveur de l'entreprise ;
+      pourrait faire bannir l'adresse de la plateforme par le serveur de l'entreprise.
+      Un refus que le serveur dit passager (`[UNAVAILABLE]`, `[SERVERBUG]`, `[INUSE]`,
+      `[LIMIT]`, RFC 5530) garde le compte : l'outil dit de réessayer plus tard, à la
+      connexion d'une personne comme dans un run ;
     - l'évaluation d'une compétence ne lit aucune boîte ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants

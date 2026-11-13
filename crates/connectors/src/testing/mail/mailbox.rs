@@ -38,7 +38,8 @@ pub enum FetchBehaviour {
     /// Sends, first, the first e-mail of the folder, asked or not.
     AddsTheFirst,
     /// Announces an e-mail of 400 MB (less than the IMAP library would
-    /// make room for), then sends it without end.
+    /// make room for), its size written with leading zeros, then sends it
+    /// without end.
     Endless,
 }
 
@@ -222,9 +223,22 @@ pub fn fetched(seq: u32, message: &TestMessage, items: &str) -> String {
     }
     if let Some(fields) = between(items, "HEADER.FIELDS (", ")") {
         let names: Vec<String> = fields.split(' ').map(str::to_ascii_lowercase).collect();
-        let kept = header_fields(&message.raw, &names);
+        let mut kept = header_fields(&message.raw, &names);
+        // A part asked for (`<0.n>`): its first n bytes, said from 0.
+        let part = between(items, ")]<0.", ">").and_then(|max| max.parse().ok());
+        let origin = match part {
+            Some(max) => {
+                let mut end = kept.len().min(max);
+                while !kept.is_char_boundary(end) {
+                    end -= 1;
+                }
+                kept.truncate(end);
+                "<0>"
+            }
+            None => "",
+        };
         parts.push(format!(
-            "BODY[HEADER.FIELDS ({fields})] {{{}}}\r\n{kept}",
+            "BODY[HEADER.FIELDS ({fields})]{origin} {{{}}}\r\n{kept}",
             kept.len()
         ));
     }

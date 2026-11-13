@@ -18,7 +18,6 @@ use crate::contract::{
 };
 use crate::http::{ApiError, ApiResult, Body, iso};
 use crate::plugins::{Auth, RequestContext};
-use crate::secrets::SecretStore;
 use crate::services::second_factor::{
     Refusal, WRONG_FIRST_CODE, confirm_enrolment, deactivable, disable_second_factor,
     own_second_factor, renew_recovery_codes, start_enrolment,
@@ -37,10 +36,6 @@ pub fn routes() -> Router<AppState> {
         .route("/account/second-factor/deactivation", post(deactivate))
 }
 
-fn secrets(state: &AppState) -> SecretStore {
-    SecretStore::new(state.config.secrets.clone())
-}
-
 pub(super) fn read_code(input: &str) -> Result<SecondFactorCode, ApiError> {
     SecondFactorCode::read(input).ok_or_else(|| DomainError::validation(NOT_A_CODE).into())
 }
@@ -50,7 +45,7 @@ async fn status(
     Auth(identity): Auth,
 ) -> ApiResult<Json<SecondFactorStatus>> {
     let access = state.access.context(identity).await?;
-    let own = own_second_factor(&state.db, &secrets(&state), &access).await?;
+    let own = own_second_factor(&state.db, &state.secret_store(), &access).await?;
     Ok(Json(SecondFactorStatus {
         applicable: own.applicable,
         available: own.available,
@@ -72,7 +67,7 @@ async fn enrol(
     if !state.limits.failed_logins.allow(&account_key).await? {
         return Err(ApiError::RateLimited);
     }
-    let started = start_enrolment(&state.db, &secrets(&state), &access, body.password).await;
+    let started = start_enrolment(&state.db, &state.secret_store(), &access, body.password).await;
     if !matches!(started, Ok(None)) {
         state.limits.failed_logins.release(&account_key).await;
     }
@@ -100,7 +95,7 @@ async fn confirm(
     take_slot(&state, &account).await?;
     let confirmed = confirm_enrolment(
         &state.db,
-        &secrets(&state),
+        &state.secret_store(),
         &access,
         identity.session_id,
         code,
@@ -150,7 +145,7 @@ async fn renew_codes(
     let account = access.subject.user_id.to_string();
     take_slot(&state, &account).await?;
     let outcome =
-        renew_recovery_codes(&state.db, &secrets(&state), &access, &code, &context).await?;
+        renew_recovery_codes(&state.db, &state.secret_store(), &access, &code, &context).await?;
     let codes = settle(&state, &account, outcome).await?;
     Ok(Json(RecoveryCodes { codes }))
 }
@@ -167,8 +162,15 @@ async fn deactivate(
     let leave = deactivable(&state.db, &access).await?;
     let account = access.subject.user_id.to_string();
     take_slot(&state, &account).await?;
-    let outcome =
-        disable_second_factor(&state.db, &secrets(&state), &access, leave, &code, &context).await?;
+    let outcome = disable_second_factor(
+        &state.db,
+        &state.secret_store(),
+        &access,
+        leave,
+        &code,
+        &context,
+    )
+    .await?;
     settle(&state, &account, outcome).await?;
     Ok(Json(Done::OK))
 }

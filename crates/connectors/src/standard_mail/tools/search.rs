@@ -6,6 +6,7 @@
 use std::cmp::Reverse;
 use std::collections::HashSet;
 
+use async_imap::types::Fetch;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use mimorya_core::autonomy::ToolRisk;
@@ -25,8 +26,10 @@ use crate::outbound::{CONNECTOR_USE, Cause};
 const DEFAULT_LIMIT: u8 = 10;
 /// The most a search's answer may hold: its UIDs.
 const SEARCH_BYTES: usize = 1024 * 1024;
-/// The most an e-mail's summary may hold.
+/// The most of an e-mail's headers fetched for its summary.
 const SUMMARY_BYTES: usize = 16 * 1024;
+/// What the server may add around each summary (its UID, flags, size).
+const SUMMARY_MARGIN: usize = 1024;
 
 pub struct MailSearch {
     pub reach: MailReach,
@@ -68,7 +71,10 @@ async fn search(
     limit: usize,
 ) -> Result<Found, Cause> {
     let examined = examine(person, folder).await?;
-    let query = format!("(UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS ({SUMMARY_FIELDS})])");
+    let query = format!(
+        "(UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS ({SUMMARY_FIELDS})]<0.{SUMMARY_BYTES}>)"
+    );
+    let per_summary = SUMMARY_BYTES + SUMMARY_MARGIN;
     let budget = person.budget.clone();
     let (fetches, matched) = if criteria.is_empty() {
         // The latest: the last in the folder, by their place.
@@ -76,14 +82,15 @@ async fn search(
             (Vec::new(), 0)
         } else {
             let first = examined.exists.saturating_sub(limit as u32 - 1).max(1);
-            person.grant(SUMMARY_BYTES * limit);
+            person.grant(per_summary * limit);
             let range = first..=examined.exists;
             let stream = person
                 .session
                 .fetch(format!("{first}:{}", examined.exists), &query)
                 .await
                 .map_err(|error| failure(&budget, error))?;
-            let kept = fetched(stream, &budget, |f| range.contains(&f.message), limit).await?;
+            let summarised = |f: &Fetch| range.contains(&f.message) && f.header().is_some();
+            let kept = fetched(stream, &budget, summarised, limit).await?;
             (kept, examined.exists as usize)
         }
     } else {
@@ -101,7 +108,7 @@ async fn search(
         if uids.is_empty() {
             (Vec::new(), 0)
         } else {
-            person.grant(SUMMARY_BYTES * uids.len());
+            person.grant(per_summary * uids.len());
             let set: Vec<String> = uids.iter().map(u32::to_string).collect();
             let wanted: HashSet<u32> = uids.into_iter().collect();
             let stream = person
@@ -110,7 +117,7 @@ async fn search(
                 .await
                 .map_err(|error| failure(&budget, error))?;
             let in_wanted =
-                |f: &async_imap::types::Fetch| f.uid.is_some_and(|u| wanted.contains(&u));
+                |f: &Fetch| f.uid.is_some_and(|u| wanted.contains(&u)) && f.header().is_some();
             (fetched(stream, &budget, in_wanted, limit).await?, matched)
         }
     };

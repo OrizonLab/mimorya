@@ -44,6 +44,9 @@ pub struct ImapSetup {
     /// Whether it answers `BAD` to `LOGIN` (as a strict IMAP4rev1 server
     /// answers a quoted string beyond ASCII).
     pub refuses_login_form: bool,
+    /// Whether it refuses every account for now (`NO [UNAVAILABLE]`, its
+    /// directory down).
+    pub refuses_for_now: bool,
 }
 
 impl ImapSetup {
@@ -53,6 +56,7 @@ impl ImapSetup {
             offers_plain: true,
             quotes_refused_password: false,
             refuses_login_form: false,
+            refuses_for_now: false,
         }
     }
 }
@@ -204,7 +208,7 @@ async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
         let fetching = command == "FETCH" || arguments.to_ascii_uppercase().starts_with("FETCH");
         if signed_in && fetching && mailboxes.fetch == FetchBehaviour::Endless {
             let _ = stream
-                .write_all(b"* 1 FETCH (UID 1 BODY[] {400000000}\r\n")
+                .write_all(b"* 1 FETCH (UID 1 BODY[] {000000000000000000000400000000}\r\n")
                 .await;
             while stream.write_all(&[b'a'; 4096]).await.is_ok() {}
             return;
@@ -215,6 +219,9 @@ async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
         let answer = match (command.as_str(), account) {
             _ if folders.is_some() => folders.unwrap_or_default(),
             ("LOGIN", _) if setup.refuses_login_form => format!("{tag} BAD chaîne invalide\r\n"),
+            ("LOGIN" | "AUTHENTICATE", Some(_)) if setup.refuses_for_now => {
+                format!("{tag} NO [UNAVAILABLE] annuaire indisponible\r\n")
+            }
             ("CAPABILITY", _) if mailboxes.literal_plus => {
                 format!("* CAPABILITY IMAP4rev1 LITERAL+\r\n{tag} OK terminé\r\n")
             }

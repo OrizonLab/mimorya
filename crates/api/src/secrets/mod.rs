@@ -8,6 +8,13 @@ mod store;
 pub use cipher::{KEY_VERSION, MASTER_KEY_LEN, SecretCipher};
 pub use store::{EMBEDDING_API_KEY, LLM_API_KEY, SecretRead, SecretStore, VERIFICATION_API_KEY};
 
+impl crate::app::Services {
+    /// The company secrets, sealed under the master key.
+    pub fn secret_store(&self) -> SecretStore {
+        SecretStore::new(self.config.secrets.clone())
+    }
+}
+
 /// Master keys published by this repository's tests (integration and end to
 /// end): anyone can read them, so production refuses them.
 pub const PUBLIC_TEST_MASTER_KEYS: [&str; 2] = [

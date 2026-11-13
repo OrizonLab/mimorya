@@ -1035,9 +1035,11 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   survenus pendant la vérification, ne le laissent pas gardé. Les outils `mail_search` et
   `mail_read` n'ouvrent que le compte de la personne servie, pour un appel, sur les
   serveurs lus avec lui et revérifiés contre la politique réseau, et ne marquent rien
-  comme lu. Un compte que le serveur refuse est retiré, pour ne pas être réessayé. Aucun
+  comme lu. Un compte que le serveur refuse est retiré, pour ne pas être réessayé, sauf
+  s'il a été relié de nouveau depuis ; un refus dit passager (RFC 5530) le garde. Aucun
   mot ne termine une commande IMAP, et aucun littéral annoncé au-delà du budget de
-  lecture n'est attendu (ADR-205).
+  lecture n'est attendu : l'annonce est lue comme la bibliothèque IMAP la lit (chiffres
+  sans borne, zéros en tête), jamais dans le texte d'une réponse d'état (ADR-205).
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée

@@ -56,7 +56,8 @@ async fn read(person: &mut PersonSession, id: MessageId) -> Result<(Examined, Fe
         .uid_fetch(id.uid.to_string(), query)
         .await
         .map_err(|error| failure(&budget, error))?;
-    let kept = fetched(stream, &budget, |fetch| fetch.uid == Some(id.uid), 1).await?;
+    let asked = |fetch: &Fetch| fetch.uid == Some(id.uid) && fetch.body().is_some();
+    let kept = fetched(stream, &budget, asked, 1).await?;
     let fetch = kept.into_iter().next().ok_or_else(moved)?;
     Ok((examined, fetch))
 }

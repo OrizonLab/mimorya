@@ -8,7 +8,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use mimorya_connectors::standard_mail::MailServerConfig;
 
-use super::connectors::{admin, secrets};
+use super::connectors::admin;
 use crate::app::AppState;
 use crate::contract::Created;
 use crate::contract::admin::{
@@ -29,7 +29,7 @@ pub async fn create_microsoft365(
     Body(body): Body<NewMicrosoft365Connector>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let input = NewMicrosoft365 {
         name: body.name,
         directory: body.directory,
@@ -50,7 +50,7 @@ pub async fn create_google_workspace(
     Body(body): Body<NewGoogleWorkspaceConnector>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let input = NewGoogleWorkspace {
         name: body.name,
         client_id: body.client_id,
@@ -71,7 +71,7 @@ pub async fn create_mail_server(
     Body(body): Body<NewMailServerConnector>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let input = NewMailServer {
         name: body.name,
         config: MailServerConfig {

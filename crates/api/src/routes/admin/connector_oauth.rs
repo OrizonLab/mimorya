@@ -17,7 +17,7 @@ use axum::response::{AppendHeaders, IntoResponse, Response};
 use mimorya_connectors::mcp::oauth::{ClientAuth, OAuthHolder};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 
-use super::connectors::{admin, secrets};
+use super::connectors::admin;
 use crate::app::AppState;
 use crate::auth::cookies::cookie_value;
 use crate::contract::Done;
@@ -53,7 +53,7 @@ pub async fn declare(
     Body(body): Body<McpOAuthDeclaration>,
 ) -> ApiResult<Json<McpOAuth>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let input = OAuthInput {
         issuer: body.issuer.filter(|issuer| !issuer.is_empty()),
         register: body.register.unwrap_or(false),
@@ -80,7 +80,7 @@ pub async fn set_holder(
     Body(body): Body<McpOAuthHolder>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     set_oauth_holder(&admin, &access, id, holder(body.per_person)).await?;
     Ok(Json(Done::OK))
@@ -100,7 +100,7 @@ pub async fn remove(
     PathId(id): PathId,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     remove_oauth(&admin(&state, &store, &catalog), &access, id).await?;
     Ok(Json(Done::OK))
 }
@@ -117,7 +117,7 @@ pub async fn start(
         return Err(ApiError::RateLimited);
     }
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     let started = start_authorization(&admin, &access, id, &state.config.web_origin).await?;
     let cookie = authorization_cookie(&started.attempt, state.config.secure_cookies);
@@ -135,7 +135,7 @@ pub async fn remove_authorized(
     PathId(id): PathId,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     remove_authorization(&admin(&state, &store, &catalog), &access, id).await?;
     Ok(Json(Done::OK))
 }
@@ -168,7 +168,7 @@ pub async fn callback(
         return away(SIGNED_OUT);
     };
     let cookie = cookie_value(&headers, AUTHORIZATION_COOKIE);
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     // A person's own attempt comes back here too (ADR-174), finished as
     // theirs and sent back to their account (`attempt_holder`).
