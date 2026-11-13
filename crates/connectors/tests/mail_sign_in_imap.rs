@@ -11,7 +11,9 @@
 mod support;
 
 use mimorya_connectors::outbound::{NOT_SECURE, TOO_LONG, TOO_SLOW, UNREACHABLE};
-use mimorya_connectors::standard_mail::{CREDENTIALS_REFUSED, FORM_REFUSED, TRY_LATER, check_imap};
+use mimorya_connectors::standard_mail::{
+    CREDENTIALS_REFUSED, FORM_REFUSED, NOT_A_MAIL_SERVER, TRY_LATER, check_imap,
+};
 use mimorya_connectors::testing::{FakeImap, ImapBehaviour, ImapSetup, TestAuthority};
 use support::mail::{
     ACCENTED, PASSWORD, USER, WRONG, accounts, hides, imap_at, login, masked, trusting, until_heard,
@@ -173,6 +175,22 @@ async fn a_server_falling_silent_runs_out_of_the_sign_in_delay() {
     tokio::time::pause();
     let cause = attempt.await.unwrap().unwrap_err();
     assert_eq!(cause.summary, TOO_SLOW, "{cause:?}");
+}
+
+#[tokio::test]
+async fn a_server_nesting_without_end_is_refused_before_any_account() {
+    let authority = TestAuthority::new();
+    let server = FakeImap::behaving(&authority, accounts(), ImapBehaviour::GreetsNested).await;
+    let cause = check_imap(
+        &imap_at(server.address),
+        &login(PASSWORD),
+        trusting(&authority),
+    )
+    .await
+    .unwrap_err();
+    // Refused, not the process ended by the parser.
+    assert_eq!(cause.summary, NOT_A_MAIL_SERVER, "{cause:?}");
+    assert!(server.heard.lines().is_empty());
 }
 
 #[tokio::test]

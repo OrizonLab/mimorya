@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Crates kept by the platform with a patch, built as dependencies only.
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -67,9 +69,8 @@ http = "1"
 # IMAP (ADR-205): the Delta Chat client, over the connection the platform
 # opened itself, without its default executor.
 async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
-# The parser async-imap reads the server with: the literal guard reads the same
-# bytes with it (ADR-205).
-imap-proto = "0.17"
+# The errors of the parser async-imap reads the server with (imap-proto, used
+# through async-imap), which the literal guard reads too (ADR-205).
 nom = { version = "8", default-features = false }
 # E-mails read from IMAP (ADR-205): Stalwart's parser, every character set
 # (encoding_rs, already used for documents).
@@ -114,3 +115,8 @@ all = { level = "warn", priority = -1 }
 # streams inflate beyond a gigabyte (ADR-095).
 [profile.dev.package.zlib-rs]
 opt-level = 3
+
+# imap-proto with its nesting bounded: the parser would otherwise overflow the
+# stack on a server's parentheses (ADR-205, vendor/imap-proto/MIMORYA.md).
+[patch.crates-io]
+imap-proto = { path = "vendor/imap-proto" }

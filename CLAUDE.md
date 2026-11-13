@@ -15,15 +15,16 @@ Lire d'abord : `docs/PRODUCT_VISION.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.
 Le serveur est un espace de travail Cargo (Rust, édition 2024) ; l'interface est
 l'unique paquet Node (ADR-018).
 
-| Chemin              | Rôle                                                                                                     | Règle                                                       |
-| ------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, règles de mémoire, démo            | Aucune E/S (ni base, ni réseau, ni fichier).                |
-| `crates/db`         | Migrations SQL (sqlx), RLS, dépôts, seed                                                                 | Tout accès tenant passe par `Database::begin(tenant_id)`.   |
-| `crates/agent`      | Fournisseurs LLM, boucle, PEP, budgets, vérification, outils mémoire/compétences                         | Dépend de ports (`runtime/ports.rs`), jamais de `db`.       |
-| `crates/connectors` | Connecteurs (démo, MCP)                                                                                  | Chaque outil filtre ses données avec `ctx.authz`.           |
-| `crates/extract`    | Lecture des documents déposés (PDF, Word, texte), dans le processus `mimorya-extract`                    | Lit l'entrée standard, écrit la sortie ; jamais dans l'API. |
-| `crates/api`        | axum : sessions, routes, SSE, orchestration des runs, binaires `mimorya-api`/`-admin`/`-seed`/`-extract` | Compose les crates ; aucune règle métier dupliquée.         |
-| `apps/web`          | Next.js                                                                                                  | Parle uniquement à `/api/*` (relayé vers l'API).            |
+| Chemin              | Rôle                                                                                                     | Règle                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `crates/core`       | Domaine pur : autorisation, organigramme, autonomie, contrat d'outil, règles de mémoire, démo            | Aucune E/S (ni base, ni réseau, ni fichier).                                 |
+| `crates/db`         | Migrations SQL (sqlx), RLS, dépôts, seed                                                                 | Tout accès tenant passe par `Database::begin(tenant_id)`.                    |
+| `crates/agent`      | Fournisseurs LLM, boucle, PEP, budgets, vérification, outils mémoire/compétences                         | Dépend de ports (`runtime/ports.rs`), jamais de `db`.                        |
+| `crates/connectors` | Connecteurs (démo, MCP)                                                                                  | Chaque outil filtre ses données avec `ctx.authz`.                            |
+| `crates/extract`    | Lecture des documents déposés (PDF, Word, texte), dans le processus `mimorya-extract`                    | Lit l'entrée standard, écrit la sortie ; jamais dans l'API.                  |
+| `crates/api`        | axum : sessions, routes, SSE, orchestration des runs, binaires `mimorya-api`/`-admin`/`-seed`/`-extract` | Compose les crates ; aucune règle métier dupliquée.                          |
+| `apps/web`          | Next.js                                                                                                  | Parle uniquement à `/api/*` (relayé vers l'API).                             |
+| `vendor/imap-proto` | Analyseur IMAP d'async-imap gardé par la plateforme, imbrication bornée (ADR-205, `MIMORYA.md`)          | Trois ajouts marqués ; retiré quand une version publiée borne l'imbrication. |
 
 Repères à l'intérieur des crates :
 
@@ -142,7 +143,7 @@ Repères à l'intérieur des crates :
   `connectors/src/outbound/` (ce que partagent les serveurs MCP et les API REST d'une
   entreprise : réseau, préfixe, jeton, masquage, échecs, ADR-025, ADR-112 ; mandataire
   de l'exploitant, `proxy.rs`, ADR-162 ; connexion hors HTTP aux serveurs de messagerie d'une entreprise, aux mêmes règles (`tcp.rs`), chiffrée par TLS (`tls.rs`) et passant par le mandataire (`tunnel.rs`), ce qu'elle lit borné (`bounded.rs`), ADR-205),
-  `connectors/src/standard_mail/` (messagerie standard déclarée par l'entreprise, une par entreprise, sans secret, et noms de ses outils, `declaration.rs`, son type de connecteur, `connector.rs`, serveurs de messagerie d'une entreprise, IMAP et SMTP, `servers.rs`, compte d'une personne, son mot de passe jamais écrit, `login.rs`, connexion IMAP en TLS implicite, `imap.rs`, et SMTP en TLS implicite ou STARTTLS exigé, `smtp.rs`, STARTTLS dit par la plateforme octet par octet, `starttls.rs`, connexion donnée à lettre, `wire.rs`, littéraux IMAP annoncés au-delà du budget refusés avant toute réservation, `literals.rs`, et ses outils, `mail_search` et `mail_read`, qui lisent la boîte de la personne servie : sa session IMAP, son compte ouvert pour l'appel (`tools/person.rs`), dossiers examinés et noms des e-mails (`tools/folders.rs`), mots cherchés (`tools/criteria.rs`), e-mails lus par mail-parser (`tools/message.rs`), ADR-205),
+  `connectors/src/standard_mail/` (messagerie standard déclarée par l'entreprise, une par entreprise, sans secret, et noms de ses outils, `declaration.rs`, son type de connecteur, `connector.rs`, serveurs de messagerie d'une entreprise, IMAP et SMTP, `servers.rs`, compte d'une personne, son mot de passe jamais écrit, `login.rs`, connexion IMAP en TLS implicite, `imap.rs`, et SMTP en TLS implicite ou STARTTLS exigé, `smtp.rs`, STARTTLS dit par la plateforme octet par octet, `starttls.rs`, connexion donnée à lettre, `wire.rs`, littéraux IMAP annoncés au-delà du budget refusés avant toute réservation et réponses illisibles refusées, lues par l'analyseur même d'async-imap, `literals.rs`, et ses outils, `mail_search` et `mail_read`, qui lisent la boîte de la personne servie : sa session IMAP, son compte ouvert pour l'appel (`tools/person.rs`), dossiers examinés et noms des e-mails (`tools/folders.rs`), mots cherchés (`tools/criteria.rs`), e-mails lus par mail-parser (`tools/message.rs`), ADR-205),
   `connectors/src/rest/` (API REST décrites par l'entreprise : déclaration et ses
   règles, requête, réponse bornée, outil d'une opération, ADR-112 ; opérations lues
   d'une description OpenAPI, `openapi/`, ADR-114), `connectors/src/microsoft365/`

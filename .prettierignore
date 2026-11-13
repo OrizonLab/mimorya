@@ -5,3 +5,6 @@ target/
 coverage/
 # Generated from the API's Rust types (`pnpm contract`).
 apps/web/lib/api/contract.ts
+# Upstream files of the crates the platform keeps, left as published
+# (vendor/*/MIMORYA.md).
+vendor/imap-proto/README.md

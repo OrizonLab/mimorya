@@ -15,7 +15,7 @@ use async_imap::error::Error as ImapError;
 use async_imap::imap_proto::{Capability, Response, ResponseCode, Status};
 use tokio::time::timeout;
 
-use super::literals::guarded;
+use super::literals::{guarded, io_failure};
 use super::{
     CREDENTIALS_REFUSED, FORM_REFUSED, ImapServer, LEAVE_TIMEOUT, MailLogin, NOT_A_MAIL_SERVER,
     SIGN_IN_READ_LIMIT, SIGN_IN_TIMEOUT, TRY_LATER,
@@ -96,9 +96,9 @@ async fn sign_in(
 /// The server's greeting: `OK`, or the connection is not kept; whether it
 /// offers `AUTH=PLAIN`.
 async fn greeted(client: &mut async_imap::Client<Connection>) -> Result<bool, Cause> {
-    let response = client.read_response().await.map_err(|error| Cause {
-        summary: UNREACHABLE,
-        detail: error.to_string(),
+    let response = client.read_response().await.map_err(|error| {
+        let (summary, detail) = io_failure(&error);
+        Cause { summary, detail }
     })?;
     let Some(response) = response else {
         return Err(Cause {
@@ -157,7 +157,10 @@ fn refused(error: ImapError) -> Cause {
         ImapError::No(said) if for_now(said) => (TRY_LATER, said.into()),
         ImapError::No(said) => (CREDENTIALS_REFUSED, said.into()),
         ImapError::Bad(said) => (FORM_REFUSED, said.into()),
-        ImapError::Io(error) => (UNREACHABLE, error.to_string().into()),
+        ImapError::Io(error) => {
+            let (summary, detail) = io_failure(error);
+            (summary, detail.into())
+        }
         ImapError::ConnectionLost => (UNREACHABLE, "connexion perdue".into()),
         other => (NOT_A_MAIL_SERVER, other.to_string().into()),
     };

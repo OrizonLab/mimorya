@@ -14,7 +14,6 @@ path = "src/bin/mcp_demo_docs.rs"
 [dependencies]
 anyhow.workspace = true
 async-imap.workspace = true
-imap-proto.workspace = true
 async-trait.workspace = true
 base64.workspace = true
 bytes.workspace = true

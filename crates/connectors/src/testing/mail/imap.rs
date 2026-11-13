@@ -3,7 +3,8 @@
 //! (quoted strings as RFC 3501 writes them), `AUTHENTICATE PLAIN` where it
 //! offers it, `NOOP` and `LOGOUT`, and, once signed in, the folders the test
 //! gives (`mailbox`). It notes each command, never a password. It may refuse
-//! at its greeting, fall silent once it has greeted, greet without end,
+//! at its greeting, fall silent once it has greeted, greet without end or
+//! with a structure nested without end,
 //! quote the password it refused (what the platform must mask), or hold its
 //! answer to an account until the test lets it through.
 
@@ -16,7 +17,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
 use super::lines::{next_command, next_line};
-use super::mailbox::{FetchBehaviour, Mailboxes};
+use super::mailbox::{FetchBehaviour, Mailboxes, nested_without_end};
 use super::{Accounts, Heard, accepts};
 use crate::testing::{Hold, TestAuthority};
 
@@ -31,6 +32,8 @@ pub enum ImapBehaviour {
     FallsSilent,
     /// Greets without ever ending its line.
     GreetsEndlessly,
+    /// Greets with a structure nested without end, before any account.
+    GreetsNested,
 }
 
 /// What the server offers and does.
@@ -158,6 +161,12 @@ async fn converse<S: AsyncRead + AsyncWrite + Unpin>(
         _ if setup.offers_plain => "* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN] prêt\r\n".into(),
         _ => "* OK [CAPABILITY IMAP4rev1] prêt\r\n".into(),
     };
+    if setup.behaviour == ImapBehaviour::GreetsNested {
+        let _ = stream.write_all(nested_without_end().as_bytes()).await;
+        // Kept open until the client leaves.
+        while next_line(&mut stream).await.is_some() {}
+        return;
+    }
     if setup.behaviour == ImapBehaviour::GreetsEndlessly {
         let _ = stream.write_all(b"* OK ").await;
         while stream.write_all(&[b'a'; 4096]).await.is_ok() {}

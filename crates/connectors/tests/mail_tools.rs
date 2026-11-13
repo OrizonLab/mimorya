@@ -8,7 +8,7 @@
 mod support;
 
 use mimorya_connectors::outbound::{NetworkPolicy, TOO_LONG};
-use mimorya_connectors::standard_mail::TRY_LATER;
+use mimorya_connectors::standard_mail::{NOT_A_MAIL_SERVER, TRY_LATER};
 use mimorya_connectors::testing::{
     FakeImap, FetchBehaviour, ImapBehaviour, ImapSetup, TestAuthority,
 };
@@ -318,6 +318,32 @@ async fn a_server_refusing_for_now_keeps_the_account() {
     assert!(ports.refused_mail_accounts().is_empty());
     let again = call(&paul, "mail_search", json!({})).await;
     assert!(error_of(&again).starts_with(TRY_LATER));
+}
+
+#[tokio::test]
+async fn a_structure_nested_without_end_is_refused_the_account_kept() {
+    let authority = TestAuthority::new();
+    let mut nested = folders(None);
+    nested.fetch = FetchBehaviour::Nested;
+    let imap = FakeImap::holding(
+        &authority,
+        accounts(),
+        ImapSetup::new(ImapBehaviour::Answers),
+        nested,
+    )
+    .await;
+    let ports = mimorya_agent::testing::InMemoryPorts::new(user::PAUL, uuid::Uuid::new_v4());
+    ports.link_mail_account(declaration(imap.address), USER, PASSWORD, linked_at());
+    let paul = started_on(&declaration(imap.address), trusting(&authority), &ports).await;
+    // Read by a parser calling itself for each parenthesis, a thousand of
+    // them would end the process: refused, the process goes on.
+    let refused = call(&paul, "mail_search", json!({ "query": "facture" })).await;
+    assert!(
+        error_of(&refused).starts_with(NOT_A_MAIL_SERVER),
+        "{:?}",
+        refused.content
+    );
+    assert!(ports.refused_mail_accounts().is_empty());
 }
 
 #[tokio::test]

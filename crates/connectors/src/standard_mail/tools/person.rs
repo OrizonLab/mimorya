@@ -15,6 +15,7 @@ use mimorya_core::tools::{AccountAccessError, ToolContext};
 use tokio::time::timeout;
 
 use crate::outbound::{Cause, NetworkPolicy, ReadBudget, TOO_LONG, TOO_SLOW, UNREACHABLE};
+use crate::standard_mail::literals::io_failure;
 use crate::standard_mail::{
     CREDENTIALS_REFUSED, ImapSession, LEAVE_TIMEOUT, MailLogin, MailServerConfig,
     NOT_A_MAIL_SERVER, imap_session,
@@ -108,7 +109,10 @@ impl PersonSession {
 pub fn failure(budget: &ReadBudget, error: ImapError) -> Cause {
     let (summary, detail): (&'static str, Cow<'_, str>) = match &error {
         ImapError::No(said) | ImapError::Bad(said) => (COMMAND_REFUSED, said.into()),
-        ImapError::Io(error) => (UNREACHABLE, error.to_string().into()),
+        ImapError::Io(error) => {
+            let (summary, detail) = io_failure(error);
+            (summary, detail.into())
+        }
         ImapError::ConnectionLost => (UNREACHABLE, "connexion perdue".into()),
         other => (NOT_A_MAIL_SERVER, other.to_string().into()),
     };

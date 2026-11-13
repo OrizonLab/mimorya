@@ -14214,9 +14214,24 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       lui échappe (code d'une réponse d'état ou d'une demande de suite, attribut qu'il
       ne connaît pas), et le texte d'un e-mail n'est jamais pris pour une annonce : un
       expéditeur ne peut pas rendre une boîte illisible par un objet bien choisi. Des
-      octets que l'analyseur refuse sont laissés à la bibliothèque, qui les refuse
-      elle-même sans rien lire de plus. Une lecture refusée ne transmet rien. Cette
-      garde vaut aussi pour la connexion d'une personne ;
+      octets que l'analyseur refuse sont refusés aussi, dits illisibles (« le serveur ne
+      répond pas comme un serveur de messagerie »), ainsi que tout ce qui les suit : la
+      bibliothèque ne les lit jamais. Une lecture refusée ne transmet rien. Cette garde
+      vaut aussi pour la connexion d'une personne. Elle relit ce que la bibliothèque
+      relit : sur une longue réponse sans littéral, ces relectures coûtent comme le carré
+      de sa taille, deux fois, dans la limite du budget de lecture et du délai d'un
+      appel ;
+    - l'analyseur s'appelle lui-même pour chaque corps imbriqué dans un corps
+      (`BODYSTRUCTURE`) et chaque extension imbriquée dans une extension. Sans borne,
+      quelques centaines de parenthèses d'un serveur, dès son accueil et avant tout
+      identifiant, débordent la pile du fil qui le lit et arrêtent tout le processus,
+      que partagent les entreprises. Aucune version publiée ne le borne : la plateforme
+      garde une copie d'imap-proto 0.17.0 (`vendor/imap-proto`, mise à la place de
+      celle de crates.io par `[patch.crates-io]`) qui refuse une réponse imbriquée
+      au-delà de 32 niveaux, pour la bibliothèque comme pour la garde, quel que soit le
+      chemin (liaison d'un compte, outils d'un run). Les messages réels en imbriquent
+      quelques-uns. Cette copie se retire quand une version publiée bornera elle-même
+      l'imbrication (`vendor/imap-proto/MIMORYA.md`) ;
     - les e-mails sont lus par mail-parser (jeux de caractères par encoding_rs, mots
       encodés, MIME), chaque champ borné. Le résultat est une donnée non fiable, comme
       celui de tout outil ;
@@ -14285,8 +14300,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     cryptographique, Rust 1.88) :
     - `tokio-rustls` pour TLS sur la connexion que la plateforme a ouverte elle-même ;
     - `async-imap` (Delta Chat), sans son exécuteur par défaut, pour IMAP ; son
-      analyseur, `imap-proto` (avec `nom`), en dépendance directe, aux mêmes versions,
-      pour que la garde des littéraux lise le serveur exactement comme lui ;
+      analyseur, `imap-proto`, que la garde des littéraux prend à travers lui (la même
+      version, garantie par la compilation ; `nom` pour les types de ses erreurs), gardé
+      par la plateforme avec son imbrication bornée (voir la lecture, lot 69d) ;
     - `lettre`, déjà utilisé pour les e-mails de la plateforme, pour SMTP, sur la
       connexion de la plateforme (`connect_with_transport`, STARTTLS exigé) ;
     - `mail-parser` 0.11 (Stalwart) pour lire les messages bruts RFC 5322 : jeux de

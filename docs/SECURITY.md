@@ -1040,7 +1040,11 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   mot ne termine une commande IMAP, et aucun littéral annoncé au-delà du budget de
   lecture n'est attendu : la garde lit les octets du serveur avec l'analyseur même de la
   bibliothèque IMAP (imap-proto), sans deviner sa grammaire, et le texte d'un e-mail
-  n'est jamais pris pour une annonce (ADR-205).
+  n'est jamais pris pour une annonce. Cet analyseur, gardé par la plateforme
+  (`vendor/imap-proto`), refuse une réponse imbriquée au-delà de 32 niveaux : quelques
+  centaines de parenthèses d'un serveur ne débordent plus la pile du processus, que
+  partagent les entreprises. Ce qu'il ne sait pas lire est refusé, jamais lu par la
+  bibliothèque (ADR-205).
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée

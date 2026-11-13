@@ -41,6 +41,14 @@ pub enum FetchBehaviour {
     /// make room for), its size written with leading zeros, then sends it
     /// without end.
     Endless,
+    /// Sends, first, a structure nested without end (`nested_without_end`).
+    Nested,
+}
+
+/// A body structure of a thousand parentheses, which a parser calling
+/// itself for each would not survive.
+pub fn nested_without_end() -> String {
+    format!("* 1 FETCH (BODYSTRUCTURE {}\r\n", "(".repeat(1000))
 }
 
 /// The folders of the server's accounts (every account sees them), and
@@ -192,6 +200,9 @@ impl Mailboxes {
                     let mut said = String::new();
                     if self.fetch == FetchBehaviour::AddsTheFirst {
                         said.extend(folder.messages.first().map(|m| fetched(1, m, items)));
+                    }
+                    if self.fetch == FetchBehaviour::Nested {
+                        said.push_str(&nested_without_end());
                     }
                     for (seq, message) in folder.named(set, command == "UID FETCH") {
                         said.push_str(&fetched(seq, message, items));
