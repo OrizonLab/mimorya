@@ -219,13 +219,50 @@ mod tests {
             );
         }
         let mixed = format!("{HEAD}Content-Type: message/rfc822\r\n\r\n{mixed}");
-        for raw in [mixed, quoted, base64, plain] {
+        // Within a digest (a part without its type, read as an e-mail), as
+        // `message/global`,
+        // in base64: each form counts the same.
+        let mut forms = chain(20);
+        // A digest never holds a `message/global` directly: the parser's own
+        // debug assertions refuse it, with or without the bound.
+        let wraps = ["digest", "global", "base64"].repeat(2).into_iter();
+        for (level, wrap) in wraps.chain(["digest", "global"]).enumerate() {
+            forms = match wrap {
+                "digest" => format!(
+                    "Subject: Dedans\r\nContent-Type: multipart/digest; boundary=\"d{level}\"\r\n\r\n\
+                     --d{level}\r\nContent-Description: joint\r\n\r\n{forms}\r\n--d{level}--\r\n"
+                ),
+                "global" => {
+                    format!("Subject: Dedans\r\nContent-Type: message/global\r\n\r\n{forms}")
+                }
+                _ => format!(
+                    "Subject: Dedans\r\nContent-Type: message/rfc822\r\n\
+                     Content-Transfer-Encoding: base64\r\n\r\n{}",
+                    STANDARD.encode(&forms)
+                ),
+            };
+        }
+        let forms = format!("{HEAD}Content-Type: message/rfc822\r\n\r\n{forms}");
+        // Read 28 deep without the bound, the alternated forms may be cut a
+        // level early: never past it.
+        let reads = [(mixed, true), (forms, false), (quoted, true)];
+        for (raw, exactly) in reads.into_iter().chain([(base64, true), (plain, true)]) {
             assert!(raw.len() < 1024 * 1024);
             let message = parsed(raw.as_bytes()).unwrap();
             assert_eq!(message.subject(), Some("Emboîtés"));
             // Past the bound, an enclosed e-mail is an attachment.
-            let bound = mail_parser::nesting::MAX_NESTED_MESSAGES;
-            assert_eq!(enclosed_depth(&message), bound, "{:.120}", raw);
+            let (bound, depth) = (
+                mail_parser::nesting::MAX_NESTED_MESSAGES,
+                enclosed_depth(&message),
+            );
+            match exactly {
+                true => assert_eq!(depth, bound, "{:.120}", raw),
+                false => assert!(
+                    depth <= bound && depth + 1 >= bound,
+                    "{depth}: {:.120}",
+                    raw
+                ),
+            }
             drop(message);
         }
     }
