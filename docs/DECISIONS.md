@@ -14228,13 +14228,18 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       que partagent les entreprises. Aucune version publiée ne le borne : la plateforme
       garde une copie d'imap-proto 0.17.0 (`vendor/imap-proto`, mise à la place de
       celle de crates.io par `[patch.crates-io]`) qui refuse une réponse imbriquée
-      au-delà de 32 niveaux, pour la bibliothèque comme pour la garde, quel que soit le
+      au-delà de 16 niveaux, pour la bibliothèque comme pour la garde, quel que soit le
       chemin (liaison d'un compte, outils d'un run). Les messages réels en imbriquent
-      quelques-uns. Cette copie se retire quand une version publiée bornera elle-même
-      l'imbrication (`vendor/imap-proto/MIMORYA.md`) ;
+      quelques-uns, et les outils ne demandent jamais de structure (`BODYSTRUCTURE`).
+      Les tests d'origine d'imap-proto passent sur cette copie. Elle se retire quand une
+      version publiée bornera elle-même l'imbrication (`vendor/imap-proto/MIMORYA.md`) ;
     - les e-mails sont lus par mail-parser (jeux de caractères par encoding_rs, mots
       encodés, MIME), chaque champ borné. Le résultat est une donnée non fiable, comme
-      celui de tout outil ;
+      celui de tout outil. mail-parser lit sans s'appeler lui-même, mais garde chaque
+      e-mail joint (`message/rfc822`) dans celui qui le joint : libérés l'un dans
+      l'autre, vingt mille e-mails joints, en moins d'un mégaoctet que n'importe quel
+      expéditeur peut envoyer, déborderaient la pile et arrêteraient le processus. Ils
+      sont détachés un à un avant d'être libérés (`Parsed`, `tools/message.rs`) ;
     - un compte que le serveur refuse est retiré, sauf s'il a été relié de nouveau
       depuis, et audité (`mail_account.refused_by_server`, par le système au nom de la
       personne). Un mot de passe changé ailleurs n'est pas réessayé à chaque run, ce qui

@@ -18,7 +18,9 @@ use mimorya_core::tools::LinkedAccounts;
 use serde_json::json;
 use support::linked_accounts::{call, error_of, mailbox_executor};
 use support::mail::{MAIL_LOCAL, PASSWORD, USER, WRONG, accounts, hides, trusting};
-use support::mailboxes::{VALIDITY, declaration, folders, linked_at, linked_paul, server, tools};
+use support::mailboxes::{
+    VALIDITY, declaration, enclosing_without_end, folders, linked_at, linked_paul, server, tools,
+};
 
 #[tokio::test]
 async fn its_tools_read_with_the_connectors_permission() {
@@ -344,6 +346,21 @@ async fn a_structure_nested_without_end_is_refused_the_account_kept() {
         refused.content
     );
     assert!(ports.refused_mail_accounts().is_empty());
+}
+
+#[tokio::test]
+async fn an_e_mail_enclosing_e_mails_without_end_is_read_not_the_process_ended() {
+    let authority = TestAuthority::new();
+    let mut mailboxes = folders(None);
+    mailboxes.folders[0]
+        .messages
+        .push(enclosing_without_end(20));
+    let (_, _, paul) = linked_paul(&authority, mailboxes).await;
+    // Let go of one within another, they would overflow this thread's stack.
+    let id = format!("i{VALIDITY}.20");
+    let result = call(&paul, "mail_read", json!({ "id": id })).await;
+    assert!(!result.is_error, "{:?}", result.content);
+    assert_eq!(result.content["objet"], "Emboîtés");
 }
 
 #[tokio::test]

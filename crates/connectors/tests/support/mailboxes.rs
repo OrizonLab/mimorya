@@ -63,6 +63,20 @@ Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--b1--\r\n";
     }
 }
 
+/// An e-mail enclosing an e-mail thirty thousand deep, in less than a
+/// megabyte, as anyone may send one.
+pub fn enclosing_without_end(uid: u32) -> TestMessage {
+    let mut raw = format!("From: renee@exemple.fr\r\nTo: {USER}\r\nSubject: Emboîtés\r\n");
+    raw.push_str(&"Content-Type: message/rfc822\r\n\r\n".repeat(30_000));
+    raw.push_str("Fin\r\n");
+    TestMessage {
+        uid,
+        seen: false,
+        day: day(11),
+        raw,
+    }
+}
+
 /// An inbox of three e-mails (UIDs 3, 8, 12) and, if `sent` names it, a
 /// folder of sent e-mails.
 pub fn folders(sent: Option<(&str, bool)>) -> Mailboxes {

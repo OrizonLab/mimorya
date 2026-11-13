@@ -225,6 +225,18 @@ mod tests {
         format!("* 1 FETCH (UID 4 BODYSTRUCTURE {body})\r\n")
     }
 
+    /// A body structure `depth` e-mails deep, each joined to the one before
+    /// it (`MESSAGE/RFC822`), its envelope empty.
+    fn joined(depth: usize) -> String {
+        let mut body = r#"("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 12 1)"#.to_string();
+        for _ in 1..depth {
+            body = format!(
+                r#"("MESSAGE" "RFC822" NIL NIL NIL "7BIT" 0 (NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL) {body} 0)"#
+            );
+        }
+        format!("* 1 FETCH (UID 4 BODYSTRUCTURE {body})\r\n")
+    }
+
     /// Whether the parser refuses `sent` for its nesting, past its bound.
     fn too_deep(sent: &[u8]) -> bool {
         let parsed = Response::parse(sent);
@@ -234,16 +246,17 @@ mod tests {
     #[tokio::test]
     async fn a_structure_nested_within_the_bound_is_read_past_it_refused() {
         let max = async_imap::imap_proto::nesting::MAX_NESTING;
-        let within = nested(max);
-        assert!(read_whole(within.as_bytes()));
-        assert_eq!(
-            through(within.as_bytes(), 8192).await,
-            Ok(within.into_bytes())
-        );
-        let past = nested(max + 1);
-        assert!(too_deep(past.as_bytes()));
-        let refused = through(past.as_bytes(), 8192).await;
-        assert_eq!(refused, Err(UNREADABLE.into()));
+        // Bodies within a body, e-mails joined to an e-mail.
+        for structure in [nested as fn(usize) -> String, joined] {
+            let within = structure(max);
+            assert!(read_whole(within.as_bytes()), "{within:.80}");
+            let read = through(within.as_bytes(), 8192).await;
+            assert_eq!(read, Ok(within.into_bytes()));
+            let past = structure(max + 1);
+            assert!(too_deep(past.as_bytes()), "{past:.80}");
+            let refused = through(past.as_bytes(), 8192).await;
+            assert_eq!(refused, Err(UNREADABLE.into()));
+        }
     }
 
     #[tokio::test]

@@ -4,7 +4,9 @@
 //! named, never read. Every field is bounded: whoever wrote the e-mail, or
 //! the server, decides what it holds.
 
-use mail_parser::{Address, Message, MessageParser, MimeHeaders};
+use std::ops::Deref;
+
+use mail_parser::{Address, Message, MessageParser, MimeHeaders, PartType};
 use mimorya_core::tools::Citation;
 use serde_json::{Value, json};
 
@@ -20,8 +22,45 @@ pub const SUMMARY_FIELDS: &str = "SUBJECT FROM TO DATE";
 
 /// An e-mail parsed from what the server sent; `None` if nothing of it is
 /// a message.
-pub fn parsed(raw: &[u8]) -> Option<Message<'_>> {
-    MessageParser::default().parse(raw)
+pub fn parsed(raw: &[u8]) -> Option<Parsed<'_>> {
+    MessageParser::default().parse(raw).map(Parsed)
+}
+
+/// An e-mail parsed by mail-parser, let go of without calling itself. The
+/// library keeps each e-mail an e-mail encloses (`message/rfc822`) within
+/// it, and dropping them one within another takes a stack frame each: a
+/// sender's twenty thousand of them, in less than a megabyte, would
+/// overflow the stack and end the process. They are taken out one by one.
+pub struct Parsed<'x>(Message<'x>);
+
+impl<'x> Deref for Parsed<'x> {
+    type Target = Message<'x>;
+
+    fn deref(&self) -> &Message<'x> {
+        &self.0
+    }
+}
+
+impl Drop for Parsed<'_> {
+    fn drop(&mut self) {
+        let mut enclosed = Vec::new();
+        take_enclosed(&mut self.0, &mut enclosed);
+        while let Some(mut message) = enclosed.pop() {
+            take_enclosed(&mut message, &mut enclosed);
+            // Dropped here, holding no e-mail any more.
+        }
+    }
+}
+
+/// Moves the e-mails `message` encloses into `into`.
+fn take_enclosed<'x>(message: &mut Message<'x>, into: &mut Vec<Message<'x>>) {
+    for part in &mut message.parts {
+        if matches!(part.body, PartType::Message(_))
+            && let PartType::Message(inner) = std::mem::take(&mut part.body)
+        {
+            into.push(inner);
+        }
+    }
 }
 
 /// Its headers parsed, alone.
@@ -113,6 +152,21 @@ pub fn citation(id: &str, message: Option<&Message<'_>>) -> Citation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn e_mails_enclosed_without_end_are_let_go_of_one_by_one() {
+        // Thirty thousand e-mails, each enclosing the next, in less than a
+        // megabyte: dropped one within another, they would overflow the
+        // stack of the thread reading them.
+        let mut raw = String::from("From: renee@exemple.fr\r\nSubject: Emboîtés\r\n");
+        raw.push_str(&"Content-Type: message/rfc822\r\n\r\n".repeat(30_000));
+        raw.push_str("Fin\r\n");
+        assert!(raw.len() < 1024 * 1024);
+        let message = parsed(raw.as_bytes()).unwrap();
+        assert_eq!(message.subject(), Some("Emboîtés"));
+        assert!(matches!(message.parts[0].body, PartType::Message(_)));
+        drop(message);
+    }
 
     const RAW: &str = "From: =?UTF-8?Q?Ren=C3=A9e_Dupont?= <renee@exemple.fr>\r\n\
 To: Paul <paul@neo-maintenance.example>, lea@exemple.fr\r\n\

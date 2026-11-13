@@ -15,17 +15,24 @@ centaines de parenthèses ouvrantes (`* 1 FETCH (BODYSTRUCTURE ((((…`) débord
 du fil qui le lit, ce qui arrête tout le processus. Une seule réponse d'environ 1 Kio y
 suffit, dès l'accueil, avant tout identifiant.
 
-Le correctif borne cette imbrication à 32 niveaux (`src/nesting.rs`, compteur par fil).
+Le correctif borne cette imbrication à 16 niveaux (`src/nesting.rs`, compteur par fil).
 Au-delà, la réponse est refusée par un échec qu'aucune alternative de l'analyseur ne
 rattrape : la bibliothèque comme la garde la refusent, et le processus continue.
 Le code d'origine ne reçoit que trois ajouts : la déclaration du module dans
 `src/lib.rs`, et une ligne en tête de chacune des deux fonctions dans
 `src/rfc3501/body_structure.rs`. Chacun est marqué « Patch of the Mimorya platform ».
-Le `Cargo.toml` n'a plus l'exemple ni la dépendance de test, non copiés.
+Le `Cargo.toml` n'a plus l'exemple, non copié.
 
-Les tests de `crates/connectors` vérifient la borne (`standard_mail::literals`) et
-qu'un serveur qui imbrique sans fin est refusé, à la connexion comme pendant une
-lecture.
+Les tests de `crates/connectors` vérifient la borne (`standard_mail::literals`), par
+des corps multiparties comme par des messages joints (`MESSAGE/RFC822`), et qu'un
+serveur qui imbrique sans fin est refusé, à la connexion comme pendant une lecture. Les
+tests d'origine se rejouent sur la copie :
+
+```bash
+CARGO_TARGET_DIR=target cargo test --manifest-path vendor/imap-proto/Cargo.toml
+```
+
+(le `Cargo.lock` qu'ils écrivent dans ce dossier est ignoré par git).
 
 ## Mettre à jour
 

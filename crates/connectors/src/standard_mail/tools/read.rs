@@ -65,7 +65,7 @@ async fn read(person: &mut PersonSession, id: MessageId) -> Result<(Examined, Fe
 /// What the model is told of the e-mail.
 fn content(id: &str, fetch: &Fetch) -> (Value, mimorya_core::tools::Citation) {
     let message = fetch.body().and_then(parsed);
-    let mut content = message.as_ref().map_or_else(|| json!({}), summary);
+    let mut content = message.as_deref().map_or_else(|| json!({}), summary);
     if let Some(message) = &message {
         let (text, cut) = body(message);
         content["cc"] = people(message.cc());
@@ -82,7 +82,7 @@ fn content(id: &str, fetch: &Fetch) -> (Value, mimorya_core::tools::Citation) {
              pas listées"
         );
     }
-    (content, citation(id, message.as_ref()))
+    (content, citation(id, message.as_deref()))
 }
 
 #[async_trait]

@@ -9,7 +9,7 @@ use std::cell::Cell;
 use nom::error::{Error, ErrorKind};
 
 /// The levels a response may nest: real messages nest a handful.
-pub const MAX_NESTING: usize = 32;
+pub const MAX_NESTING: usize = 16;
 
 thread_local! {
     static NESTING: Cell<usize> = const { Cell::new(0) };
