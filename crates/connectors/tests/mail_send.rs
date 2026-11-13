@@ -2,101 +2,27 @@
 //! lets its tools write, always validated; the e-mail handed to the
 //! company's SMTP server as validated, from the person's linked mailbox,
 //! over TLS once signed in, nothing the model wrote adding a header or a
-//! recipient. What is known of a failure is said: refused or cut before its
-//! text was handed, nothing left; handed and unanswered, perhaps sent, not
-//! to be sent again unchecked. A refused password removes the account.
+//! recipient; no server reached without an address to send from. A refused
+//! password removes the account. What is said of other failures is tried
+//! in `mail_send_failures.rs`.
 
 mod support;
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use mimorya_agent::testing::InMemoryPorts;
-use mimorya_agent::tools::ToolExecutor;
-use mimorya_connectors::standard_mail::{MailServerConnector, TRY_LATER};
-use mimorya_connectors::testing::{AfterData, FakeSmtp, SmtpMode, SmtpSetup, TestAuthority};
-use mimorya_connectors::types::{Connector, InstanceContext};
+use mimorya_connectors::standard_mail::TRY_LATER;
+use mimorya_connectors::testing::{FakeSmtp, SmtpMode, SmtpSetup, TestAuthority};
 use mimorya_core::autonomy::ToolRisk;
-use mimorya_core::demo::user;
-use mimorya_core::tools::{LinkedAccounts, MailServerRole, ToolRef};
-use serde_json::{Value, json};
-use support::linked_accounts::{error_of, mailbox_executor, validated_call};
-use support::mail::{PASSWORD, USER, WRONG, accounts, hides, trusting};
+use mimorya_core::tools::MailServerRole;
+use serde_json::json;
+use support::linked_accounts::{error_of, validated_call};
+use support::mail::{USER, WRONG, accounts, hides};
 use support::mailboxes::linked_at;
-use uuid::Uuid;
-
-/// The company's declaration naming `smtp`, its tools allowed to write.
-fn declaration(smtp: &FakeSmtp, security: &str) -> Value {
-    let host = smtp.address.ip().to_string();
-    json!({
-        "imap": { "host": host, "port": 993 },
-        "smtp": { "host": host, "port": smtp.address.port(), "security": security },
-        "writeTools": true,
-    })
-}
-
-async fn tools(
-    authority: &TestAuthority,
-    declared: &Value,
-    call_timeout: Duration,
-) -> Vec<ToolRef> {
-    let context = InstanceContext {
-        network: trusting(authority),
-        call_timeout,
-        ..InstanceContext::default()
-    };
-    MailServerConnector
-        .instantiate(declared, context)
-        .await
-        .unwrap()
-        .tools
-}
-
-struct Sending {
-    smtp: FakeSmtp,
-    ports: Arc<InMemoryPorts>,
-    paul: ToolExecutor,
-}
-
-/// Paul, his account linked with `password` at a simulated SMTP server set
-/// up so.
-async fn sending_paul_with(setup: SmtpSetup, password: &str, call_timeout: Duration) -> Sending {
-    let authority = TestAuthority::new();
-    let smtp = FakeSmtp::with(&authority, setup, accounts()).await;
-    let security = match setup.mode {
-        SmtpMode::StartTls => "starttls",
-        _ => "tls",
-    };
-    let declared = declaration(&smtp, security);
-    let ports = InMemoryPorts::new(user::PAUL, Uuid::new_v4());
-    ports.link_mail_account(declared.clone(), USER, password, linked_at());
-    let tools = tools(&authority, &declared, call_timeout).await;
-    let accounts: Arc<dyn LinkedAccounts> = ports.clone();
-    let paul = mailbox_executor(tools, user::PAUL, &ports, accounts);
-    Sending { smtp, ports, paul }
-}
-
-async fn sending_paul(setup: SmtpSetup) -> Sending {
-    sending_paul_with(setup, PASSWORD, Duration::from_secs(20)).await
-}
-
-fn email() -> Value {
-    json!({
-        "to": ["claire@exemple.fr", "marc@exemple.fr"],
-        "cc": ["CLAIRE@exemple.fr"],
-        "subject": "Planning de novembre — révisé",
-        "body": "Bonjour,\n.\nLe planning est prêt.\n\tPaul",
-    })
-}
-
-/// The decoded text of a delivered e-mail.
-fn decoded_body(text: &str) -> String {
-    let (_, body) = text.split_once("\r\n\r\n").unwrap();
-    let joined: String = body.split("\r\n").collect();
-    String::from_utf8(STANDARD.decode(joined).unwrap()).unwrap()
-}
+use support::sending::{
+    Sending, declaration, decoded_body, email, sending_as, sending_paul, tools,
+};
 
 #[tokio::test]
 async fn sending_is_offered_where_the_company_lets_it_and_always_validated() {
@@ -213,54 +139,18 @@ async fn nothing_the_model_writes_adds_a_header_nor_a_recipient() {
 }
 
 #[tokio::test]
-async fn a_refusal_says_nothing_left() {
-    let refusals = [
-        (
-            Some("marc@exemple.fr"),
-            AfterData::Takes,
-            "refuse l’e-mail (",
-        ),
-        (None, AfterData::Refuses, "refuse l’e-mail ("),
-        (
-            None,
-            AfterData::RefusesForNow,
-            "pour l’instant : réessayez plus tard",
-        ),
-    ];
-    for (recipient, after_data, said) in refusals {
-        let setup = SmtpSetup {
-            refuses_recipient: recipient,
-            after_data,
-            ..SmtpSetup::new(SmtpMode::ImplicitTls)
-        };
-        let Sending { smtp, ports, paul } = sending_paul(setup).await;
-        let error = error_of(&validated_call(&paul, "mail_send", email()).await);
-        assert!(error.contains(said), "{error}");
-        assert!(error.ends_with("— rien n’est parti"), "{error}");
-        assert!(smtp.deliveries.all().is_empty());
-        assert!(ports.refused_mail_accounts().is_empty());
-        if recipient.is_some() {
-            assert!(!smtp.heard.lines().iter().any(|l| l.ends_with("DATA")));
-        }
-    }
-}
-
-#[tokio::test]
-async fn an_e_mail_handed_without_answer_may_have_left() {
-    for after_data in [AfterData::Drops, AfterData::Hangs] {
-        let setup = SmtpSetup {
-            after_data,
-            ..SmtpSetup::new(SmtpMode::ImplicitTls)
-        };
-        let Sending { smtp, paul, .. } =
-            sending_paul_with(setup, PASSWORD, Duration::from_secs(3)).await;
-        let error = error_of(&validated_call(&paul, "mail_send", email()).await);
-        assert!(
-            error.contains("il est peut-être parti, ne le renvoyez pas sans vérifier"),
-            "{after_data:?}: {error}"
-        );
-        assert!(smtp.heard.lines().iter().any(|l| l == "tls DATA"));
-    }
+async fn no_address_to_send_from_reaches_no_server() {
+    // Neither the identifier nor the platform address is a plain address.
+    let account = ("paul@[127.0.0.1]", "secret");
+    let setup = SmtpSetup::new(SmtpMode::ImplicitTls);
+    let Sending { smtp, paul, .. } = sending_as(setup, account, Duration::from_secs(20)).await;
+    let error = error_of(&validated_call(&paul, "mail_send", email()).await);
+    assert!(
+        error.starts_with("Le compte relié ne donne aucune adresse d’expéditeur"),
+        "{error}"
+    );
+    assert!(error.ends_with("— rien n’est parti"), "{error}");
+    assert!(smtp.heard.lines().is_empty());
 }
 
 #[tokio::test]
@@ -269,8 +159,8 @@ async fn a_refused_password_removes_the_account_a_refusal_for_now_keeps_it() {
         quotes_refused_password: true,
         ..SmtpSetup::new(SmtpMode::ImplicitTls)
     };
-    let Sending { smtp, ports, paul } =
-        sending_paul_with(quoting, WRONG, Duration::from_secs(20)).await;
+    let account = (USER, WRONG);
+    let Sending { smtp, ports, paul } = sending_as(quoting, account, Duration::from_secs(20)).await;
     let error = error_of(&validated_call(&paul, "mail_send", email()).await);
     assert!(
         error.starts_with("Le serveur SMTP de l’entreprise refuse le compte relié"),

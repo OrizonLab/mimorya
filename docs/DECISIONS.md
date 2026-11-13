@@ -14270,7 +14270,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - l'expéditeur est l'identifiant du compte relié quand c'est une adresse, que le
       serveur vient d'accepter avec son mot de passe ; sinon l'adresse du compte de la
       personne sur la plateforme, que le port lui donne (`MailAccount::address`, lue
-      dans la transaction du compte). Rien de ce que le modèle écrit ne la choisit ;
+      dans la transaction du compte). Rien de ce que le modèle écrit ne la choisit. Sans
+      adresse simple ni de l'un ni de l'autre, aucun serveur n'est joint, et l'outil dit de
+      relier le compte avec son adresse ;
     - le texte de l'e-mail est écrit par la plateforme, comme pour Gmail
       (`delegated/message_text.rs`, commun aux deux) : `From`, `Date` et `Message-ID`
       d'abord, puis les destinataires, adresses simples seules, l'objet en mots encodés
@@ -14278,18 +14280,26 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       n'en ajoute, et une ligne faite d'un point seul ne termine pas le texte. Un en-tête
       que donne la plateforme est refusé s'il porte un caractère de contrôle ;
     - l'enveloppe (`MAIL FROM`, `RCPT TO`) nomme l'expéditeur et chaque destinataire une
-      fois, copies comprises, sans distinguer la casse. Aucune copie cachée n'existe ;
+      fois, copies comprises, sans distinguer la casse. Aucune copie cachée n'existe. Une
+      adresse que la validation accepte mais que lettre refuse (`anne..b@…`) est nommée,
+      expéditeur ou destinataire, avant toute connexion ;
     - ce que l'on sait d'un échec est dit. Un refus du serveur (`4xx`, `5xx`) ou une
       coupure avant que le texte ne soit transmis : rien n'est parti, et un destinataire
       refusé arrête l'envoi avant le texte. Le texte transmis sans réponse (connexion
       perdue, réponse illisible, délai de l'appel dépassé) : l'e-mail est peut-être
       parti, et le modèle est prié de ne pas le renvoyer sans vérifier. L'outil ne
-      réessaie jamais ;
+      réessaie jamais. Le délai de l'appel s'arrête à la réponse du serveur au texte : la
+      connexion est quittée ensuite (`QUIT` si l'e-mail est pris, coupée sinon, 5 s au
+      plus), si bien qu'un serveur lent à dire au revoir ne change pas ce qui est dit.
+      L'exécuteur laisse 30 s à l'appel, plus que ses 20 s et ces 5 s ;
     - un mot de passe que le serveur SMTP refuse retire le compte, comme en IMAP. Le
       port `LinkedAccounts` nomme le serveur qui l'a refusé (`MailServerRole`), et
       l'audit `mail_account.refused_by_server` le dit (`server` : `imap` ou `smtp`).
       Un refus pour l'instant (`454`) garde le compte ;
-    - ce que le serveur répond pendant l'envoi est borné à 64 Kio de plus ;
+    - ce que le serveur répond pendant l'envoi est borné à 64 Kio de plus, au-delà de ce
+      qu'il reste de la connexion. lettre borne en outre chaque réponse à 100 000 octets
+      et chaque ligne à 1 000 : la borne de la plateforme arrête une suite de réponses
+      longues, chacune sous celles de lettre, dite « réponse trop longue » ;
     - l'e-mail n'est pas copié dans le dossier des envoyés (aucun `APPEND` IMAP). Beaucoup
       d'hébergeurs le gardent eux-mêmes, et il le serait deux fois. La description de
       l'outil le dit ;

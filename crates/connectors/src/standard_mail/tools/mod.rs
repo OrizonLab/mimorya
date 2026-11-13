@@ -3,12 +3,14 @@
 //! IMAP session (`person`), where they look (`folders`), what a search asks
 //! (`criteria`), what they keep of the e-mails the server sends (`fetched`,
 //! `message`); searching (`search`) and reading (`read`) an e-mail; sending
-//! one (`send`), handed to the SMTP server (`submission`).
+//! one (`send`), written with its sender and envelope (`outgoing`), handed
+//! to the SMTP server (`submission`).
 
 mod criteria;
 mod fetched;
 mod folders;
 mod message;
+mod outgoing;
 mod person;
 mod read;
 mod search;

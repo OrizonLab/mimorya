@@ -317,7 +317,11 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   (`mail_accounts`). Les connexions passent par la couche réseau des connecteurs, TLS
   obligatoire. Les outils `mail_search` et `mail_read` lisent la boîte de la personne
   servie : le port `LinkedAccounts` leur ouvre son compte pour un appel, avec les
-  serveurs lus avec lui (ADR-205).
+  serveurs lus avec lui. Si l'entreprise le permet, `mail_send` envoie un e-mail depuis
+  sa boîte, toujours validé et exécuté une fois tel que validé : l'expéditeur est choisi
+  par la plateforme (l'identifiant relié, ou l'adresse de la personne), le texte écrit
+  par elle comme pour Gmail, et ce que l'on sait d'un échec est dit (« rien n'est
+  parti » ou « peut-être parti ») (ADR-205).
 - **Passerelle Slack** : une passerelle de conversation n'est pas un connecteur, elle
   n'apporte aucun outil (table `gateways`). L'entreprise déclare son application Slack
   (une par entreprise) : son jeton de bot, essayé auprès de Slack avant d'être gardé, et

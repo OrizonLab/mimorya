@@ -8,7 +8,8 @@
 //! credential. It may also slip answers in clear after its STARTTLS
 //! go-ahead, fall silent once it has greeted, greet without end, quote the
 //! password it refused, refuse a recipient, or refuse an e-mail, or leave
-//! without answer, once its text is handed.
+//! without answer, once its text is handed; and, on hearing a command,
+//! leave, fall silent or answer at length instead (`instead`).
 
 use std::net::SocketAddr;
 
@@ -18,6 +19,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
 use super::delivery::{AfterData, Deliveries, Delivery, Envelope, data_text, path};
+use super::instead::{Instead, lengthened};
 use super::lines::next_line;
 use super::{Accounts, Heard, accepts};
 use crate::testing::TestAuthority;
@@ -54,6 +56,8 @@ pub struct SmtpSetup {
     pub refuses_recipient: Option<&'static str>,
     /// What it does once an e-mail's text is handed.
     pub after_data: AfterData,
+    /// What it does on hearing this command, instead of answering it.
+    pub instead: Option<(&'static str, Instead)>,
 }
 
 impl SmtpSetup {
@@ -68,6 +72,7 @@ impl SmtpSetup {
             refuses_for_now: false,
             refuses_recipient: None,
             after_data: AfterData::Takes,
+            instead: None,
         }
     }
 }
@@ -168,6 +173,12 @@ impl Server<'_> {
             if self.setup.falls_silent {
                 continue;
             }
+            let instead = self.setup.instead.filter(|(at, _)| *at == verb);
+            match instead.map(|(_, instead)| instead) {
+                Some(Instead::Drops) => return End::Closed,
+                Some(Instead::Hangs) => return std::future::pending().await,
+                _ => {}
+            }
             let answer = match verb.as_str() {
                 "EHLO" | "HELO" => self.capabilities(secure),
                 "STARTTLS" if !secure && self.setup.mode == SmtpMode::StartTls => {
@@ -230,6 +241,10 @@ impl Server<'_> {
                     return End::Closed;
                 }
                 _ => "502 5.5.2 commande non prise en charge".into(),
+            };
+            let answer = match instead {
+                Some(_) => lengthened(&answer),
+                None => answer,
             };
             if say(&mut stream, &answer).await.is_err() {
                 return End::Closed;
