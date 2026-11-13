@@ -1,35 +1,34 @@
-//! What an IMAP server announces before it sends it (ADR-205): a literal,
-//! `{N}` at the end of a line of a data response, then N bytes. The IMAP
-//! library makes room for the N bytes as soon as it reads the announcement,
-//! before any of them arrives, up to 512 MiB: a server announcing more than
-//! the session may still read is refused there, its budget spent, so that
-//! the refusal says « réponse trop longue » and nothing is set aside for it.
+//! What an IMAP server announces before it sends it (ADR-205). The IMAP
+//! library reads the server's bytes with imap-proto: where the parser says
+//! it needs N bytes more (a literal `{N}`, wherever its grammar takes one),
+//! the library makes room for them at once, before any of them arrives, up
+//! to 512 MiB. The guard reads the same bytes with the same parser, as the
+//! library reads them, and refuses them where the parser asks for more than
+//! the session may still read: its budget spent, the refusal says « réponse
+//! trop longue » and nothing is set aside.
 //!
-//! The announcement is read as the library reads it: digits of any number
-//! (leading zeros too), counted without a bound; never at the end of a
-//! status response (`OK`, `NO`, `BAD`, `BYE`, `PREAUTH`) or of a request to
-//! go on (`+`, with or without a space), whose text the library does not
-//! take for a literal. The
-//! bytes of a literal are passed through unread: what an e-mail holds is
-//! never taken for an announcement.
+//! The parser alone says what is a literal, never a guess at its grammar:
+//! no response it reads a literal in escapes the guard (a status's code, an
+//! attribute it does not know), and the text of an e-mail is never taken
+//! for an announcement. Bytes the parser cannot read are left to the
+//! library, which refuses them itself before reading any further.
 
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
+use imap_proto::Response;
+use nom::{Err as Parsed, Needed};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::outbound::{Connection, ReadBudget, TOO_LONG};
-
-/// The longest word a status response starts with (`PREAUTH`).
-const MAX_STATUS_WORD: usize = 7;
 
 /// `connection`, its literals refused past what `budget` still allows.
 pub fn guarded(connection: Connection, budget: ReadBudget) -> Connection {
     Box::new(LiteralGuard {
         inner: connection,
         budget,
-        scan: Scan::default(),
+        mirror: Mirror::default(),
     })
 }
 
@@ -37,130 +36,60 @@ pub fn guarded(connection: Connection, budget: ReadBudget) -> Connection {
 struct LiteralGuard {
     inner: Connection,
     budget: ReadBudget,
-    scan: Scan,
+    mirror: Mirror,
 }
 
-/// Where a line ending might announce a literal.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-enum Announcement {
-    #[default]
-    None,
-    /// Within `{`, the digits read so far.
-    Digits { size: u64, any: bool },
-    /// `{N}` read.
-    Closed(u64),
-    /// `{N}` CR read.
-    Return(u64),
-}
-
-/// What is known of the response being read.
+/// The bytes the library holds and has not read as a response yet, as it
+/// holds them.
 #[derive(Debug, Default)]
-struct Scan {
-    /// Bytes of the literal being passed through, unread.
-    literal: u64,
-    /// The words of the response read so far: 0 within the first, 1 within
-    /// the second, 2 past it.
-    word: u8,
-    /// The first byte of the response: `+` asks to go on, with or without
-    /// a space after it.
-    first: Option<u8>,
-    /// The second word, upper-cased, while it may still be a status.
-    second: Vec<u8>,
-    announcement: Announcement,
+struct Mirror {
+    pending: Vec<u8>,
+    /// How many bytes the parser needs before it is worth trying again, as
+    /// the library counts them.
+    needs: usize,
+    /// The parser refused these bytes: so does the library, which reads no
+    /// further.
+    refused: bool,
 }
 
-impl Scan {
-    /// Whether the response is a status or a request to go on, whose text
-    /// is never a literal.
-    fn is_status(&self) -> bool {
-        if self.first == Some(b'+') {
-            return true;
+impl Mirror {
+    /// Takes `bytes` in; the room the parser then asks for beyond them, if
+    /// it asks for a known size.
+    fn take(&mut self, bytes: &[u8]) -> Option<usize> {
+        if self.refused {
+            return None;
         }
-        self.word >= 2
-            && matches!(
-                self.second.as_slice(),
-                b"OK" | b"NO" | b"BAD" | b"BYE" | b"PREAUTH"
-            )
-    }
-
-    fn word_byte(&mut self, byte: u8) {
-        if self.first.is_none() {
-            self.first = Some(byte);
-        }
-        match (self.word, byte) {
-            (0 | 1, b' ') => self.word += 1,
-            (1, _) if self.second.len() <= MAX_STATUS_WORD => {
-                self.second.push(byte.to_ascii_uppercase());
-            }
-            _ => {}
-        }
-    }
-
-    /// A response ended: the next starts.
-    fn next_response(&mut self) {
-        self.word = 0;
-        self.first = None;
-        self.second.clear();
-        self.announcement = Announcement::None;
-    }
-
-    /// The size a line ending announces, after `byte`.
-    fn announce(&mut self, byte: u8) -> Option<u64> {
-        use Announcement::{Closed, Digits, Return};
-        let (next, announced) = match (self.announcement, byte) {
-            (_, b'{') => (
-                Digits {
-                    size: 0,
-                    any: false,
-                },
-                None,
-            ),
-            (Digits { size, .. }, b'0'..=b'9') => {
-                let digit = u64::from(byte - b'0');
-                let size = size.saturating_mul(10).saturating_add(digit);
-                (Digits { size, any: true }, None)
-            }
-            (Digits { size, any: true }, b'}') => (Closed(size), None),
-            (Closed(size), b'\r') => (Return(size), None),
-            (Return(size), b'\n') => (Announcement::None, Some(size)),
-            _ => (Announcement::None, None),
-        };
-        self.announcement = next;
-        announced
-    }
-}
-
-impl LiteralGuard {
-    /// Reads `bytes`; an announcement past the budget refuses them.
-    fn watch(&mut self, bytes: &[u8]) -> io::Result<()> {
-        let mut rest = bytes;
-        while !rest.is_empty() {
-            let scan = &mut self.scan;
-            if scan.literal > 0 {
-                let left = usize::try_from(scan.literal).unwrap_or(usize::MAX);
-                let skipped = rest.len().min(left);
-                scan.literal -= skipped as u64;
-                rest = &rest[skipped..];
-                continue;
-            }
-            let byte = rest[0];
-            rest = &rest[1..];
-            let announced = scan.announce(byte);
-            scan.word_byte(byte);
-            match announced {
-                Some(size) if !scan.is_status() => {
-                    if size > self.budget.left() as u64 {
-                        self.budget.exhaust();
-                        return Err(io::Error::other(TOO_LONG));
-                    }
-                    // The response goes on after the literal.
-                    scan.literal = size;
+        self.pending.extend_from_slice(bytes);
+        let mut read = 0;
+        let mut asked = None;
+        while read < self.pending.len() && self.pending.len() >= self.needs {
+            let rest = &self.pending[read..];
+            match Response::parse(rest) {
+                Ok((left, _)) if left.len() < rest.len() => {
+                    read += rest.len() - left.len();
+                    self.needs = 0;
                 }
-                _ if byte == b'\n' => scan.next_response(),
-                _ => {}
+                Err(Parsed::Incomplete(Needed::Size(more))) => {
+                    let more = usize::from(more);
+                    self.needs = self.pending.len() - read + more;
+                    asked = Some(more);
+                    break;
+                }
+                Err(Parsed::Incomplete(Needed::Unknown)) => {
+                    self.needs = 0;
+                    break;
+                }
+                // A response read from nothing, or bytes the parser refuses.
+                Ok(_) | Err(_) => {
+                    self.refused = true;
+                    self.pending = Vec::new();
+                    return None;
+                }
             }
         }
-        Ok(())
+        // What the library reads as responses, it lets go of.
+        self.pending.drain(..read);
+        asked
     }
 }
 
@@ -173,12 +102,14 @@ impl AsyncRead for LiteralGuard {
         let start = buf.filled().len();
         let this = &mut *self;
         ready!(Pin::new(&mut *this.inner).poll_read(cx, buf))?;
-        let watched = this.watch(&buf.filled()[start..]);
-        if watched.is_err() {
+        let asked = this.mirror.take(&buf.filled()[start..]);
+        if asked.is_some_and(|more| more > this.budget.left()) {
+            this.budget.exhaust();
             // A refused read hands nothing on.
             buf.set_filled(start);
+            return Poll::Ready(Err(io::Error::other(TOO_LONG)));
         }
-        Poll::Ready(watched)
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -224,42 +155,54 @@ mod tests {
 
     #[tokio::test]
     async fn a_literal_past_the_budget_is_refused_before_it_comes() {
-        let sent = b"* 1 FETCH (UID 1 BODY[] {400000000}\r\naaaa";
-        assert_eq!(through(sent, 1024).await, Err(TOO_LONG.into()));
-        // Leading zeros, as the IMAP library reads them, change nothing.
-        let zeros = b"* 1 FETCH (UID 1 BODY[] {0000000000000000000000400000000}\r\naa";
-        assert_eq!(through(zeros, 1024).await, Err(TOO_LONG.into()));
-        let endless = format!("* 1 FETCH (BODY[] {{{}}}\r\n", "9".repeat(60));
-        assert_eq!(
-            through(endless.as_bytes(), 1024).await,
-            Err(TOO_LONG.into())
-        );
-    }
-
-    #[tokio::test]
-    async fn a_literal_within_the_budget_passes_its_bytes_unread() {
-        // The literal holds what would be an announcement past the budget.
-        let sent: &[u8] = b"* 1 FETCH (BODY[] {22}\r\n{999999999999999999}\r\n \
-BODY[HEADER] {4}\r\nab\r\n)\r\nA1 OK fini\r\n";
-        assert_eq!(through(sent, 4096).await, Ok(sent.to_vec()));
-    }
-
-    #[tokio::test]
-    async fn a_status_never_announces_a_literal() {
-        // Text the library reads as text: it hides nothing that follows.
-        for status in [
-            &b"* OK {1000}\r\n"[..],
-            b"A3 NO [ALERT] {1000}\r\n",
-            b"a-very-long-tag-the-server-chose-itself OK {1000}\r\n",
-            b"+ {1000}\r\n",
-            b"+{1000}\r\n",
+        for sent in [
+            &b"* 1 FETCH (UID 1 BODY[] {400000000}\r\naaaa"[..],
+            // Leading zeros, as the parser reads them, change nothing.
+            b"* 1 FETCH (UID 1 BODY[] {0000000000000000000000400000000}\r\naa",
+            // In a status's code or a request to go on: the parser takes a
+            // literal there too.
+            b"* OK [BADCHARSET ({400000000}\r\n",
+            b"A1 NO [BADCHARSET ({400000000}\r\n",
+            b"* BYE [BADCHARSET ({400000000}\r\n",
+            b"+ [BADCHARSET ({400000000}\r\n",
+            // After an attribute the parser does not know, read up to the
+            // first parenthesis, line breaks and announcements with it.
+            b"* 1 FETCH (UID 1 X-FOO ({35}\r\n))\r\n* 2 FETCH (BODY[] {400000000}\r\n",
         ] {
-            let mut sent = status.to_vec();
-            sent.extend_from_slice(b"* 1 FETCH (UID 8 BODY[] {400000000}\r\n");
-            let refused = through(&sent, 4096).await;
-            assert_eq!(refused, Err(TOO_LONG.into()), "{status:?}");
+            let said = String::from_utf8_lossy(sent);
+            assert_eq!(through(sent, 1024).await, Err(TOO_LONG.into()), "{said}");
         }
-        let fine = b"* OK [CAPABILITY IMAP4rev1] {12}\r\nA1 OK fini\r\n";
+    }
+
+    #[tokio::test]
+    async fn a_number_the_parser_cannot_read_is_left_to_the_library() {
+        let sent = format!("* 1 FETCH (BODY[] {{{}}}\r\n", "9".repeat(60));
+        // The library makes no room for it: it fails on it, as the parser.
+        let parsed = Response::parse(sent.as_bytes());
+        assert!(matches!(parsed, Err(Parsed::Error(_) | Parsed::Failure(_))));
+        assert_eq!(through(sent.as_bytes(), 1024).await, Ok(sent.into_bytes()));
+    }
+
+    /// Whether the parser reads `sent` whole, response after response.
+    fn read_whole(sent: &[u8]) -> bool {
+        let mut mirror = Mirror::default();
+        mirror.take(sent).is_none() && !mirror.refused && mirror.pending.is_empty()
+    }
+
+    #[tokio::test]
+    async fn what_an_e_mail_holds_is_never_an_announcement() {
+        let header = "Subject: Relance {999999999999}\r\n\r\n";
+        let sent = format!(
+            "* 1 FETCH (UID 4 BODY[HEADER.FIELDS (SUBJECT)] {{{}}}\r\n{header})\r\n\
+             * 2 FETCH (BODY[] {{22}}\r\n{{999999999999999999}}\r\n BODY[HEADER] {{4}}\r\nab\r\n)\r\n\
+             A1 OK fini\r\n",
+            header.len()
+        );
+        assert!(read_whole(sent.as_bytes()));
+        assert_eq!(through(sent.as_bytes(), 4096).await, Ok(sent.into_bytes()));
+        // A status's text is text.
+        let fine = b"* OK [CAPABILITY IMAP4rev1] {12}\r\n* OK {1000}\r\nA1 OK fini\r\n";
+        assert!(read_whole(fine));
         assert_eq!(through(fine, 4096).await, Ok(fine.to_vec()));
     }
 

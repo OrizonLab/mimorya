@@ -14207,13 +14207,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       demandée, une fois par UID ;
     - un littéral annoncé au-delà de ce que la session peut encore lire est refusé dès
       son annonce : la bibliothèque IMAP réserverait sinon la place annoncée, jusqu'à
-      512 Mio, avant d'en recevoir un octet (`literals.rs`). L'annonce est lue comme la
-      bibliothèque la lit : chiffres en nombre quelconque, zéros en tête compris,
-      comptés sans dépasser ; jamais à la fin d'une réponse d'état (`OK`, `NO`, `BAD`,
-      `BYE`, `PREAUTH`) ni d'une demande de suite (`+`), dont la bibliothèque ne lit pas
-      le texte comme un littéral. Les octets d'un littéral passent sans être lus, et une
-      lecture refusée ne transmet rien. Cette garde vaut aussi pour la connexion d'une
-      personne ;
+      512 Mio, avant d'en recevoir un octet (`literals.rs`). La garde ne devine pas la
+      grammaire : elle lit les mêmes octets avec l'analyseur même de la bibliothèque
+      (imap-proto), comme elle les lit, et refuse là où il demande plus d'octets que la
+      session n'en peut encore lire. Aucune réponse où l'analyseur prend un littéral ne
+      lui échappe (code d'une réponse d'état ou d'une demande de suite, attribut qu'il
+      ne connaît pas), et le texte d'un e-mail n'est jamais pris pour une annonce : un
+      expéditeur ne peut pas rendre une boîte illisible par un objet bien choisi. Des
+      octets que l'analyseur refuse sont laissés à la bibliothèque, qui les refuse
+      elle-même sans rien lire de plus. Une lecture refusée ne transmet rien. Cette
+      garde vaut aussi pour la connexion d'une personne ;
     - les e-mails sont lus par mail-parser (jeux de caractères par encoding_rs, mots
       encodés, MIME), chaque champ borné. Le résultat est une donnée non fiable, comme
       celui de tout outil ;
@@ -14281,7 +14284,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **bibliothèques** (licences MIT ou Apache-2.0, ring comme fournisseur
     cryptographique, Rust 1.88) :
     - `tokio-rustls` pour TLS sur la connexion que la plateforme a ouverte elle-même ;
-    - `async-imap` (Delta Chat), sans son exécuteur par défaut, pour IMAP ;
+    - `async-imap` (Delta Chat), sans son exécuteur par défaut, pour IMAP ; son
+      analyseur, `imap-proto` (avec `nom`), en dépendance directe, aux mêmes versions,
+      pour que la garde des littéraux lise le serveur exactement comme lui ;
     - `lettre`, déjà utilisé pour les e-mails de la plateforme, pour SMTP, sur la
       connexion de la plateforme (`connect_with_transport`, STARTTLS exigé) ;
     - `mail-parser` 0.11 (Stalwart) pour lire les messages bruts RFC 5322 : jeux de

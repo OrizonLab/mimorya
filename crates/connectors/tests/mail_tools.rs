@@ -202,6 +202,15 @@ async fn what_the_server_sends_unasked_or_without_end_is_left() {
         .map(|e| e["id"].as_str().unwrap())
         .collect();
     assert_eq!(ids, [format!("i{VALIDITY}.12")]);
+    // Asked, then sent once more unasked: shown once.
+    let result = call(&paul, "mail_search", json!({ "query": "facture" })).await;
+    let ids: Vec<&str> = result.content["emails"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, [format!("i{VALIDITY}.12"), format!("i{VALIDITY}.3")]);
 
     let mut endless = folders(None);
     endless.fetch = FetchBehaviour::Endless;
