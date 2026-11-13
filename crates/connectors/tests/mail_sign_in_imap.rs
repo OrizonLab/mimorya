@@ -5,12 +5,15 @@
 //! Nothing is said to a server whose certificate is refused (another
 //! authority, another name); a server that says `BYE`, falls silent or
 //! greets without end is told so, within the sign-in delay and the bytes a
-//! sign-in may read.
+//! sign-in may read. A server refusing for now (its directory down) is
+//! told so, the account not taken for refused.
 
 mod support;
 
 use mimorya_connectors::outbound::{NOT_SECURE, TOO_LONG, TOO_SLOW, UNREACHABLE};
-use mimorya_connectors::standard_mail::{CREDENTIALS_REFUSED, FORM_REFUSED, check_imap};
+use mimorya_connectors::standard_mail::{
+    CREDENTIALS_REFUSED, FORM_REFUSED, NOT_A_MAIL_SERVER, TRY_LATER, check_imap,
+};
 use mimorya_connectors::testing::{FakeImap, ImapBehaviour, ImapSetup, TestAuthority};
 use support::mail::{
     ACCENTED, PASSWORD, USER, WRONG, accounts, hides, imap_at, login, masked, trusting, until_heard,
@@ -104,6 +107,24 @@ async fn a_server_refusing_the_login_form_is_told_so() {
 }
 
 #[tokio::test]
+async fn a_server_refusing_for_now_is_not_taken_for_a_refused_account() {
+    let authority = TestAuthority::new();
+    let setup = ImapSetup {
+        refuses_for_now: true,
+        ..ImapSetup::new(ImapBehaviour::Answers)
+    };
+    let server = FakeImap::with(&authority, accounts(), setup).await;
+    let cause = check_imap(
+        &imap_at(server.address),
+        &login(PASSWORD),
+        trusting(&authority),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(cause.summary, TRY_LATER, "{cause:?}");
+}
+
+#[tokio::test]
 async fn nothing_is_said_to_a_server_whose_certificate_is_refused() {
     let authority = TestAuthority::new();
     let server = FakeImap::start(&authority, accounts()).await;
@@ -154,6 +175,22 @@ async fn a_server_falling_silent_runs_out_of_the_sign_in_delay() {
     tokio::time::pause();
     let cause = attempt.await.unwrap().unwrap_err();
     assert_eq!(cause.summary, TOO_SLOW, "{cause:?}");
+}
+
+#[tokio::test]
+async fn a_server_nesting_without_end_is_refused_before_any_account() {
+    let authority = TestAuthority::new();
+    let server = FakeImap::behaving(&authority, accounts(), ImapBehaviour::GreetsNested).await;
+    let cause = check_imap(
+        &imap_at(server.address),
+        &login(PASSWORD),
+        trusting(&authority),
+    )
+    .await
+    .unwrap_err();
+    // Refused, not the process ended by the parser.
+    assert_eq!(cause.summary, NOT_A_MAIL_SERVER, "{cause:?}");
+    assert!(server.heard.lines().is_empty());
 }
 
 #[tokio::test]

@@ -30,6 +30,16 @@ impl ReadBudget {
         self.0.load(Ordering::Acquire) == 0
     }
 
+    /// The bytes that may still be read.
+    pub fn left(&self) -> usize {
+        self.0.load(Ordering::Acquire)
+    }
+
+    /// Nothing more may be read: what is coming is longer than allowed.
+    pub fn exhaust(&self) {
+        self.0.store(0, Ordering::Release);
+    }
+
     /// `bytes` more may be read.
     pub fn grant(&self, bytes: usize) {
         let mut left = self.0.load(Ordering::Acquire);

@@ -3,7 +3,8 @@
 //! before anything is said (implicit TLS: IMAP over STARTTLS is not
 //! offered), the server's greeting read, then `LOGIN`, or `AUTHENTICATE
 //! PLAIN` for an account beyond ASCII where the greeting offers it (a
-//! quoted string is ASCII in IMAP4rev1), all within one delay. A refused
+//! quoted string is ASCII in IMAP4rev1), all within one delay; no literal
+//! announced past what the session may read is made room for. A refused
 //! account is told as such; what the server says is the caller's to mask
 //! (`MailLogin::redactor`).
 
@@ -14,9 +15,10 @@ use async_imap::error::Error as ImapError;
 use async_imap::imap_proto::{Capability, Response, ResponseCode, Status};
 use tokio::time::timeout;
 
+use super::literals::{guarded, io_failure};
 use super::{
     CREDENTIALS_REFUSED, FORM_REFUSED, ImapServer, LEAVE_TIMEOUT, MailLogin, NOT_A_MAIL_SERVER,
-    SIGN_IN_READ_LIMIT, SIGN_IN_TIMEOUT,
+    SIGN_IN_READ_LIMIT, SIGN_IN_TIMEOUT, TRY_LATER,
 };
 use crate::outbound::{
     Cause, Connection, NetworkPolicy, ReadBudget, TOO_LONG, TOO_SLOW, UNREACHABLE, bounded,
@@ -74,7 +76,8 @@ async fn sign_in(
         false => cause,
     };
     let secured = secured(plain, &server.host, policy).await.map_err(told)?;
-    let mut client = async_imap::Client::new(secured);
+    // Nothing announced past the budget is made room for.
+    let mut client = async_imap::Client::new(guarded(secured, budget.clone()));
     let offers_plain = greeted(&mut client).await.map_err(told)?;
     let ascii = login.username().is_ascii() && login.password().is_ascii();
     let session = if !ascii && offers_plain {
@@ -93,9 +96,9 @@ async fn sign_in(
 /// The server's greeting: `OK`, or the connection is not kept; whether it
 /// offers `AUTH=PLAIN`.
 async fn greeted(client: &mut async_imap::Client<Connection>) -> Result<bool, Cause> {
-    let response = client.read_response().await.map_err(|error| Cause {
-        summary: UNREACHABLE,
-        detail: error.to_string(),
+    let response = client.read_response().await.map_err(|error| {
+        let (summary, detail) = io_failure(&error);
+        Cause { summary, detail }
     })?;
     let Some(response) = response else {
         return Err(Cause {
@@ -143,12 +146,21 @@ impl Authenticator for Plain<'_> {
     }
 }
 
+/// What a server refusing for now says (RFC 5530): its directory down, a
+/// fault of its own, the account in use, a limit reached. The account is
+/// not taken for refused.
+const FOR_NOW: [&str; 4] = ["[UNAVAILABLE]", "[SERVERBUG]", "[INUSE]", "[LIMIT]"];
+
 /// A refused sign-in, told by what failed.
 fn refused(error: ImapError) -> Cause {
     let (summary, detail): (&'static str, Cow<'_, str>) = match &error {
+        ImapError::No(said) if for_now(said) => (TRY_LATER, said.into()),
         ImapError::No(said) => (CREDENTIALS_REFUSED, said.into()),
         ImapError::Bad(said) => (FORM_REFUSED, said.into()),
-        ImapError::Io(error) => (UNREACHABLE, error.to_string().into()),
+        ImapError::Io(error) => {
+            let (summary, detail) = io_failure(error);
+            (summary, detail.into())
+        }
         ImapError::ConnectionLost => (UNREACHABLE, "connexion perdue".into()),
         other => (NOT_A_MAIL_SERVER, other.to_string().into()),
     };
@@ -156,4 +168,10 @@ fn refused(error: ImapError) -> Cause {
         summary,
         detail: detail.into_owned(),
     }
+}
+
+/// Whether a refusal says the server refuses for now only.
+fn for_now(said: &str) -> bool {
+    let said = said.to_ascii_uppercase();
+    FOR_NOW.iter().any(|code| said.contains(code))
 }

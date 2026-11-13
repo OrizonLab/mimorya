@@ -5,15 +5,19 @@
 //! implicit TLS (`imap`), SMTP over implicit TLS or STARTTLS (`smtp`, its
 //! words in clear in `starttls`), both on a connection the network policy
 //! allows, secured by the platform's own TLS before any credential, what
-//! the server sends bounded.
+//! the server sends bounded, no literal announced past it made room for
+//! (`literals`). Its tools (`tools`) act as the person a run
+//! serves, with the account they linked.
 
 mod connector;
 mod declaration;
 mod imap;
+mod literals;
 mod login;
 mod servers;
 mod smtp;
 mod starttls;
+mod tools;
 mod wire;
 
 pub use connector::MailServerConnector;

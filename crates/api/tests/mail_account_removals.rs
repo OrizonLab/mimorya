@@ -93,8 +93,20 @@ async fn a_disabled_person_loses_their_account() {
     declare(&paul, &servers).await;
     let mut created = create_account(&paul, "sophie.martin").await;
     let sophie = activate(&api, &mut created).await;
+    let since = latest_entry(&api).await;
     assert_eq!(link(&sophie, address, PASSWORD).await, StatusCode::OK);
     assert!(stored(&api.app, created.id).await.is_some());
+    // Linked under her own address, which the audit says, never writes.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let said: Value = sqlx::query_scalar(
+        "select metadata from audit_log where id > $1 and action = 'mail_account.linked'",
+    )
+    .bind(since)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(said, json!({ "replaced": false, "ownAddress": true }));
 
     let disabled = paul
         .patch(

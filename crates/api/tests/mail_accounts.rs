@@ -153,7 +153,8 @@ async fn an_account_is_kept_once_both_servers_accept_it() {
     .unwrap();
     tx.commit().await.unwrap();
     assert_eq!(kept, 1);
-    assert_eq!(said, json!({ "replaced": true }));
+    // Paul's identifier is not his account's address: said, never written.
+    assert_eq!(said, json!({ "replaced": true, "ownAddress": false }));
 
     // Removed by its person: gone, and said so the second time.
     let since = latest_entry(&api).await;

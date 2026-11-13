@@ -7,7 +7,6 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 
-use super::admin::connectors::secrets;
 use crate::app::AppState;
 use crate::contract::{AccountMail, Done, MailAccountLink};
 use crate::http::{ApiError, ApiResult, Body};
@@ -34,7 +33,7 @@ async fn link(
     Body(body): Body<MailAccountLink>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    let store = secrets(&state);
+    let store = state.secret_store();
     let linking = MailLinking {
         db: &state.db,
         secrets: &store,

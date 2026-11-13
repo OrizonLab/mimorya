@@ -1,12 +1,15 @@
 //! The "standard mail" connector type (ADR-205): the company's own mail
 //! servers, declared once, where each person links their own account. Its
 //! declaration is checked again against the network policy at each start,
-//! which the operator may have narrowed since it was saved.
+//! which the operator may have narrowed since it was saved. Its tools read
+//! the mailbox of the person a run serves, with the account they linked.
 
 use anyhow::bail;
 use async_trait::async_trait;
+use mimorya_core::tools::typed_tool;
 use serde_json::Value;
 
+use super::tools::{MailReach, MailRead, MailSearch};
 use super::{MAIL_SERVER, MailServerConfig};
 use crate::types::{Connector, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -34,8 +37,15 @@ impl Connector for MailServerConnector {
         if let Some(problem) = config.problem(context.network) {
             bail!("{problem}");
         }
+        let reach = MailReach {
+            network: context.network,
+            call_timeout: context.call_timeout,
+        };
         Ok(ConnectorRuntime {
-            tools: Vec::new(),
+            tools: vec![
+                typed_tool(MailSearch { reach }),
+                typed_tool(MailRead { reach }),
+            ],
             closer: None,
         })
     }
@@ -55,7 +65,13 @@ mod tests {
         });
         let context = InstanceContext::default();
         let started = MailServerConnector.instantiate(&declared, context).await;
-        assert!(started.is_ok());
+        let names: Vec<String> = started
+            .unwrap()
+            .tools
+            .iter()
+            .map(|tool| tool.info().name.clone())
+            .collect();
+        assert_eq!(names, ["mail_search", "mail_read"]);
         let mut narrowed = declared.clone();
         narrowed["imap"]["host"] = json!("10.1.2.3");
         let refused = MailServerConnector.instantiate(&narrowed, context).await;

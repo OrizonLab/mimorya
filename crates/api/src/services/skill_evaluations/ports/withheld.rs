@@ -1,8 +1,9 @@
 //! What a case played for an evaluation is never given (ADR-104): it reads
 //! only, with the tools that run without validation, and delegates nothing.
 //! These ports answer should a call reach them anyway: no validation asked
-//! for, no deliverable, no sub-agent, no account a person linked (ADR-117):
-//! a case is no one's request, so no one's mailbox is read.
+//! for, no deliverable, no sub-agent, no account a person linked (ADR-117),
+//! at a provider or at the company's standard mail (ADR-205): a case is no
+//! one's request, so no one's mailbox is read.
 
 use async_trait::async_trait;
 use mimorya_agent::runtime::{
@@ -10,7 +11,7 @@ use mimorya_agent::runtime::{
 };
 use mimorya_core::tools::{
     AccountAccessError, Deliverable, DeliverableInput, DeliverableService, DeliverableStatus,
-    LinkedAccounts,
+    LinkedAccounts, MailAccount,
 };
 use uuid::Uuid;
 
@@ -60,6 +61,10 @@ impl LinkedAccounts for Withheld {
         _connector_type: &str,
         _needs: &[&str],
     ) -> Result<String, AccountAccessError> {
+        Err(AccountAccessError::Unavailable(NO_LINKED_ACCOUNT.into()))
+    }
+
+    async fn mail_account(&self) -> Result<MailAccount, AccountAccessError> {
         Err(AccountAccessError::Unavailable(NO_LINKED_ACCOUNT.into()))
     }
 }

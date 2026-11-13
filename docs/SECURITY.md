@@ -1031,8 +1031,24 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   d'hôte : il ne suit jamais la messagerie vers un hôte qui n'était pas le sien quand la
   personne l'a relié (IMAP et SMTP vérifiés, agenda montré, vérifié au lot 69f). Il est
   écrit sous le verrou d'administration, que tient tout changement du connecteur et toute
-  désactivation : ni l'un ni l'autre, survenus pendant la vérification, ne le laissent
-  gardé.
+  désactivation : un changement d'hôte ou une désactivation de la messagerie ou du compte,
+  survenus pendant la vérification, ne le laissent pas gardé. Les outils `mail_search` et
+  `mail_read` n'ouvrent que le compte de la personne servie, pour un appel, sur les
+  serveurs lus avec lui et revérifiés contre la politique réseau, et ne marquent rien
+  comme lu. Un compte que le serveur refuse est retiré, pour ne pas être réessayé, sauf
+  s'il a été relié de nouveau depuis ; un refus dit passager (RFC 5530) le garde. Aucun
+  mot ne termine une commande IMAP, et aucun littéral annoncé au-delà du budget de
+  lecture n'est attendu : la garde lit les octets du serveur avec l'analyseur même de la
+  bibliothèque IMAP (imap-proto), sans deviner sa grammaire, et le texte d'un e-mail
+  n'est jamais pris pour une annonce. Cet analyseur, gardé par la plateforme
+  (`vendor/imap-proto`), refuse une réponse imbriquée au-delà de 16 niveaux : quelques
+  centaines de parenthèses d'un serveur ne débordent plus la pile du processus, que
+  partagent les entreprises. Ce qu'il ne sait pas lire est refusé, jamais lu par la
+  bibliothèque. Un e-mail fait d'e-mails joints les uns dans les autres, que n'importe
+  quel expéditeur peut envoyer, tels quels ou encodés, n'est lu comme tel que sur 16
+  niveaux : mail-parser, gardé par la plateforme (`vendor/mail-parser`), garde les
+  suivants comme une pièce jointe, et ni sa lecture, ni sa conversion, ni sa libération
+  ne débordent la pile du processus (ADR-205).
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée

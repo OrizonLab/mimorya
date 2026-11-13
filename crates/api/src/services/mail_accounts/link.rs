@@ -23,7 +23,7 @@ use mimorya_db::repositories::mail_accounts::{lock_mail_connector, put_mail_acco
 use serde_json::json;
 use uuid::Uuid;
 
-use super::{mail_server_of, no_mail_server};
+use super::{mail_server_of, no_mail_server, sealed_name};
 use crate::secrets::SecretStore;
 use crate::services::AccessContext;
 use crate::services::connectors::CONNECTOR_USE;
@@ -42,12 +42,10 @@ pub struct PreparedLink {
     connector_id: Uuid,
     config: MailServerConfig,
     login: MailLogin,
-}
-
-/// The name a password is sealed under: it opens for this company,
-/// connector and person only.
-fn sealed_name(connector_id: Uuid, user_id: Uuid) -> String {
-    format!("mail-account/{connector_id}/{user_id}")
+    /// The identifier is the address of the person's own account: an
+    /// administration reading the audit sees an account linked under
+    /// another name, never the name.
+    own_address: bool,
 }
 
 impl MailLinking<'_> {
@@ -74,12 +72,16 @@ impl MailLinking<'_> {
         let config = MailServerConfig::read(&instance.config)
             .map_err(|error| DomainError::unavailable(error.to_string()))?;
         let login = MailLogin::new(username, password).map_err(DomainError::validation)?;
+        let own_address = login
+            .username()
+            .eq_ignore_ascii_case(access.profile.email.trim());
         Ok(PreparedLink {
             tenant_id,
             user_id,
             connector_id: instance.id,
             config,
             login,
+            own_address,
         })
     }
 }
@@ -96,6 +98,7 @@ pub async fn link_mail_account(
         connector_id,
         config,
         login,
+        own_address,
     } = link;
     let checked = match check_imap(&config.imap, &login, linking.network).await {
         Ok(()) => check_smtp(&config.smtp, &login, linking.network)
@@ -149,7 +152,7 @@ pub async fn link_mail_account(
         AuditEntry::new(tenant_id, "user", "mail_account.linked", "success")
             .by_user(user_id)
             .resource("connector", connector_id)
-            .metadata(json!({ "replaced": replaced })),
+            .metadata(json!({ "replaced": replaced, "ownAddress": own_address })),
     )
     .await?;
     tx.commit().await?;

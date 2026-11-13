@@ -10,12 +10,7 @@ use crate::contract::Done;
 use crate::contract::admin::{SecondFactorPolicyUpdate, SecondFactorPolicyView};
 use crate::http::{ApiResult, Body};
 use crate::plugins::Auth;
-use crate::secrets::SecretStore;
 use crate::services::admin::{company_second_factor_policy, set_company_second_factor_policy};
-
-fn secrets(state: &AppState) -> SecretStore {
-    SecretStore::new(state.config.secrets.clone())
-}
 
 pub async fn show(
     State(state): State<AppState>,
@@ -25,7 +20,7 @@ pub async fn show(
     let requirement = company_second_factor_policy(&state.db, &access).await?;
     Ok(Json(SecondFactorPolicyView {
         requirement: requirement.into(),
-        secrets_available: secrets(&state).available(),
+        secrets_available: state.secret_store().available(),
     }))
 }
 
@@ -37,7 +32,7 @@ pub async fn update(
     let access = state.access.context(identity).await?;
     set_company_second_factor_policy(
         &state.db,
-        &secrets(&state),
+        &state.secret_store(),
         &access,
         body.requirement.into(),
     )

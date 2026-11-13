@@ -18,7 +18,7 @@ use mimorya_db::repositories::role_assignments::{RoleAssignmentRow, list_role_as
 use mimorya_db::repositories::second_factors::second_factor_holders;
 use mimorya_db::repositories::users::list_users;
 
-use super::connectors::{admin, secrets};
+use super::connectors::admin;
 use crate::app::AppState;
 use crate::contract::Done;
 use crate::contract::admin::{
@@ -203,7 +203,7 @@ pub async fn update(
         active: body.status.map(|s| s == StatusChange::Active),
         attributes: body.attributes,
     };
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     update_user(&admin(&state, &store, &catalog), &access, id, changes).await?;
     Ok(Json(Done::OK))
 }
@@ -255,7 +255,7 @@ pub async fn erase(
     Body(body): Body<AccountErasure>,
 ) -> ApiResult<Json<ErasedAccount>> {
     let access = state.access.context(identity).await?;
-    let (store, catalog) = (secrets(&state), permission_catalog());
+    let (store, catalog) = (state.secret_store(), permission_catalog());
     let admin = admin(&state, &store, &catalog);
     let erased = erase_account(&admin, &access, id, &body.confirm_email).await?;
     Ok(Json(ErasedAccount {

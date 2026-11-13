@@ -5,6 +5,7 @@
 pub mod google_workspace;
 pub mod linked_accounts;
 pub mod mail;
+pub mod mailboxes;
 pub mod mcp;
 pub mod microsoft365;
 pub mod oauth;

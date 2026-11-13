@@ -14168,7 +14168,95 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       le mot de passe. L'export de la personne dit l'identifiant et la date, jamais le
       mot de passe. L'administration voit combien de personnes ont relié un compte,
       jamais lesquelles ;
-    - aucun outil ne le descelle encore : la lecture IMAP vient au lot 69d ;
+    - l'audit d'une liaison dit si l'identifiant est l'adresse du compte de la personne
+      (`ownAddress`), jamais l'identifiant. Rien ne prouve qu'une boîte est la sienne
+      (aucun OAuth) : l'administration repère ainsi un compte relié sous un autre nom ;
+    - `connector:use` est vérifié au début d'une liaison, pas sous le verrou. Un compte
+      relié par qui le perd pendant la vérification n'est lu par aucun outil, qui
+      l'exigent à chaque appel ;
+  - **la lecture** (lot 69d) passe par deux outils, `mail_search` et `mail_read`, qui
+    exigent `connector:use` à chaque appel :
+    - ils agissent comme la personne servie par le run. Le port `LinkedAccounts` leur
+      donne son compte (`mail_account`), ouvert pour un appel, avec la déclaration lue
+      dans la même transaction. Ils se connectent aux serveurs de cette déclaration,
+      jamais à ceux de l'instance gardée en mémoire, qui peut dater d'avant un
+      changement d'hôte ; ces serveurs sont revérifiés contre la politique réseau à
+      chaque appel ;
+    - une connexion par appel, laissée à la fin. L'appel entier (compte ouvert,
+      connexion, lecture) tient dans le délai d'un appel d'outil ;
+    - les dossiers sont examinés (`EXAMINE`), jamais sélectionnés, et lus par
+      `BODY.PEEK` : rien n'est marqué comme lu ;
+    - un e-mail est nommé par son dossier (réception ou envoyés), la validité du dossier
+      (`UIDVALIDITY`) et son UID : un numéro redonné à un autre e-mail n'est jamais pris
+      pour lui. Le dossier des envoyés est celui que le serveur marque `\Sent`
+      (RFC 6154), sinon un nom courant ;
+    - `mail_search` cherche chaque mot (`TEXT`) et un jour (`SINCE`). Les mots perdent
+      guillemets, barres obliques et caractères de contrôle : un saut de ligne ne termine
+      jamais la commande. Un mot au-delà de l'ASCII part en UTF-8 (`CHARSET UTF-8`), en
+      littéral sans pause (`{n+}`, RFC 7888) là où le serveur l'offre, sinon entre
+      guillemets. Sans critère, les derniers e-mails sont lus par leur place, sans
+      recherche. Les plus récents d'abord, 25 au plus ;
+    - `mail_read` lit le premier mégaoctet de l'e-mail : son texte (un HTML converti en
+      texte), tronqué au-delà de 20 000 caractères, ses destinataires et ses pièces
+      jointes, nommées, jamais lues. Au-delà du mégaoctet, la réponse le dit ;
+    - ce que le serveur envoie est borné à chaque étape : 256 Kio pour la liste des
+      dossiers, 1 Mio pour le résultat d'une recherche, 16 Kio par résumé (seuls ces
+      octets des en-têtes sont demandés, `BODY.PEEK[HEADER.FIELDS (…)]<0.16384>`), un
+      mégaoctet et 64 Kio pour un e-mail lu. Un e-mail envoyé sans être demandé est lu
+      puis laissé : seule compte une réponse qui porte l'UID demandé et la partie
+      demandée, une fois par UID ;
+    - un littéral annoncé au-delà de ce que la session peut encore lire est refusé dès
+      son annonce : la bibliothèque IMAP réserverait sinon la place annoncée, jusqu'à
+      512 Mio, avant d'en recevoir un octet (`literals.rs`). La garde ne devine pas la
+      grammaire : elle lit les mêmes octets avec l'analyseur même de la bibliothèque
+      (imap-proto), comme elle les lit, et refuse là où il demande plus d'octets que la
+      session n'en peut encore lire. Aucune réponse où l'analyseur prend un littéral ne
+      lui échappe (code d'une réponse d'état ou d'une demande de suite, attribut qu'il
+      ne connaît pas), et le texte d'un e-mail n'est jamais pris pour une annonce : un
+      expéditeur ne peut pas rendre une boîte illisible par un objet bien choisi. Des
+      octets que l'analyseur refuse sont refusés aussi, dits illisibles (« le serveur ne
+      répond pas comme un serveur de messagerie »), ainsi que tout ce qui les suit : la
+      bibliothèque ne les lit jamais. Une lecture refusée ne transmet rien. Cette garde
+      vaut aussi pour la connexion d'une personne. Elle relit ce que la bibliothèque
+      relit : sur une longue réponse sans littéral, ces relectures coûtent comme le carré
+      de sa taille, deux fois, dans la limite du budget de lecture et du délai d'un
+      appel ;
+    - l'analyseur s'appelle lui-même pour chaque corps imbriqué dans un corps
+      (`BODYSTRUCTURE`) et chaque extension imbriquée dans une extension. Sans borne,
+      quelques centaines de parenthèses d'un serveur, dès son accueil et avant tout
+      identifiant, débordent la pile du fil qui le lit et arrêtent tout le processus,
+      que partagent les entreprises. Aucune version publiée ne le borne : la plateforme
+      garde une copie d'imap-proto 0.17.0 (`vendor/imap-proto`, mise à la place de
+      celle de crates.io par `[patch.crates-io]`) qui refuse une réponse imbriquée
+      au-delà de 16 niveaux, pour la bibliothèque comme pour la garde, quel que soit le
+      chemin (liaison d'un compte, outils d'un run). Les messages réels en imbriquent
+      quelques-uns, et les outils ne demandent jamais de structure (`BODYSTRUCTURE`).
+      Les tests d'origine d'imap-proto passent sur cette copie. Elle se retire quand une
+      version publiée bornera elle-même l'imbrication (`vendor/imap-proto/MIMORYA.md`) ;
+    - les e-mails sont lus par mail-parser (jeux de caractères par encoding_rs, mots
+      encodés, MIME), chaque champ borné. Le résultat est une donnée non fiable, comme
+      celui de tout outil. mail-parser garde chaque e-mail joint (`message/rfc822`)
+      dans celui qui le joint. Non encodé, il le lit sans s'appeler lui-même ; encodé
+      (quoted-printable, base64), il le décode et le lit en s'appelant lui-même, puis le
+      convertit (`into_owned`) en s'appelant une fois par e-mail joint dans ce qu'il a
+      décodé, et libérer l'arbre s'appelle aussi une fois par niveau. Quelques milliers
+      d'e-mails joints, en moins d'un mégaoctet que n'importe quel expéditeur peut
+      envoyer, déborderaient la pile et arrêteraient le processus. Aucune version
+      publiée ne le borne : la plateforme garde une copie de mail-parser 0.11.9
+      (`vendor/mail-parser`, par `[patch.crates-io]`) où une partie déjà jointe à 16
+      e-mails n'est plus lue comme un e-mail mais gardée comme une pièce jointe, quel
+      que soit son encodage : les e-mails qui l'englobent sont comptés à travers les
+      décodages, chacun ne repartant pas de zéro. L'arbre reste peu profond pour sa lecture, sa conversion
+      et sa libération, et l'e-mail lu est de plus libéré à plat, ses e-mails joints
+      détachés un à un (`Parsed`, `tools/message.rs`) ;
+    - un compte que le serveur refuse est retiré, sauf s'il a été relié de nouveau
+      depuis, et audité (`mail_account.refused_by_server`, par le système au nom de la
+      personne). Un mot de passe changé ailleurs n'est pas réessayé à chaque run, ce qui
+      pourrait faire bannir l'adresse de la plateforme par le serveur de l'entreprise.
+      Un refus que le serveur dit passager (`[UNAVAILABLE]`, `[SERVERBUG]`, `[INUSE]`,
+      `[LIMIT]`, RFC 5530) garde le compte : l'outil dit de réessayer plus tard, à la
+      connexion d'une personne comme dans un run ;
+    - l'évaluation d'une compétence ne lit aucune boîte ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
     refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM
@@ -14225,11 +14313,15 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **bibliothèques** (licences MIT ou Apache-2.0, ring comme fournisseur
     cryptographique, Rust 1.88) :
     - `tokio-rustls` pour TLS sur la connexion que la plateforme a ouverte elle-même ;
-    - `async-imap` (Delta Chat), sans son exécuteur par défaut, pour IMAP ;
+    - `async-imap` (Delta Chat), sans son exécuteur par défaut, pour IMAP ; son
+      analyseur, `imap-proto`, que la garde des littéraux prend à travers lui (la même
+      version, garantie par la compilation ; `nom` pour les types de ses erreurs), gardé
+      par la plateforme avec son imbrication bornée (voir la lecture, lot 69d) ;
     - `lettre`, déjà utilisé pour les e-mails de la plateforme, pour SMTP, sur la
       connexion de la plateforme (`connect_with_transport`, STARTTLS exigé) ;
     - `mail-parser` 0.11 (Stalwart) pour lire les messages bruts RFC 5322 : jeux de
-      caractères, mots encodés, MIME ;
+      caractères, mots encodés, MIME ; gardé par la plateforme avec les e-mails joints
+      bornés (voir la lecture, lot 69d) ;
     - pour CalDAV, aucune bibliothèque mûre : un client WebDAV minimal (`PROPFIND`,
       `REPORT` avec `expand`, `PUT`) sur le client HTTP durci, le XML lu par
       `quick-xml`, les événements lus et écrits par la plateforme ;

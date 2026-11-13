@@ -46,3 +46,5 @@ next-env.d.ts
 
 # Backups of a stack (infra/backup, ADR-166): encrypted, kept off the repository
 /backups/
+# Written when a kept crate's own tests are replayed (vendor/*/MIMORYA.md).
+/vendor/*/Cargo.lock

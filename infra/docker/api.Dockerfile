@@ -9,6 +9,7 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY .cargo .cargo
 COPY crates crates
+COPY vendor vendor
 RUN cargo build --release --locked --bin mimorya-api --bin mimorya-admin --bin mimorya-seed \
     --bin mimorya-extract
 
