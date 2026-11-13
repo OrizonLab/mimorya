@@ -2,7 +2,7 @@
 //! followed to another host (a port or a security changed keeps them, a
 //! host changed takes them all), with the person's account disabled, with
 //! the connector; and the tries a person makes, bounded, as is linking
-//! anything without a master key.
+//! anything without a master key, or at a mail the company disabled.
 
 mod support;
 
@@ -148,4 +148,38 @@ async fn tries_are_bounded_and_nothing_is_tried_without_a_master_key() {
         refused.text()
     );
     assert!(elsewhere.imap.heard.lines().is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_disabled_mail_takes_no_account_and_shows_the_one_kept() {
+    let servers = MailServers::for_paul().await;
+    let api = TestApi::start_with_mail_servers(&servers).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let connector = declare(&paul, &servers).await;
+    assert_eq!(link(&paul, USERNAME, PASSWORD).await, StatusCode::OK);
+    change(&paul, connector, json!({ "enabled": false })).await;
+
+    // Whoever linked nothing sees no mail; Paul sees his, unavailable.
+    let lucas = api.sign_in(user::LUCAS).await;
+    assert_eq!(lucas.get(MAIL).await.json()["mail"], Value::Null);
+    let seen = paul.get(MAIL).await.json()["mail"].clone();
+    assert_eq!(seen["available"], false, "{seen}");
+    assert_eq!(seen["linked"]["username"], USERNAME);
+    // Linking again is refused before any server hears of it.
+    let tried = servers.imap.heard.lines().len();
+    let refused = paul
+        .put(MAIL, json!({ "username": USERNAME, "password": PASSWORD }))
+        .await;
+    assert_eq!(
+        refused.status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{}",
+        refused.text()
+    );
+    assert_eq!(
+        refused.error_message(),
+        "La messagerie standard de l’entreprise est désactivée"
+    );
+    assert_eq!(servers.imap.heard.lines().len(), tried);
 }

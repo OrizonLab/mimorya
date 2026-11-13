@@ -7,13 +7,13 @@
 mod support;
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use axum::http::StatusCode;
 use mimorya_connectors::testing::Hold;
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::accounts::{activate, create_account};
+use support::locks::wait_for_advisory_waiters;
 use support::mail_servers::{MailServers, PASSWORD, USERNAME, declare, stored};
 use support::refusals::latest_entry;
 use support::{Client, TestApi};
@@ -99,29 +99,6 @@ async fn a_server_moved_during_the_check_keeps_nothing() {
     assert!(!linked_since(&api, since).await);
 }
 
-/// Returns once a transaction waits for an advisory lock.
-async fn waiting_for_the_lock(api: &TestApi) {
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-        let waiting: i64 = sqlx::query_scalar(
-            "select count(*) from pg_locks where locktype = 'advisory' and not granted",
-        )
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap();
-        tx.commit().await.unwrap();
-        if waiting > 0 {
-            return;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the account was written without waiting for the change"
-        );
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-}
-
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn an_account_waits_for_a_change_in_progress_then_sees_it() {
@@ -142,7 +119,7 @@ async fn an_account_waits_for_a_change_in_progress_then_sees_it() {
             .await
             .unwrap();
         hold.release();
-        waiting_for_the_lock(&api).await;
+        wait_for_advisory_waiters(&api, 1).await;
         sqlx::query(
             "update connector_instances \
              set config = jsonb_set(config, '{imap,host}', '\"localhost\"') where id = $1",
