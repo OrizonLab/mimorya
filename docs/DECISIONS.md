@@ -14405,15 +14405,21 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     SMTP, sécurité SMTP (TLS dès la connexion ou STARTTLS exigé, le port habituel suivant
     le choix), agenda CalDAV facultatif et écriture permise ou non. Sa carte dit ses
     serveurs, son agenda, ses outils et combien de comptes y sont reliés. Une modification
-    n'envoie que les champs changés ; quand un serveur change d'hôte et que des comptes y
-    sont reliés, l'administrateur confirme d'abord qu'ils seront retirés. Sa vérification
+    n'envoie que les champs changés. Quand un serveur change d'hôte, ou que l'agenda est
+    ajouté ou retiré, et que des comptes y sont reliés, l'administrateur confirme d'abord
+    qu'ils seront retirés : la question est posée sur la messagerie relue juste avant, pas
+    sur la liste chargée à l'ouverture de l'onglet, où un compte relié depuis manquerait. Sa vérification
     ne joint pas ses serveurs : chacun relie son compte ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
     refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM
     sous la clé maîtresse, lié à l'entreprise, au connecteur et à la personne). Il n'est
     jamais montré, exporté ni écrit dans un journal, et il part avec la liaison, la
-    désactivation du compte, son effacement ou la suppression de l'entreprise ;
+    désactivation du compte, son effacement ou la suppression de l'entreprise. La section
+    de « Mon compte » (lot 69g2) dit les hôtes où part le mot de passe, chacun une fois,
+    l'identifiant relié et sa date ; le mot de passe saisi quitte la page quelle que soit
+    la réponse, et le retrait est confirmé d'abord. Rien ne s'y montre là où l'entreprise
+    n'a pas de messagerie standard ;
   - **TLS obligatoire, jamais de clair** :
     - IMAP en TLS implicite (le port 993 habituellement). Un compte au-delà de l'ASCII
       se connecte par `AUTHENTICATE PLAIN` là où le serveur l'offre (une chaîne entre

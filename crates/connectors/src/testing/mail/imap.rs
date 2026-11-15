@@ -96,6 +96,17 @@ impl FakeImap {
         Self::serve(authority, accounts, setup, Extras::default()).await
     }
 
+    /// A server of `authority` accepting `accounts` at `address` (the
+    /// end-to-end tests' fixed one).
+    pub async fn start_on(
+        address: SocketAddr,
+        authority: &TestAuthority,
+        accounts: Accounts,
+    ) -> Self {
+        let setup = ImapSetup::new(ImapBehaviour::Answers);
+        Self::serve_on(address, authority, accounts, setup, Extras::default()).await
+    }
+
     /// A server answering an account only once `hold` lets it through.
     pub async fn held(authority: &TestAuthority, accounts: Accounts, hold: Arc<Hold>) -> Self {
         let setup = ImapSetup::new(ImapBehaviour::Answers);
@@ -126,7 +137,18 @@ impl FakeImap {
         setup: ImapSetup,
         extras: Extras,
     ) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("local port");
+        let local = SocketAddr::from(([127, 0, 0, 1], 0));
+        Self::serve_on(local, authority, accounts, setup, extras).await
+    }
+
+    async fn serve_on(
+        address: SocketAddr,
+        authority: &TestAuthority,
+        accounts: Accounts,
+        setup: ImapSetup,
+        extras: Extras,
+    ) -> Self {
+        let listener = TcpListener::bind(address).await.expect("local port");
         let address = listener.local_addr().expect("local address");
         let heard = Heard::default();
         let (acceptor, noted) = (authority.acceptor(), heard.clone());

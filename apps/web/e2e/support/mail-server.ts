@@ -2,7 +2,7 @@
 // from « Connecteurs », read back from the API, and deleted after each
 // test with the accounts linked there.
 import type { Locator, Page } from '@playwright/test';
-import type { ConnectorView, Connectors } from '../../lib/api/contract';
+import type { ConnectorView, Connectors, NewMailServerConnector } from '../../lib/api/contract';
 import { cardWith, openAdmin } from './admin';
 import { expect } from './fixtures';
 
@@ -49,4 +49,32 @@ export async function declare(page: Page, name: string, imap: string, smtp: stri
   const card: Locator = cardWith(page, name, 'Supprimer');
   await expect(card.getByText('Aucun agenda déclaré')).toBeVisible();
   return card;
+}
+
+/** The simulated mail servers of the end-to-end API (`mail_servers`):
+ * IMAP, SMTP asking for STARTTLS, and a CalDAV agenda. */
+export const TEST_SERVERS = {
+  imap: { host: '127.0.0.1', port: 4112 },
+  smtp: { host: '127.0.0.1', port: 4113, security: 'starttls' as const },
+  caldav: 'https://127.0.0.1:4114/dav/',
+};
+/** Léa's account there. */
+export const LEA_MAIL = {
+  username: 'lea.fontaine@neo-maintenance.example',
+  password: 'Messagerie-Lea-2026!',
+};
+
+/** Declares the standard mail on the simulated servers through the API,
+ * as the signed-in administrator. */
+export async function declareOnTestServers(page: Page, name: string) {
+  const declared = await page.request.post('/api/admin/connectors/mail-server', {
+    headers: WRITE,
+    data: {
+      name,
+      imap: TEST_SERVERS.imap,
+      smtp: TEST_SERVERS.smtp,
+      caldav: TEST_SERVERS.caldav,
+    } satisfies NewMailServerConnector,
+  });
+  expect(declared.status(), await declared.text()).toBe(201);
 }

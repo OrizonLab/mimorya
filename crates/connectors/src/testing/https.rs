@@ -42,7 +42,16 @@ impl axum::serve::Listener for TlsListener {
 /// `router` served over HTTPS on a local port, with `authority`'s
 /// certificate; its address.
 pub async fn serve_https(authority: &TestAuthority, router: Router) -> SocketAddr {
-    let tcp = TcpListener::bind("127.0.0.1:0").await.expect("local port");
+    serve_https_on(SocketAddr::from(([127, 0, 0, 1], 0)), authority, router).await
+}
+
+/// The same at `address` (the end-to-end tests' fixed one).
+pub async fn serve_https_on(
+    address: SocketAddr,
+    authority: &TestAuthority,
+    router: Router,
+) -> SocketAddr {
+    let tcp = TcpListener::bind(address).await.expect("local port");
     let address = tcp.local_addr().expect("local address");
     let listener = TlsListener {
         tcp,

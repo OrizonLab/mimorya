@@ -29,6 +29,9 @@
 //! lists what the bots wrote and signs the activities the tests send
 //! (ADR-139); what she writes to the bot is answered apart (`teams`,
 //! ADR-140).
+//! The company's standard mail reaches simulated IMAP, SMTP and CalDAV
+//! servers on 127.0.0.1:4112 to 4114, which know Léa's account
+//! (`mail_servers`, ADR-205).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
@@ -69,6 +72,7 @@ mod hooks;
 mod identity_provider;
 mod interrupted;
 mod lessons;
+mod mail_servers;
 mod mailbox;
 mod missions;
 mod oauth_servers;
@@ -187,7 +191,10 @@ async fn main() -> anyhow::Result<()> {
     let telegram = FakeTelegram::start_on(TELEGRAM_ADDRESS).await;
     tracing::info!(url = telegram.url, "End-to-end Telegram listening");
     // The MCP servers protected by OAuth, and their authorization servers.
-    let connector_test_servers = oauth_servers::start().await?;
+    let mut connector_test_servers = oauth_servers::start().await?;
+    // The company's mail servers, their authority trusted (ADR-205).
+    let mail = mail_servers::start().await?;
+    connector_test_servers.extend(mail.addresses);
     let teams = FakeTeams::start_on(TEAMS_ADDRESS).await;
     teams.add_person(LEA_TEAMS, LEA_NAME, LEA_ADDRESS);
     tracing::info!(url = teams.url, "End-to-end Microsoft listening");
@@ -224,7 +231,7 @@ async fn main() -> anyhow::Result<()> {
             teams_api: Some(teams.url.clone()),
             prices: None,
             connector_test_servers,
-            connector_test_roots: Vec::new(),
+            connector_test_roots: mail.roots,
         },
     )
     .await?;

@@ -4,6 +4,7 @@ import {
   DataExport,
   GatewayIdentities,
   LinkedAccounts,
+  MailAccount,
   NotificationForm,
   PasswordForm,
   ServerAuthorizations,
@@ -32,6 +33,7 @@ export default function AccountPage() {
           </Card>
         )}
         <LinkedAccounts />
+        <MailAccount />
         <ServerAuthorizations />
         <GatewayIdentities />
         <NotificationForm />

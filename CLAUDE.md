@@ -381,7 +381,7 @@ Repères à l'intérieur des crates :
   simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML, et les serveurs de messagerie simulés que l'API atteint, leur autorité reconnue (`mail_servers.rs`, `BuildOptions::connector_test_roots`, ADR-205)).
 - `web/components/<fonctionnalité>/` (account — dont les e-mails reçus, ADR-094, et les
   comptes reliés, ADR-118, au nom de leur fournisseur, ADR-124, et les permissions à
-  accorder, ADR-120, les messageries reliées et la page du lien envoyé dans Slack,
+  accorder, ADR-120, le compte de chacun à la messagerie standard (`mail-account.tsx`), ADR-205, les messageries reliées et la page du lien envoyé dans Slack,
   `app/account/gateway-link` hors du cadre de l'application, ADR-126, et le compte
   Telegram relié avec l'accord donné dans Telegram, ADR-134, et le compte Teams relié
   par le lien du bot, ADR-139, et les serveurs MCP que chacun autorise pour soi
@@ -440,7 +440,7 @@ Repères à l'intérieur des crates :
   autre dont le serveur d'autorisation n'annonce pas de révocation, ADR-172, les
   seules adresses privées que ses connecteurs joignent,
   `BuildOptions::connector_test_servers`, une déclaration OAuth illisible laissée au
-  démarrage, `unreadable_oauth.rs`, ADR-171, et l'autorisation de Lucas d'un serveur que chacun autorise, son renouvellement échoué, `person_renewal.rs`, ADR-174 ; ses serveurs MCP protégés par OAuth et leurs serveurs d'autorisation, dont un fournisseur OpenID Connect où Marc est connecté, `oauth_servers.rs`, ADR-175).
+  démarrage, `unreadable_oauth.rs`, ADR-171, et l'autorisation de Lucas d'un serveur que chacun autorise, son renouvellement échoué, `person_renewal.rs`, ADR-174 ; ses serveurs MCP protégés par OAuth et leurs serveurs d'autorisation, dont un fournisseur OpenID Connect où Marc est connecté, `oauth_servers.rs`, ADR-175 ; ses serveurs IMAP, SMTP et CalDAV simulés à adresses fixes, qui connaissent le compte de Léa, leur autorité reconnue par les seuls connecteurs, `mail_servers.rs`, ADR-205).
 - `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166, son

@@ -7,7 +7,9 @@ import {
   useAction,
   type ConnectorUpdate,
   type ConnectorView,
+  type Connectors,
   type MailImapServer,
+  type MailServerView,
   type MailSmtpSecurity,
   type MailSmtpServer,
   type NewMailServerConnector,
@@ -30,12 +32,23 @@ function hosts(imap: string, smtp: string, caldav: string): string[] {
   return [imap.trim(), smtp.trim(), agenda].filter(Boolean).map((h) => h.toLowerCase());
 }
 
+/** The standard mail `id` as the server holds it now, if it reads. */
+async function storedMail(id: string): Promise<MailServerView | null> {
+  try {
+    const { instances } = await api.get<Connectors>('/admin/connectors');
+    return instances.find((c) => c.id === id)?.mailServer ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Declares the company's standard mail (ADR-205): its IMAP and SMTP
  * servers, its CalDAV agenda if any, and whether its tools may write; or
  * changes them. It holds no secret: each person links their own account
- * in « Mon compte ». A server moved to another host lets go of the
- * accounts linked there, which the administrator confirms first.
+ * in « Mon compte ». A server moved to another host, or an agenda added
+ * or removed, lets go of the accounts linked there, which the
+ * administrator confirms first, as the server reads them then.
  */
 export function MailServerForm({
   connector,
@@ -71,14 +84,17 @@ export function MailServerForm({
     } satisfies MailSmtpServer;
     const agenda = caldav.trim();
     if (connector && view) {
+      // Asked of the mail as stored now, not as the tab loaded it: people
+      // may have linked their accounts since.
+      const stored = (await storedMail(connector.id)) ?? view;
       const moved =
         hosts(imap.host, smtp.host, agenda).join(' ') !==
-        hosts(view.imap.host, view.smtp.host, view.caldav ?? '').join(' ');
+        hosts(stored.imap.host, stored.smtp.host, stored.caldav ?? '').join(' ');
       if (
         moved &&
-        view.accounts > 0 &&
+        stored.accounts > 0 &&
         !window.confirm(
-          `Un serveur change d’hôte : les ${view.accounts} compte(s) relié(s) sont retirés, et chacun relie le sien de nouveau dans « Mon compte ». Continuer ?`,
+          `Les serveurs où partent les mots de passe changent : les ${stored.accounts} compte(s) relié(s) sont retirés, et chacun relie le sien de nouveau dans « Mon compte ». Continuer ?`,
         )
       ) {
         return;
@@ -195,8 +211,8 @@ export function MailServerForm({
         chiffrés pour lui seul. Les connexions sont toujours chiffrées (TLS) ; un serveur SMTP en
         clair qui n’offre pas STARTTLS est refusé, et l’agenda n’est joint qu’en HTTPS. Un e-mail ou
         un rendez-vous n’est jamais envoyé sans validation, quel que soit le niveau d’autonomie ;
-        les invitations sont envoyées par le serveur d’agenda lui-même. Changer l’hôte d’un serveur
-        retire les comptes reliés.
+        les invitations sont envoyées par le serveur d’agenda lui-même. Changer l’hôte d’un serveur,
+        ou ajouter ou retirer l’agenda, retire les comptes reliés.
       </p>
       {action.error && <ErrorNote message={action.error} />}
       <div className="flex gap-2">
