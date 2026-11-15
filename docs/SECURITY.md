@@ -1064,7 +1064,11 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   que validé : l'iCalendar est écrit par la plateforme, chaque valeur échappée, si bien
   que rien de ce que le modèle écrit n'ajoute une propriété, un participant ni un
   rendez-vous. Le rendez-vous est déposé comme objet nouveau, jamais par-dessus un
-  autre, et seulement dans un agenda où le serveur dit que le compte peut écrire.
+  autre, dans le premier agenda que le serveur dit ouvert à l'écriture du compte, ou
+  dont il ne dit pas les droits (sa réponse décide alors) ; jamais dans un agenda que
+  le serveur dit en lecture seule. Le principal que nomme le serveur n'est interrogé
+  que sur le serveur déclaré : nommé ailleurs, il n'entend rien du compte, et rien
+  n'est créé avec des participants.
   Les invitations sont envoyées par le serveur lui-même (RFC 6638), depuis une adresse
   qu'il connaît au compte. S'il ne les envoie pas, rien n'est créé. Une adresse de
   participant qu'une adresse `mailto:` lirait autrement est refusée avant toute

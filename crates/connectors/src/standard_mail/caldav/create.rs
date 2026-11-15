@@ -104,15 +104,19 @@ pub async fn put(dav: &CalDav<'_>, url: &Url, text: String) -> Result<(), Unmade
         .body(text)
         .send()
         .await;
-    let response = match sent {
-        Ok(response) => response,
-        // Not connected, nothing reached the server.
-        Err(error) if error.is_connect() || error.is_builder() => {
-            return Err(Unmade::Nothing(request_cause(&error)));
-        }
-        Err(error) => return Err(Unmade::Unsure(request_cause(&error))),
-    };
-    answered(response.status())
+    match sent {
+        Ok(response) => answered(response.status()),
+        Err(error) => Err(unsent(&error)),
+    }
+}
+
+/// What a request that got no answer says of the event: nothing reached
+/// the server when it was never connected to; otherwise it may have.
+fn unsent(error: &reqwest_mcp::Error) -> Unmade {
+    match error.is_connect() || error.is_builder() {
+        true => Unmade::Nothing(request_cause(error)),
+        false => Unmade::Unsure(request_cause(error)),
+    }
 }
 
 /// What the server's answer to the event says of it.
@@ -120,7 +124,9 @@ fn answered(status: StatusCode) -> Result<(), Unmade> {
     let code = status.as_u16();
     let detail = format!("HTTP {code}");
     match code {
-        200 | 201 | 204 => Ok(()),
+        // Whatever success the server says, the event is taken: said
+        // otherwise, the model could create it again.
+        200..=299 => Ok(()),
         300..=399 | 401 | 403 | 404 | 410 | 429 | 503 => Err(Unmade::Nothing(refused(status))),
         // A gateway or the server failed: the event may have been kept.
         500..=599 => Err(Unmade::Unsure(Cause {
@@ -150,7 +156,7 @@ mod tests {
 
     #[test]
     fn an_answer_says_whether_the_event_is_created() {
-        for created in [200, 201, 204] {
+        for created in [200, 201, 202, 204, 207] {
             assert_eq!(said(created), Ok("créé"));
         }
         assert_eq!(said(401), Err((false, CREDENTIALS_REFUSED)));
@@ -158,6 +164,34 @@ mod tests {
         assert_eq!(said(412), Err((false, EVENT_REFUSED)));
         assert_eq!(said(507), Err((true, EVENT_UNSURE)));
         assert_eq!(said(502), Err((true, EVENT_UNSURE)));
+    }
+
+    #[tokio::test]
+    async fn a_request_never_connected_created_nothing_one_unanswered_perhaps() {
+        let local = crate::outbound::NetworkPolicy {
+            allow_private_network: true,
+            ..crate::outbound::NetworkPolicy::default()
+        };
+        let http = crate::outbound::http_client(local).unwrap();
+        // Nothing listens there: never connected.
+        let closed = http
+            .put("http://127.0.0.1:1/agenda/e.ics")
+            .send()
+            .await
+            .unwrap_err();
+        assert!(matches!(unsent(&closed), Unmade::Nothing(_)));
+        // Connected, sent, never answered.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let silent = http
+            .put(format!("http://{address}/agenda/e.ics"))
+            .timeout(std::time::Duration::from_millis(300))
+            .body("BEGIN:VCALENDAR")
+            .send()
+            .await
+            .unwrap_err();
+        assert!(matches!(unsent(&silent), Unmade::Unsure(_)));
+        drop(listener);
     }
 
     #[test]

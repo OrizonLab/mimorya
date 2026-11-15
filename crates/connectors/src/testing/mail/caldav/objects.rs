@@ -66,7 +66,9 @@ fn in_agenda(behaviour: CalDavBehaviour, path: &str) -> bool {
     };
     match behaviour {
         CalDavBehaviour::ReadOnly => false,
-        CalDavBehaviour::DeclaredIsAgenda => inside("/dav/"),
+        CalDavBehaviour::DeclaredIsAgenda | CalDavBehaviour::AgendaWithPrincipalElsewhere(_) => {
+            inside("/dav/")
+        }
         _ => inside(AGENDA_PATH),
     }
 }

@@ -3,8 +3,9 @@
 //! the attendees, takes no event in any agenda of the account, refuses it,
 //! or is silent before it, or an attendee's address would be read as
 //! another in an invitation; perhaps created when the server fails or is
-//! silent once it was sent. A refused password, alone, removes the
-//! account.
+//! silent once it was sent. A principal the server names on another
+//! server hears nothing of the account. A refused password, alone, removes
+//! the account.
 
 mod support;
 
@@ -17,7 +18,7 @@ use mimorya_connectors::standard_mail::{
 use mimorya_connectors::testing::CalDavBehaviour;
 use mimorya_core::tools::MailServerRole;
 use serde_json::json;
-use support::agenda::{new_event, paul_writing_at};
+use support::agenda::{new_event, paul_beside_another, paul_writing_at};
 use support::linked_accounts::{error_of, validated_call};
 use support::mailboxes::linked_at;
 
@@ -56,6 +57,37 @@ async fn attendees_the_server_would_not_invite_leave_nothing_created() {
         "{error}"
     );
     assert_eq!((kept, put), (0, false));
+}
+
+#[tokio::test]
+async fn a_principal_on_another_server_hears_nothing_of_the_account() {
+    // Beside a calendar home of its own, or at a root that is an agenda:
+    // the search goes on, the principal is never asked whom to invite as.
+    let names: [fn(&'static str) -> CalDavBehaviour; 2] = [
+        CalDavBehaviour::HomeBesidePrincipalElsewhere,
+        CalDavBehaviour::AgendaWithPrincipalElsewhere,
+    ];
+    for named in names {
+        let (agenda, elsewhere, paul) = paul_beside_another(named).await;
+        let error = error_of(&validated_call(&paul, CREATE, new_event()).await);
+        assert!(
+            error.starts_with(NO_ORGANIZER) && error.ends_with(NOTHING),
+            "{error}"
+        );
+        assert!(
+            elsewhere.heard.lines().is_empty(),
+            "{:?}",
+            elsewhere.heard.lines()
+        );
+        assert!(agenda.created.all().is_empty());
+        assert!(
+            agenda
+                .heard
+                .lines()
+                .iter()
+                .any(|l| l.starts_with("OPTIONS"))
+        );
+    }
 }
 
 #[tokio::test]

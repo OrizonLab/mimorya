@@ -82,6 +82,12 @@ pub enum CalDavBehaviour {
     PutHangs,
     /// Never answers, once signed in.
     Hangs,
+    /// Names, at its root, a calendar home of its own and, as the
+    /// principal, this address on another server.
+    HomeBesidePrincipalElsewhere(&'static str),
+    /// Is an agenda at its root naming, as the principal, this address on
+    /// another server.
+    AgendaWithPrincipalElsewhere(&'static str),
 }
 
 /// A running CalDAV server and what it heard.
@@ -162,7 +168,9 @@ async fn answer(
         return status.into_response();
     }
     let principal = match served.behaviour {
-        CalDavBehaviour::PrincipalElsewhere(elsewhere) => elsewhere,
+        CalDavBehaviour::PrincipalElsewhere(elsewhere)
+        | CalDavBehaviour::HomeBesidePrincipalElsewhere(elsewhere)
+        | CalDavBehaviour::AgendaWithPrincipalElsewhere(elsewhere) => elsewhere,
         _ => "/dav/principals/paul/",
     };
     let home = match served.behaviour {
@@ -203,7 +211,20 @@ async fn answer(
             [(header::LOCATION, "https://agenda.ailleurs.example/dav/")],
         )
             .into_response(),
-        ("PROPFIND", "/dav/", CalDavBehaviour::DeclaredIsAgenda) => {
+        ("PROPFIND", "/dav/", CalDavBehaviour::HomeBesidePrincipalElsewhere(_)) => {
+            multistatus(&response(
+                "/dav/",
+                &format!(
+                    "{names_principal}<c:calendar-home-set><d:href>{home}</d:href>\
+                     </c:calendar-home-set>"
+                ),
+            ))
+        }
+        (
+            "PROPFIND",
+            "/dav/",
+            CalDavBehaviour::DeclaredIsAgenda | CalDavBehaviour::AgendaWithPrincipalElsewhere(_),
+        ) => {
             let itself = agenda("/dav/", "Agenda", "VEVENT", Rights::Write);
             multistatus(&itself.replace("<d:prop>", &format!("<d:prop>{names_principal}")))
         }

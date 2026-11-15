@@ -14365,7 +14365,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       nouveau. Il est lu dans les droits que le serveur dit d'elle
       (`current-user-privilege-set`, RFC 3744 : `bind`, `write` ou `all`). Un agenda
       dont le serveur ne dit pas les droits est essayé, et sa réponse décide. Un agenda
-      en lecture seule (anniversaires, agendas partagés) n'est jamais écrit ;
+      que le serveur dit en lecture seule (anniversaires, agendas partagés en lecture
+      seule) n'est jamais écrit. Un agenda d'un autre partagé en écriture et listé en
+      premier le serait : préférer l'agenda par défaut de la planification
+      (`schedule-default-calendar-URL`) ou celui dont le principal est le propriétaire
+      viendra plus tard ;
     - l'iCalendar est écrit par la plateforme. Chaque valeur texte est échappée
       (`\`, `;`, `,`, retour à la ligne), si bien que rien de ce que le modèle écrit
       n'ajoute une propriété, un participant ni un rendez-vous. Le début et la fin sont
@@ -14379,7 +14383,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       créé, la plateforme vérifie que le serveur l'annonce (`calendar-auto-schedule`
       dans l'en-tête `DAV` de l'agenda). Elle prend l'organisateur parmi les adresses
       que le serveur connaît au compte (`calendar-user-address-set` de son principal) :
-      l'adresse de la boîte reliée si elle en est, sinon la première. Un serveur qui
+      l'adresse de la boîte reliée si elle en est, sinon la première. Le principal
+      n'est interrogé que sur le serveur déclaré : nommé sur un autre, il n'entend rien
+      du compte, et le rendez-vous est traité comme sans adresse. Un serveur qui
       n'invite pas, ou ne connaît au compte aucune adresse, est dit au modèle, et rien
       n'est créé : la personne a validé « invitation envoyée à ». Un rendez-vous sans
       participant n'en demande rien ;
@@ -14387,8 +14393,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       `%`, `&`, `=`, `/` et les autres caractères qu'une URI n'écrit pas tels quels) est
       refusée avant toute requête. Le serveur pourrait sinon inviter quelqu'un d'autre
       que la personne validée ;
-    - ce que l'on sait d'un échec est dit. Une réponse qui refuse le rendez-vous (`4xx`,
-      `503`, redirection) ou un serveur injoignable dit « rien n'est créé ». Une erreur
+    - ce que l'on sait d'un échec est dit. Toute réponse de succès (`2xx`) dit le
+      rendez-vous créé. Une réponse qui le refuse (`4xx`, `503`, redirection) ou un
+      serveur jamais joint dit « rien n'est créé ». Une erreur
       du serveur ou d'une passerelle (`5xx`), un silence une fois le rendez-vous parti
       ou un délai dépassé pendant l'envoi disent qu'il est peut-être créé : le modèle
       vérifie l'agenda avant de le recréer, et l'appel n'est jamais répété ;

@@ -72,6 +72,22 @@ pub async fn paul_writing_at(
     paul_with(behaviour, PASSWORD, events(), true, call_timeout).await
 }
 
+/// Paul, where the company lets its tools write, at an agenda that
+/// `names` another server's principal: that server is started first, of
+/// the same authority, so that any request reaching it is heard.
+pub async fn paul_beside_another(
+    names: fn(&'static str) -> CalDavBehaviour,
+) -> (FakeCalDav, FakeCalDav, ToolExecutor) {
+    let authority = TestAuthority::new();
+    let behaviour = CalDavBehaviour::Answers;
+    let elsewhere = FakeCalDav::start(&authority, accounts(), behaviour, vec![]).await;
+    let principal = format!("{}principals/paul/", elsewhere.base());
+    let named = names(Box::leak(principal.into_boxed_str()));
+    let call = Duration::from_secs(20);
+    let (agenda, _, paul) = paul_of(authority, named, PASSWORD, vec![], true, call).await;
+    (agenda, elsewhere, paul)
+}
+
 async fn paul_with(
     behaviour: CalDavBehaviour,
     password: &str,
@@ -80,6 +96,25 @@ async fn paul_with(
     call_timeout: Duration,
 ) -> (FakeCalDav, Arc<InMemoryPorts>, ToolExecutor) {
     let authority = TestAuthority::new();
+    paul_of(
+        authority,
+        behaviour,
+        password,
+        held,
+        write_tools,
+        call_timeout,
+    )
+    .await
+}
+
+async fn paul_of(
+    authority: TestAuthority,
+    behaviour: CalDavBehaviour,
+    password: &str,
+    held: Vec<String>,
+    write_tools: bool,
+    call_timeout: Duration,
+) -> (FakeCalDav, Arc<InMemoryPorts>, ToolExecutor) {
     let agenda = FakeCalDav::start(&authority, accounts(), behaviour, held).await;
     let mut declared = declaration(&agenda);
     declared["writeTools"] = json!(write_tools);
