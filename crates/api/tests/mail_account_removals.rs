@@ -234,7 +234,7 @@ async fn a_disabled_mail_takes_no_account_and_shows_the_one_kept() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn an_account_linked_since_the_question_is_never_let_go_unasked() {
+async fn more_accounts_linked_since_the_question_are_never_let_go_unasked() {
     let address = "nadia.roche@neo-maintenance.example";
     let known = vec![
         (USERNAME.into(), PASSWORD.into()),

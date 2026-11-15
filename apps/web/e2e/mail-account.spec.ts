@@ -165,11 +165,23 @@ test('moving a server asks first, then lets go of the accounts linked there', as
   expect(mail?.accounts).toBe(1);
 
   // The agenda removed is another host gone, accepted: sent again with
-  // the account he agreed to let go, and hers is.
+  // the account he agreed to let go, and hers is. While that sending is
+  // held, the form stays busy: nothing to send twice, nothing to close.
   accept = true;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/admin/connectors/*', async (route) => {
+    const body = route.request().postDataJSON() as ConnectorUpdate | null;
+    if (body?.mailAccountsLetGo !== undefined) await held;
+    await route.fallback();
+  });
   await card.getByRole('button', { name: 'Modifier' }).click();
   await form.getByLabel('Agenda CalDAV (facultatif, adresse en https://)').fill('');
   await form.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect.poll(() => asked.length).toBe(2);
+  await expect(form.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+  await expect(form.getByRole('button', { name: 'Annuler' })).toBeDisabled();
+  release();
   await expect(card.getByText(/· 0 compte\(s\) relié\(s\)$/)).toBeVisible();
   await expect(card.getByText('Aucun agenda déclaré')).toBeVisible();
   expect(asked).toEqual([question, question]);
