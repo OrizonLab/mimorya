@@ -65,30 +65,36 @@ impl TypedTool for MailSend {
                 })
             }
         };
-        let from = match said {
-            Ok(from) => from,
+        let sent = match said {
+            Ok(sent) => sent,
             Err(why) => return Ok(ToolResult::error(why)),
         };
         let content = json!({
             "envoye": true,
-            "de": from,
+            "de": sent.from,
             "objet": input.subject,
             "a": input.to,
             "copie": input.cc,
         });
+        // Each address once, as the envelope named them.
         Ok(ToolResult::ok(content).with_summary(format!(
             "E-mail envoyé à {} destinataire(s)",
-            input.recipients()
+            sent.recipients
         )))
     }
 }
 
-/// An attempt to send: the address the e-mail left from, or why it is not
-/// known to have left, in French; and the connection to leave, if one was
-/// opened.
+/// An attempt to send: the e-mail sent, or why it is not known to have
+/// left, in French; and the connection to leave, if one was opened.
 struct Attempt {
-    said: Result<String, String>,
+    said: Result<Sent, String>,
     connection: Option<AsyncSmtpConnection>,
+}
+
+/// An e-mail the server took: whom from, and to how many addresses.
+struct Sent {
+    from: String,
+    recipients: usize,
 }
 
 impl Attempt {
@@ -130,7 +136,10 @@ impl MailSend {
         let envelope = (&outgoing.from, outgoing.to.as_slice());
         let text = outgoing.text.as_bytes();
         let said = match submit(&mut connection, &budget, envelope, text, handed).await {
-            Ok(()) => Ok(outgoing.from.to_string()),
+            Ok(()) => Ok(Sent {
+                from: outgoing.from.to_string(),
+                recipients: outgoing.to.len(),
+            }),
             Err(Unsent::Nothing(cause)) => Err(nothing_sent(&told(&login, cause))),
             Err(Unsent::Unsure(cause)) => Err(perhaps_sent(&told(&login, cause))),
         };

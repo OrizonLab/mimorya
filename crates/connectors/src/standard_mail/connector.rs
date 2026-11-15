@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use mimorya_core::tools::typed_tool;
 use serde_json::Value;
 
-use super::tools::{MailReach, MailRead, MailSearch, MailSend};
+use super::tools::{MailCalendarEvents, MailReach, MailRead, MailSearch, MailSend};
 use super::{MAIL_SERVER, MailServerConfig};
 use crate::types::{Connector, ConnectorInfo, ConnectorRuntime, InstanceContext};
 
@@ -46,6 +46,9 @@ impl Connector for MailServerConnector {
             typed_tool(MailSearch { reach }),
             typed_tool(MailRead { reach }),
         ];
+        if config.caldav.is_some() {
+            tools.push(typed_tool(MailCalendarEvents { reach }));
+        }
         if config.write_tools {
             tools.push(typed_tool(MailSend { reach }));
         }

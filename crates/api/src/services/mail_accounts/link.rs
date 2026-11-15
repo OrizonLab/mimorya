@@ -1,8 +1,9 @@
 //! Linking a person's account at their company's standard mail (ADR-205):
 //! prepared without reaching anything (a master key to seal it, the
 //! permission to use connectors, the company's mail enabled, an identifier
-//! and a password of a valid form), then the company's IMAP server and its
-//! SMTP server each signed in to, over TLS, before anything is kept. A
+//! and a password of a valid form), then the company's IMAP server, its
+//! SMTP server and, if it declared one, its CalDAV agenda each signed in to,
+//! over TLS, before anything is kept (an agenda of events found there). A
 //! refused account is never kept. The password is sealed for this company,
 //! connector and person alone, and kept only while the servers it was
 //! checked against are still the company's and the person's account is
@@ -12,10 +13,11 @@
 
 use mimorya_connectors::outbound::{Cause, NetworkPolicy};
 use mimorya_connectors::standard_mail::{
-    CREDENTIALS_REFUSED, FORM_REFUSED, MAIL_SERVER, MailLogin, MailServerConfig, check_imap,
-    check_smtp,
+    CREDENTIALS_REFUSED, FORM_REFUSED, MAIL_SERVER, MailLogin, MailServerConfig, check_caldav,
+    check_imap, check_smtp,
 };
 use mimorya_core::DomainError;
+use mimorya_core::tools::MailServerRole;
 use mimorya_db::Database;
 use mimorya_db::repositories::account_links::lock_active_account;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
@@ -86,8 +88,9 @@ impl MailLinking<'_> {
     }
 }
 
-/// Signs `link` in to the company's IMAP then SMTP server and keeps the
-/// account once both accepted it.
+/// Signs `link` in to the company's IMAP server, then its SMTP server,
+/// then its agenda if it declared one, and keeps the account once each
+/// accepted it.
 pub async fn link_mail_account(
     linking: &MailLinking<'_>,
     link: PreparedLink,
@@ -100,18 +103,13 @@ pub async fn link_mail_account(
         login,
         own_address,
     } = link;
-    let checked = match check_imap(&config.imap, &login, linking.network).await {
-        Ok(()) => check_smtp(&config.smtp, &login, linking.network)
-            .await
-            .map_err(|cause| ("smtp", cause)),
-        Err(cause) => Err(("imap", cause)),
-    };
+    let checked = checked(&config, &login, linking.network).await;
     if let Err((server, cause)) = checked {
         let refused = AuditEntry::new(tenant_id, "user", "mail_account.refused", "denied")
             .by_user(user_id)
             .resource("connector", connector_id)
             .reason(cause.summary)
-            .metadata(json!({ "server": server }));
+            .metadata(json!({ "server": server.as_str() }));
         let mut tx = linking.db.begin(tenant_id).await?;
         append_audit(&mut tx, refused).await?;
         tx.commit().await?;
@@ -159,10 +157,31 @@ pub async fn link_mail_account(
     Ok(())
 }
 
+/// Whether each of the company's servers accepts `login`, in turn: the
+/// first to refuse it, and why. None hears of an account another refused.
+async fn checked(
+    config: &MailServerConfig,
+    login: &MailLogin,
+    network: NetworkPolicy,
+) -> Result<(), (MailServerRole, Cause)> {
+    check_imap(&config.imap, login, network)
+        .await
+        .map_err(|cause| (MailServerRole::Imap, cause))?;
+    check_smtp(&config.smtp, login, network)
+        .await
+        .map_err(|cause| (MailServerRole::Smtp, cause))?;
+    if let Some(agenda) = config.caldav.as_deref() {
+        check_caldav(agenda, login, network)
+            .await
+            .map_err(|cause| (MailServerRole::CalDav, cause))?;
+    }
+    Ok(())
+}
+
 /// What the person is told of a refusal, naming the server: their account
 /// refused is theirs to correct, anything else the server's.
-fn refusal(server: &str, cause: &Cause) -> DomainError {
-    let said = format!("Serveur {} : {}", server.to_uppercase(), cause.summary);
+fn refusal(server: MailServerRole, cause: &Cause) -> DomainError {
+    let said = format!("Serveur {} : {}", server.protocol(), cause.summary);
     if [CREDENTIALS_REFUSED, FORM_REFUSED].contains(&cause.summary) {
         DomainError::validation(said)
     } else {
@@ -200,14 +219,22 @@ mod tests {
             summary,
             detail: String::new(),
         };
-        let refused = refusal("imap", &cause(CREDENTIALS_REFUSED));
+        let refused = refusal(MailServerRole::Imap, &cause(CREDENTIALS_REFUSED));
         assert_eq!(refused.code, ErrorCode::Validation);
         assert!(
             refused.message.starts_with("Serveur IMAP : "),
             "{refused:?}"
         );
-        let silent = refusal("smtp", &cause(mimorya_connectors::outbound::TOO_SLOW));
+        let silent = refusal(
+            MailServerRole::Smtp,
+            &cause(mimorya_connectors::outbound::TOO_SLOW),
+        );
         assert_eq!(silent.code, ErrorCode::Unavailable);
         assert!(silent.message.starts_with("Serveur SMTP : "), "{silent:?}");
+        let agenda = refusal(MailServerRole::CalDav, &cause(CREDENTIALS_REFUSED));
+        assert!(
+            agenda.message.starts_with("Serveur CalDAV : "),
+            "{agenda:?}"
+        );
     }
 }

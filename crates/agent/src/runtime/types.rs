@@ -29,6 +29,11 @@ pub struct RuntimeDeps {
     pub tool_timeout: Duration,
 }
 
+/// How long a tool call may take before the executor stops it: past a
+/// connector's own call delay and what it may take to leave its server
+/// once the answer is known (`mail_send`, ADR-205).
+pub const DEFAULT_TOOL_TIMEOUT: Duration = Duration::from_secs(30);
+
 impl RuntimeDeps {
     pub fn new(
         router: ModelRouter,
@@ -45,7 +50,7 @@ impl RuntimeDeps {
             prices,
             max_provider_retries: 2,
             retry_delay: Duration::from_secs(1),
-            tool_timeout: Duration::from_secs(30),
+            tool_timeout: DEFAULT_TOOL_TIMEOUT,
         }
     }
 }

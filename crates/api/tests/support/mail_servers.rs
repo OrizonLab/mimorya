@@ -1,14 +1,15 @@
 //! Test apps whose companies reach simulated mail servers (ADR-205): IMAP
-//! and SMTP servers of a test authority, on local ports the private network
-//! lets through, their certificates trusted as the authority's roots; a
-//! master key seals the accounts people link there.
+//! and SMTP servers of a test authority and, for some, a CalDAV agenda, on
+//! local ports the private network lets through, their certificates trusted
+//! as the authority's roots; a master key seals the accounts people link
+//! there.
 
 use std::sync::Arc;
 
 use mimorya_api::App;
 use mimorya_connectors::testing::{
-    Accounts, FakeImap, FakeSmtp, Hold, ImapBehaviour, ImapSetup, Mailboxes, SmtpMode,
-    TestAuthority,
+    Accounts, CalDavBehaviour, FakeCalDav, FakeImap, FakeSmtp, Hold, ImapBehaviour, ImapSetup,
+    Mailboxes, SmtpMode, TestAuthority,
 };
 use mimorya_core::demo::tenant;
 use serde_json::{Value, json};
@@ -26,6 +27,8 @@ pub struct MailServers {
     pub authority: TestAuthority,
     pub imap: FakeImap,
     pub smtp: FakeSmtp,
+    /// The agenda the company declares, if any.
+    pub agenda: Option<FakeCalDav>,
 }
 
 impl MailServers {
@@ -43,7 +46,23 @@ impl MailServers {
             authority,
             imap,
             smtp,
+            agenda: None,
         }
+    }
+
+    /// The same, with a CalDAV agenda accepting `agenda_accounts` and
+    /// holding `events`.
+    pub async fn with_agenda(
+        accounts: Accounts,
+        agenda_accounts: Accounts,
+        events: Vec<String>,
+    ) -> Self {
+        let mut servers = Self::start(accounts).await;
+        let behaviour = CalDavBehaviour::Answers;
+        let agenda =
+            FakeCalDav::start(&servers.authority, agenda_accounts, behaviour, events).await;
+        servers.agenda = Some(agenda);
+        servers
     }
 
     /// The same, the IMAP server answering an account only once `hold`
@@ -56,6 +75,7 @@ impl MailServers {
             authority,
             imap,
             smtp,
+            agenda: None,
         }
     }
 
@@ -66,7 +86,7 @@ impl MailServers {
 
     /// The standard mail declared on these servers.
     pub fn declaration(&self) -> Value {
-        json!({
+        let mut declared = json!({
             "name": "Messagerie de l’entreprise",
             "imap": { "host": "127.0.0.1", "port": self.imap.address.port() },
             "smtp": {
@@ -74,7 +94,11 @@ impl MailServers {
                 "port": self.smtp.address.port(),
                 "security": "starttls",
             },
-        })
+        });
+        if let Some(agenda) = &self.agenda {
+            declared["caldav"] = json!(agenda.base());
+        }
+        declared
     }
 }
 

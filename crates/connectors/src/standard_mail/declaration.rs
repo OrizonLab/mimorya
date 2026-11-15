@@ -78,6 +78,12 @@ impl MailServerConfig {
             .or_else(|| self.smtp.problem(policy))
             .or_else(|| {
                 let caldav = self.caldav.as_deref()?;
+                // Each person's password goes there: never in clear, even
+                // where the network policy allows HTTP.
+                let secure = Url::parse(caldav).is_ok_and(|url| url.scheme() == "https");
+                if !secure {
+                    return Some("Agenda CalDAV : adresse en https:// attendue".into());
+                }
                 url_problem(caldav, policy).map(|problem| format!("Agenda CalDAV : {problem}"))
             })
     }
@@ -156,6 +162,18 @@ mod tests {
             let problem = agenda.problem(SAAS).unwrap();
             assert!(problem.starts_with("Agenda CalDAV"), "{caldav}: {problem}");
         }
+        // A password never goes in clear, wherever HTTP is allowed.
+        let local = NetworkPolicy {
+            allow_private_network: true,
+            ..SAAS
+        };
+        let mut clear = declared();
+        clear.caldav = Some("http://10.0.0.4/dav/".into());
+        let problem = clear.problem(local).unwrap();
+        assert!(
+            problem.starts_with("Agenda CalDAV : adresse en https"),
+            "{problem}"
+        );
     }
 
     #[test]

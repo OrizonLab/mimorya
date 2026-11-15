@@ -45,7 +45,8 @@ pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
 pub use state::{PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
 pub use types::{
-    ApprovalDecision, ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps, VerificationConfig,
+    ApprovalDecision, ApprovalDecisions, DEFAULT_TOOL_TIMEOUT, RunConfig, RunOutcome, RuntimeDeps,
+    VerificationConfig,
 };
 pub use unavailable::UnavailableConnectors;
 pub use verification::VerificationReport;

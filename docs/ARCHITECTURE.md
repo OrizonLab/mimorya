@@ -321,7 +321,10 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   sa boîte, toujours validé et exécuté une fois tel que validé : l'expéditeur est choisi
   par la plateforme (l'identifiant relié, ou l'adresse de la personne), le texte écrit
   par elle comme pour Gmail, et ce que l'on sait d'un échec est dit (« rien n'est
-  parti » ou « peut-être parti ») (ADR-205).
+  parti » ou « peut-être parti »). Si l'entreprise a déclaré un agenda CalDAV,
+  `mail_calendar_events` en lit les rendez-vous en HTTPS, sur ce seul serveur (client
+  WebDAV minimal sur le client HTTP durci, XML lu par quick-xml, iCalendar lu par la
+  plateforme) ; la liaison d'un compte le vérifie aussi (ADR-205).
 - **Passerelle Slack** : une passerelle de conversation n'est pas un connecteur, elle
   n'apporte aucun outil (table `gateways`). L'entreprise déclare son application Slack
   (une par entreprise) : son jeton de bot, essayé auprès de Slack avant d'être gardé, et

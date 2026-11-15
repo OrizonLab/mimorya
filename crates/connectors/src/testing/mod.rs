@@ -18,6 +18,7 @@ mod google_writes;
 mod graph;
 mod graph_writes;
 mod hold;
+mod https;
 mod mail;
 mod oauth;
 mod proxy;
@@ -46,9 +47,11 @@ pub use google::{FakeGoogle, GOOGLE_DETAIL, GoogleRequest, LISTED_GONE, LISTED_R
 pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
+pub use https::serve_https;
 pub use mail::{
-    Accounts, AfterData, Deliveries, Delivery, FakeImap, FakeSmtp, FetchBehaviour, Heard,
-    ImapBehaviour, ImapSetup, Instead, Mailboxes, SmtpMode, SmtpSetup, TestFolder, TestMessage,
+    AGENDA_PATH, Accounts, AfterData, CalDavBehaviour, Deliveries, Delivery, FakeCalDav, FakeImap,
+    FakeSmtp, FetchBehaviour, Heard, ImapBehaviour, ImapSetup, Instead, Mailboxes, SmtpMode,
+    SmtpSetup, TestFolder, TestMessage,
 };
 pub use oauth::{
     AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, IdTokenQuirk, LONG_TOKEN_CHARS,
