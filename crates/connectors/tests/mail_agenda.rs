@@ -74,6 +74,7 @@ async fn the_period_s_events_come_earliest_first_in_paris_time() {
     assert_eq!(meeting["participants"], json!(["Paul <paul@neo.example>"]));
     assert_eq!(meeting["apercu"], "Ordre du jour, sécurité");
     assert_eq!(meeting["agenda"], "Personnel");
+    assert_eq!(meeting["journeeEntiere"], false);
     assert_eq!(read[1]["debut"], "2026-11-17T14:00:00+01:00");
     let leave = &read[2];
     assert_eq!(

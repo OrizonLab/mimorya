@@ -14327,7 +14327,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       répétitif développée par le serveur (`expand`). La plateforme ne se fie pas à son
       filtre : ce qui tombe hors de la période est laissé, ses bornes exclues comme le
       veut la RFC 4791 (9.9) : un rendez-vous qui finit à minuit le premier jour ou
-      commence à minuit après le dernier n'en est pas. Un rendez-vous répétitif qu'un
+      commence à minuit après le dernier n'en est pas. Un rendez-vous dont la fin ne
+      suit pas le début est lu à son début, comme un instant (la ligne de la durée nulle
+      de la RFC 4791, 9.9), même si sa fin précède la période. Un rendez-vous répétitif qu'un
       serveur n'a pas développé est gardé dès qu'il a commencé avant la fin de la
       période, dit tel, daté de sa première occurrence ;
     - le XML est lu par quick-xml sans entité ni DTD (seules celles de XML et les

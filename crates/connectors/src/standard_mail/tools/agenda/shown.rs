@@ -203,6 +203,12 @@ mod tests {
         let period = (at_utc(16), at_utc(19));
         assert!(overlaps(&weekly, period));
         assert!(!overlaps(&weekly, (at_utc(1), at_utc(2))));
+        // One occurrence of it, named, is read as the occurrence it is.
+        let occurrence = Event {
+            occurrence: Some("20261102T090000Z".into()),
+            ..weekly.clone()
+        };
+        assert!(!overlaps(&occurrence, period));
         let read = event(&Listed {
             agenda: None,
             event: weekly,
@@ -281,6 +287,41 @@ mod tests {
             ..Event::default()
         };
         assert_eq!(listed(forwards)["fin"], "2026-11-16T10:00:00+01:00");
+    }
+
+    #[test]
+    fn an_event_whose_end_does_not_follow_its_start_is_read_at_its_start() {
+        let period = (at_utc(16), at_utc(19));
+        // Its end before the period: still in it, by its start.
+        let backwards = Event {
+            start: Some(at(17, 9)),
+            end: Some(at(15, 9)),
+            ..Event::default()
+        };
+        assert!(overlaps(&backwards, period));
+        // No length, at the period's first instant: read as an instant
+        // there (RFC 4791, 9.9, a duration of zero), not as ending there.
+        let instant = Event {
+            start: Some(When::At(at_utc(16))),
+            end: Some(When::At(at_utc(16))),
+            ..Event::default()
+        };
+        assert!(overlaps(&instant, period));
+        let day = |d| When::Day(NaiveDate::from_ymd_opt(2026, 11, d).unwrap());
+        let whole_day = Event {
+            start: Some(day(17)),
+            end: Some(day(16)),
+            ..Event::default()
+        };
+        assert!(overlaps(&whole_day, (day_start_of(16), day_end_of(18))));
+    }
+
+    fn day_start_of(day: u32) -> DateTime<Utc> {
+        day_start(NaiveDate::from_ymd_opt(2026, 11, day).unwrap())
+    }
+
+    fn day_end_of(day: u32) -> DateTime<Utc> {
+        day_end(NaiveDate::from_ymd_opt(2026, 11, day).unwrap())
     }
 
     #[test]
