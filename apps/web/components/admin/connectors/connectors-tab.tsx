@@ -8,21 +8,23 @@ import { AuthorizationOutcome } from './authorization-outcome';
 import { ConnectorCard } from './connector-card';
 import { GatewaysSection } from './gateways-section';
 import { GoogleWorkspaceForm } from './google-workspace-form';
+import { MailServerForm } from './mail-server-form';
 import { McpForm } from './mcp-form';
 import { Microsoft365Form } from './microsoft365-form';
 import { RestForm } from './rest-form';
 
 /**
  * The company's connectors, and adding an MCP server, a REST API, its
- * Microsoft 365 application or its Google Workspace client, one of each
- * per company (ADR-118, ADR-124); then its conversation gateways (ADR-126).
+ * Microsoft 365 application, its Google Workspace client or its standard
+ * mail, one of each per company (ADR-118, ADR-124, ADR-205); then its
+ * conversation gateways (ADR-126).
  */
 export function ConnectorsTab() {
   const state = useApiData<Connectors>('/admin/connectors');
   // What is being added, if anything.
-  const [adding, setAdding] = useState<'mcp' | 'rest' | 'microsoft365' | 'google_workspace' | null>(
-    null,
-  );
+  const [adding, setAdding] = useState<
+    'mcp' | 'rest' | 'microsoft365' | 'google_workspace' | 'mail_server' | null
+  >(null);
   const done = (changed: boolean) => {
     setAdding(null);
     if (changed) state.reload();
@@ -57,6 +59,12 @@ export function ConnectorsTab() {
                 <GoogleWorkspaceForm onDone={done} />
               </Card>
             )}
+            {adding === 'mail_server' && (
+              <Card className="p-4">
+                <p className="mb-3 font-medium">Messagerie standard de l’entreprise</p>
+                <MailServerForm onDone={done} />
+              </Card>
+            )}
             {!adding && (
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={() => setAdding('mcp')}>
@@ -73,6 +81,11 @@ export function ConnectorsTab() {
                 {!data.instances.some((i) => i.type === 'google_workspace') && (
                   <Button variant="secondary" onClick={() => setAdding('google_workspace')}>
                     <Plus className="size-4" aria-hidden /> Déclarer le client Google Workspace
+                  </Button>
+                )}
+                {!data.instances.some((i) => i.type === 'mail_server') && (
+                  <Button variant="secondary" onClick={() => setAdding('mail_server')}>
+                    <Plus className="size-4" aria-hidden /> Déclarer la messagerie standard
                   </Button>
                 )}
               </div>

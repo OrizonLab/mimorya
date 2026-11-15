@@ -3,8 +3,10 @@
 //! home, named by the address or by their principal (RFC 5397, RFC 4791,
 //! 6.2.1), or the declared address itself when neither names one, and the
 //! calendars of events it holds, ten at most, each said to take new events
-//! or not (RFC 3744). A principal or a home on another server stops the
-//! search: nothing is sent there. A calendar on another server is left out.
+//! or not (RFC 3744). A home on another server, or a principal elsewhere
+//! that must name it, stops the search; any other principal elsewhere is
+//! left out. Nothing is sent there. A calendar on another server is left
+//! out.
 
 use reqwest_mcp::Url;
 

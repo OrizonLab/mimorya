@@ -391,7 +391,7 @@ Repères à l'intérieur des crates :
   admin — dont `admin/connectors/` : serveurs MCP et API REST décrites opération par
   opération, ADR-113, et leurs opérations importées d'une description OpenAPI, JSON ou
   YAML converti dans le navigateur, ADR-115, et l'application Microsoft 365, ADR-118,
-  dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et les
+  dont l'écriture permise, ADR-120, et le client Google Workspace, ADR-124, et la messagerie standard, ses serveurs et son agenda (`mail-server-form.tsx`, `mail-server-details.tsx`), ADR-205, et les
   passerelles de conversation, l'application Slack, ADR-126, et ses permissions
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
   et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174, et si le compte de chacun est vérifié, ADR-175, une déclaration refusée si elle a changé depuis l'ouverture de son formulaire, ADR-176,

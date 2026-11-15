@@ -21,6 +21,7 @@ use serde_json::{Value, json};
 use tokio::time::timeout;
 use uuid::Uuid;
 
+use super::agenda::NO_CALDAV;
 use super::outgoing::sender;
 use super::person::{MailReach, PersonAccount, refused, told, told_plain};
 use crate::delegated::NewEvent;
@@ -32,8 +33,6 @@ use crate::standard_mail::caldav::{
     organizer, put, schedules, written_as_is,
 };
 
-/// What a company with no agenda declared is told.
-const NO_CALDAV: &str = "La messagerie de l’entreprise n’a pas d’agenda CalDAV déclaré";
 /// What a person with no agenda taking new events is told.
 pub const NO_WRITABLE_AGENDA: &str =
     "Aucun agenda de ce compte ne prend de nouveau rendez-vous (droits en lecture seule)";

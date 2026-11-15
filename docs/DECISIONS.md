@@ -14401,6 +14401,13 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       vérifie l'agenda avant de le recréer, et l'appel n'est jamais répété ;
     - un mot de passe que l'agenda refuse (`401`) retire le compte, audité avec le
       serveur `caldav`. Un refus d'accès (`403`) le garde ;
+  - **l'administration la déclare** dans « Connecteurs » (lot 69g1) : serveurs IMAP et
+    SMTP, sécurité SMTP (TLS dès la connexion ou STARTTLS exigé, le port habituel suivant
+    le choix), agenda CalDAV facultatif et écriture permise ou non. Sa carte dit ses
+    serveurs, son agenda, ses outils et combien de comptes y sont reliés. Une modification
+    n'envoie que les champs changés ; quand un serveur change d'hôte et que des comptes y
+    sont reliés, l'administrateur confirme d'abord qu'ils seront retirés. Sa vérification
+    ne joint pas ses serveurs : chacun relie son compte ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
     refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM
