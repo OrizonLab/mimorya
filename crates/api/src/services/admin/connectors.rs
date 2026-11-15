@@ -28,7 +28,7 @@ use super::added_connectors::{added_here, operation_names, prefix_taken, unchang
 use super::connector_authorization::{revoke, take_authorizations};
 use super::connector_config::{ConfigChanges, Editable, RestChanges};
 use super::connector_rules::{ToolPolicyInput, mcp_addition_problem};
-use super::mail_server::{MailChanges, hosts_moved};
+use super::mail_server::{MailChanges, accounts_linked, hosts_moved};
 use super::mcp_config::mcp_config;
 use super::policy_changes::policy_changes;
 use super::{audit_entry, begin_change};
@@ -248,6 +248,7 @@ pub async fn update_connector(
         patch.reachability_changed =
             moved || rehomed || changes.token.is_some() || mail_servers.is_some();
         if configured {
+            let let_go = changes.mail.as_ref().map_or(0, |mail| mail.accounts_let_go);
             let network = admin.connectors.network();
             let config_changes = ConfigChanges {
                 url: changes.url.clone(),
@@ -256,9 +257,15 @@ pub async fn update_connector(
                 write_tools: changes.write_tools,
             };
             let config = editable.changed(config_changes, network)?;
-            // A password never follows the mail to another host (ADR-205).
+            // A password never follows the mail to another host, nor are
+            // more accounts let go than the administrator agreed to: the
+            // transaction is then given up (ADR-205).
             if instance.connector_type == MAIL_SERVER && hosts_moved(&instance.config, &config) {
-                accounts_removed = Some(delete_mail_accounts_of_connector(&mut tx, id).await?);
+                let removed = delete_mail_accounts_of_connector(&mut tx, id).await?;
+                if removed > u64::from(let_go) {
+                    return Err(accounts_linked(removed).into());
+                }
+                accounts_removed = Some(removed);
             }
             patch.config = Some(config);
             previous_url = changes.url.as_ref().map(|_| current_url);

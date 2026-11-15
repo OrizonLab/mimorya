@@ -3,13 +3,12 @@
 import { useState, type FormEvent } from 'react';
 import { Button, Checkbox, ErrorNote, Field, Input, Select } from '@/components/ui';
 import {
+  ApiError,
   api,
   useAction,
   type ConnectorUpdate,
   type ConnectorView,
-  type Connectors,
   type MailImapServer,
-  type MailServerView,
   type MailSmtpSecurity,
   type MailSmtpServer,
   type NewMailServerConnector,
@@ -19,27 +18,16 @@ import {
 const SMTP_PORTS: Record<MailSmtpSecurity, string> = { tls: '465', starttls: '587' };
 
 /**
- * The hosts a person's password would go to, as the server compares them:
- * the IMAP and SMTP servers' and the agenda's (ADR-205).
+ * How many linked accounts a change would let go of, when the server
+ * refused it for that (ADR-205): it counts them under the administration
+ * lock, for the question to ask.
  */
-function hosts(imap: string, smtp: string, caldav: string): string[] {
-  let agenda = caldav.trim();
-  try {
-    if (agenda) agenda = new URL(agenda).hostname;
-  } catch {
-    // An address the server refuses: it says why.
-  }
-  return [imap.trim(), smtp.trim(), agenda].filter(Boolean).map((h) => h.toLowerCase());
-}
-
-/** The standard mail `id` as the server holds it now, if it reads. */
-async function storedMail(id: string): Promise<MailServerView | null> {
-  try {
-    const { instances } = await api.get<Connectors>('/admin/connectors');
-    return instances.find((c) => c.id === id)?.mailServer ?? null;
-  } catch {
-    return null;
-  }
+function accountsLinked(error: unknown): number | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const details = error.details as { reason?: unknown; accounts?: unknown } | undefined;
+  return details?.reason === 'mail_accounts_linked' && typeof details.accounts === 'number'
+    ? details.accounts
+    : null;
 }
 
 /**
@@ -47,8 +35,9 @@ async function storedMail(id: string): Promise<MailServerView | null> {
  * servers, its CalDAV agenda if any, and whether its tools may write; or
  * changes them. It holds no secret: each person links their own account
  * in « Mon compte ». A server moved to another host, or an agenda added
- * or removed, lets go of the accounts linked there, which the
- * administrator confirms first, as the server reads them then.
+ * or removed, lets go of the accounts linked there: the server refuses it
+ * until the administrator agrees, the question naming how many it counts,
+ * and the form stays busy from the first sending to the last.
  */
 export function MailServerForm({
   connector,
@@ -84,28 +73,14 @@ export function MailServerForm({
     } satisfies MailSmtpServer;
     const agenda = caldav.trim();
     if (connector && view) {
-      // Asked of the mail as stored now, not as the tab loaded it: people
-      // may have linked their accounts since.
-      const stored = (await storedMail(connector.id)) ?? view;
-      const moved =
-        hosts(imap.host, smtp.host, agenda).join(' ') !==
-        hosts(stored.imap.host, stored.smtp.host, stored.caldav ?? '').join(' ');
-      if (
-        moved &&
-        stored.accounts > 0 &&
-        !window.confirm(
-          `Les serveurs où partent les mots de passe changent : les ${stored.accounts} compte(s) relié(s) sont retirés, et chacun relie le sien de nouveau dans « Mon compte ». Continuer ?`,
-        )
-      ) {
-        return;
-      }
       const imapChanged = imap.host !== view.imap.host || imap.port !== view.imap.port;
       const smtpChanged =
         smtp.host !== view.smtp.host ||
         smtp.port !== view.smtp.port ||
         smtp.security !== view.smtp.security;
-      const saved = await action.run(() =>
-        api.patch(`/admin/connectors/${connector.id}`, {
+      const path = `/admin/connectors/${connector.id}`;
+      const save = (letGo: number | undefined) =>
+        api.patch(path, {
           name,
           // Each sent when changed only: the audit tells what changed.
           imap: imapChanged ? imap : undefined,
@@ -113,8 +88,27 @@ export function MailServerForm({
           // Blank removes the agenda.
           caldav: agenda !== (view.caldav ?? '') ? agenda || null : undefined,
           writeTools: writeTools !== view.writeTools ? writeTools : undefined,
-        } satisfies ConnectorUpdate),
-      );
+          mailAccountsLetGo: letGo,
+        } satisfies ConnectorUpdate);
+      const saved = await action.run(async () => {
+        try {
+          await save(undefined);
+          return true;
+        } catch (error) {
+          const linked = accountsLinked(error);
+          if (linked === null) throw error;
+          if (
+            !window.confirm(
+              `Les serveurs où partent les mots de passe changent : les ${linked} compte(s) relié(s) sont retirés, et chacun relie le sien de nouveau dans « Mon compte ». Continuer ?`,
+            )
+          ) {
+            return false;
+          }
+          // Refused again, saying how many, if more were linked since.
+          await save(linked);
+          return true;
+        }
+      });
       if (saved) onDone(true);
       return;
     }
