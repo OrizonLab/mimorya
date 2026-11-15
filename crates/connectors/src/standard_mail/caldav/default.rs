@@ -2,11 +2,15 @@
 //! (ADR-205, RFC 6638 9.2): the one their scheduling Inbox names
 //! (`schedule-default-calendar-URL`), the Inbox named by their principal
 //! (`schedule-inbox-URL`). Neither is asked on another server; a server
-//! naming neither, or failing to, leaves the choice to the order its
-//! agendas are listed in. Only an agenda listed as taking events is
-//! chosen: the default is a preference, never a way around the rights.
+//! naming neither, failing to, or not answering within its patience,
+//! leaves the choice to the order its agendas are listed in. Only an
+//! agenda listed as taking events is chosen: the default is a preference,
+//! never a way around the rights.
+
+use std::time::Duration;
 
 use reqwest_mcp::Url;
+use tokio::time::timeout;
 
 use super::agendas::Agenda;
 use super::client::CalDav;
@@ -22,8 +26,16 @@ const DEFAULT: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <c:schedule-default-calendar-URL/></d:prop></d:propfind>"#;
 
 /// The agenda `principal`'s Inbox names for new events, on the declared
-/// server; none if the server names none there, or fails to say.
-pub async fn default_agenda(dav: &CalDav<'_>, principal: &Url) -> Option<Url> {
+/// server; none if the server names none there, fails to say, or does not
+/// within `patience`, the rest of the call's time left to create the event.
+pub async fn default_agenda(dav: &CalDav<'_>, principal: &Url, patience: Duration) -> Option<Url> {
+    timeout(patience, named_default(dav, principal))
+        .await
+        .ok()
+        .flatten()
+}
+
+async fn named_default(dav: &CalDav<'_>, principal: &Url) -> Option<Url> {
     let named = dav
         .ask("PROPFIND", principal, "0", INBOX.into(), DEFAULT_LIMIT)
         .await
@@ -56,13 +68,45 @@ pub fn chosen(agendas: Vec<Agenda>, default: Option<&Url>) -> Option<Agenda> {
     )
 }
 
-/// Whether two addresses name the same collection, its closing `/` or not.
+/// Whether two addresses name the same collection, its closing `/` or
+/// not, an unreserved character written as itself or percent-encoded.
 fn same_collection(one: &Url, other: &Url) -> bool {
-    let path = |url: &Url| url.path().trim_end_matches('/').to_string();
+    let path = |url: &Url| normalized(url.path().trim_end_matches('/'));
     one.scheme() == other.scheme()
         && one.host_str() == other.host_str()
         && one.port_or_known_default() == other.port_or_known_default()
         && path(one) == path(other)
+}
+
+/// `path` with each percent-encoded unreserved character written as
+/// itself, every other encoding in capitals (RFC 3986, 6.2.2).
+fn normalized(path: &str) -> String {
+    let bytes = path.as_bytes();
+    let mut out = String::with_capacity(path.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        let encoded = (bytes[at] == b'%')
+            .then(|| path.get(at + 1..at + 3))
+            .flatten()
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        match encoded {
+            Some(byte) if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) => {
+                out.push(char::from(byte));
+                at += 3;
+            }
+            Some(byte) => {
+                out.push_str(&format!("%{byte:02X}"));
+                at += 3;
+            }
+            None => {
+                let rest = &path[at..];
+                let next = rest.chars().next().map_or(1, char::len_utf8);
+                out.push_str(&rest[..next]);
+                at += next;
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -113,5 +157,31 @@ mod tests {
         }
         let read_only = vec![agenda("https://dav.exemple.fr/cal/anniversaires/", false)];
         assert!(chosen(read_only, None).is_none());
+    }
+
+    #[test]
+    fn an_unreserved_character_percent_encoded_names_the_same_collection() {
+        let listed = vec![
+            agenda("https://dav.exemple.fr/cal/personnel/", true),
+            agenda("https://dav.exemple.fr/cal/travail/", true),
+            agenda("https://dav.exemple.fr/cal/a%2Fb/", true),
+        ];
+        let url = |default: &str| {
+            chosen(listed.clone(), Some(&at(default))).map(|agenda| agenda.url.to_string())
+        };
+        assert_eq!(
+            url("https://dav.exemple.fr/cal/trav%61il/"),
+            Some("https://dav.exemple.fr/cal/travail/".into())
+        );
+        // A reserved character stays encoded, its hexadecimal in any case.
+        assert_eq!(
+            url("https://dav.exemple.fr/cal/a%2fb/"),
+            Some("https://dav.exemple.fr/cal/a%2Fb/".into())
+        );
+        assert_eq!(
+            url("https://dav.exemple.fr/cal/a/b/"),
+            Some("https://dav.exemple.fr/cal/personnel/".into())
+        );
+        assert_eq!(normalized("/cal/%7e%E9t%C3%A9"), "/cal/~%E9t%C3%A9");
     }
 }

@@ -30,7 +30,7 @@ use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
-pub use self::answers::{INBOX_PATH, READ_ONLY_PATH, WORK_PATH};
+pub use self::answers::{INBOX_PATH, READ_ONLY_PATH, SILENT_INBOX_PATH, WORK_PATH};
 use self::answers::{Rights, agenda, events, listing, multistatus, response};
 pub use self::objects::{Created, CreatedObject};
 use self::objects::{options, principal_addresses, put, scheduling_inbox};
@@ -84,9 +84,10 @@ pub enum CalDavBehaviour {
     PutHangs,
     /// Never answers, once signed in.
     Hangs,
-    /// Lists « Personnel » and « Travail », both taking events; names, as
-    /// the principal's scheduling Inbox, the first address, which names
-    /// the second as the agenda for new events (RFC 6638).
+    /// Lists a read-only agenda, then « Personnel » and « Travail », both
+    /// taking events; names, as the principal's scheduling Inbox, the first
+    /// address, which names the second as the agenda for new events (RFC
+    /// 6638). At `SILENT_INBOX_PATH`, the Inbox never answers.
     DefaultAgenda(&'static str, &'static str),
     /// Names, at its root, a calendar home of its own and, as the
     /// principal, this address on another server.
@@ -262,6 +263,10 @@ async fn answer(
                 scheduling_inbox(behaviour),
             ),
         )),
+        ("PROPFIND", SILENT_INBOX_PATH, CalDavBehaviour::DefaultAgenda(..)) => {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            StatusCode::REQUEST_TIMEOUT.into_response()
+        }
         ("PROPFIND", INBOX_PATH, CalDavBehaviour::DefaultAgenda(_, default)) => {
             multistatus(&response(
                 INBOX_PATH,

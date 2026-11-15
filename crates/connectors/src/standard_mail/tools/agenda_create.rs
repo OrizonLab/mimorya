@@ -38,6 +38,9 @@ use crate::standard_mail::caldav::{
 /// What a person with no agenda taking new events is told.
 pub const NO_WRITABLE_AGENDA: &str =
     "Aucun agenda de ce compte ne prend de nouveau rendez-vous (droits en lecture seule)";
+/// The share of the call's time the server's default agenda may take to
+/// be found: the rest is left to invite and create.
+const DEFAULT_SHARE: u32 = 4;
 /// What an event whose attendees cannot be invited is told, after why.
 const INVITE_OTHERWISE: &str =
     "créez-le sans participant et prévenez-les par e-mail, ou demandez à l’administrateur";
@@ -152,7 +155,10 @@ impl MailCalendarEventCreate {
         // The server's default is asked only where there is a choice.
         let choice = agendas.iter().filter(|agenda| agenda.takes_events).count() > 1;
         let default = match (choice, principal.as_ref()) {
-            (true, Some(principal)) => default_agenda(&dav, principal).await,
+            (true, Some(principal)) => {
+                let patience = self.reach.call_timeout / DEFAULT_SHARE;
+                default_agenda(&dav, principal, patience).await
+            }
             _ => None,
         };
         let Some(agenda) = chosen(agendas, default.as_ref()) else {

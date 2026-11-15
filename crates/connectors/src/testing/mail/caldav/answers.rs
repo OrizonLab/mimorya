@@ -20,6 +20,8 @@ pub const READ_ONLY_PATH: &str = "/dav/calendars/paul/anniversaires/";
 pub const WORK_PATH: &str = "/dav/calendars/paul/travail/";
 /// The principal's scheduling Inbox, when the server names a default.
 pub const INBOX_PATH: &str = "/dav/inbox/paul/";
+/// An Inbox that never answers, when the principal names it.
+pub const SILENT_INBOX_PATH: &str = "/dav/inbox/silent/";
 
 /// What the account may do in an agenda: read it, or also write there.
 #[derive(Clone, Copy)]
@@ -66,6 +68,7 @@ pub fn listing(behaviour: CalDavBehaviour) -> String {
         ],
         CalDavBehaviour::ReadOnly => vec![personal(Rights::Read)],
         CalDavBehaviour::DefaultAgenda(..) => vec![
+            agenda(READ_ONLY_PATH, "Anniversaires", "VEVENT", Rights::Read),
             personal(Rights::Write),
             agenda(WORK_PATH, "Travail", "VEVENT", Rights::Write),
         ],
