@@ -1,7 +1,8 @@
 //! The standard mail's `mail_calendar_event_create` (ADR-205): offered
 //! where the company declared an agenda and lets its tools write, always
 //! validated; the event put as validated into the first agenda of the
-//! person the run serves that takes events, as a new object only, its
+//! person the run serves that takes events (or the one their server names
+//! for new events: `mail_agenda_default.rs`), as a new object only, its
 //! attendees invited by the server from an address it knows the account
 //! by, nothing the model wrote adding a property or an event. What is said
 //! of failures is tried in `mail_agenda_create_failures.rs`.

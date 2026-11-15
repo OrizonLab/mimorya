@@ -14361,15 +14361,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     `connector:use`, et chaque rendez-vous est validé, quelles que soient les politiques,
     puis exécuté une fois tel que validé. Son entrée et sa description sont celles de
     Google et de Microsoft 365 (`NewEvent`) :
-    - le rendez-vous va dans le premier agenda de la personne qui prend un rendez-vous
-      nouveau. Il est lu dans les droits que le serveur dit d'elle
+    - le rendez-vous va dans l'agenda que le serveur désigne pour les rendez-vous nouveaux (RFC 6638 : `schedule-default-calendar-URL` de la boîte de réception de planification que nomme le principal, `schedule-inbox-URL`), s'il est listé parmi ceux qui en prennent ; sinon dans le premier agenda de la personne qui prend un rendez-vous nouveau (lot 69h). Ce défaut n'est demandé que là où plusieurs agendas en prennent, et jamais à un autre serveur : une boîte de réception ou un agenda par défaut nommés ailleurs, un agenda par défaut en lecture seule ou non listé, ou un serveur qui ne répond pas, laissent le premier. Le défaut est une préférence, jamais un moyen de passer outre les droits. Il est lu dans les droits que le serveur dit d'elle
       (`current-user-privilege-set`, RFC 3744 : `bind`, `write` ou `all`). Un agenda
       dont le serveur ne dit pas les droits est essayé, et sa réponse décide. Un agenda
       que le serveur dit en lecture seule (anniversaires, agendas partagés en lecture
-      seule) n'est jamais écrit. Un agenda d'un autre partagé en écriture et listé en
-      premier le serait : préférer l'agenda par défaut de la planification
-      (`schedule-default-calendar-URL`) ou celui dont le principal est le propriétaire
-      viendra plus tard ;
+      seule) n'est jamais écrit. Sans agenda par défaut, un agenda d'un autre partagé en écriture et listé en premier le serait : préférer celui dont le principal est le propriétaire viendra plus tard ;
     - l'iCalendar est écrit par la plateforme. Chaque valeur texte est échappée
       (`\`, `;`, `,`, retour à la ligne), si bien que rien de ce que le modèle écrit
       n'ajoute une propriété, un participant ni un rendez-vous. Le début et la fin sont

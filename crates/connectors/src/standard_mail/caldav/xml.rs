@@ -2,7 +2,8 @@
 //! read for what the agenda tool asks (ADR-205): each response's address
 //! and, from its properties found (`200`), the principal and calendar home
 //! it names, whether it is a calendar and of which components, its name,
-//! what the account may do there (RFC 3744), the addresses of a principal
+//! what the account may do there (RFC 3744), the addresses of a principal,
+//! its scheduling Inbox and the agenda that Inbox names for new events
 //! (RFC 6638) and the iCalendar text of an event. Nothing is fetched or expanded: no
 //! entity but XML's own and character references, no DTD. Elements are
 //! known by their local name; the number of responses is bounded.
@@ -33,6 +34,11 @@ pub struct Found {
     pub privileges: Option<Vec<String>>,
     /// The addresses of a principal (`calendar-user-address-set`).
     pub addresses: Vec<String>,
+    /// A principal's scheduling Inbox (`schedule-inbox-URL`).
+    pub inbox: Option<String>,
+    /// The agenda an Inbox names for new events
+    /// (`schedule-default-calendar-URL`).
+    pub default_agenda: Option<String>,
     /// Its iCalendar text (`calendar-data`).
     pub data: Option<String>,
 }
@@ -212,6 +218,14 @@ fn closing(
                     found.home = Some(trimmed(text));
                 }
                 ("href", Some("calendar-user-address-set")) => found.addresses.push(trimmed(text)),
+                ("href", Some("schedule-inbox-url")) if found.inbox.is_none() => {
+                    found.inbox = Some(trimmed(text));
+                }
+                ("href", Some("schedule-default-calendar-url"))
+                    if found.default_agenda.is_none() =>
+                {
+                    found.default_agenda = Some(trimmed(text));
+                }
                 ("displayname", _) => found.name = Some(trimmed(text)),
                 ("calendar-data", _) => found.data = Some(text),
                 _ => {}
@@ -238,6 +252,8 @@ fn merge(into: &mut Found, from: Found) {
     into.name = into.name.take().or(from.name);
     into.privileges = into.privileges.take().or(from.privileges);
     into.addresses.extend(from.addresses);
+    into.inbox = into.inbox.take().or(from.inbox);
+    into.default_agenda = into.default_agenda.take().or(from.default_agenda);
     into.data = into.data.take().or(from.data);
 }
 
@@ -353,6 +369,28 @@ END:VCALENDAR]]></C:calendar-data></D:prop><D:status>HTTP/1.1 200 OK</D:status>
             read[2].addresses,
             ["mailto:paul@exemple.fr", "/principals/paul/"]
         );
+    }
+
+    #[test]
+    fn reads_a_principal_s_inbox_and_the_agenda_it_names_for_new_events() {
+        let xml = r#"<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+            <d:response><d:href>/principals/paul/</d:href><d:propstat><d:prop>
+            <c:schedule-inbox-URL><d:href> /inbox/paul/ </d:href></c:schedule-inbox-URL>
+            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            <d:response><d:href>/inbox/paul/</d:href><d:propstat><d:prop>
+            <c:schedule-default-calendar-URL><d:href>/cal/travail/</d:href>
+            </c:schedule-default-calendar-URL></d:prop>
+            <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            <d:response><d:href>/inbox/autre/</d:href><d:propstat><d:prop>
+            <c:schedule-default-calendar-URL><d:href>/cal/x/</d:href>
+            </c:schedule-default-calendar-URL></d:prop>
+            <d:status>HTTP/1.1 404 Not Found</d:status></d:propstat></d:response>
+            </d:multistatus>"#;
+        let read = multistatus(xml).unwrap();
+        assert_eq!(read[0].inbox.as_deref(), Some("/inbox/paul/"));
+        assert_eq!(read[1].default_agenda.as_deref(), Some("/cal/travail/"));
+        // A property the server says it does not have is not read.
+        assert_eq!(read[2].default_agenda, None);
     }
 
     #[test]

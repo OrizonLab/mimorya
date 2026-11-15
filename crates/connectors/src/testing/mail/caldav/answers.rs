@@ -16,6 +16,10 @@ pub const ELSEWHERE_AGENDAS: [&str; 3] = [
 ];
 /// The agenda listed first, read-only, when the server lists one.
 pub const READ_ONLY_PATH: &str = "/dav/calendars/paul/anniversaires/";
+/// The agenda listed after « Personnel », when the server names a default.
+pub const WORK_PATH: &str = "/dav/calendars/paul/travail/";
+/// The principal's scheduling Inbox, when the server names a default.
+pub const INBOX_PATH: &str = "/dav/inbox/paul/";
 
 /// What the account may do in an agenda: read it, or also write there.
 #[derive(Clone, Copy)]
@@ -61,6 +65,10 @@ pub fn listing(behaviour: CalDavBehaviour) -> String {
             personal(Rights::Write),
         ],
         CalDavBehaviour::ReadOnly => vec![personal(Rights::Read)],
+        CalDavBehaviour::DefaultAgenda(..) => vec![
+            personal(Rights::Write),
+            agenda(WORK_PATH, "Travail", "VEVENT", Rights::Write),
+        ],
         _ => vec![personal(Rights::Write)],
     };
     let tasks = agenda(

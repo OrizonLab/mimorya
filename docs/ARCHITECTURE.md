@@ -326,8 +326,7 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   WebDAV minimal sur le client HTTP durci, XML lu par quick-xml, iCalendar lu par la
   plateforme) ; la liaison d'un compte le vérifie aussi. Si l'entreprise permet aussi
   l'écriture, `mail_calendar_event_create` y crée un rendez-vous validé : iCalendar
-  écrit par la plateforme, déposé comme objet nouveau dans le premier agenda où le
-  compte peut écrire, ou dont le serveur ne dit pas les droits (sa réponse décidant),
+  écrit par la plateforme, déposé comme objet nouveau dans l'agenda que le serveur désigne pour les rendez-vous nouveaux (RFC 6638) s'il en prend, sinon dans le premier agenda où le compte peut écrire, ou dont le serveur ne dit pas les droits (sa réponse décidant),
   invitations envoyées par le serveur lui-même (RFC 6638) ou rien de créé.
   L'administration déclare la messagerie dans « Connecteurs » (ADR-205).
 - **Passerelle Slack** : une passerelle de conversation n'est pas un connecteur, elle

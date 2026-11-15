@@ -1064,8 +1064,7 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   que validé : l'iCalendar est écrit par la plateforme, chaque valeur échappée, si bien
   que rien de ce que le modèle écrit n'ajoute une propriété, un participant ni un
   rendez-vous. Le rendez-vous est déposé comme objet nouveau, jamais par-dessus un
-  autre, dans le premier agenda que le serveur dit ouvert à l'écriture du compte, ou
-  dont il ne dit pas les droits (sa réponse décide alors) ; jamais dans un agenda que
+  autre, dans l'agenda que le serveur désigne pour les rendez-vous nouveaux s'il est listé parmi ceux qui en prennent, sinon dans le premier agenda que le serveur dit ouvert à l'écriture du compte, ou dont il ne dit pas les droits (sa réponse décide alors) ; l'agenda par défaut n'est jamais demandé à un autre serveur ; jamais dans un agenda que
   le serveur dit en lecture seule. Le principal que nomme le serveur n'est interrogé
   que sur le serveur déclaré : nommé ailleurs, il n'entend rien du compte, et rien
   n'est créé avec des participants.
