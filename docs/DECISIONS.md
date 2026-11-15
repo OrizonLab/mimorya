@@ -14345,7 +14345,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       50 au plus, chaque occurrence d'un rendez-vous répétitif nommée
       (`RECURRENCE-ID`) ;
     - ce que le serveur envoie est borné : 256 Kio par recherche d'agenda, 512 Kio par
-      rapport, 500 rendez-vous par objet iCalendar et 4 000 caractères par valeur ;
+      rapport, 500 rendez-vous par objet iCalendar, 50 participants gardés par
+      rendez-vous (tous comptés : le modèle en lit dix et le nombre des autres) et
+      4 000 caractères par valeur ;
     - un mot de passe que l'agenda refuse (`401`) retire le compte, audité avec le
       serveur `caldav`. Un refus d'accès (`403`) ou pour l'instant (`429`, `503`) le
       garde ;

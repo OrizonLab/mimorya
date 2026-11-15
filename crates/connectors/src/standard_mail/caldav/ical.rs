@@ -42,7 +42,10 @@ pub struct Event {
     /// It repeats, and the server gave it unexpanded.
     pub repeats: bool,
     pub organizer: Option<Person>,
+    /// The attendees kept, the first `MAX_ATTENDEES`.
     pub attendees: Vec<Person>,
+    /// The attendees it names, kept or not.
+    pub attendee_count: usize,
 }
 
 /// One content line: its name, its parameters, its value.
@@ -162,8 +165,11 @@ fn read_property(event: &mut Event, line: &Line<'_>) {
         "STATUS" => event.cancelled = value.trim().eq_ignore_ascii_case("CANCELLED"),
         "RRULE" | "RDATE" => event.repeats = true,
         "ORGANIZER" => event.organizer = Some(person(line)),
-        "ATTENDEE" if event.attendees.len() < MAX_ATTENDEES => {
-            event.attendees.push(person(line));
+        "ATTENDEE" => {
+            event.attendee_count = event.attendee_count.saturating_add(1);
+            if event.attendees.len() < MAX_ATTENDEES {
+                event.attendees.push(person(line));
+            }
         }
         _ => {}
     }
@@ -280,6 +286,10 @@ mod tests {
     fn events_and_values_are_bounded() {
         let one = "BEGIN:VEVENT\nSUMMARY:x\nEND:VEVENT\n";
         assert_eq!(events(&one.repeat(MAX_EVENTS + 10)).len(), MAX_EVENTS);
+        let crowd = "ATTENDEE:mailto:x@neo.example\n".repeat(MAX_ATTENDEES + 10);
+        let crowded = &events(&format!("BEGIN:VEVENT\n{crowd}END:VEVENT"))[0];
+        assert_eq!(crowded.attendees.len(), MAX_ATTENDEES);
+        assert_eq!(crowded.attendee_count, MAX_ATTENDEES + 10);
         let long = format!("BEGIN:VEVENT\nSUMMARY:{}\nEND:VEVENT", "a".repeat(10_000));
         let summary = events(&long)[0].summary.clone().unwrap();
         assert_eq!(summary.chars().count(), MAX_VALUE_CHARS);
