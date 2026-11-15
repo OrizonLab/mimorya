@@ -85,9 +85,12 @@ fn normalized(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
     let mut at = 0;
     while at < bytes.len() {
+        // Two hexadecimal digits, nothing else (`from_str_radix` would take
+        // a sign).
         let encoded = (bytes[at] == b'%')
             .then(|| path.get(at + 1..at + 3))
             .flatten()
+            .filter(|hex| hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
             .and_then(|hex| u8::from_str_radix(hex, 16).ok());
         match encoded {
             Some(byte) if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) => {
@@ -183,5 +186,16 @@ mod tests {
             Some("https://dav.exemple.fr/cal/personnel/".into())
         );
         assert_eq!(normalized("/cal/%7e%E9t%C3%A9"), "/cal/~%E9t%C3%A9");
+        // What is not two hexadecimal digits is not an encoding.
+        assert_eq!(normalized("/cal/%+5/%-a/%4/%"), "/cal/%+5/%-a/%4/%");
+        let signed = vec![
+            agenda("https://dav.exemple.fr/cal/personnel/", true),
+            agenda("https://dav.exemple.fr/cal/%05/", true),
+        ];
+        let default = at("https://dav.exemple.fr/cal/%+5/");
+        assert_eq!(
+            chosen(signed, Some(&default)).map(|agenda| agenda.url.to_string()),
+            Some("https://dav.exemple.fr/cal/personnel/".into())
+        );
     }
 }

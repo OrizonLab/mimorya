@@ -12,6 +12,7 @@
 //! declared an agenda and lets its tools write.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -20,7 +21,7 @@ use mimorya_core::time_zone::PLATFORM_TIME_ZONE;
 use mimorya_core::tools::{Citation, MailServerRole, ToolContext, ToolInfo, ToolResult, TypedTool};
 use reqwest_mcp::Url;
 use serde_json::{Value, json};
-use tokio::time::timeout;
+use tokio::time::{Instant, timeout};
 use uuid::Uuid;
 
 use super::agenda::NO_CALDAV;
@@ -39,8 +40,10 @@ use crate::standard_mail::caldav::{
 pub const NO_WRITABLE_AGENDA: &str =
     "Aucun agenda de ce compte ne prend de nouveau rendez-vous (droits en lecture seule)";
 /// The share of the call's time the server's default agenda may take to
-/// be found: the rest is left to invite and create.
+/// be found, and of the time the call has left: the rest is left to
+/// invite and create.
 const DEFAULT_SHARE: u32 = 4;
+const LEFT_SHARE: u32 = 2;
 /// What an event whose attendees cannot be invited is told, after why.
 const INVITE_OTHERWISE: &str =
     "créez-le sans participant et prévenez-les par e-mail, ou demandez à l’administrateur";
@@ -119,6 +122,8 @@ impl MailCalendarEventCreate {
         ctx: &ToolContext,
         put_started: &AtomicBool,
     ) -> Result<Created, String> {
+        // Where the call's time is counted from (`run` bounds it).
+        let started = Instant::now();
         if let Some(address) = input.attendees.iter().find(|a| !written_as_is(a)) {
             return Err(nothing_created(&format!(
                 "L’adresse de participant {address} ne s’écrit pas telle quelle dans une \
@@ -156,7 +161,7 @@ impl MailCalendarEventCreate {
         let choice = agendas.iter().filter(|agenda| agenda.takes_events).count() > 1;
         let default = match (choice, principal.as_ref()) {
             (true, Some(principal)) => {
-                let patience = self.reach.call_timeout / DEFAULT_SHARE;
+                let patience = default_patience(self.reach.call_timeout, started.elapsed());
                 default_agenda(&dav, principal, patience).await
             }
             _ => None,
@@ -200,6 +205,13 @@ impl MailCalendarEventCreate {
             Err(Unmade::Unsure(cause)) => Err(perhaps_created(&told(&login, cause))),
         }
     }
+}
+
+/// How long the server's default agenda may take to be found, `spent` of
+/// a call of `call` gone: a quarter of the call, never more than half of
+/// what it has left.
+fn default_patience(call: Duration, spent: Duration) -> Duration {
+    (call / DEFAULT_SHARE).min(call.saturating_sub(spent) / LEFT_SHARE)
 }
 
 /// The address that invites the attendees, once the server is known to
@@ -250,6 +262,16 @@ fn perhaps_created(said: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_agenda_waits_a_quarter_of_the_call_at_most_half_what_is_left() {
+        let call = Duration::from_secs(20);
+        let patience = |spent| default_patience(call, Duration::from_secs(spent));
+        assert_eq!(patience(0), Duration::from_secs(5));
+        assert_eq!(patience(10), Duration::from_secs(5));
+        assert_eq!(patience(16), Duration::from_secs(2));
+        assert_eq!(patience(25), Duration::ZERO);
+    }
 
     #[test]
     fn an_event_is_put_inside_its_agenda() {
