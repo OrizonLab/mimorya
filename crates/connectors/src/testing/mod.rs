@@ -49,9 +49,9 @@ pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSI
 pub use hold::Hold;
 pub use https::serve_https;
 pub use mail::{
-    AGENDA_PATH, Accounts, AfterData, CalDavBehaviour, Deliveries, Delivery, FakeCalDav, FakeImap,
-    FakeSmtp, FetchBehaviour, Heard, ImapBehaviour, ImapSetup, Instead, Mailboxes, SmtpMode,
-    SmtpSetup, TestFolder, TestMessage,
+    AGENDA_PATH, Accounts, AfterData, CalDavBehaviour, Created, CreatedObject, Deliveries,
+    Delivery, FakeCalDav, FakeImap, FakeSmtp, FetchBehaviour, Heard, ImapBehaviour, ImapSetup,
+    Instead, Mailboxes, READ_ONLY_PATH, SmtpMode, SmtpSetup, TestFolder, TestMessage,
 };
 pub use oauth::{
     AuthRequest, CLIENT_ID, CLIENT_SECRET, FakeAuthorizationServer, IdTokenQuirk, LONG_TOKEN_CHARS,

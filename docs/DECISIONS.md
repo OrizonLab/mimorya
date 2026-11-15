@@ -14356,7 +14356,44 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - **la liaison d'un compte** le vérifie aussi sur l'agenda déclaré, après IMAP et
       SMTP : il n'est gardé qu'une fois un agenda de rendez-vous trouvé avec lui. Un refus
       est audité avec le serveur `caldav`, sans le mot de passe ;
-    - la création d'un rendez-vous (`mail_calendar_event_create`) vient au lot 69f2 ;
+  - **la création d'un rendez-vous** (lot 69f2) se fait par `mail_calendar_event_create`,
+    offert seulement si l'entreprise a déclaré un agenda et permet l'écriture. Il exige
+    `connector:use`, et chaque rendez-vous est validé, quelles que soient les politiques,
+    puis exécuté une fois tel que validé. Son entrée et sa description sont celles de
+    Google et de Microsoft 365 (`NewEvent`) :
+    - le rendez-vous va dans le premier agenda de la personne qui prend un rendez-vous
+      nouveau. Il est lu dans les droits que le serveur dit d'elle
+      (`current-user-privilege-set`, RFC 3744 : `bind`, `write` ou `all`). Un agenda
+      dont le serveur ne dit pas les droits est essayé, et sa réponse décide. Un agenda
+      en lecture seule (anniversaires, agendas partagés) n'est jamais écrit ;
+    - l'iCalendar est écrit par la plateforme. Chaque valeur texte est échappée
+      (`\`, `;`, `,`, retour à la ligne), si bien que rien de ce que le modèle écrit
+      n'ajoute une propriété, un participant ni un rendez-vous. Le début et la fin sont
+      des instants en UTC, et le rendez-vous dure ce qui a été validé, même à travers un
+      changement d'heure. Les lignes sont repliées à 75 octets, jamais au milieu d'un
+      caractère. L'identifiant est un UUID tiré par la plateforme ;
+    - il est déposé comme objet nouveau (`PUT` avec `If-None-Match: *`) dans
+      l'agenda choisi, jamais par-dessus un autre ;
+    - **les invitations** sont envoyées par le serveur lui-même, comme le veut la
+      planification CalDAV (RFC 6638), et non par la plateforme. Avant que rien ne soit
+      créé, la plateforme vérifie que le serveur l'annonce (`calendar-auto-schedule`
+      dans l'en-tête `DAV` de l'agenda). Elle prend l'organisateur parmi les adresses
+      que le serveur connaît au compte (`calendar-user-address-set` de son principal) :
+      l'adresse de la boîte reliée si elle en est, sinon la première. Un serveur qui
+      n'invite pas, ou ne connaît au compte aucune adresse, est dit au modèle, et rien
+      n'est créé : la personne a validé « invitation envoyée à ». Un rendez-vous sans
+      participant n'en demande rien ;
+    - une adresse de participant qu'une adresse `mailto:` lirait autrement (`?`, `#`,
+      `%`, `&`, `=`, `/` et les autres caractères qu'une URI n'écrit pas tels quels) est
+      refusée avant toute requête. Le serveur pourrait sinon inviter quelqu'un d'autre
+      que la personne validée ;
+    - ce que l'on sait d'un échec est dit. Une réponse qui refuse le rendez-vous (`4xx`,
+      `503`, redirection) ou un serveur injoignable dit « rien n'est créé ». Une erreur
+      du serveur ou d'une passerelle (`5xx`), un silence une fois le rendez-vous parti
+      ou un délai dépassé pendant l'envoi disent qu'il est peut-être créé : le modèle
+      vérifie l'agenda avant de le recréer, et l'appel n'est jamais répété ;
+    - un mot de passe que l'agenda refuse (`401`) retire le compte, audité avec le
+      serveur `caldav`. Un refus d'accès (`403`) le garde ;
   - **chacun relie son compte** dans « Mon compte » avec son identifiant et son mot de
     passe. La plateforme se connecte d'abord au serveur IMAP avec eux : des identifiants
     refusés ne sont jamais gardés. Le mot de passe est scellé par personne (AES-256-GCM
@@ -14423,7 +14460,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       caractères, mots encodés, MIME ; gardé par la plateforme avec les e-mails joints
       bornés (voir la lecture, lot 69d) ;
     - pour CalDAV, aucune bibliothèque mûre : un client WebDAV minimal (`PROPFIND`,
-      `REPORT` avec `expand`, `PUT`) sur le client HTTP durci, le XML lu par
+      `REPORT` avec `expand`, `OPTIONS`, `PUT`) sur le client HTTP durci, le XML lu par
       `quick-xml`, les événements lus et écrits par la plateforme ;
     - `rcgen` fait les certificats des serveurs simulés, dans les tests seulement ;
   - **outils** : les mêmes que pour Gmail et Outlook :

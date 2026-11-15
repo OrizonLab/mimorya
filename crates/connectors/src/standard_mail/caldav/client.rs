@@ -7,7 +7,7 @@
 //! read as a multi-status.
 
 use reqwest_mcp::header::CONTENT_TYPE;
-use reqwest_mcp::{Client, Method, Response, StatusCode, Url};
+use reqwest_mcp::{Client, Method, RequestBuilder, Response, StatusCode, Url};
 
 use super::xml::{Found, multistatus};
 use crate::outbound::{Cause, NetworkPolicy, TOO_LONG, UNREACHABLE, http_client, request_cause};
@@ -70,6 +70,13 @@ impl<'a> CalDav<'a> {
         same.then_some(url)
     }
 
+    /// A request of `method` at `url`, with the person's account.
+    pub fn request(&self, method: Method, url: &Url) -> RequestBuilder {
+        self.http
+            .request(method, url.clone())
+            .basic_auth(self.login.username(), Some(self.login.password()))
+    }
+
     /// The responses to `method` (`PROPFIND` or `REPORT`) of `body` at
     /// `url`, `depth` deep, the server's answer read up to `limit` bytes.
     pub async fn ask(
@@ -82,9 +89,7 @@ impl<'a> CalDav<'a> {
     ) -> Result<Vec<Found>, Cause> {
         let method = Method::from_bytes(method.as_bytes()).map_err(|_| unreadable())?;
         let response = self
-            .http
-            .request(method, url.clone())
-            .basic_auth(self.login.username(), Some(self.login.password()))
+            .request(method, url)
             .header("Depth", depth)
             .header(CONTENT_TYPE, "application/xml; charset=utf-8")
             .body(body)
@@ -102,7 +107,7 @@ impl<'a> CalDav<'a> {
 }
 
 /// What an answer other than a multi-status says.
-fn refused(status: StatusCode) -> Cause {
+pub fn refused(status: StatusCode) -> Cause {
     let summary = match status.as_u16() {
         401 => CREDENTIALS_REFUSED,
         403 => ACCESS_REFUSED,

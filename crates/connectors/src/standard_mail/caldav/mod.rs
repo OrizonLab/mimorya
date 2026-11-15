@@ -2,23 +2,30 @@
 //! (ADR-205): requests over HTTPS to the declared server alone (`client`),
 //! the person's agendas found there (`agendas`), their events over a period
 //! (`report`), what the server answers (`xml`) and the events it holds
-//! (`ical`), when they start, end and last (`time`); and an account checked
-//! against it when a person links it.
+//! (`ical`), when they start, end and last (`time`); an event written
+//! (`write`) and created there (`create`); and an account checked against
+//! it when a person links it.
 
 mod agendas;
 mod client;
+mod create;
 mod ical;
 mod report;
 mod time;
+mod write;
 mod xml;
 
-pub use agendas::{NO_AGENDA, agendas};
+pub use agendas::{Discovered, NO_AGENDA, agendas, discover};
 pub use client::{
     ACCESS_REFUSED, CalDav, ELSEWHERE, NO_AGENDA_THERE, NOT_AN_AGENDA, NOT_HTTPS, REDIRECTED,
+};
+pub use create::{
+    EVENT_REFUSED, EVENT_UNSURE, NO_ORGANIZER, NO_SCHEDULING, Unmade, organizer, put, schedules,
 };
 pub use ical::{Event, Person, When};
 pub use report::agenda_events;
 pub use time::in_zone;
+pub use write::{Stamped, calendar_object, written_as_is};
 pub use xml::Found;
 
 use tokio::time::timeout;

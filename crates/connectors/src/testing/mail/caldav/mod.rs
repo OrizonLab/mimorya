@@ -8,8 +8,15 @@
 //! there, name neither a principal nor a home (or a principal naming no
 //! home), its root then listing the agendas, name a principal or a
 //! calendar home on another server, list agendas on other servers beside
-//! its own, eleven agendas or none of events, redirect, refuse with a
-//! status, or answer at a length past what a client reads.
+//! its own, eleven agendas or none of events, list a read-only agenda first
+//! or only read-only ones, redirect, refuse with a status, answer at a
+//! length past what a client reads, or never answer. What it answers is written by
+//! `answers`; the events created there are kept by `objects`, which says
+//! whether the server invites attendees itself and whom it knows the
+//! account as.
+
+mod answers;
+mod objects;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -21,6 +28,10 @@ use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 
+pub use self::answers::READ_ONLY_PATH;
+use self::answers::{Rights, agenda, events, listing, multistatus, response};
+pub use self::objects::{Created, CreatedObject};
+use self::objects::{options, principal_addresses, put};
 use super::{Accounts, Heard, accepts};
 use crate::testing::TestAuthority;
 use crate::testing::https::serve_https;
@@ -57,12 +68,27 @@ pub enum CalDavBehaviour {
     Redirects,
     /// Answers a `REPORT` past what a client reads.
     AnswersAtLength,
+    /// Lists a read-only agenda of events before « Personnel ».
+    ReadOnlyFirst,
+    /// Lets the account read its agenda of events, not write there.
+    ReadOnly,
+    /// Does not send invitations itself: no `calendar-auto-schedule`.
+    NoScheduling,
+    /// Knows the account's principal by these addresses.
+    Addresses(&'static [&'static str]),
+    /// Answers what is put there with this status, keeping nothing.
+    PutRefuses(u16),
+    /// Keeps what is put there, and never answers.
+    PutHangs,
+    /// Never answers, once signed in.
+    Hangs,
 }
 
 /// A running CalDAV server and what it heard.
 pub struct FakeCalDav {
     pub address: SocketAddr,
     pub heard: Heard,
+    pub created: Created,
 }
 
 impl FakeCalDav {
@@ -79,15 +105,21 @@ impl FakeCalDav {
         events: Vec<String>,
     ) -> Self {
         let heard = Heard::default();
+        let created = Created::default();
         let state = Arc::new(Served {
             accounts,
             behaviour,
             events,
             heard: heard.clone(),
+            created: created.clone(),
         });
         let router = Router::new().fallback(answer).with_state(state);
         let address = serve_https(authority, router).await;
-        Self { address, heard }
+        Self {
+            address,
+            heard,
+            created,
+        }
     }
 }
 
@@ -96,6 +128,7 @@ struct Served {
     behaviour: CalDavBehaviour,
     events: Vec<String>,
     heard: Heard,
+    created: Created,
 }
 
 async fn answer(
@@ -117,9 +150,12 @@ async fn answer(
         ""
     };
     served.heard.note(format!("{method} {path}{expand}"));
-    if !signed_in(&served.accounts, &headers) {
+    let Some(username) = signed_in(&served.accounts, &headers) else {
         let challenge = [(header::WWW_AUTHENTICATE, "Basic realm=\"agenda\"")];
         return (StatusCode::UNAUTHORIZED, challenge).into_response();
+    };
+    if served.behaviour == CalDavBehaviour::Hangs {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
     }
     if let CalDavBehaviour::Refuses(code) = served.behaviour {
         let status = StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -133,11 +169,16 @@ async fn answer(
         CalDavBehaviour::HomeElsewhere(elsewhere) => elsewhere,
         _ => "/dav/calendars/paul/",
     };
+    let names_principal = format!(
+        "<d:current-user-principal><d:href>{principal}</d:href></d:current-user-principal>"
+    );
     let lists_at_root = matches!(
         served.behaviour,
         CalDavBehaviour::RootOnly | CalDavBehaviour::PrincipalWithoutHome
     );
     match (method.as_str(), path.as_str(), served.behaviour) {
+        ("OPTIONS", _, behaviour) => options(behaviour),
+        ("PUT", _, behaviour) => put(&served.created, behaviour, &path, &headers, body).await,
         ("PROPFIND", "/dav/", behaviour) if lists_at_root && depth == "1" => {
             multistatus(&listing(behaviour))
         }
@@ -156,13 +197,15 @@ async fn answer(
         {
             multistatus("")
         }
+        ("REPORT", READ_ONLY_PATH, CalDavBehaviour::ReadOnlyFirst) => multistatus(""),
         ("PROPFIND", "/dav/", CalDavBehaviour::Redirects) => (
             StatusCode::MOVED_PERMANENTLY,
             [(header::LOCATION, "https://agenda.ailleurs.example/dav/")],
         )
             .into_response(),
         ("PROPFIND", "/dav/", CalDavBehaviour::DeclaredIsAgenda) => {
-            multistatus(&agenda("/dav/", "Agenda", "VEVENT"))
+            let itself = agenda("/dav/", "Agenda", "VEVENT", Rights::Write);
+            multistatus(&itself.replace("<d:prop>", &format!("<d:prop>{names_principal}")))
         }
         ("PROPFIND", "/dav/", CalDavBehaviour::DeclaredNamesHome(named)) => multistatus(&response(
             "/dav/",
@@ -170,14 +213,14 @@ async fn answer(
         )),
         ("PROPFIND", "/dav/", _) => multistatus(&response(
             "/dav/",
-            &format!(
-                "<d:current-user-principal><d:href>{principal}</d:href></d:current-user-principal>\
-                 <d:resourcetype><d:collection/></d:resourcetype>"
-            ),
+            &format!("{names_principal}<d:resourcetype><d:collection/></d:resourcetype>"),
         )),
-        ("PROPFIND", "/dav/principals/paul/", _) => multistatus(&response(
+        ("PROPFIND", "/dav/principals/paul/", behaviour) => multistatus(&response(
             "/dav/principals/paul/",
-            &format!("<c:calendar-home-set><d:href>{home}</d:href></c:calendar-home-set>"),
+            &format!(
+                "<c:calendar-home-set><d:href>{home}</d:href></c:calendar-home-set>{}",
+                principal_addresses(behaviour, &username)
+            ),
         )),
         ("PROPFIND", "/dav/calendars/paul/", behaviour) => multistatus(&listing(behaviour)),
         ("REPORT", AGENDA_PATH, CalDavBehaviour::AnswersAtLength) => {
@@ -190,102 +233,14 @@ async fn answer(
     }
 }
 
-/// Whether `Authorization` names one of the server's accounts.
-fn signed_in(accounts: &Accounts, headers: &HeaderMap) -> bool {
+/// The account `Authorization` names, if it is one of the server's.
+fn signed_in(accounts: &Accounts, headers: &HeaderMap) -> Option<String> {
     let given = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Basic "))
         .and_then(|encoded| STANDARD.decode(encoded).ok())
-        .and_then(|decoded| String::from_utf8(decoded).ok());
-    given
-        .as_deref()
-        .and_then(|given| given.split_once(':'))
-        .is_some_and(|(username, password)| accepts(accounts, username, password))
-}
-
-fn multistatus(responses: &str) -> Response {
-    let body = format!(
-        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:multistatus xmlns:d=\"DAV:\" \
-         xmlns:c=\"urn:ietf:params:xml:ns:caldav\">{responses}</d:multistatus>"
-    );
-    let kind = [(header::CONTENT_TYPE, "application/xml; charset=utf-8")];
-    (StatusCode::MULTI_STATUS, kind, body).into_response()
-}
-
-fn response(href: &str, properties: &str) -> String {
-    format!(
-        "<d:response><d:href>{href}</d:href><d:propstat><d:prop>{properties}</d:prop>\
-         <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
-    )
-}
-
-/// Agendas of events on other servers: another host, named in full or
-/// from the scheme on, and the same host on another port.
-pub const ELSEWHERE_AGENDAS: [&str; 3] = [
-    "https://agenda.ailleurs.example/dav/x/",
-    "//agenda.ailleurs.example/dav/y/",
-    "https://127.0.0.1:1/dav/z/",
-];
-
-/// The calendar home: itself, an agenda of events, one of tasks, and
-/// agendas elsewhere if it lists them.
-fn listing(behaviour: CalDavBehaviour) -> String {
-    let home = response(
-        "/dav/calendars/paul/",
-        "<d:resourcetype><d:collection/></d:resourcetype>",
-    );
-    let events: Vec<String> = match behaviour {
-        CalDavBehaviour::TasksOnly => Vec::new(),
-        CalDavBehaviour::ManyAgendas => (0..11)
-            .map(|at| {
-                agenda(
-                    &format!("/dav/calendars/paul/agenda-{at}/"),
-                    "Agenda",
-                    "VEVENT",
-                )
-            })
-            .collect(),
-        _ => vec![agenda(AGENDA_PATH, "Personnel", "VEVENT")],
-    };
-    let tasks = agenda("/dav/calendars/paul/taches/", "Tâches", "VTODO");
-    std::iter::once(home)
-        .chain(events)
-        .chain(std::iter::once(tasks))
-        .chain(match behaviour {
-            CalDavBehaviour::ListsElsewhere => ELSEWHERE_AGENDAS
-                .iter()
-                .map(|href| agenda(href, "Ailleurs", "VEVENT"))
-                .collect(),
-            _ => Vec::new(),
-        })
-        .collect()
-}
-
-/// An agenda holding `component`s.
-fn agenda(href: &str, name: &str, component: &str) -> String {
-    response(
-        href,
-        &format!(
-            "<d:resourcetype><d:collection/><c:calendar/></d:resourcetype>\
-             <d:displayname>{name}</d:displayname><c:supported-calendar-component-set>\
-             <c:comp name=\"{component}\"/></c:supported-calendar-component-set>"
-        ),
-    )
-}
-
-/// Each event as a calendar object, its text escaped for XML.
-fn events(events: &[String]) -> String {
-    events
-        .iter()
-        .enumerate()
-        .map(|(at, event)| {
-            let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{event}END:VCALENDAR\r\n");
-            let escaped = text.replace('&', "&amp;").replace('<', "&lt;");
-            response(
-                &format!("{AGENDA_PATH}{at}.ics"),
-                &format!("<c:calendar-data>{escaped}</c:calendar-data>"),
-            )
-        })
-        .collect()
+        .and_then(|decoded| String::from_utf8(decoded).ok())?;
+    let (username, password) = given.split_once(':')?;
+    accepts(accounts, username, password).then(|| username.to_string())
 }
