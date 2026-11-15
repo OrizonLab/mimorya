@@ -1,6 +1,7 @@
 //! What the tests of the standard mail's agenda share (ADR-205): the
 //! company's declaration naming a simulated CalDAV agenda, the events it
-//! holds, Paul with his account linked there, and the week read.
+//! holds, Paul with his account linked there, the week read and the event
+//! he creates.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,7 +15,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::linked_accounts::mailbox_executor;
-use super::mail::{USER, accounts};
+use super::mail::{PASSWORD, USER, accounts};
 use super::mailboxes::linked_at;
 use super::sending::tools;
 
@@ -59,12 +60,67 @@ pub async fn paul_holding(
     password: &str,
     held: Vec<String>,
 ) -> (FakeCalDav, Arc<InMemoryPorts>, ToolExecutor) {
+    paul_with(behaviour, password, held, false, Duration::from_secs(20)).await
+}
+
+/// Paul, his account linked, at an agenda behaving so, where the company
+/// lets its tools write, each call within `call_timeout`.
+pub async fn paul_writing_at(
+    behaviour: CalDavBehaviour,
+    call_timeout: Duration,
+) -> (FakeCalDav, Arc<InMemoryPorts>, ToolExecutor) {
+    paul_with(behaviour, PASSWORD, events(), true, call_timeout).await
+}
+
+/// Paul, where the company lets its tools write, at an agenda that
+/// `names` another server's principal: that server is started first, of
+/// the same authority, so that any request reaching it is heard.
+pub async fn paul_beside_another(
+    names: fn(&'static str) -> CalDavBehaviour,
+) -> (FakeCalDav, FakeCalDav, ToolExecutor) {
     let authority = TestAuthority::new();
+    let behaviour = CalDavBehaviour::Answers;
+    let elsewhere = FakeCalDav::start(&authority, accounts(), behaviour, vec![]).await;
+    let principal = format!("{}principals/paul/", elsewhere.base());
+    let named = names(Box::leak(principal.into_boxed_str()));
+    let call = Duration::from_secs(20);
+    let (agenda, _, paul) = paul_of(authority, named, PASSWORD, vec![], true, call).await;
+    (agenda, elsewhere, paul)
+}
+
+async fn paul_with(
+    behaviour: CalDavBehaviour,
+    password: &str,
+    held: Vec<String>,
+    write_tools: bool,
+    call_timeout: Duration,
+) -> (FakeCalDav, Arc<InMemoryPorts>, ToolExecutor) {
+    let authority = TestAuthority::new();
+    paul_of(
+        authority,
+        behaviour,
+        password,
+        held,
+        write_tools,
+        call_timeout,
+    )
+    .await
+}
+
+async fn paul_of(
+    authority: TestAuthority,
+    behaviour: CalDavBehaviour,
+    password: &str,
+    held: Vec<String>,
+    write_tools: bool,
+    call_timeout: Duration,
+) -> (FakeCalDav, Arc<InMemoryPorts>, ToolExecutor) {
     let agenda = FakeCalDav::start(&authority, accounts(), behaviour, held).await;
-    let declared = declaration(&agenda);
+    let mut declared = declaration(&agenda);
+    declared["writeTools"] = json!(write_tools);
     let ports = InMemoryPorts::new(user::PAUL, Uuid::new_v4());
     ports.link_mail_account(declared.clone(), USER, password, linked_at());
-    let tools = tools(&authority, &declared, Duration::from_secs(20)).await;
+    let tools = tools(&authority, &declared, call_timeout).await;
     let accounts: Arc<dyn LinkedAccounts> = ports.clone();
     let paul = mailbox_executor(tools, user::PAUL, &ports, accounts);
     (agenda, ports, paul)
@@ -72,4 +128,16 @@ pub async fn paul_holding(
 
 pub fn week() -> Value {
     json!({ "from": "2026-11-16", "to": "2026-11-18" })
+}
+
+/// The event Paul creates: late on a winter evening, in Paris.
+pub fn new_event() -> Value {
+    json!({
+        "subject": "Point chantier ; lot B, révisé",
+        "start": "2026-11-28T23:30:00",
+        "durationMinutes": 90,
+        "location": "Quai B",
+        "body": "Ordre du jour :\n\tsécurité",
+        "attendees": ["claire@exemple.fr", "l.martin+chantier@exemple.fr"],
+    })
 }

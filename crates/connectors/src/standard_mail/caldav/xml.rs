@@ -2,7 +2,8 @@
 //! read for what the agenda tool asks (ADR-205): each response's address
 //! and, from its properties found (`200`), the principal and calendar home
 //! it names, whether it is a calendar and of which components, its name,
-//! and the iCalendar text of an event. Nothing is fetched or expanded: no
+//! what the account may do there (RFC 3744), the addresses of a principal
+//! (RFC 6638) and the iCalendar text of an event. Nothing is fetched or expanded: no
 //! entity but XML's own and character references, no DTD. Elements are
 //! known by their local name; the number of responses is bounded.
 
@@ -27,6 +28,11 @@ pub struct Found {
     /// The components it holds, when it says (`supported-calendar-component-set`).
     pub components: Option<Vec<String>>,
     pub name: Option<String>,
+    /// What the account may do there, when it says
+    /// (`current-user-privilege-set`): each privilege's local name.
+    pub privileges: Option<Vec<String>>,
+    /// The addresses of a principal (`calendar-user-address-set`).
+    pub addresses: Vec<String>,
     /// Its iCalendar text (`calendar-data`).
     pub data: Option<String>,
 }
@@ -38,6 +44,16 @@ impl Found {
             && self.components.as_ref().is_none_or(|components| {
                 components.iter().any(|c| c.eq_ignore_ascii_case("VEVENT"))
             })
+    }
+
+    /// Whether the account may add an event there (`bind`, or a privilege
+    /// holding it), or the server does not say.
+    pub fn takes_events(&self) -> bool {
+        self.privileges.as_ref().is_none_or(|privileges| {
+            privileges
+                .iter()
+                .any(|privilege| matches!(privilege.as_str(), "all" | "write" | "bind"))
+        })
     }
 }
 
@@ -65,7 +81,8 @@ pub fn multistatus(xml: &str) -> Option<Vec<Found>> {
             Event::Start(element) => {
                 let name = local(&element);
                 if path.len() < MAX_DEPTH {
-                    opened(&name, &element, &mut response, &mut pending);
+                    let parent = path.last().map(String::as_str);
+                    opened(&name, parent, &element, &mut response, &mut pending);
                 }
                 saw_multistatus |= name == "multistatus" && path.is_empty();
                 path.push(name);
@@ -73,11 +90,10 @@ pub fn multistatus(xml: &str) -> Option<Vec<Found>> {
             }
             Event::Empty(element) => {
                 let name = local(&element);
-                path.push(name.clone());
-                if path.len() <= MAX_DEPTH {
-                    opened(&name, &element, &mut response, &mut pending);
+                if path.len() < MAX_DEPTH {
+                    let parent = path.last().map(String::as_str);
+                    opened(&name, parent, &element, &mut response, &mut pending);
                 }
-                path.pop();
             }
             Event::Text(run) => text.push_str(&run.xml10_content()),
             Event::CData(run) => text.push_str(&run.xml10_content()),
@@ -108,10 +124,11 @@ fn local(element: &BytesStart<'_>) -> String {
     element.local_name().as_ref().to_ascii_lowercase()
 }
 
-/// An element opened: a response, a property's status, a resource type, a
-/// component.
+/// An element opened, in `parent`: a response, a property's status, a
+/// resource type, a component, a privilege.
 fn opened(
     name: &str,
+    parent: Option<&str>,
     element: &BytesStart<'_>,
     response: &mut Option<Found>,
     pending: &mut Option<Pending>,
@@ -119,6 +136,18 @@ fn opened(
     match name {
         "response" => *response = Some(Found::default()),
         "propstat" if response.is_some() => *pending = Some(Pending::default()),
+        "current-user-privilege-set" => {
+            if let Some(pending) = pending {
+                pending.found.privileges = Some(Vec::new());
+            }
+        }
+        privilege if parent == Some("privilege") => {
+            if let Some(pending) = pending
+                && let Some(privileges) = &mut pending.found.privileges
+            {
+                privileges.push(privilege.to_string());
+            }
+        }
         "calendar" => {
             if let Some(pending) = pending {
                 pending.found.calendar = true;
@@ -182,6 +211,7 @@ fn closing(
                 ("href", Some("calendar-home-set")) if found.home.is_none() => {
                     found.home = Some(trimmed(text));
                 }
+                ("href", Some("calendar-user-address-set")) => found.addresses.push(trimmed(text)),
                 ("displayname", _) => found.name = Some(trimmed(text)),
                 ("calendar-data", _) => found.data = Some(text),
                 _ => {}
@@ -206,6 +236,8 @@ fn merge(into: &mut Found, from: Found) {
     into.calendar |= from.calendar;
     into.components = into.components.take().or(from.components);
     into.name = into.name.take().or(from.name);
+    into.privileges = into.privileges.take().or(from.privileges);
+    into.addresses.extend(from.addresses);
     into.data = into.data.take().or(from.data);
 }
 
@@ -286,6 +318,40 @@ END:VCALENDAR]]></C:calendar-data></D:prop><D:status>HTTP/1.1 200 OK</D:status>
                 .as_deref()
                 .unwrap()
                 .contains("SUMMARY:a &amp; b")
+        );
+    }
+
+    #[test]
+    fn reads_what_the_account_may_do_and_a_principal_s_addresses() {
+        let listing = r#"<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+            <d:response><d:href>/a/</d:href><d:propstat><d:prop>
+            <d:current-user-privilege-set><d:privilege><d:read/></d:privilege>
+            <d:privilege><c:read-free-busy/></d:privilege></d:current-user-privilege-set>
+            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            <d:response><d:href>/b/</d:href><d:propstat><d:prop>
+            <d:current-user-privilege-set><d:privilege><d:read/></d:privilege>
+            <d:privilege><d:bind></d:bind></d:privilege></d:current-user-privilege-set>
+            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            <d:response><d:href>/c/</d:href><d:propstat><d:prop>
+            <c:calendar-user-address-set><d:href>mailto:paul@exemple.fr</d:href>
+            <d:href> /principals/paul/ </d:href></c:calendar-user-address-set>
+            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+            <d:propstat><d:prop><d:current-user-privilege-set/></d:prop>
+            <d:status>HTTP/1.1 404 Not Found</d:status></d:propstat></d:response>
+            </d:multistatus>"#;
+        let read = multistatus(listing).unwrap();
+        assert_eq!(
+            read[0].privileges.as_deref(),
+            Some(&["read".to_string(), "read-free-busy".to_string()][..])
+        );
+        assert!(!read[0].takes_events());
+        assert!(read[1].takes_events());
+        // Not said (its property not found): the server's answer decides.
+        assert_eq!(read[2].privileges, None);
+        assert!(read[2].takes_events());
+        assert_eq!(
+            read[2].addresses,
+            ["mailto:paul@exemple.fr", "/principals/paul/"]
         );
     }
 

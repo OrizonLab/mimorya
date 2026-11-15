@@ -14,7 +14,9 @@ mod lines;
 mod mailbox;
 mod smtp;
 
-pub use caldav::{AGENDA_PATH, CalDavBehaviour, FakeCalDav};
+pub use caldav::{
+    AGENDA_PATH, CalDavBehaviour, Created, CreatedObject, FakeCalDav, READ_ONLY_PATH,
+};
 pub use delivery::{AfterData, Deliveries, Delivery};
 pub use imap::{FakeImap, ImapBehaviour, ImapSetup};
 pub use instead::Instead;

@@ -2,9 +2,9 @@
 //! declared address itself when it is a calendar; otherwise their calendar
 //! home, named by the address or by their principal (RFC 5397, RFC 4791,
 //! 6.2.1), or the declared address itself when neither names one, and the
-//! calendars of events it holds, ten at most. A principal
-//! or a home on another server stops the search: nothing is sent there. A
-//! calendar on another server is left out.
+//! calendars of events it holds, ten at most, each said to take new events
+//! or not (RFC 3744). A principal or a home on another server stops the
+//! search: nothing is sent there. A calendar on another server is left out.
 
 use reqwest_mcp::Url;
 
@@ -21,7 +21,7 @@ pub const NO_AGENDA: &str = "Aucun agenda de rendez-vous n’est trouvé pour ce
 const ITSELF: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop>
 <d:current-user-principal/><d:resourcetype/><d:displayname/>
-<c:calendar-home-set/><c:supported-calendar-component-set/>
+<c:calendar-home-set/><c:supported-calendar-component-set/><d:current-user-privilege-set/>
 </d:prop></d:propfind>"#;
 const HOME: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop>
@@ -29,27 +29,51 @@ const HOME: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 const LISTING: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop>
 <d:resourcetype/><d:displayname/><c:supported-calendar-component-set/>
+<d:current-user-privilege-set/>
 </d:prop></d:propfind>"#;
 
-/// An agenda: where it is, its name.
+/// An agenda: where it is, its name, whether the account may add an event
+/// there (or the server does not say).
 #[derive(Debug, Clone)]
 pub struct Agenda {
     pub url: Url,
     pub name: Option<String>,
+    pub takes_events: bool,
+}
+
+/// What the search found: the agendas, and the person's principal on the
+/// declared server, if the server named one.
+pub struct Discovered {
+    pub agendas: Vec<Agenda>,
+    pub principal: Option<Url>,
 }
 
 /// The person's agendas of events.
 pub async fn agendas(dav: &CalDav<'_>) -> Result<Vec<Agenda>, Cause> {
+    discover(dav).await.map(|found| found.agendas)
+}
+
+/// The person's agendas of events, and their principal.
+pub async fn discover(dav: &CalDav<'_>) -> Result<Discovered, Cause> {
     let base = dav.base().clone();
     let itself = first(
         dav.ask("PROPFIND", &base, "0", ITSELF.into(), DISCOVERY_LIMIT)
             .await?,
     );
+    let principal = itself
+        .principal
+        .as_deref()
+        .and_then(|href| dav.within(href));
     if itself.holds_events() {
-        return Ok(vec![Agenda {
+        let agenda = Agenda {
             url: base,
+            takes_events: itself.takes_events(),
             name: itself.name,
-        }]);
+        };
+        return Ok(Discovered {
+            agendas: vec![agenda],
+            principal,
+        });
     }
     let home = match (itself.home, itself.principal) {
         (Some(home), _) => inside(dav, &home)?,
@@ -74,6 +98,7 @@ pub async fn agendas(dav: &CalDav<'_>) -> Result<Vec<Agenda>, Cause> {
         .filter_map(|found| {
             Some(Agenda {
                 url: dav.within(&found.href)?,
+                takes_events: found.takes_events(),
                 name: found.name,
             })
         })
@@ -85,7 +110,7 @@ pub async fn agendas(dav: &CalDav<'_>) -> Result<Vec<Agenda>, Cause> {
             detail: String::new(),
         });
     }
-    Ok(agendas)
+    Ok(Discovered { agendas, principal })
 }
 
 /// What the server said of the address asked: its first response.

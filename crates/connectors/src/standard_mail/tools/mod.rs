@@ -5,9 +5,10 @@
 //! `message`); searching (`search`) and reading (`read`) an e-mail; sending
 //! one (`send`), written with its sender and envelope (`outgoing`), handed
 //! to the SMTP server (`submission`); the events of their agendas
-//! (`agenda`).
+//! (`agenda`), and one created there (`agenda_create`).
 
 mod agenda;
+mod agenda_create;
 mod criteria;
 mod fetched;
 mod folders;
@@ -20,6 +21,7 @@ mod send;
 mod submission;
 
 pub use agenda::MailCalendarEvents;
+pub use agenda_create::{MailCalendarEventCreate, NO_WRITABLE_AGENDA};
 pub use person::MailReach;
 pub use read::MailRead;
 pub use search::MailSearch;

@@ -1059,7 +1059,21 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   retire le compte, audité avec le serveur qui l'a refusé. L'agenda CalDAV n'est joint
   qu'en HTTPS, même là où HTTP est permis, sans redirection suivie, et jamais ailleurs
   que sur le serveur déclaré, quoi que ses réponses nomment ; son XML est lu sans entité
-  ni DTD et ce qu'il envoie est borné.
+  ni DTD et ce qu'il envoie est borné. `mail_calendar_event_create` n'est offert que si
+  l'entreprise permet l'écriture. Chaque rendez-vous est validé, puis créé une fois tel
+  que validé : l'iCalendar est écrit par la plateforme, chaque valeur échappée, si bien
+  que rien de ce que le modèle écrit n'ajoute une propriété, un participant ni un
+  rendez-vous. Le rendez-vous est déposé comme objet nouveau, jamais par-dessus un
+  autre, dans le premier agenda que le serveur dit ouvert à l'écriture du compte, ou
+  dont il ne dit pas les droits (sa réponse décide alors) ; jamais dans un agenda que
+  le serveur dit en lecture seule. Le principal que nomme le serveur n'est interrogé
+  que sur le serveur déclaré : nommé ailleurs, il n'entend rien du compte, et rien
+  n'est créé avec des participants.
+  Les invitations sont envoyées par le serveur lui-même (RFC 6638), depuis une adresse
+  qu'il connaît au compte. S'il ne les envoie pas, rien n'est créé. Une adresse de
+  participant qu'une adresse `mailto:` lirait autrement est refusée avant toute
+  requête. Un rendez-vous dont le serveur n'a pas confirmé la prise est dit « peut-être
+  créé » et jamais recréé.
 - Serveurs de messagerie d'une entreprise (IMAP, SMTP, ADR-205) : une connexion hors
   HTTP aux mêmes règles (adresse privée refusée, nom résolu en adresses publiques seules
   et joint à ces adresses mêmes, mandataire par un tunnel `CONNECT`), toujours chiffrée

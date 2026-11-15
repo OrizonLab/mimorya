@@ -22,8 +22,8 @@ mod tools;
 mod wire;
 
 pub use caldav::{
-    ACCESS_REFUSED, ELSEWHERE, NO_AGENDA, NO_AGENDA_THERE, NOT_AN_AGENDA, NOT_HTTPS, REDIRECTED,
-    check_caldav,
+    ACCESS_REFUSED, ELSEWHERE, EVENT_REFUSED, EVENT_UNSURE, NO_AGENDA, NO_AGENDA_THERE,
+    NO_ORGANIZER, NO_SCHEDULING, NOT_AN_AGENDA, NOT_HTTPS, REDIRECTED, check_caldav,
 };
 pub use connector::MailServerConnector;
 pub use declaration::{MAIL_NAMESPACE, MAIL_SERVER, MAIL_TOOLS, MailServerConfig};
@@ -31,6 +31,7 @@ pub use imap::{ImapSession, check_imap, imap_session};
 pub use login::{MAX_PASSWORD_CHARS, MAX_USERNAME_CHARS, MailLogin};
 pub use servers::{ImapServer, SmtpSecurity, SmtpServer};
 pub use smtp::{check_smtp, smtp_connection};
+pub use tools::NO_WRITABLE_AGENDA;
 
 use std::time::Duration;
 
