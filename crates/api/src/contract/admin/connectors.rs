@@ -361,4 +361,10 @@ pub struct ConnectorUpdate {
     #[serde(default, deserialize_with = "trimmed_nullable")]
     #[ts(optional)]
     pub caldav: Option<Option<String>>,
+    /// The standard mail's: how many linked accounts the administrator
+    /// agreed to let go, should its servers move to another host. A change
+    /// that would let go of more is refused, saying how many (ADR-205).
+    #[serde(default)]
+    #[ts(optional)]
+    pub mail_accounts_let_go: Option<u32>,
 }

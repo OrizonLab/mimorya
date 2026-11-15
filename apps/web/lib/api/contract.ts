@@ -513,7 +513,13 @@ smtp?: MailSmtpServer,
  * The standard mail's CalDAV agenda: a text replaces its address,
  * `null` or blank removes it (ADR-205).
  */
-caldav?: string | null, };
+caldav?: string | null,
+/**
+ * The standard mail's: how many linked accounts the administrator
+ * agreed to let go, should its servers move to another host. A change
+ * that would let go of more is refused, saying how many (ADR-205).
+ */
+mailAccountsLetGo?: number, };
 
 export type ConnectorView = { id: string, type: string, name: string, enabled: boolean, status: ConnectorStatus, lastError: string | null,
 /**

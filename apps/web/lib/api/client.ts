@@ -6,6 +6,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    /** What the API gives beyond its message (`ErrorDetail.details`). */
+    readonly details?: unknown,
   ) {
     super(message);
   }
@@ -84,6 +86,7 @@ async function failure(res: Response): Promise<ApiError> {
     res.status,
     payload?.error?.code ?? 'error',
     payload?.error?.message ?? `Erreur ${res.status}`,
+    payload?.error?.details,
   );
 }
 

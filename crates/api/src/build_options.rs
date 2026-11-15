@@ -67,9 +67,10 @@ pub struct BuildOptions {
     /// the scripted model has none of its own).
     pub prices: Option<PriceTable>,
     /// Local servers the connectors reach all the same, by their exact
-    /// address and port (end-to-end tests: an MCP server protected by OAuth
-    /// and its authorization server, ADR-171), while every other private
-    /// address stays refused.
+    /// address and port (end-to-end tests: the MCP servers protected by
+    /// OAuth and their authorization servers, ADR-171, and the simulated
+    /// IMAP, SMTP and CalDAV servers of the standard mail, ADR-205), while
+    /// every other private address stays refused.
     pub connector_test_servers: Vec<SocketAddr>,
     /// The roots the certificates of the tests' simulated mail servers chain
     /// to, trusted beside the webpki roots (ADR-205): set by tests alone,

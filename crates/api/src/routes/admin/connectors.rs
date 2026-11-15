@@ -237,6 +237,7 @@ pub async fn update(
                 imap: body.imap.map(Into::into),
                 smtp: body.smtp.map(Into::into),
                 caldav: body.caldav,
+                accounts_let_go: body.mail_accounts_let_go.unwrap_or(0),
             }
         }),
     };

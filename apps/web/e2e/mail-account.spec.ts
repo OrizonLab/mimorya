@@ -5,12 +5,13 @@
 // links her account (read back from the API, the password never in it);
 // Paul's card counts it; she removes it, confirming first. Then the
 // servers it was checked against: Paul, his tab loaded before she linked
-// it, moves the IMAP server to another host and is asked first, of the
-// account as the server counts it then; he declines, and nothing is sent;
+// it, moves the IMAP server to another host; the server refuses it,
+// counting her account, and he is asked; he declines, and nothing changes;
 // SMTP secured otherwise moves no host, asks nothing and sends only what
-// changed;
-// he accepts, and her account is let go. Whatever happens, the mail is
-// deleted, with her account.
+// changed; he removes the agenda and accepts, the change sent again with
+// the account he agreed to let go, and hers is. Last, a mail the company
+// disabled: she is told, and may only remove the account she kept.
+// Whatever happens, the mail is deleted, with her account.
 import type { Page } from '@playwright/test';
 import { demo, expect, noError, signIn, test } from './support/fixtures';
 import { cardWith, connectorsTab } from './support/admin';
@@ -21,7 +22,7 @@ import {
   deleteMailServers,
   stored,
 } from './support/mail-server';
-import type { AccountMail, MailAccountLink } from '../lib/api/contract';
+import type { AccountMail, ConnectorUpdate, MailAccountLink } from '../lib/api/contract';
 
 const NAME = 'Messagerie e2e';
 
@@ -120,21 +121,28 @@ test('moving a server asks first, then lets go of the accounts linked there', as
     asked.push(dialog.message());
     void (accept ? dialog.accept() : dialog.dismiss());
   });
-  const patches: unknown[] = [];
-  page.on('request', (request) => {
-    if (request.method() === 'PATCH') patches.push(request.postDataJSON());
+  // Each change sent, and what the server answered.
+  const patches: { body: unknown; status: number }[] = [];
+  page.on('response', (response) => {
+    const request = response.request();
+    if (request.method() !== 'PATCH') return;
+    patches.push({ body: request.postDataJSON() as unknown, status: response.status() });
   });
   const question =
     'Les serveurs où partent les mots de passe changent : les 1 compte(s) relié(s) sont retirés, et chacun relie le sien de nouveau dans « Mon compte ». Continuer ?';
 
-  // Another host, declined: asked of the account linked since, nothing sent.
+  // Another host, declined: refused by the server, which counts the
+  // account linked since; asked; nothing sent again, nothing changed.
   await card.getByRole('button', { name: 'Modifier' }).click();
   const form = card.getByRole('form', { name: 'Messagerie standard' });
   const imapHost = form.getByLabel('Serveur IMAP (TLS dès la connexion)');
   await imapHost.fill('imap.neo-maintenance.example');
   await form.getByRole('button', { name: 'Enregistrer' }).click();
   await expect.poll(() => asked).toEqual([question]);
-  expect(patches).toEqual([]);
+  const moved = { host: 'imap.neo-maintenance.example', port: TEST_SERVERS.imap.port };
+  await expect.poll(() => patches).toEqual([{ body: { name: NAME, imap: moved }, status: 409 }]);
+  await expect(form.getByRole('button', { name: 'Enregistrer' })).toBeEnabled();
+  await expect(form.getByRole('alert')).toHaveCount(0);
   let mail = (await stored(page))?.mailServer;
   expect(mail?.imap).toEqual(TEST_SERVERS.imap);
   expect(mail?.accounts).toBe(1);
@@ -149,26 +157,76 @@ test('moving a server asks first, then lets go of the accounts linked there', as
   ).toBeVisible();
   expect(asked).toEqual([question]);
   const secured = { ...TEST_SERVERS.smtp, security: 'tls' };
-  expect(patches).toEqual([{ name: NAME, smtp: secured }]);
+  expect(patches.slice(1)).toEqual([{ body: { name: NAME, smtp: secured }, status: 200 }]);
   mail = (await stored(page))?.mailServer;
   expect(mail?.imap).toEqual(TEST_SERVERS.imap);
   expect(mail?.smtp).toEqual(secured);
   expect(mail?.caldav).toBe(TEST_SERVERS.caldav);
   expect(mail?.accounts).toBe(1);
 
-  // Another host, accepted: her account is let go.
+  // The agenda removed is another host gone, accepted: sent again with
+  // the account he agreed to let go, and hers is.
   accept = true;
   await card.getByRole('button', { name: 'Modifier' }).click();
-  await imapHost.fill('imap.neo-maintenance.example');
+  await form.getByLabel('Agenda CalDAV (facultatif, adresse en https://)').fill('');
   await form.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(card.getByText(/· 0 compte\(s\) relié\(s\)$/)).toBeVisible();
+  await expect(card.getByText('Aucun agenda déclaré')).toBeVisible();
   expect(asked).toEqual([question, question]);
+  expect(patches.slice(2)).toEqual([
+    { body: { name: NAME, caldav: null }, status: 409 },
+    { body: { name: NAME, caldav: null, mailAccountsLetGo: 1 }, status: 200 },
+  ]);
   await noError(page);
   mail = (await stored(page))?.mailServer;
-  expect(mail?.imap.host).toBe('imap.neo-maintenance.example');
+  expect(mail?.caldav).toBeNull();
   expect(mail?.accounts).toBe(0);
   const read = (await (await lea.request.get('/api/account/mail')).json()) as AccountMail;
   expect(read.mail?.linked).toBeNull();
   await lea.goto('/account');
   await expect(lea.getByRole('region', { name: NAME }).getByText('Non relié')).toBeVisible();
+});
+
+test('a disabled mail is said, and only the account kept may be removed', async ({
+  page,
+  newContext,
+}) => {
+  await signIn(page, demo.paul);
+  await declareOnTestServers(page, NAME);
+  const lea = await (await newContext()).newPage();
+  const asked: string[] = [];
+  lea.on('dialog', (dialog) => {
+    asked.push(dialog.message());
+    void dialog.accept();
+  });
+  await signIn(lea, demo.lea);
+  await linkLea(lea);
+  const id = (await stored(page))?.id;
+  const disabled = await page.request.patch(`/api/admin/connectors/${id}`, {
+    headers: { 'X-Mimorya-Request': '1' },
+    data: { enabled: false } satisfies ConnectorUpdate,
+  });
+  expect(disabled.status(), await disabled.text()).toBe(200);
+
+  await lea.goto('/account');
+  const section = lea.getByRole('region', { name: NAME });
+  await expect(section.getByText('Relié', { exact: true })).toBeVisible();
+  await expect(
+    section.getByText(
+      'La messagerie est désactivée, ou vous n’avez pas la permission d’utiliser les connecteurs : demandez à votre administrateur. Vous pouvez retirer votre compte.',
+    ),
+  ).toBeVisible();
+  // Nothing to link with: only the removal.
+  await expect(section.getByRole('form', { name: 'Compte de messagerie' })).toHaveCount(0);
+  await expect(section.getByRole('button', { name: 'Relier mon compte' })).toHaveCount(0);
+  await noError(lea);
+  await section.getByRole('button', { name: 'Retirer mon compte' }).click();
+  // Nothing kept, nothing to show: the section goes.
+  await expect(section).toHaveCount(0);
+  expect(asked).toEqual([
+    `Retirer votre compte de « ${NAME} » ? Son mot de passe chiffré est effacé : l’agent ne lit plus votre boîte ni votre agenda.`,
+  ]);
+  const read = (await (await lea.request.get('/api/account/mail')).json()) as AccountMail;
+  expect(read.mail).toBeNull();
+  expect((await stored(page))?.mailServer?.accounts).toBe(0);
 });

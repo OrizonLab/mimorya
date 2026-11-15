@@ -28,6 +28,9 @@ pub struct MailChanges {
     pub smtp: Option<SmtpServer>,
     /// `Some(None)` removes its agenda.
     pub caldav: Option<Option<String>>,
+    /// How many linked accounts the administrator agreed to let go, should
+    /// the change move the mail to another host.
+    pub accounts_let_go: u32,
 }
 
 impl MailChanges {
@@ -91,6 +94,20 @@ pub(super) fn hosts_moved(before: &Value, after: &Value) -> bool {
         (Ok(before), Ok(after)) => before.hosts() != after.hosts(),
         _ => false,
     }
+}
+
+/// What a refusal by `accounts_linked` gives as its reason.
+const ACCOUNTS_LINKED: &str = "mail_accounts_linked";
+
+/// The refusal of a change that would let go of more linked accounts than
+/// the administrator agreed to: how many are linked, read under the
+/// administration lock, for the question the administration asks.
+pub(super) fn accounts_linked(linked: u64) -> DomainError {
+    DomainError::conflict(format!(
+        "Les serveurs où partent les mots de passe changent : {linked} compte(s) relié(s) seraient \
+         retirés. Confirmez d’abord leur retrait."
+    ))
+    .with_details(json!({ "reason": ACCOUNTS_LINKED, "accounts": linked }))
 }
 
 /// The configuration once these changes apply, its servers checked again.
@@ -162,6 +179,7 @@ mod tests {
                 ..declared().smtp
             }),
             caldav: Some(Some("https://dav.example.com/".into())),
+            accounts_let_go: 0,
         };
         assert_eq!(
             changes.audited(&stored).unwrap(),

@@ -1,8 +1,9 @@
 //! When the accounts linked at the standard mail go (ADR-205): never
 //! followed to another host (a port or a security changed keeps them, a
-//! host changed takes them all), with the person's account disabled, with
-//! the connector; and the tries a person makes, bounded, as is linking
-//! anything without a master key, or at a mail the company disabled.
+//! host changed takes them all, never more than the administrator agreed
+//! to let go), with the person's account disabled, with the connector; and
+//! the tries a person makes, bounded, as is linking anything without a
+//! master key, or at a mail the company disabled.
 
 mod support;
 
@@ -31,6 +32,23 @@ async fn change(admin: &Client<'_>, connector: Uuid, body: Value) {
     assert_eq!(changed.status, StatusCode::OK, "{}", changed.text());
 }
 
+/// A change refused for letting go of more accounts than agreed, saying
+/// how many are linked.
+async fn refused_for(admin: &Client<'_>, connector: Uuid, body: Value, linked: u64) {
+    let refused = admin
+        .patch(&format!("/admin/connectors/{connector}"), body)
+        .await;
+    assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.text());
+    let error = refused.json()["error"].clone();
+    let reason = json!({ "reason": "mail_accounts_linked", "accounts": linked });
+    assert_eq!(error["details"], reason, "{error}");
+    let said = format!("{linked} compte(s) relié(s) seraient retirés");
+    assert!(
+        error["message"].as_str().unwrap().contains(&said),
+        "{error}"
+    );
+}
+
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn an_account_never_follows_the_mail_to_another_host() {
@@ -51,10 +69,23 @@ async fn an_account_never_follows_the_mail_to_another_host() {
     .await;
     assert!(stored(&api.app, user::PAUL).await.is_some());
 
-    // Another host, even one naming the same server: let go, and audited.
-    let since = latest_entry(&api).await;
+    // Another host, even one naming the same server: refused until the
+    // administrator agrees to let the account go, nothing changed.
     let imap = json!({ "host": "localhost", "port": servers.imap.address.port() });
-    change(&paul, connector, json!({ "imap": imap })).await;
+    refused_for(&paul, connector, json!({ "imap": imap }), 1).await;
+    let unlet = json!({ "imap": imap, "mailAccountsLetGo": 0 });
+    refused_for(&paul, connector, unlet, 1).await;
+    assert!(stored(&api.app, user::PAUL).await.is_some());
+    let hosts = paul.get(MAIL).await.json()["mail"]["hosts"].clone();
+    assert_eq!(hosts[0], "127.0.0.1", "{hosts}");
+    // Agreed: let go, and audited.
+    let since = latest_entry(&api).await;
+    change(
+        &paul,
+        connector,
+        json!({ "imap": imap, "mailAccountsLetGo": 1 }),
+    )
+    .await;
     assert_eq!(stored(&api.app, user::PAUL).await, None);
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     let metadata: Value = sqlx::query_scalar(
@@ -71,9 +102,12 @@ async fn an_account_never_follows_the_mail_to_another_host() {
     let hosts = paul.get(MAIL).await.json()["mail"]["hosts"].clone();
     assert_eq!(hosts, json!(["localhost", "127.0.0.1"]));
 
-    // An agenda added is another host too.
+    // An agenda added is another host too; agreeing to more than are
+    // linked lets go of those there are.
     let agenda = json!({ "caldav": "https://127.0.0.1/dav/" });
-    change(&paul, connector, agenda).await;
+    refused_for(&paul, connector, agenda.clone(), 1).await;
+    let agreed = json!({ "caldav": "https://127.0.0.1/dav/", "mailAccountsLetGo": 5 });
+    change(&paul, connector, agreed).await;
     assert_eq!(stored(&api.app, user::PAUL).await, None);
 
     // With the connector, its accounts. The agenda withdrawn first: one
@@ -196,4 +230,37 @@ async fn a_disabled_mail_takes_no_account_and_shows_the_one_kept() {
         "La messagerie standard de l’entreprise est désactivée"
     );
     assert_eq!(servers.imap.heard.lines().len(), tried);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_account_linked_since_the_question_is_never_let_go_unasked() {
+    let address = "nadia.roche@neo-maintenance.example";
+    let known = vec![
+        (USERNAME.into(), PASSWORD.into()),
+        (address.into(), PASSWORD.into()),
+    ];
+    let servers = MailServers::start(known).await;
+    let api = TestApi::start_with_mail_servers(&servers).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let connector = declare(&paul, &servers).await;
+    assert_eq!(link(&paul, USERNAME, PASSWORD).await, StatusCode::OK);
+    // Paul agrees to let one go; Nadia links hers before his change.
+    let mut created = create_account(&paul, "nadia.roche").await;
+    let nadia = activate(&api, &mut created).await;
+    assert_eq!(link(&nadia, address, PASSWORD).await, StatusCode::OK);
+    let imap = json!({ "host": "localhost", "port": servers.imap.address.port() });
+    let one = json!({ "imap": imap, "mailAccountsLetGo": 1 });
+    refused_for(&paul, connector, one, 2).await;
+    assert!(stored(&api.app, user::PAUL).await.is_some());
+    assert!(stored(&api.app, created.id).await.is_some());
+    // Asked again, of both.
+    change(
+        &paul,
+        connector,
+        json!({ "imap": imap, "mailAccountsLetGo": 2 }),
+    )
+    .await;
+    assert_eq!(stored(&api.app, user::PAUL).await, None);
+    assert_eq!(stored(&api.app, created.id).await, None);
 }
