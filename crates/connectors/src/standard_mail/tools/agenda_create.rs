@@ -1,7 +1,9 @@
 //! Tool `mail_calendar_event_create` (ADR-205): creates, at the company's
 //! CalDAV server and with the account the person the run serves linked,
-//! the event they validated, in the first of their agendas that takes new
-//! events: its subject, start and length, place, text and attendees,
+//! the event they validated, in the agenda their server takes new events
+//! in by default (RFC 6638) when it is one where the account may add
+//! them, or else the first such agenda: its subject, start and length,
+//! place, text and attendees,
 //! exactly as shown to them. Its attendees are invited by the server
 //! itself (RFC 6638), from an address it knows the account by; a server
 //! that would not invite them is told before anything is created. Created
@@ -29,13 +31,16 @@ use crate::delegated::shape::bounded;
 use crate::outbound::{CONNECTOR_USE, Cause, TOO_SLOW};
 use crate::standard_mail::CREDENTIALS_REFUSED;
 use crate::standard_mail::caldav::{
-    CalDav, Discovered, NO_ORGANIZER, NO_SCHEDULING, Stamped, Unmade, calendar_object, discover,
-    organizer, put, schedules, written_as_is,
+    CalDav, Discovered, NO_ORGANIZER, NO_SCHEDULING, Stamped, Unmade, calendar_object, chosen,
+    default_agenda, discover, organizer, put, schedules, written_as_is,
 };
 
 /// What a person with no agenda taking new events is told.
 pub const NO_WRITABLE_AGENDA: &str =
     "Aucun agenda de ce compte ne prend de nouveau rendez-vous (droits en lecture seule)";
+/// The share of the call's time the server's default agenda may take to
+/// be found: the rest is left to invite and create.
+const DEFAULT_SHARE: u32 = 4;
 /// What an event whose attendees cannot be invited is told, after why.
 const INVITE_OTHERWISE: &str =
     "créez-le sans participant et prévenez-les par e-mail, ou demandez à l’administrateur";
@@ -147,7 +152,16 @@ impl MailCalendarEventCreate {
             Ok(found) => found,
             Err(cause) => return Err(failed(cause).await),
         };
-        let Some(agenda) = agendas.into_iter().find(|agenda| agenda.takes_events) else {
+        // The server's default is asked only where there is a choice.
+        let choice = agendas.iter().filter(|agenda| agenda.takes_events).count() > 1;
+        let default = match (choice, principal.as_ref()) {
+            (true, Some(principal)) => {
+                let patience = self.reach.call_timeout / DEFAULT_SHARE;
+                default_agenda(&dav, principal, patience).await
+            }
+            _ => None,
+        };
+        let Some(agenda) = chosen(agendas, default.as_ref()) else {
             return Err(nothing_created(NO_WRITABLE_AGENDA));
         };
         let organizer = match input.attendees.is_empty() {

@@ -3,12 +3,14 @@
 //! the person's agendas found there (`agendas`), their events over a period
 //! (`report`), what the server answers (`xml`) and the events it holds
 //! (`ical`), when they start, end and last (`time`); an event written
-//! (`write`) and created there (`create`); and an account checked against
-//! it when a person links it.
+//! (`write`) and created there (`create`), in the agenda the server names
+//! for new events (`default`); and an account checked against it when a
+//! person links it.
 
 mod agendas;
 mod client;
 mod create;
+mod default;
 mod ical;
 mod report;
 mod time;
@@ -22,6 +24,7 @@ pub use client::{
 pub use create::{
     EVENT_REFUSED, EVENT_UNSURE, NO_ORGANIZER, NO_SCHEDULING, Unmade, organizer, put, schedules,
 };
+pub use default::{chosen, default_agenda};
 pub use ical::{Event, Person, When};
 pub use report::agenda_events;
 pub use time::in_zone;

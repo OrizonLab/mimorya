@@ -2,7 +2,8 @@
 //! read for what the agenda tool asks (ADR-205): each response's address
 //! and, from its properties found (`200`), the principal and calendar home
 //! it names, whether it is a calendar and of which components, its name,
-//! what the account may do there (RFC 3744), the addresses of a principal
+//! what the account may do there (RFC 3744), the addresses of a principal,
+//! its scheduling Inbox and the agenda that Inbox names for new events
 //! (RFC 6638) and the iCalendar text of an event. Nothing is fetched or expanded: no
 //! entity but XML's own and character references, no DTD. Elements are
 //! known by their local name; the number of responses is bounded.
@@ -33,6 +34,11 @@ pub struct Found {
     pub privileges: Option<Vec<String>>,
     /// The addresses of a principal (`calendar-user-address-set`).
     pub addresses: Vec<String>,
+    /// A principal's scheduling Inbox (`schedule-inbox-URL`).
+    pub inbox: Option<String>,
+    /// The agenda an Inbox names for new events
+    /// (`schedule-default-calendar-URL`).
+    pub default_agenda: Option<String>,
     /// Its iCalendar text (`calendar-data`).
     pub data: Option<String>,
 }
@@ -212,6 +218,14 @@ fn closing(
                     found.home = Some(trimmed(text));
                 }
                 ("href", Some("calendar-user-address-set")) => found.addresses.push(trimmed(text)),
+                ("href", Some("schedule-inbox-url")) if found.inbox.is_none() => {
+                    found.inbox = Some(trimmed(text));
+                }
+                ("href", Some("schedule-default-calendar-url"))
+                    if found.default_agenda.is_none() =>
+                {
+                    found.default_agenda = Some(trimmed(text));
+                }
                 ("displayname", _) => found.name = Some(trimmed(text)),
                 ("calendar-data", _) => found.data = Some(text),
                 _ => {}
@@ -238,6 +252,8 @@ fn merge(into: &mut Found, from: Found) {
     into.name = into.name.take().or(from.name);
     into.privileges = into.privileges.take().or(from.privileges);
     into.addresses.extend(from.addresses);
+    into.inbox = into.inbox.take().or(from.inbox);
+    into.default_agenda = into.default_agenda.take().or(from.default_agenda);
     into.data = into.data.take().or(from.data);
 }
 
@@ -257,112 +273,4 @@ fn predefined(reference: &BytesRef<'_>) -> Option<char> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const HOME: &str = r#"<?xml version="1.0" encoding="utf-8"?>
-<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
-  <d:response>
-    <d:href>/dav/calendars/paul/</d:href>
-    <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
-      <d:status>HTTP/1.1 200 OK</d:status></d:propstat>
-  </d:response>
-  <d:response>
-    <d:href>/dav/calendars/paul/personnel/</d:href>
-    <d:propstat><d:prop>
-        <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
-        <d:displayname>Agenda &amp; rendez-vous</d:displayname>
-        <c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>
-      </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
-    <d:propstat><d:prop><c:calendar-home-set/></d:prop>
-      <d:status>HTTP/1.1 404 Not Found</d:status></d:propstat>
-  </d:response>
-  <d:response>
-    <d:href>/dav/calendars/paul/taches/</d:href>
-    <d:propstat><d:prop>
-        <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
-        <c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set>
-      </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
-  </d:response>
-</d:multistatus>"#;
-
-    #[test]
-    fn reads_each_response_and_its_properties_found() {
-        let read = multistatus(HOME).unwrap();
-        assert_eq!(read.len(), 3);
-        assert!(!read[0].calendar);
-        assert_eq!(read[1].href, "/dav/calendars/paul/personnel/");
-        assert!(read[1].holds_events());
-        assert_eq!(read[1].name.as_deref(), Some("Agenda & rendez-vous"));
-        assert_eq!(read[1].home, None);
-        assert!(read[2].calendar && !read[2].holds_events());
-    }
-
-    #[test]
-    fn reads_a_principal_a_home_and_calendar_data() {
-        let principal = r#"<multistatus xmlns="DAV:"><response><href>/dav/</href><propstat>
-            <prop><current-user-principal><href>/dav/principals/paul/</href></current-user-principal></prop>
-            <status>HTTP/1.1 200 OK</status></propstat></response></multistatus>"#;
-        let read = multistatus(principal).unwrap();
-        assert_eq!(read[0].principal.as_deref(), Some("/dav/principals/paul/"));
-        let data = r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-            <D:response><D:href>/e.ics</D:href><D:propstat><D:prop>
-            <C:calendar-data><![CDATA[BEGIN:VCALENDAR
-SUMMARY:a &amp; b
-END:VCALENDAR]]></C:calendar-data></D:prop><D:status>HTTP/1.1 200 OK</D:status>
-            </D:propstat></D:response></D:multistatus>"#;
-        let read = multistatus(data).unwrap();
-        assert!(
-            read[0]
-                .data
-                .as_deref()
-                .unwrap()
-                .contains("SUMMARY:a &amp; b")
-        );
-    }
-
-    #[test]
-    fn reads_what_the_account_may_do_and_a_principal_s_addresses() {
-        let listing = r#"<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
-            <d:response><d:href>/a/</d:href><d:propstat><d:prop>
-            <d:current-user-privilege-set><d:privilege><d:read/></d:privilege>
-            <d:privilege><c:read-free-busy/></d:privilege></d:current-user-privilege-set>
-            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
-            <d:response><d:href>/b/</d:href><d:propstat><d:prop>
-            <d:current-user-privilege-set><d:privilege><d:read/></d:privilege>
-            <d:privilege><d:bind></d:bind></d:privilege></d:current-user-privilege-set>
-            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
-            <d:response><d:href>/c/</d:href><d:propstat><d:prop>
-            <c:calendar-user-address-set><d:href>mailto:paul@exemple.fr</d:href>
-            <d:href> /principals/paul/ </d:href></c:calendar-user-address-set>
-            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
-            <d:propstat><d:prop><d:current-user-privilege-set/></d:prop>
-            <d:status>HTTP/1.1 404 Not Found</d:status></d:propstat></d:response>
-            </d:multistatus>"#;
-        let read = multistatus(listing).unwrap();
-        assert_eq!(
-            read[0].privileges.as_deref(),
-            Some(&["read".to_string(), "read-free-busy".to_string()][..])
-        );
-        assert!(!read[0].takes_events());
-        assert!(read[1].takes_events());
-        // Not said (its property not found): the server's answer decides.
-        assert_eq!(read[2].privileges, None);
-        assert!(read[2].takes_events());
-        assert_eq!(
-            read[2].addresses,
-            ["mailto:paul@exemple.fr", "/principals/paul/"]
-        );
-    }
-
-    #[test]
-    fn what_is_not_a_multistatus_is_refused() {
-        assert_eq!(multistatus("<html><body>Bienvenue</body></html>"), None);
-        assert_eq!(multistatus("<multistatus><response>"), None);
-        assert_eq!(multistatus("pas du XML"), None);
-        // A declared entity is never expanded.
-        let entity = r#"<!DOCTYPE m [<!ENTITY x "piège">]><multistatus xmlns="DAV:">
-            <response><href>&x;/a</href></response></multistatus>"#;
-        assert_eq!(multistatus(entity).unwrap()[0].href, "/a");
-    }
-}
+mod tests;

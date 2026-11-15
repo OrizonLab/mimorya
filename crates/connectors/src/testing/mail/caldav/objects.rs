@@ -11,6 +11,7 @@ use std::time::Duration;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
+use super::answers::WORK_PATH;
 use super::{AGENDA_PATH, CalDavBehaviour};
 
 /// A calendar object put on the server, as received.
@@ -58,6 +59,17 @@ pub fn principal_addresses(behaviour: CalDavBehaviour, username: &str) -> String
     format!("<c:calendar-user-address-set>{hrefs}</c:calendar-user-address-set>")
 }
 
+/// The principal's scheduling Inbox, as a property, when the server names
+/// a default agenda.
+pub fn scheduling_inbox(behaviour: CalDavBehaviour) -> String {
+    match behaviour {
+        CalDavBehaviour::DefaultAgenda(inbox, _) => {
+            format!("<c:schedule-inbox-URL><d:href>{inbox}</d:href></c:schedule-inbox-URL>")
+        }
+        _ => String::new(),
+    }
+}
+
 /// Whether `path` is a new object in an agenda that takes events.
 fn in_agenda(behaviour: CalDavBehaviour, path: &str) -> bool {
     let inside = |agenda: &str| {
@@ -69,6 +81,7 @@ fn in_agenda(behaviour: CalDavBehaviour, path: &str) -> bool {
         CalDavBehaviour::DeclaredIsAgenda | CalDavBehaviour::AgendaWithPrincipalElsewhere(_) => {
             inside("/dav/")
         }
+        CalDavBehaviour::DefaultAgenda(..) => inside(AGENDA_PATH) || inside(WORK_PATH),
         _ => inside(AGENDA_PATH),
     }
 }
