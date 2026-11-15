@@ -34,7 +34,7 @@ pub use self::objects::{Created, CreatedObject};
 use self::objects::{options, principal_addresses, put};
 use super::{Accounts, Heard, accepts};
 use crate::testing::TestAuthority;
-use crate::testing::https::serve_https;
+use crate::testing::https::serve_https_on;
 
 /// The agenda path a client is to find.
 pub const AGENDA_PATH: &str = "/dav/calendars/paul/personnel/";
@@ -110,6 +110,18 @@ impl FakeCalDav {
         behaviour: CalDavBehaviour,
         events: Vec<String>,
     ) -> Self {
+        let local = SocketAddr::from(([127, 0, 0, 1], 0));
+        Self::start_on(local, authority, accounts, behaviour, events).await
+    }
+
+    /// The same at `address` (the end-to-end tests' fixed one).
+    pub async fn start_on(
+        address: SocketAddr,
+        authority: &TestAuthority,
+        accounts: Accounts,
+        behaviour: CalDavBehaviour,
+        events: Vec<String>,
+    ) -> Self {
         let heard = Heard::default();
         let created = Created::default();
         let state = Arc::new(Served {
@@ -120,7 +132,7 @@ impl FakeCalDav {
             created: created.clone(),
         });
         let router = Router::new().fallback(answer).with_state(state);
-        let address = serve_https(authority, router).await;
+        let address = serve_https_on(address, authority, router).await;
         Self {
             address,
             heard,

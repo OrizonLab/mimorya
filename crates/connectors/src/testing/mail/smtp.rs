@@ -90,7 +90,18 @@ impl FakeSmtp {
     }
 
     pub async fn with(authority: &TestAuthority, setup: SmtpSetup, accounts: Accounts) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("local port");
+        let local = SocketAddr::from(([127, 0, 0, 1], 0));
+        Self::with_on(local, authority, setup, accounts).await
+    }
+
+    /// The same at `address` (the end-to-end tests' fixed one).
+    pub async fn with_on(
+        address: SocketAddr,
+        authority: &TestAuthority,
+        setup: SmtpSetup,
+        accounts: Accounts,
+    ) -> Self {
+        let listener = TcpListener::bind(address).await.expect("local port");
         let address = listener.local_addr().expect("local address");
         let (heard, deliveries) = (Heard::default(), Deliveries::default());
         let (acceptor, noted, taken) = (authority.acceptor(), heard.clone(), deliveries.clone());

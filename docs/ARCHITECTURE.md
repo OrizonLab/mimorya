@@ -327,8 +327,9 @@ Détaillés dans [AGENT_ENGINE.md](AGENT_ENGINE.md). En résumé :
   plateforme) ; la liaison d'un compte le vérifie aussi. Si l'entreprise permet aussi
   l'écriture, `mail_calendar_event_create` y crée un rendez-vous validé : iCalendar
   écrit par la plateforme, déposé comme objet nouveau dans le premier agenda où le
-  compte peut écrire, invitations envoyées par le serveur lui-même (RFC 6638) ou rien
-  de créé (ADR-205).
+  compte peut écrire, ou dont le serveur ne dit pas les droits (sa réponse décidant),
+  invitations envoyées par le serveur lui-même (RFC 6638) ou rien de créé.
+  L'administration déclare la messagerie dans « Connecteurs » (ADR-205).
 - **Passerelle Slack** : une passerelle de conversation n'est pas un connecteur, elle
   n'apporte aucun outil (table `gateways`). L'entreprise déclare son application Slack
   (une par entreprise) : son jeton de bot, essayé auprès de Slack avant d'être gardé, et

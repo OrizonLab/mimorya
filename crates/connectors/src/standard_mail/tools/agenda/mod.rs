@@ -28,7 +28,7 @@ pub const MAX_DAYS: i64 = 31;
 /// The most events told.
 const MAX_SHOWN: usize = 50;
 /// What a company with no agenda declared is told.
-const NO_CALDAV: &str = "La messagerie de l’entreprise n’a pas d’agenda CalDAV déclaré";
+pub(super) const NO_CALDAV: &str = "La messagerie de l’entreprise n’a pas d’agenda CalDAV déclaré";
 
 pub struct MailCalendarEvents {
     pub reach: MailReach,

@@ -13,6 +13,8 @@ import {
 import { formatDate } from '@/lib/format';
 import { GoogleWorkspaceDetails } from './google-workspace-details';
 import { GoogleWorkspaceForm } from './google-workspace-form';
+import { MailServerDetails } from './mail-server-details';
+import { MailServerForm } from './mail-server-form';
 import { McpForm } from './mcp-form';
 import { McpOAuthSection } from './mcp-oauth-section';
 import { Microsoft365Details } from './microsoft365-details';
@@ -31,7 +33,8 @@ const STATUS = {
 /**
  * A REST API's test checks its declaration, without calling it; so does a
  * Microsoft 365 application's or a Google Workspace client's, without
- * reaching their provider.
+ * reaching their provider, and the standard mail's, without reaching its
+ * servers.
  */
 const REST_STATUS: Partial<Record<keyof typeof STATUS, { label: string; tone: 'neutral' | 'ok' }>> =
   {
@@ -43,8 +46,9 @@ const REST_STATUS: Partial<Record<keyof typeof STATUS, { label: string; tone: 'n
  * One connector: its state, a test, and what may change here. A REST API's
  * test checks its declaration without calling it (ADR-112, ADR-113), as a
  * Microsoft 365 application's does without reaching Microsoft (ADR-118),
- * and a Google Workspace client's without reaching Google (ADR-124): it
- * says so, rather than a connection it did not make.
+ * and a Google Workspace client's without reaching Google (ADR-124), and
+ * the standard mail's without reaching its servers (ADR-205): it says so,
+ * rather than a connection it did not make.
  */
 export function ConnectorCard({
   connector,
@@ -64,20 +68,22 @@ export function ConnectorCard({
   const rest = connector.rest;
   const microsoft365 = connector.microsoft365;
   const google = connector.googleWorkspace;
+  const mail = connector.mailServer;
   // Where people link their accounts: its links go with it.
   const linked = microsoft365 ?? google;
   // Also when its declaration can no longer be read: it is deleted here.
   const isRest = connector.type === 'rest';
   const isMicrosoft365 = connector.type === 'microsoft365';
   const isGoogle = connector.type === 'google_workspace';
+  const isMail = connector.type === 'mail_server';
   // Checked without reaching the server.
-  const declared = isRest || isMicrosoft365 || isGoogle;
+  const declared = isRest || isMicrosoft365 || isGoogle || isMail;
   const status =
     (declared && REST_STATUS[connector.status]) || (STATUS[connector.status] ?? STATUS.error);
   // Added from the administration: deleted here, and changed while readable
   // (an MCP server whose OAuth declaration no longer reads is deleted too).
   const added = Boolean(connector.mcp) || declared || connector.oauthUnreadable;
-  const editable = Boolean(connector.mcp ?? rest ?? linked);
+  const editable = Boolean(connector.mcp ?? rest ?? linked ?? mail);
 
   async function test() {
     const result = await action.run(() =>
@@ -121,11 +127,13 @@ export function ConnectorCard({
             ? `La plateforme demande à ${google ? 'Google' : 'Microsoft'} de révoquer leurs accords.`
             : `Leurs accords restent chez ${google ? 'Google' : 'Microsoft'} : retirez-les dans ${google ? 'la console d’administration de Google' : 'Microsoft Entra'}.`
         }`
-      : connector.mcp?.oauth
-        ? `Supprimer le serveur « ${connector.name} », sa déclaration OAuth, le secret du client et son autorisation ?${
-            connector.mcp.oauth.registered ? ` ${REGISTERED_CLIENT_STAYS}` : ''
-          }`
-        : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
+      : mail
+        ? `Supprimer la messagerie « ${connector.name} » et les ${mail.accounts} compte(s) que les collaborateurs y ont relié(s), avec leurs mots de passe chiffrés ?`
+        : connector.mcp?.oauth
+          ? `Supprimer le serveur « ${connector.name} », sa déclaration OAuth, le secret du client et son autorisation ?${
+              connector.mcp.oauth.registered ? ` ${REGISTERED_CLIENT_STAYS}` : ''
+            }`
+          : `Supprimer le connecteur « ${connector.name} » et son jeton ?`;
     if (!window.confirm(question)) return;
     if (await action.run(() => api.delete(`/admin/connectors/${connector.id}`))) onChanged();
   }
@@ -171,6 +179,7 @@ export function ConnectorCard({
       )}
       {microsoft365 && <Microsoft365Details app={microsoft365} />}
       {google && <GoogleWorkspaceDetails app={google} />}
+      {mail && <MailServerDetails mail={mail} />}
       {connector.lastError && connector.status === 'error' && !tested && (
         <ErrorNote message={`Dernier démarrage : ${connector.lastError}`} />
       )}
@@ -201,6 +210,8 @@ export function ConnectorCard({
           <Microsoft365Form connector={connector} onDone={done} />
         ) : google ? (
           <GoogleWorkspaceForm connector={connector} onDone={done} />
+        ) : mail ? (
+          <MailServerForm connector={connector} onDone={done} />
         ) : (
           <McpForm data={data} connector={connector} onDone={done} />
         ))}
@@ -214,7 +225,9 @@ export function ConnectorCard({
               ? `Déclaration vérifiée : ${tested.tools.length} outil(s). L’API n’est pas appelée ; le premier appel d’un run dira si elle répond.`
               : isMicrosoft365 || isGoogle
                 ? `Déclaration vérifiée : ${tested.tools.length} outil(s). ${isGoogle ? 'Google' : 'Microsoft'} n’est pas appelé : chaque collaborateur relie son compte dans « Mon compte ».`
-                : `Connexion réussie : ${tested.tools.length} outil(s) exposé(s).`}
+                : isMail
+                  ? `Déclaration vérifiée : ${tested.tools.length} outil(s). Les serveurs de messagerie ne sont pas joints : chaque collaborateur relie son compte dans « Mon compte ».`
+                  : `Connexion réussie : ${tested.tools.length} outil(s) exposé(s).`}
           </p>
           {added && tested.tools.length > 0 && (
             <ToolPolicies

@@ -8,6 +8,7 @@ export { GatewayLinkConfirmation } from './gateway-link-confirmation';
 export { InvitationForm } from './invitation-form';
 export { LinkPage } from './link-page';
 export { LinkedAccounts } from './linked-accounts';
+export { MailAccount } from './mail-account';
 export { NotificationForm } from './notification-form';
 export { ResetPasswordForm } from './reset-password-form';
 export { ResetRequestForm } from './reset-request-form';
