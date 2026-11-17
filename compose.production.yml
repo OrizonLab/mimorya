@@ -13,6 +13,11 @@
 #                             (1.2.0) or a commit (sha-…); latest by default, the
 #                             last commit of main. Run this file from the same
 #                             version or commit: it mounts files of the checkout.
+#   MIMORYA_BACKUP_RECIPIENTS the backups' age public keys (ADR-166): when given,
+#                             every WAL segment is archived, encrypted for them
+#                             (ADR-206), unset by default
+#   MIMORYA_WAL_ARCHIVE       the host's folder of that archive, ./wal-archive by
+#                             default; it becomes the database's (uid 999, 700)
 # then:
 #   docker compose --env-file .env.production -f compose.production.yml pull
 #   docker compose --env-file .env.production -f compose.production.yml up -d
@@ -54,10 +59,12 @@ x-backend-environment: &backend-environment
   MIMORYA_OUTBOUND_NO_PROXY: ${MIMORYA_OUTBOUND_NO_PROXY:-}
 
 services:
+  # PostgreSQL 16 with pgvector, and age for the archive of its WAL (ADR-206).
   db:
-    image: pgvector/pgvector:pg16
+    image: ghcr.io/orizonlab/mimorya-db:${MIMORYA_VERSION:-latest}
     restart: unless-stopped
-    # The passwords are checked before anything is created.
+    # The passwords, and the recipients if any, are checked before anything
+    # is created.
     entrypoint: ['bash', '/usr/local/bin/entrypoint-production.sh']
     command: ['postgres']
     environment:
@@ -65,10 +72,15 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?choose the schema owner's password (POSTGRES_PASSWORD)}
       POSTGRES_DB: mimorya
       MIMORYA_APP_DB_PASSWORD: ${MIMORYA_APP_DB_PASSWORD:?choose the application role's password (MIMORYA_APP_DB_PASSWORD)}
+      # Public keys: given, the WAL is archived, encrypted for them (ADR-206).
+      MIMORYA_BACKUP_RECIPIENTS: ${MIMORYA_BACKUP_RECIPIENTS:-}
     volumes:
       - db-data:/var/lib/postgresql/data
+      # On the host, where the operator copies it off site from.
+      - ${MIMORYA_WAL_ARCHIVE:-./wal-archive}:/var/lib/postgresql/wal-archive
       - ./infra/postgres/entrypoint-production.sh:/usr/local/bin/entrypoint-production.sh:ro
       - ./infra/postgres/init-production.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
+      - ./infra/postgres/archive-wal.sh:/usr/local/bin/archive-wal.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U mimorya']
       interval: 5s

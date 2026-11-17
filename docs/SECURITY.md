@@ -929,8 +929,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   par `document_search` et `document_read` (ADR-096), que ce que son utilisateur peut
   lire, avec ses droits du moment ; un document hors de portée lui répond comme
   inexistant, et ses passages lui sont remis comme données. Une suppression n'atteint
-  pas les sauvegardes déjà faites (ADR-166) : la donnée y reste, chiffrée, jusqu'à ce
-  que la conservation fixée par l'exploitant retire ces sauvegardes.
+  pas les sauvegardes déjà faites (ADR-166), ni l'archive des WAL (ADR-206) : la donnée y
+  reste, chiffrée, jusqu'à ce que la conservation fixée par l'exploitant les retire.
 - **Export du journal d'audit** (ADR-181) : le SIEM de l'entreprise reçoit les
   identifiants des comptes, les adresses IP et les identifiants des personnes chez
   Slack, Telegram ou Teams que le journal porte ; l'entreprise,
@@ -1097,7 +1097,9 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   (phase 2), revue des licences (MIT/Apache/BSD privilégiées, AGPL exclue).
 - Sauvegardes de la base chiffrées par `age` pour des clés publiques, l'identité qui les
   ouvre restant hors du serveur, et restauration dans une pile nouvelle vérifiée en CI
-  (ADR-166, `infra/backup/`) ; restauration à un instant précis (WAL) en phase 3.
+  (ADR-166, `infra/backup/`) ; archive continue des WAL et sauvegarde de base, chiffrées
+  de même, l'archive jamais en clair ni remplacée (ADR-206) ; restauration à un instant
+  précis en phase 3.
 
 ## 11. Liste de contrôle pour chaque contribution
 

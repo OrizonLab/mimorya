@@ -435,7 +435,9 @@ jobs:
       MIMORYA_TLS: internal
     steps:
       - uses: actions/checkout@v4
-      - name: Choose the production stack's database passwords and master key
+      - name: Install age (the backups' encryption)
+        run: sudo apt-get update -q && sudo apt-get install -yq age
+      - name: Choose the production stack's database passwords, master key and backups' key
         run: |
           for name in POSTGRES_PASSWORD MIMORYA_APP_DB_PASSWORD; do
             value=$(openssl rand -hex 24)
@@ -447,6 +449,10 @@ jobs:
           key=$(openssl rand -base64 32)
           echo "::add-mask::$key"
           echo "MIMORYA_MASTER_KEY=$key" >> "$GITHUB_ENV"
+          # The production stack archives its WAL for this key's recipient
+          # (ADR-206); the identity stays outside the repository.
+          age-keygen -o "$RUNNER_TEMP/backups-identity.txt" 2>/dev/null
+          echo "MIMORYA_BACKUP_RECIPIENTS=$(age-keygen -y "$RUNNER_TEMP/backups-identity.txt")" >> "$GITHUB_ENV"
       # Built from this checkout, under local names (ADR-051).
       - name: Build the images
         run: |
@@ -479,8 +485,8 @@ jobs:
           grep -q 'exploitation@example.com' <<<"$adapted"
       - name: The production database refuses a password unfit for a URL, creating nothing
         run: |
-          if output=$(timeout 120 docker compose -f compose.production.yml run --rm --no-deps -T \
-            -e POSTGRES_PASSWORD=Mot-de-passe-2026 db 2>&1); then
+          if output=$(timeout 120 docker compose -f compose.production.yml -f compose.production.build.yml \
+            run --rm --no-deps -T -e POSTGRES_PASSWORD=Mot-de-passe-2026 db 2>&1); then
             echo "the database started with a refused password" >&2
             exit 1
           fi
@@ -489,6 +495,20 @@ jobs:
           left=$(docker run --rm --entrypoint ls -v mimorya-production_db-data:/data \
             pgvector/pgvector:pg16 -A /data)
           test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
+      - name: The production database refuses recipients age does not take, creating nothing
+        run: |
+          if output=$(timeout 120 docker compose -f compose.production.yml -f compose.production.build.yml \
+            run --rm --no-deps -T -e MIMORYA_BACKUP_RECIPIENTS='age1nothing' db 2>&1); then
+            echo "the database started with refused recipients" >&2
+            exit 1
+          fi
+          grep -q 'MIMORYA_BACKUP_RECIPIENTS : destinataires refusés par age' <<<"$output" ||
+            { echo "$output" >&2; exit 1; }
+          left=$(docker run --rm --entrypoint ls -v mimorya-production_db-data:/data \
+            pgvector/pgvector:pg16 -A /data)
+          test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
+          # The archive's folder, made by Docker for the mount, was not taken.
+          test "$(stat -c %u wal-archive)" = 0 || { echo "the archive's folder was taken" >&2; exit 1; }
       - name: Start the production stack
         run: docker compose -f compose.production.yml -f compose.production.build.yml up -d
       - name: Installation test of the production stack
@@ -497,14 +517,29 @@ jobs:
           DISPOSABLE_STACK: 'yes'
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
         run: infra/docker/production-test.sh https://localhost
-      - name: Install age (the backups' encryption)
-        run: sudo apt-get update -q && sudo apt-get install -yq age
+      - name: WAL archive of the production stack
+        id: wal-archive
+        env:
+          COMPOSE_FILE: compose.production.yml:compose.production.build.yml
+          BACKUPS_IDENTITY: ${{ runner.temp }}/backups-identity.txt
+        run: |
+          said=$(infra/docker/wal-archive-test.sh)
+          echo "$said"
+          echo "folder=${said#WAL archive test passed: }" >> "$GITHUB_OUTPUT"
       - name: Backup and restore of the production stack
         env:
           # The test throws the stack's database away.
           DISPOSABLE_STACK: 'yes'
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
         run: infra/docker/backup-test.sh https://localhost
+      # The database the dump was restored into is another system: it
+      # archives beside the former one's files (ADR-206).
+      - name: WAL archive of the restored database
+        env:
+          COMPOSE_FILE: compose.production.yml:compose.production.build.yml
+          BACKUPS_IDENTITY: ${{ runner.temp }}/backups-identity.txt
+          FORMER_WAL_FOLDER: ${{ steps.wal-archive.outputs.folder }}
+        run: infra/docker/wal-archive-test.sh
       - name: Logs of the production stack
         if: always()
         run: docker compose -f compose.production.yml -f compose.production.build.yml logs --no-color | tail -n 200

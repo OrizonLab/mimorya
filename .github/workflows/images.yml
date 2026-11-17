@@ -1,9 +1,9 @@
 name: Images
 
-# The images of the API and of the web application on the GitHub Container
-# Registry (ADR-051), amd64 only:
+# The images of the API, of the web application and of the production
+# database (ADR-206) on the GitHub Container Registry (ADR-051), amd64 only:
 # - each commit of main, once CI has passed on it, is published once as
-#   sha-<12>, then named main and latest, for the three images together, if
+#   sha-<12>, then named main and latest, for all the images together, if
 #   it is still the head of main (unless an older commit's promotion replaces
 #   its waiting one: see promote);
 # - a version tag (vX.Y.Z) names the images already published for that
@@ -195,7 +195,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Name the three images of this commit main and latest
+      - name: Name the images of this commit main and latest
         if: steps.head.outputs.current == 'true'
         run: |
           for image in $IMAGES; do
@@ -255,7 +255,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Name the three images of this commit with the version
+      - name: Name the images of this commit with the version
         env:
           VERSION: ${{ steps.version.outputs.version }}
           SHORT: ${{ steps.version.outputs.short }}

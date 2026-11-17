@@ -268,7 +268,43 @@ docker compose --env-file .env.production -f compose.production.yml up -d
 
 La CI sauvegarde la pile de production qu'elle vient d'installer, jette sa base, la
 restaure dans une base nouvelle et vérifie que l'administrateur s'y connecte encore
-(`infra/docker/backup-test.sh`). La restauration à un instant précis (WAL) reste à faire.
+(`infra/docker/backup-test.sh`).
+
+#### Archive continue des WAL
+
+Un dump ramène la base à l'heure de la sauvegarde. Pour pouvoir revenir à un instant
+précis, la base archive aussi chacun de ses WAL, chiffré pour les mêmes clés publiques
+(ADR-206). Donnez-les au service `db` dans `.env.production` ; sans elles, rien n'est
+archivé, jamais en clair :
+
+```bash
+MIMORYA_BACKUP_RECIPIENTS='age1… age1…'   # dans .env.production
+MIMORYA_WAL_ARCHIVE=/srv/mimorya/wal      # facultatif : ./wal-archive par défaut
+```
+
+Au démarrage, la base fait vérifier ces clés par `age` et refuse de démarrer, sans rien
+créer, si l'une est refusée. Elle prend le dossier de l'archive pour elle (uid 999,
+lisible par elle seule) : copiez-le hors site en `root`. Chaque fichier y est compressé,
+chiffré, et n'en remplace jamais un autre, dans un dossier par système de base :
+`wal-archive/<identifiant>/<nom>.<sha256>.gz.age`. Un segment est archivé au plus tard
+cinq minutes après sa première écriture : c'est la perte maximale de données. Un
+archivage qui échoue (dossier plein ou en lecture seule) ne perd rien : PostgreSQL garde
+ses WAL et réessaie, au prix de son propre disque ; la vue `pg_stat_archiver` le montre.
+
+L'archive se rejoue sur une sauvegarde de base, la copie des fichiers de la base,
+chiffrée de même, à refaire régulièrement (chaque nuit, par exemple) :
+
+```bash
+COMPOSE_ENV_FILES=.env.production MIMORYA_BACKUP_RECIPIENTS='age1… age1…' \
+  infra/backup/backup.sh --base     # écrit backups/mimorya-<heure UTC>.base.tar.gz.age (600)
+```
+
+La base de la pile de production est l'image `mimorya-db` (PostgreSQL 16, pgvector et
+`age`) : une installation antérieure qui se met à jour voit son conteneur de base remplacé,
+sur le même volume. La CI vérifie l'archive et la
+sauvegarde de base de la pile qu'elle installe (`infra/docker/wal-archive-test.sh`). La
+restauration à un instant précis, la conservation de l'archive et le plan de reprise
+restent à faire (lots 70b et 70c).
 
 ## Qualité
 

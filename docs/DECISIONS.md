@@ -5393,19 +5393,14 @@ l'entreprise}/metadata`, où ses métadonnées sont publiées), connu avant la
     l'ancien cesse aussitôt de servir). Seule son empreinte SHA-256 est gardée
     (`inbound_hooks.token_hash`), jamais dans les journaux ni l'audit ;
   - **l'autre système envoie** `POST /api/hooks/{id}` avec `Authorization: Bearer
-<jeton>`, avant toute session :
-    - l'entreprise se trouve par la fonction minimale `auth_inbound_hook_tenant`
-      (déclencheur, empreinte du jeton → entreprise), puis la ligne est verrouillée dans
-      l'entreprise ;
-    - un déclencheur inconnu, un jeton faux ou absent et un déclencheur en pause
-      répondent de même (404, « Déclencheur introuvable ») : rien n'est gardé ni tracé
-      pour lui ;
-    - le corps est du texte UTF-8 de 16 Kio au plus (413, 415 sinon) ;
-    - trente envois par heure au plus et par déclencheur (fenêtre fixe d'une heure) ;
-      au-delà, 429 avec `Retry-After` jusqu'à la fin de l'heure. Le premier refus de
-      l'heure est gardé et tracé, les suivants n'écrivent rien : un expéditeur qui insiste
-      ne remplit pas l'audit ;
-    - accepté, il répond 202, sans rien nommer ;
+<jeton>`, avant toute session : - l'entreprise se trouve par la fonction minimale `auth_inbound_hook_tenant`
+    (déclencheur, empreinte du jeton → entreprise), puis la ligne est verrouillée dans
+    l'entreprise ; - un déclencheur inconnu, un jeton faux ou absent et un déclencheur en pause
+    répondent de même (404, « Déclencheur introuvable ») : rien n'est gardé ni tracé
+    pour lui ; - le corps est du texte UTF-8 de 16 Kio au plus (413, 415 sinon) ; - trente envois par heure au plus et par déclencheur (fenêtre fixe d'une heure) ;
+    au-delà, 429 avec `Retry-After` jusqu'à la fin de l'heure. Le premier refus de
+    l'heure est gardé et tracé, les suivants n'écrivent rien : un expéditeur qui insiste
+    ne remplit pas l'audit ; - accepté, il répond 202, sans rien nommer ;
   - c'est la **seconde exception** à l'en-tête anti-CSRF et au contrôle d'origine (après
     la réception SAML, ADR-068). Aucune session ni cookie n'autorise cette requête : le
     jeton seul le fait, qu'un site tiers ne peut pas joindre. Le chemin est comparé en
@@ -5526,6 +5521,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
   - le serveur des tests de bout en bout répond à part à ce qu'envoie un déclencheur
     (`e2e_server/hooks.rs`), reconnu par l'enveloppe des données reçues : les scénarios
     de référence gardent leur ordre.
+
 - **Alternatives écartées** :
   - garder les données reçues à part dans les métadonnées du message : elles y seraient
     en double. Le texte se découpe à la dernière ouverture d'enveloppe, la seule que la
@@ -7545,6 +7541,7 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     Telegram ;
   - **le code partagé** : les motifs Markdown que Slack et Telegram lisent, et la coupe
     d'un texte trop long (`bounded`), sont dans `crates/core/src/gateways/markdown.rs`.
+
 - **Conséquences** :
   - le Telegram simulé des tests refuse, comme Telegram, un HTML qu'il ne lirait pas
     (balise inconnue ou non refermée, `&` sans entité) ; un test peut lui faire refuser
@@ -7746,26 +7743,20 @@ source="declencheur" fiabilite="non_fiable">`, la règle que le prompt système 
     (`/api/gateways/teams/{id}`) ;
 
   - **une activité ne se prouve que par le jeton de Microsoft** (`Authorization:
-Bearer`), vérifié sans bibliothèque de plus (`ring`) :
-    - signé RS256 avec une clé du jeu de clés du Bot Framework, lu depuis sa
-      configuration OpenID (adresse du même schéma qu'elle), gardé un jour, relu pour
-      une clé inconnue au plus toutes les cinq minutes, une lecture à la fois (les
-      activités arrivées pendant ce temps l'attendent, puis prennent ce qu'elle a
-      gardé), une lecture échouée retentée au plus tôt trente secondes après sa fin
-      (les clés lues gardées, aucune sinon), une lecture menée à son terme dans sa
-      propre tâche même quand l'activité qui l'a demandée est abandonnée (connexion
-      fermée) : couper des lectures n'empêche pas de lire les clés ni ne fait redemander
-      Microsoft ; aucune connexion à la base n'est tenue pendant qu'on les lui demande ;
-    - clé endossée pour `msteams` ;
-    - émis par `https://api.botframework.com` ;
-    - pour l'application du bot (`aud`) ;
-    - valide à cinq minutes près ;
-    - nommant le service de l'activité (`serviceurl`).
+Bearer`), vérifié sans bibliothèque de plus (`ring`) : - signé RS256 avec une clé du jeu de clés du Bot Framework, lu depuis sa
+    configuration OpenID (adresse du même schéma qu'elle), gardé un jour, relu pour
+    une clé inconnue au plus toutes les cinq minutes, une lecture à la fois (les
+    activités arrivées pendant ce temps l'attendent, puis prennent ce qu'elle a
+    gardé), une lecture échouée retentée au plus tôt trente secondes après sa fin
+    (les clés lues gardées, aucune sinon), une lecture menée à son terme dans sa
+    propre tâche même quand l'activité qui l'a demandée est abandonnée (connexion
+    fermée) : couper des lectures n'empêche pas de lire les clés ni ne fait redemander
+    Microsoft ; aucune connexion à la base n'est tenue pendant qu'on les lui demande ; - clé endossée pour `msteams` ; - émis par `https://api.botframework.com` ; - pour l'application du bot (`aud`) ; - valide à cinq minutes près ; - nommant le service de l'activité (`serviceurl`).
 
-    Une passerelle inconnue, une activité illisible, un jeton absent ou qui ne prouve
-    rien, et des clés qui n'ont pas pu être lues répondent de même (404, « Passerelle
-    introuvable »). Ce chemin exact est le cinquième dispensé de l'en-tête des requêtes
-    du navigateur (`only_a_teams_activity_goes_without_the_header`) ;
+        Une passerelle inconnue, une activité illisible, un jeton absent ou qui ne prouve
+        rien, et des clés qui n'ont pas pu être lues répondent de même (404, « Passerelle
+        introuvable »). Ce chemin exact est le cinquième dispensé de l'en-tête des requêtes
+        du navigateur (`only_a_teams_activity_goes_without_the_header`) ;
 
   - **ce qui est pris** : le message d'une personne dans sa conversation personnelle
     avec le bot (`personal`), du canal Teams, adressé au bot (`28:<application>`), de
@@ -7803,6 +7794,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     ADR-134 ;
     la page du lien, où le bot envoie déjà les personnes, nomme le service du lien
     (Teams, annuaire) au lieu de Slack.
+
 - **Conséquences** :
   - `gateways` accepte le service `teams` (annuaire en `workspace_id` et
     `workspace_name`, application en `bot_user_id`). Seule une application Slack a des
@@ -8440,6 +8432,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **rien ne s'y modifie** : la personne lit le résumé, elle ne l'écrit pas. Le
     corriger reviendrait à donner des consignes à l'assistant par une voie qui n'est
     pas la sienne ; ses messages suivants le peuvent.
+
 - **Conséquences** :
   - le résumé, donnée personnelle tirée de la conversation, est lisible par la personne
     qu'il concerne, comme le reste de sa conversation (transparence, SECURITY §9) ;
@@ -9986,6 +9979,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     gardé tant que son compte existe. Décidée ou expirée, elle est purgée quatre-vingt-dix
     jours plus tard par la maintenance (`system_purge_policy_proposals`) ; l'audit garde ce
     qui a été proposé et décidé.
+
 - **Conséquences** :
   - une entreprise peut élargir l'accès par politique, à deux administrateurs. Deux
     administrateurs d'accord peuvent encore s'ouvrir des données : la double validation
@@ -10087,6 +10081,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
       une permission vérifiée sur la personne, par exemple) reste montrée, cochée, pour
       être décochée ;
   - les règles restent celles du serveur : un refus s'affiche tel qu'il le dit.
+
 - **Conséquences** :
   - tests :
     - `apps/web/e2e/policy-proposals.spec.ts` : dans chaque test, Paul fait par l'API un
@@ -11403,6 +11398,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     `a_return_keeps_its_start_while_it_verifies_who_authorized` : deux retours
     vérifient en même temps, la configuration OpenID du serveur retenue ; un troisième
     démarrage est refusé, puis accepté une fois les deux finis.
+
 - **Conséquences** :
   - un administrateur ne remplace plus sans le voir la déclaration d'un autre, ni ne
     retire des autorisations que la confirmation n'a pas dites. Le prix : un formulaire
@@ -11515,6 +11511,7 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
     échec, qu'il a trouvé. Une lecture périmée, d'un run comme d'un démarrage, ne juge
     pas une instance plus récente : elle la laisse aux runs de sa version, qui en
     enregistrent l'échec sur le connecteur.
+
 - **Conséquences** :
   - le premier tour d'une personne peut se passer des outils d'un serveur qui met plus
     de cinq secondes à démarrer : juste après un redémarrage du service, sur un worker
@@ -11618,26 +11615,24 @@ Bearer`), vérifié sans bibliothèque de plus (`ring`) :
   - **ce que la base seule ne montre pas est gardé hors d'elle** : retirer les sceaux
     puis laisser la maintenance les poser à nouveau sur des entrées modifiées, ou retirer
     des entrées de la fin d'une chaîne, donne une chaîne qui se vérifie. Deux gardes le
-    montrent :
-    - le processus qui scelle retient, pour chaque entreprise, le dernier sceau qu'il a
-      posé, ou trouvé et journalisé à son démarrage (`Audit chain found`,
-      `services/audit_chain/heads.rs`) ; avant chaque lot, sous le verrou de la chaîne,
-      ce sceau doit être encore à sa place. Sinon la chaîne a reculé derrière lui : il
-      refuse de sceller cette entreprise et le journalise comme une erreur. Cette garde
-      joue quand l'entreprise a des entrées à sceller : une fin de chaîne retirée est
-      refusée à l'arrivée de l'entrée suivante. Un processus ne retient que depuis son
-      démarrage ; une entreprise qu'il n'a pu lire alors est relue au passage suivant,
-      et une entreprise déjà retenue n'est jamais relue, pour qu'une chaîne changée
-      entre-temps ne soit pas prise pour la sienne ;
-    - le dernier sceau posé dans chaque entreprise à chaque passage, et celui trouvé au
-      démarrage, sont **journalisés** au niveau `info` (`Audit log sealed`, `Audit chain
+    montrent : - le processus qui scelle retient, pour chaque entreprise, le dernier sceau qu'il a
+    posé, ou trouvé et journalisé à son démarrage (`Audit chain found`,
+    `services/audit_chain/heads.rs`) ; avant chaque lot, sous le verrou de la chaîne,
+    ce sceau doit être encore à sa place. Sinon la chaîne a reculé derrière lui : il
+    refuse de sceller cette entreprise et le journalise comme une erreur. Cette garde
+    joue quand l'entreprise a des entrées à sceller : une fin de chaîne retirée est
+    refusée à l'arrivée de l'entrée suivante. Un processus ne retient que depuis son
+    démarrage ; une entreprise qu'il n'a pu lire alors est relue au passage suivant,
+    et une entreprise déjà retenue n'est jamais relue, pour qu'une chaîne changée
+    entre-temps ne soit pas prise pour la sienne ; - le dernier sceau posé dans chaque entreprise à chaque passage, et celui trouvé au
+    démarrage, sont **journalisés** au niveau `info` (`Audit log sealed`, `Audit chain
 found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
-      `anchor=<entreprise>:<place>:<sceau>`, l'entreprise par son identifiant, le sceau
-      en hexadécimal (`audit_chain::anchor_text`). Gardée hors de la base, chacune de ces
-      lignes se donne telle quelle à `mimorya-admin verify-audit --anchor` (autant que
-      voulu ; l'entreprise peut aussi y être nommée par son sigle), qui vérifie que la
-      chaîne porte encore ce sceau à cette place ; une entreprise nommée par son
-      identifiant est vérifiée même s'il ne reste aucune entrée dans son journal ;
+    `anchor=<entreprise>:<place>:<sceau>`, l'entreprise par son identifiant, le sceau
+    en hexadécimal (`audit_chain::anchor_text`). Gardée hors de la base, chacune de ces
+    lignes se donne telle quelle à `mimorya-admin verify-audit --anchor` (autant que
+    voulu ; l'entreprise peut aussi y être nommée par son sigle), qui vérifie que la
+    chaîne porte encore ce sceau à cette place ; une entreprise nommée par son
+    identifiant est vérifiée même s'il ne reste aucune entrée dans son journal ;
   - **la vérification** (`services/audit_chain/verify.rs`) relit les entrées scellées
     d'une entreprise dans l'ordre de la chaîne, dans un même instantané, et recalcule
     chaque sceau à partir de celui enregistré avant lui. Une place sans entrée
@@ -12191,6 +12186,7 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
     puis prend le verrou. Une création et le retrait de son jeton ne s'attendent donc
     jamais l'un l'autre en boucle. Le retrait aboutit, et la création ne trouve plus de
     jeton (401).
+
 - **Conséquences** :
   - lot suivant : remplacement et modification (`PUT`, `PATCH`), désactivation et
     suppression (`DELETE`) par SCIM, avec les effets d'une désactivation par
@@ -12405,6 +12401,7 @@ found`), même quand un lot suivant échoue, avec leur ancre toute écrite :
 
     Les sessions ne sont pas tracées : ce sont des données techniques, comme les
     autres purges de la maintenance.
+
 - **Conséquences** :
   - un compte réactivé avant les 30 jours retrouve sa mémoire personnelle ; après, elle
     est perdue ;
@@ -12673,6 +12670,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
     Il ne donne jamais l'adresse du service Teams (celle de Microsoft, non de la
     personne), ni l'empreinte du jeton de l'invitation.
+
 - **Conséquences** :
   - restent à venir, dits tels dans `SECURITY.md` §9 et la feuille de route :
     - l'effacement d'un compte, qui devra garder le journal d'audit vérifiable
@@ -12770,6 +12768,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **chaque clé nommant un compte a son index** (36 index partiels, sur les lignes où
     la colonne est remplie). Sinon, chaque effacement lirait toutes les lignes de
     l'entreprise de chaque table, messages et consommation compris.
+
 - **Conséquences** :
   - un compte provisionné par SCIM et effacé n'est plus connu du fournisseur
     d'identité ; s'il l'envoie de nouveau, c'est un compte nouveau ;
@@ -13212,6 +13211,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - pour un compte Microsoft 365, il dit que l'accord reste chez Microsoft ;
     - la suppression d'une application, dans « Connecteurs », dit de même ce que deviennent
       les accords des personnes.
+
 - **Conséquences** :
   - un compte Google relié ne garde plus d'accord chez Google après son retrait, la
     désactivation de son compte ou la suppression du connecteur, sauf si Google ne répond
@@ -13364,6 +13364,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **chaque changement est tracé** (`retention.configured`, sur l'entreprise) : pour
     chaque sorte changée, avant, après, et si la purge attend une semaine pour
     l'appliquer.
+
 - **Conséquences** :
   - une entreprise qui raccourcit une durée la voit s'appliquer à la première passe
     horaire après sept jours ; d'ici là, rien de ce qu'elle gardait ne part ;
@@ -13607,6 +13608,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       reprend alors depuis le début du journal, qui est sa première place ;
     - un début non scellé reste absent : le refus est celui d'une chaîne restaurée en
       deçà.
+
 - **Conséquences** :
   - ce qu'on ne saurait plus dire d'une place supprimée part avec elle. La purge
     n'emporte pourtant que des places dont le sceau tient au moment de partir. Une
@@ -13730,6 +13732,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       `test result:`) est rattaché à la k-ième cible (`tests.mjs from-cargo-log`) ;
   - **les caches** de `build` et de `e2e-build` ne sont sauvés que sur `main` : leur
     sauvegarde, en fin de job, retarderait les jobs qui les attendent.
+
 - **Ce qui ne change pas** : les tests eux-mêmes, aucun n'étant retiré, ignoré, rendu
   facultatif ni relancé ; leur profil de compilation ; leurs arguments ; leurs variables ;
   la base PostgreSQL (pgvector 16) ; les commandes locales (`pnpm check`,
@@ -13902,10 +13905,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - les rôles d'un compte invité comptent avant son acceptation (`holds_any`, sans
       condition de statut), puisque sa première connexion est son acceptation ;
   - **l'exigence lue avant tout verrou**, comme le fournisseur obligatoire (ADR-066), à
-    chaque ouverture par mot de passe :
-    - connexion, fin d'un mot de passe oublié, acceptation d'une invitation ;
-    - un compte au second facteur actif reçoit le défi de l'ADR-200 ;
-    - un compte concerné sans second facteur reçoit un défi d'enrôlement (`purpose =
+    chaque ouverture par mot de passe : - connexion, fin d'un mot de passe oublié, acceptation d'une invitation ; - un compte au second facteur actif reçoit le défi de l'ADR-200 ; - un compte concerné sans second facteur reçoit un défi d'enrôlement (`purpose =
 'enrol'`), jamais une session. Ces trois routes répondent `{ "next":
 "second_factor_enrolment" }` ;
   - **l'enrôlement à la connexion**, par le défi seul :
@@ -14493,6 +14493,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     | 69e | Envoi SMTP                                                                    |
     | 69f | Agenda CalDAV                                                                 |
     | 69g | Écrans et tests de bout en bout                                               |
+
 - **Conséquences** :
   - un mot de passe de messagerie est un secret plus large qu'un jeton OAuth : il
     ouvre la boîte entière, pas seulement les permissions accordées. Il n'est descellé
@@ -14505,3 +14506,106 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     offrent le port 993 ;
   - OAuth 2.0 pour IMAP et SMTP (XOAUTH2) reste du ressort des connecteurs Microsoft 365
     et Google Workspace.
+
+## ADR-206 — Archive continue des WAL, chiffrée, et sauvegarde de base (chantier 4, lot 70a)
+
+- **Statut** : accepté (2026-11-17) · complète ADR-166 (sauvegardes chiffrées) et ADR-034
+  (pile de production).
+- **Contexte** : une sauvegarde par `pg_dump` (ADR-166) ramène la base à l'heure de la
+  sauvegarde : tout ce qui a été écrit depuis est perdu. Une installation de production
+  doit pouvoir revenir à un instant précis, juste avant une erreur ou une panne, ce que
+  permet l'archive continue des WAL de PostgreSQL, rejouée sur une sauvegarde de base.
+  Cette archive porte toutes les données de la base : elle doit être chiffrée comme les
+  sauvegardes, pour des clés publiques, sans que le serveur puisse la relire.
+- **Décision** :
+  - **image de la base** : la pile de production passe de `pgvector/pgvector:pg16` à
+    `ghcr.io/orizonlab/mimorya-db`, la même image avec `age` (`infra/docker/db.Dockerfile`).
+    Elle est publiée avec les autres (`infra/docker/images.json`, ADR-051), à la même
+    version, et `compose.production.build.yml` la construit depuis le dépôt. Les scripts
+    de la base restent montés depuis le dépôt extrait à la même version ;
+  - **archivage** : il est actif dès que `MIMORYA_BACKUP_RECIPIENTS`, les clés publiques
+    des sauvegardes, est donné au service `db`. Sans destinataires, rien n'est archivé :
+    jamais une archive en clair. À chaque démarrage, `entrypoint-production.sh` :
+    - fait vérifier les destinataires par `age` avant de rien créer ni changer, comme
+      les mots de passe. Un destinataire refusé arrête la base avec la raison d'`age` ;
+    - donne le dossier de l'archive à la base (uid 999, 700). C'est un dossier de
+      l'hôte, `./wal-archive` par défaut (`MIMORYA_WAL_ARCHIVE`), d'où l'exploitant le
+      copie hors site ;
+    - démarre PostgreSQL avec `archive_mode=on`, la commande d'archivage et
+      `archive_timeout=300`, en ligne de commande, que `ALTER SYSTEM` ne remplace pas.
+      Un segment est donc fermé et archivé au plus tard cinq minutes après sa première
+      écriture : c'est la perte maximale de données d'une restauration (RPO) ;
+  - **commande d'archivage** (`infra/postgres/archive-wal.sh`), lancée par PostgreSQL
+    pour chaque fichier, segment, historique d'une ligne temporelle ou d'une sauvegarde
+    de base, dont le nom est vérifié :
+    - le fichier est compressé par `gzip`, puis chiffré par `age` pour les destinataires.
+      Il est écrit sous un nom caché, lisible par la base seule, rendu durable (`sync`),
+      puis nommé par un lien physique, qui ne remplace jamais rien. Il apparaît donc
+      entier ou pas du tout. Un fichier partiel laissé par un archivage tué est retiré
+      quand ce fichier est archivé de nouveau ;
+    - un dossier par système de base, nommé par son identifiant (`pg_controldata`) :
+      `wal-archive/<identifiant>/<nom>.<sha256>.gz.age`. Une base refaite, par exemple
+      un dump restauré dans une pile nouvelle (ADR-166), recommence ses segments au
+      premier nom : elle archive à côté des fichiers de l'ancienne, jamais par-dessus ;
+    - le nom porte le SHA-256 du fichier tel que PostgreSQL l'a écrit. Remis une seconde
+      fois avec le même contenu, quand l'archiveur s'est arrêté avant de noter son
+      succès, il est déjà là, et la commande réussit sans rien écrire. Avec un autre
+      contenu, elle est refusée et ne remplace rien : deux bases qui écriraient la même
+      ligne temporelle sont dites, et l'archive reste celle de la première. PostgreSQL
+      garde alors ses WAL et redemande l'archivage ; `pg_stat_archiver` montre l'échec ;
+    - ses messages vont au journal de PostgreSQL, en français, sans aucun contenu ;
+  - **sauvegarde de base** : `infra/backup/backup.sh --base` copie les fichiers de la
+    base par `pg_basebackup`, en tar sur la sortie, avec les WAL de la copie elle-même
+    (`--wal-method fetch`). Elle est compressée puis chiffrée comme un dump, et suit les
+    mêmes garanties : jamais remplacée, entière ou absente, lisible par son seul
+    propriétaire. Elle va par défaut dans `backups/mimorya-<heure UTC>.base.tar.gz.age`.
+    Elle se restaure seule, à l'instant où elle s'est terminée, ou avec l'archive,
+    jusqu'à un instant choisi après elle ;
+  - **découpage du chantier 4** :
+
+    | Lot | Contenu                                                                     |
+    | --- | --------------------------------------------------------------------------- |
+    | 70a | Image de la base, archive chiffrée des WAL, sauvegarde de base, tests en CI |
+    | 70b | Restauration à un instant précis dans une pile nouvelle, vérifiée en CI     |
+    | 70c | Conservation de l'archive, plan de reprise (RPO, RTO, procédure)            |
+
+- **Conséquences** :
+  - le nom d'un fichier archivé porte le SHA-256 de son contenu en clair, comme le fait
+    pgBackRest. Il ne révèle rien d'utilisable : il faudrait deviner les 16 Mio exacts
+    d'un segment pour le confirmer. Seuls les historiques, de quelques lignes, se
+    devinent, et ils ne disent que les points de bascule d'une ligne temporelle et
+    l'heure d'une sauvegarde, que la date des fichiers donne déjà ;
+  - l'archive appartient à la base (uid 999, 700) : la copier hors site demande les
+    droits de `root` sur l'hôte, comme toute tâche de sauvegarde système ;
+  - un segment est archivé au moins toutes les cinq minutes tant que la base écrit,
+    ce que fait toujours la maintenance : environ 300 fichiers par jour, de quelques
+    dizaines de kilo-octets une fois compressés quand la base est peu active ;
+  - un archivage qui échoue (dossier plein, monté en lecture seule) ne perd rien :
+    PostgreSQL garde ses WAL jusqu'à la réussite, au prix de son propre disque, que
+    l'exploitant surveille (`pg_stat_archiver`, lot 70c) ;
+  - une base de très forte écriture peut voir une sauvegarde de base échouer, si les
+    WAL de la copie sont recyclés avant la fin : l'échec est dit, rien n'est gardé, et
+    la sauvegarde se relance ;
+  - une donnée supprimée de la plateforme reste dans l'archive, chiffrée, jusqu'à ce que
+    la conservation de l'exploitant l'en retire, comme pour les sauvegardes (lot 70c) ;
+  - une installation qui met à jour remplace son conteneur de base, sur le même volume :
+    une brève coupure, comme à tout changement d'image ;
+  - le paquet `mimorya-db` est nouveau sur `ghcr.io` : comme les autres (ADR-051), chaque
+    promotion vérifie qu'il se télécharge sans compte. Lié à un dépôt public, il devrait
+    l'être ; sinon, son propriétaire le rend public dans les réglages du paquet ;
+  - test (`infra/docker/wal-archive-test.sh`, en CI après le test d'installation de la
+    pile de production, puis de nouveau après la restauration de `backup-test.sh`) :
+    - un segment basculé est archivé en moins d'une minute, dans le dossier de son
+      système, nommé par son SHA-256, le fichier et les dossiers à la base seule ;
+    - une autre identité ne l'ouvre pas ; la bonne le déchiffre en un segment de 16 Mio
+      des WAL de PostgreSQL 16, au SHA-256 nommé ;
+    - remis avec le même contenu, il est accepté sans rien ajouter ; avec un autre, il
+      est refusé, le refus est dit, et le premier est gardé ; aucun fichier partiel ne
+      reste ;
+    - une sauvegarde de base n'est lisible que par son propriétaire, ne s'ouvre qu'avec
+      la bonne identité, contient l'étiquette de la copie, le fichier de contrôle et des
+      WAL, et son historique est archivé ; sans fichier nommé, elle va dans `backups/` ;
+    - après la restauration d'un dump dans une base nouvelle, celle-ci archive dans un
+      autre dossier, et celui de l'ancienne garde ses fichiers ;
+    - la base refuse de démarrer avec un destinataire qu'`age` refuse, sans rien créer
+      ni prendre le dossier de l'archive (CI, à côté du refus d'un mot de passe).

@@ -441,16 +441,20 @@ Repères à l'intérieur des crates :
   seules adresses privées que ses connecteurs joignent,
   `BuildOptions::connector_test_servers`, une déclaration OAuth illisible laissée au
   démarrage, `unreadable_oauth.rs`, ADR-171, et l'autorisation de Lucas d'un serveur que chacun autorise, son renouvellement échoué, `person_renewal.rs`, ADR-174 ; ses serveurs MCP protégés par OAuth et leurs serveurs d'autorisation, dont un fournisseur OpenID Connect où Marc est connecté, `oauth_servers.rs`, ADR-175 ; ses serveurs IMAP, SMTP et CalDAV simulés à adresses fixes, qui connaissent le compte de Léa, leur autorité reconnue par les seuls connecteurs, `mail_servers.rs`, ADR-205).
-- `infra/` : `docker/` (images de l'API et de l'interface, liste des images publiées
+- `infra/` : `docker/` (images de l'API, de l'interface et de la base de production avec
+  `age`, `db.Dockerfile`, ADR-206, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
+  archive des WAL et sauvegarde de base vérifiées, `wal-archive-test.sh`, ADR-206,
   sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166, son
   journal d'audit vérifié avant et après par l'exploitant et l'entreprise, ancres lues
   dans les journaux des processus, `audit-chain.sh`, ADR-180,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base),
-  `backup/` (sauvegarde de la base chiffrée par age pour des clés publiques, restauration
-  dans une pile nouvelle, ADR-166), `caddy/`
+  `backup/` (sauvegarde de la base chiffrée par age pour des clés publiques, dump ou
+  sauvegarde de base (`--base`, ADR-206), restauration dans une pile nouvelle, ADR-166), `caddy/`
   (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
-  mots de passe, `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
+  mots de passe et les destinataires de l'archive des WAL et l'active, `archive-wal.sh`
+  chiffre chaque WAL archivé, un dossier par système de base, ADR-206,
+  `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
   (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,
   ADR-034) et `compose.demo.yml` (pile de démonstration,
   ADR-032), chacune avec un service `api` et un service `worker` de la même image

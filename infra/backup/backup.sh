@@ -9,9 +9,14 @@
 # naming the same file, one writes it and the other is refused. Its folder
 # must take hard links, as ext4, XFS, Btrfs, ZFS and NFS do and FAT, exFAT
 # and some FUSE mounts do not: that is tried before the dump.
-#   MIMORYA_BACKUP_RECIPIENTS='age1…' infra/backup/backup.sh [file]
-#   MIMORYA_BACKUP_RECIPIENTS_FILE=recipients.txt infra/backup/backup.sh [file]
-# The file defaults to backups/mimorya-<UTC time>.dump.age, in the
+#   MIMORYA_BACKUP_RECIPIENTS='age1…' infra/backup/backup.sh [--base] [file]
+#   MIMORYA_BACKUP_RECIPIENTS_FILE=recipients.txt infra/backup/backup.sh [--base] [file]
+# With --base, the backup is the base of a restore to a point in time
+# (ADR-206) rather than a dump: the database's files copied by
+# pg_basebackup, as a tar with the WAL it needs, compressed, then encrypted
+# the same way; the WAL written after it is in the archive the database
+# keeps (infra/postgres/archive-wal.sh). The file defaults to
+# backups/mimorya-<UTC time>.dump.age (.base.tar.gz.age with --base), in the
 # repository's root; a file or recipients file given is read from where the
 # script was started. The stack's variables come from the environment (or
 # COMPOSE_ENV_FILES), its compose files from COMPOSE_FILE
@@ -27,6 +32,13 @@ fail() {
 
 # Paths given are read from where the script was started, before it moves to
 # the repository's root, where compose finds the stack.
+kind=dump
+if [[ ${1:-} == --base ]]; then
+  kind=base
+  shift
+fi
+[[ ${1:-} != -* ]] || fail "option inconnue : $1 (seule --base est reconnue)"
+(($# <= 1)) || fail "un seul fichier attendu, $# donnés"
 file=${1:-}
 [[ -z $file || $file == /* ]] || file=$PWD/$file
 recipients_file=${MIMORYA_BACKUP_RECIPIENTS_FILE:-}
@@ -46,7 +58,9 @@ fi
 ((${#recipients[@]})) ||
   fail "aucun destinataire : renseignez MIMORYA_BACKUP_RECIPIENTS (clés publiques age) ou MIMORYA_BACKUP_RECIPIENTS_FILE"
 
-file=${file:-$PWD/backups/mimorya-$(date -u +%Y%m%dT%H%M%SZ).dump.age}
+suffix=.dump.age
+[[ $kind == dump ]] || suffix=.base.tar.gz.age
+file=${file:-$PWD/backups/mimorya-$(date -u +%Y%m%dT%H%M%SZ)$suffix}
 # Anything at that name, a dangling symbolic link included, is in the way.
 taken() { [[ -e $file || -L $file ]]; }
 ! taken || fail "$file existe déjà"
@@ -72,9 +86,18 @@ if ! said=$(ln -T "$partial" "$probe" 2>&1); then
 fi
 rm -f "$probe"
 probe=
-docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format custom |
-  age "${recipients[@]}" --output "$partial" ||
-  fail "le dump ou son chiffrement a échoué : rien n'a été gardé"
+if [[ $kind == dump ]]; then
+  docker compose exec -T db pg_dump --username mimorya --dbname mimorya --format custom |
+    age "${recipients[@]}" --output "$partial" ||
+    fail "le dump ou son chiffrement a échoué : rien n'a été gardé"
+else
+  # The WAL from the backup's start to its end is fetched into it, so that
+  # it restores on its own too; the checkpoint it starts from is made at once.
+  docker compose exec -T db pg_basebackup --username mimorya --pgdata - --format tar \
+    --wal-method fetch --checkpoint fast |
+    gzip | age "${recipients[@]}" --output "$partial" ||
+    fail "la copie des fichiers de la base ou son chiffrement a échoué : rien n'a été gardé"
+fi
 # The hard link names the backup whole, and fails rather than replace
 # anything: another run's backup, written meanwhile under the same name, is
 # kept; with -T, a folder made at that name is not linked into either.
