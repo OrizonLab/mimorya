@@ -9,7 +9,8 @@
 #     to a WAL segment of PostgreSQL 16, of 16 MiB, whose SHA-256 is named;
 #   - handed over again: with the same contents, the archive command
 #     succeeds and adds nothing; with others, it is refused, says so and
-#     keeps the first; no partial file is left;
+#     keeps the first; a partial file left by an archiving killed before
+#     or after its link is removed; no partial file is left;
 #   - a base backup (backup.sh --base) is readable by its owner only,
 #     encrypted, a tar of the data directory with its label and the WAL it
 #     needs, and its history is archived beside the segments; by default it
@@ -98,14 +99,26 @@ magic=$(od -An -tx1 -N2 "$work/segment" | tr -d ' \n')
 [[ $magic == 13d1 ]] || fail "the archived segment is not of PostgreSQL 16's WAL: $magic"
 
 # Handed over again: the same contents succeed and add nothing; others are
-# refused, the first kept. Files of a segment never written stand for it.
+# refused, the first kept. Files of a segment never written stand for it. A
+# partial file an archiving killed midway left, before its link or after
+# it, is removed when the file is handed over again.
 docker compose exec -T -u postgres db bash -c \
   'head -c 16777216 /dev/urandom >/tmp/first && head -c 16777216 /dev/urandom >/tmp/second' ||
   fail "cannot write the test's segments"
+left_by_a_kill() {
+  docker compose exec -T -u postgres db \
+    touch "/var/lib/postgresql/wal-archive/$system/.$fake.partial-$1" ||
+    fail "cannot leave a partial file"
+}
+partials() { as_root find "$folder" -maxdepth 1 -name '.*'; }
+left_by_a_kill before
 said=$(archive_again /tmp/first "$fake") || fail "a segment was not archived: $said"
 first=$(archived "$fake")
+[[ -z $(partials) ]] || fail "a partial file left before the link stayed: $(partials)"
+left_by_a_kill after
 said=$(archive_again /tmp/first "$fake") || fail "the same segment handed over again was refused: $said"
 [[ $(archived "$fake") == "$first" ]] || fail "the same segment was archived twice: $(archived "$fake")"
+[[ -z $(partials) ]] || fail "a partial file left after the link stayed: $(partials)"
 if said=$(archive_again /tmp/second "$fake"); then
   fail "a segment's other contents were archived: $(archived "$fake")"
 fi
@@ -113,8 +126,7 @@ grep -q 'déjà archivé avec un autre contenu' <<<"$said" ||
   fail "the other contents were not said: $said"
 [[ $(archived "$fake") == "$first" ]] || fail "the first contents were not kept: $(archived "$fake")"
 docker compose exec -T db rm -f /tmp/first /tmp/second
-[[ -z $(as_root find "$folder" -name '.*' -print -quit) ]] ||
-  fail "a partial file was left: $(as_root ls -A "$folder" | grep '^\.')"
+[[ -z $(partials) ]] || fail "a partial file was left: $(partials)"
 
 # A base backup: encrypted, a tar of the data directory with its label and
 # its WAL; its history archived beside the segments.

@@ -509,6 +509,15 @@ jobs:
           test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
           # The archive's folder, made by Docker for the mount, was not taken.
           test "$(stat -c %u wal-archive)" = 0 || { echo "the archive's folder was taken" >&2; exit 1; }
+      - name: Without recipients, the production database archives nothing
+        env:
+          COMPOSE_FILE: compose.production.yml:compose.production.build.yml
+        run: |
+          MIMORYA_BACKUP_RECIPIENTS= docker compose up -d --wait db
+          mode=$(docker compose exec -T db psql -U mimorya -d mimorya -tAc 'show archive_mode')
+          test "$mode" = off || { echo "archive_mode is $mode" >&2; exit 1; }
+          test "$(stat -c %u wal-archive)" = 0 || { echo "the archive's folder was taken" >&2; exit 1; }
+          docker compose down -v
       - name: Start the production stack
         run: docker compose -f compose.production.yml -f compose.production.build.yml up -d
       - name: Installation test of the production stack

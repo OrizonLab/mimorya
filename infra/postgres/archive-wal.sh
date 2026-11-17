@@ -12,7 +12,9 @@
 # again with the same contents (the archiver stopped before noting its
 # success), the file is there already and the command succeeds; with other
 # contents, it is refused and nothing is replaced. A file appears whole or
-# not at all, on disk before its success is said. Its messages go to
+# not at all, on disk before its success is said; a partial file an
+# archiving killed midway left is removed when that file is handed over
+# again. Its messages go to
 # PostgreSQL's log, for the operator, in French (ADR-013).
 set -euo pipefail
 
@@ -41,6 +43,10 @@ system=$(LC_ALL=C pg_controldata . | sed -n 's/^Database system identifier: *//p
 [[ $system =~ ^[0-9]+$ ]] || fail "identifiant du système de la base illisible"
 folder=$root/$system
 mkdir -p -m 700 "$folder" || fail "impossible de créer $folder"
+sync "$root" || fail "impossible d'écrire $root sur le disque"
+# A partial file left by an archiving killed midway, before or after its
+# link, is removed first: the archiver runs one at a time.
+rm -f "$folder/.$name.partial-"* || fail "impossible de retirer un fichier partiel de $folder"
 sum=$(sha256sum <"$wal") || fail "impossible de lire $wal"
 file=$folder/$name.${sum%% *}.gz.age
 
@@ -58,10 +64,9 @@ for found in "$folder/$name".*.gz.age; do
 done
 
 # Written beside under a hidden name, readable by its owner only, then named
-# by a hard link, which never replaces anything. A partial file left by an
-# archiving killed midway is removed first: the archiver runs one at a time.
+# by a hard link, which never replaces anything; the hidden name is removed
+# before the folder is flushed, so that it does not come back after a crash.
 umask 077
-rm -f "$folder/.$name.partial-"*
 partial=
 trap 'rm -f ${partial:+"$partial"}' EXIT
 partial=$(mktemp "$folder/.$name.partial-XXXXXX") || fail "impossible d'écrire dans $folder"
@@ -71,4 +76,6 @@ sync "$partial" || fail "impossible d'écrire $partial sur le disque"
 if ! said=$(ln -T "$partial" "$file" 2>&1); then
   [[ -e $file ]] || fail "impossible de nommer ${file##*/} : $said"
 fi
+rm -f "$partial"
+partial=
 sync "$folder" || fail "impossible d'écrire $folder sur le disque"
