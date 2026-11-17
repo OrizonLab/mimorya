@@ -72,7 +72,8 @@ reste comptée par processus. Le test de fumée
 attend autant de workers que la pile en lance ; il lit la configuration avec `jq`.
 
 Les images sont publiées sur le registre de GitHub (`ghcr.io/orizonlab/mimorya-api`,
-`mimorya-web`, `mimorya-web-demo`, pour amd64), une fois la CI verte, pour chaque commit
+`mimorya-web`, `mimorya-web-demo` et `mimorya-db`, la base de la pile de production,
+pour amd64), une fois la CI verte, pour chaque commit
 de `main` (ADR-051). `MIMORYA_VERSION` choisit lesquelles : une version (`1.2.0`, nommée
 par une étiquette `v1.2.0` sur un commit de `main`), un commit (`sha-` suivi de ses
 12 premiers caractères) ou `latest` (par défaut : il suit `main`, et peut rester sur un
@@ -247,13 +248,14 @@ Un fichier de destinataires (`MIMORYA_BACKUP_RECIPIENTS_FILE`) remplace la varia
 sauvegarde n'en remplace jamais une autre : son dossier doit accepter les liens physiques
 (ext4, XFS, Btrfs, ZFS ou NFS, mais pas FAT, exFAT ni certains montages FUSE), ce que le
 script vérifie avant le dump. Une sauvegarde tuée brutalement (`kill -9`, arrêt de la
-machine) peut laisser un fichier `….dump.age.partial.XXXXXX`, chiffré, ou le lien d'essai
-`….dump.age.probe.XXXXXXXX` qui le nomme : supprimez-les.
+machine) peut laisser un fichier `….dump.age.partial.XXXXXX` (ou
+`….base.tar.gz.age.partial.XXXXXX`), chiffré, ou le lien d'essai `….probe.XXXXXXXX` qui le
+nomme : supprimez-les.
 La fréquence, la conservation et la copie hors site sont à votre charge, par exemple une
 ligne de `cron` qui lance la sauvegarde chaque nuit et une copie vers un autre site. Une
 donnée supprimée de la plateforme (un compte, une entreprise) reste dans les sauvegardes
-déjà faites jusqu'à ce que leur conservation les retire : fixez cette durée en
-conséquence.
+déjà faites, et dans l'archive des WAL (voir plus bas), jusqu'à ce que leur conservation
+les retire : fixez cette durée en conséquence.
 
 Une sauvegarde se restaure dans une pile nouvelle, sa base seule démarrée : une base qui
 contient déjà des tables est refusée, et le dump est lu en une transaction, tout ou rien.
@@ -268,7 +270,55 @@ docker compose --env-file .env.production -f compose.production.yml up -d
 
 La CI sauvegarde la pile de production qu'elle vient d'installer, jette sa base, la
 restaure dans une base nouvelle et vérifie que l'administrateur s'y connecte encore
-(`infra/docker/backup-test.sh`). La restauration à un instant précis (WAL) reste à faire.
+(`infra/docker/backup-test.sh`).
+
+#### Archive continue des WAL
+
+Un dump ramène la base à l'heure de la sauvegarde. Pour pouvoir revenir à un instant
+précis, la base archive aussi chacun de ses WAL, chiffré pour les mêmes clés publiques
+(ADR-206). Donnez-les au service `db` dans `.env.production` ; sans elles, rien n'est
+archivé, jamais en clair :
+
+```bash
+MIMORYA_BACKUP_RECIPIENTS='age1… age1…'   # dans .env.production
+MIMORYA_WAL_ARCHIVE=/srv/mimorya/wal      # facultatif : ./wal-archive par défaut
+```
+
+Au démarrage, la base fait vérifier ces clés par `age` et refuse de démarrer, sans rien
+créer, si l'une est refusée. Elle prend le dossier de l'archive pour elle (uid 999, mode 700) : sur l'hôte, seuls `root` et le compte qui y porte l'uid 999, s'il en est un
+(`getent passwd 999`), y accèdent ; copiez-le hors site en `root`. Chaque fichier y est
+compressé, chiffré, et n'en remplace jamais un autre, dans un dossier par système de
+base : `wal-archive/<identifiant>/<nom>.<sha256>.gz.age`. Un segment est archivé au plus
+tard cinq minutes après sa première écriture. C'est la perte maximale de données tant que
+l'archive survit : une archive restée sur l'hôte se perd avec lui, ajoutez-y l'intervalle
+de sa copie hors site. Un archivage qui échoue (dossier plein ou en lecture seule) ne perd
+rien : PostgreSQL garde ses WAL et réessaie, au prix de son propre disque ; la vue
+`pg_stat_archiver` le montre.
+
+L'archive se rejoue sur une sauvegarde de base, la copie des fichiers de la base,
+chiffrée de même, à refaire régulièrement (chaque nuit, par exemple) :
+
+```bash
+COMPOSE_ENV_FILES=.env.production MIMORYA_BACKUP_RECIPIENTS='age1… age1…' \
+  infra/backup/backup.sh --base     # écrit backups/mimorya-<heure UTC>.base.tar.gz.age (600)
+```
+
+L'archive grossit sans limite tant que vous ne l'élaguez pas (environ 300 fichiers par
+jour, jusqu'à quelques Mo chacun quand la base est active), sur le disque de l'hôte par
+défaut, et garde, chiffrées, les données supprimées depuis de la plateforme. En attendant
+la conservation automatique (lot 70c), seuls peuvent partir les segments antérieurs, sur
+leur ligne temporelle, au segment de départ de la plus ancienne sauvegarde de base que
+vous gardez : son fichier `<segment>.<décalage>.backup…` le nomme. Gardez toujours les
+fichiers `.history`. Ne démarrez jamais une base restaurée depuis une sauvegarde de base
+sans la restauration du lot 70b sur le dossier d'archive de la base copiée : elle
+archiverait sous les mêmes noms qu'elle et bloquerait son archivage.
+
+La base de la pile de production est l'image `mimorya-db` (PostgreSQL 16, pgvector et
+`age`) : une installation antérieure qui se met à jour voit son conteneur de base remplacé,
+sur le même volume. La CI vérifie l'archive et la
+sauvegarde de base de la pile qu'elle installe (`infra/docker/wal-archive-test.sh`). La
+restauration à un instant précis, la conservation de l'archive et le plan de reprise
+restent à faire (lots 70b et 70c).
 
 ## Qualité
 

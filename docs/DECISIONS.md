@@ -14505,3 +14505,122 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     offrent le port 993 ;
   - OAuth 2.0 pour IMAP et SMTP (XOAUTH2) reste du ressort des connecteurs Microsoft 365
     et Google Workspace.
+
+## ADR-206 — Archive continue des WAL, chiffrée, et sauvegarde de base (chantier 4, lot 70a)
+
+- **Statut** : accepté (2026-11-17) · complète ADR-166 (sauvegardes chiffrées) et ADR-034
+  (pile de production).
+- **Contexte** : une sauvegarde par `pg_dump` (ADR-166) ramène la base à l'heure de la
+  sauvegarde : tout ce qui a été écrit depuis est perdu. Une installation de production
+  doit pouvoir revenir à un instant précis, juste avant une erreur ou une panne, ce que
+  permet l'archive continue des WAL de PostgreSQL, rejouée sur une sauvegarde de base.
+  Cette archive porte toutes les données de la base : elle doit être chiffrée comme les
+  sauvegardes, pour des clés publiques, sans que le serveur puisse la relire.
+- **Décision** :
+  - **image de la base** : la pile de production passe de `pgvector/pgvector:pg16` à
+    `ghcr.io/orizonlab/mimorya-db`, la même image avec `age` (`infra/docker/db.Dockerfile`).
+    Elle est publiée avec les autres (`infra/docker/images.json`, ADR-051), à la même
+    version, et `compose.production.build.yml` la construit depuis le dépôt. Les scripts
+    de la base restent montés depuis le dépôt extrait à la même version ;
+  - **archivage** : il est actif dès que `MIMORYA_BACKUP_RECIPIENTS`, les clés publiques
+    des sauvegardes, est donné au service `db`. Sans destinataires, rien n'est archivé :
+    jamais une archive en clair. À chaque démarrage, `entrypoint-production.sh` :
+    - fait vérifier les destinataires par `age` avant de rien créer ni changer, comme
+      les mots de passe. Un destinataire refusé arrête la base avec la raison d'`age` ;
+    - donne le dossier de l'archive à la base (uid 999, 700). C'est un dossier de
+      l'hôte, `./wal-archive` par défaut (`MIMORYA_WAL_ARCHIVE`), d'où l'exploitant le
+      copie hors site ;
+    - démarre PostgreSQL avec `archive_mode=on`, la commande d'archivage et
+      `archive_timeout=300`, en ligne de commande, que `ALTER SYSTEM` ne remplace pas.
+      Un segment est donc fermé et archivé au plus tard cinq minutes après sa première
+      écriture. C'est la perte maximale de données d'une restauration tant que l'archive
+      survit : une archive sur le même hôte que la base se perd avec lui, et il faut y
+      ajouter l'intervalle de sa copie hors site, que le plan de reprise fixera (lot
+      70c) ;
+  - **commande d'archivage** (`infra/postgres/archive-wal.sh`), lancée par PostgreSQL
+    pour chaque fichier, segment, historique d'une ligne temporelle ou d'une sauvegarde
+    de base, dont le nom est vérifié :
+    - le fichier est compressé par `gzip`, puis chiffré par `age` pour les destinataires.
+      Il est écrit sous un nom caché, lisible par la base seule, rendu durable (`sync`),
+      puis nommé par un lien physique, qui ne remplace jamais rien. Il apparaît donc
+      entier ou pas du tout. Le nom caché est retiré avant que le dossier soit rendu
+      durable. Un fichier partiel laissé par un archivage tué, avant ou après son lien,
+      est retiré quand ce fichier est remis ;
+    - un dossier par système de base, nommé par son identifiant (`pg_controldata`) :
+      `wal-archive/<identifiant>/<nom>.<sha256>.gz.age`. Une base refaite, par exemple
+      un dump restauré dans une pile nouvelle (ADR-166), recommence ses segments au
+      premier nom : elle archive à côté des fichiers de l'ancienne, jamais par-dessus ;
+    - le nom porte le SHA-256 du fichier tel que PostgreSQL l'a écrit. Remis une seconde
+      fois avec le même contenu, quand l'archiveur s'est arrêté avant de noter son
+      succès, il est déjà là, et la commande réussit sans rien écrire. Avec un autre
+      contenu, elle est refusée et ne remplace rien : deux bases qui écriraient la même
+      ligne temporelle sont dites, et l'archive reste celle de la première. PostgreSQL
+      garde alors ses WAL et redemande l'archivage ; `pg_stat_archiver` montre l'échec ;
+    - ses messages vont au journal de PostgreSQL, en français, sans aucun contenu ;
+  - **sauvegarde de base** : `infra/backup/backup.sh --base` copie les fichiers de la
+    base par `pg_basebackup`, en tar sur la sortie, avec les WAL de la copie elle-même
+    (`--wal-method fetch`). Elle est compressée puis chiffrée comme un dump, et suit les
+    mêmes garanties : jamais remplacée, entière ou absente, lisible par son seul
+    propriétaire. Elle va par défaut dans `backups/mimorya-<heure UTC>.base.tar.gz.age`.
+    Elle se restaure seule, à l'instant où elle s'est terminée, ou avec l'archive,
+    jusqu'à un instant choisi après elle (lot 70b). Une copie restaurée ne doit jamais
+    démarrer sans récupération sur le dossier d'archive de la base copiée : elle
+    garderait son identifiant et sa ligne temporelle, archiverait sous les mêmes noms, et
+    le premier arrivé ferait refuser l'archivage de l'autre. La restauration du lot 70b
+    démarre donc la copie en récupération (`recovery.signal`, commande de restauration),
+    pour qu'elle choisisse une ligne temporelle au-delà de celles déjà archivées ;
+  - **découpage du chantier 4** :
+
+    | Lot | Contenu                                                                     |
+    | --- | --------------------------------------------------------------------------- |
+    | 70a | Image de la base, archive chiffrée des WAL, sauvegarde de base, tests en CI |
+    | 70b | Restauration à un instant précis dans une pile nouvelle, vérifiée en CI     |
+    | 70c | Conservation de l'archive, plan de reprise (RPO, RTO, procédure)            |
+
+- **Conséquences** :
+  - le nom d'un fichier archivé porte le SHA-256 de son contenu en clair, comme le fait
+    pgBackRest. Il ne révèle rien d'utilisable : pour confirmer le contenu d'un segment,
+    il faudrait en deviner chaque enregistrement, à la microseconde et à l'identifiant de
+    transaction près. Seuls les historiques, de quelques lignes, se
+    devinent, et ils ne disent que les points de bascule d'une ligne temporelle et
+    l'heure d'une sauvegarde, que la date des fichiers donne déjà ;
+  - l'archive appartient à la base (uid 999, 700) : la copier hors site demande les
+    droits de `root` sur l'hôte, comme toute tâche de sauvegarde système ;
+  - un segment est archivé au moins toutes les cinq minutes tant que la base écrit,
+    ce que fait toujours la maintenance : environ 300 fichiers par jour, de quelques
+    dizaines de kilo-octets une fois compressés quand la base est peu active ;
+  - un archivage qui échoue (dossier plein, monté en lecture seule) ne perd rien :
+    PostgreSQL garde ses WAL jusqu'à la réussite, au prix de son propre disque, que
+    l'exploitant surveille (`pg_stat_archiver`, lot 70c) ;
+  - une base de très forte écriture peut voir une sauvegarde de base échouer, si les
+    WAL de la copie sont recyclés avant la fin : l'échec est dit, rien n'est gardé, et
+    la sauvegarde se relance ;
+  - une donnée supprimée de la plateforme reste dans l'archive, chiffrée, jusqu'à ce que
+    la conservation de l'exploitant l'en retire, comme pour les sauvegardes (lot 70c) ;
+  - une installation qui met à jour remplace son conteneur de base, sur le même volume :
+    une brève coupure, comme à tout changement d'image ;
+  - le paquet `mimorya-db` est nouveau sur `ghcr.io` : comme les autres (ADR-051), chaque
+    promotion vérifie qu'il se télécharge sans compte. Lié à un dépôt public, il devrait
+    l'être ; sinon, son propriétaire le rend public dans les réglages du paquet ;
+  - test (`infra/docker/wal-archive-test.sh`, en CI après le test d'installation de la
+    pile de production, puis de nouveau après la restauration de `backup-test.sh`) :
+    - un segment basculé est archivé en moins d'une minute, dans le dossier de son
+      système, nommé par son SHA-256, le fichier et les dossiers à la base seule ;
+    - une autre identité ne l'ouvre pas ; la bonne le déchiffre en un segment de 16 Mio
+      des WAL de PostgreSQL 16, au SHA-256 nommé ;
+    - remis avec le même contenu, il est accepté sans rien ajouter ; avec un autre, il
+      est refusé, le refus est dit, et le premier est gardé ; un fichier partiel laissé
+      avant ou après le lien est retiré ; aucun fichier partiel ne reste ;
+    - une sauvegarde de base n'est lisible que par son propriétaire, ne s'ouvre qu'avec
+      la bonne identité, contient l'étiquette de la copie, le fichier de contrôle et des
+      WAL, et son historique est archivé ; sans fichier nommé, elle va dans `backups/` ;
+    - après la restauration d'un dump dans une base nouvelle, celle-ci archive dans un
+      autre dossier, et celui de l'ancienne garde ses fichiers ;
+    - la base refuse de démarrer avec un destinataire qu'`age` refuse, sans rien créer
+      ni prendre le dossier de l'archive (CI, à côté du refus d'un mot de passe) ; sans
+      destinataires, elle démarre sans archiver (`archive_mode` à `off`) ni prendre ce
+      dossier ;
+  - suites (lot 70c) : la base n'essaie pas au démarrage qu'un lien physique se fait dans
+    le dossier de l'archive. Un montage qui accepte `chown` mais pas les liens physiques
+    (certains CIFS ou FUSE) fait échouer chaque archivage pendant qu'elle tourne, ce que
+    montre `pg_stat_archiver`.

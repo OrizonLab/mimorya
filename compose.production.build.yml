@@ -5,6 +5,12 @@
 #     -f compose.production.build.yml up -d --build
 # The CI checks the stack built this way.
 services:
+  db:
+    image: mimorya-db:local
+    build:
+      context: .
+      dockerfile: infra/docker/db.Dockerfile
+
   migrate:
     image: mimorya-api:local
     build:

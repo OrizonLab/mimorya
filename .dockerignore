@@ -9,3 +9,8 @@ apps/web/playwright-report
 **/*.log
 **/.env
 **/.env.*
+# The production stack's backups and WAL archive (ADR-166, ADR-206): never
+# in an image, and the archive, the database's (uid 999), unreadable to
+# whoever builds.
+backups
+wal-archive

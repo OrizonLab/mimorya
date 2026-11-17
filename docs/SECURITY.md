@@ -916,7 +916,7 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   (`mimorya-admin delete-company`, ADR-192), par le seul rôle propriétaire de la base, son
   sigle confirmé, aucun de ses runs en file ni en cours ni évaluation de ses compétences en
   cours ; la sortie de la commande en
-  est la trace, et les sauvegardes la gardent jusqu'à leur retrait. Avant elle, ce que la plateforme a déclaré pour elle chez d'autres services y est retiré par `mimorya-admin release-company` (ADR-193), dans le service `api` qui a la clé maître : chaque autorisation OAuth de ses serveurs MCP, de l'entreprise et de ses personnes, révoquée chez son serveur d'autorisation (RFC 7009), chaque bot Telegram retiré avec son webhook, chaque compte Google relié par ses personnes révoqué chez Google (ADR-194), tracés sans aucun jeton, rien n'étant pris sans la clé maître ; la suppression confirmée est refusée tant qu'il en reste. Les comptes Microsoft 365 reliés par ses personnes, Microsoft ne révoquant pas l'accord d'une seule application, et ses applications Slack et Teams restent chez leurs fournisseurs, comptés par la suppression, à retirer chez chacun ; les clients OAuth que la plateforme a enregistrés, les applications et les fournisseurs d'identité déclarés par l'entreprise y restent aussi, sans accord de personne.
+  est la trace, et les sauvegardes et l'archive des WAL (ADR-206) la gardent jusqu'à leur retrait. Avant elle, ce que la plateforme a déclaré pour elle chez d'autres services y est retiré par `mimorya-admin release-company` (ADR-193), dans le service `api` qui a la clé maître : chaque autorisation OAuth de ses serveurs MCP, de l'entreprise et de ses personnes, révoquée chez son serveur d'autorisation (RFC 7009), chaque bot Telegram retiré avec son webhook, chaque compte Google relié par ses personnes révoqué chez Google (ADR-194), tracés sans aucun jeton, rien n'étant pris sans la clé maître ; la suppression confirmée est refusée tant qu'il en reste. Les comptes Microsoft 365 reliés par ses personnes, Microsoft ne révoquant pas l'accord d'une seule application, et ses applications Slack et Teams restent chez leurs fournisseurs, comptés par la suppression, à retirer chez chacun ; les clients OAuth que la plateforme a enregistrés, les applications et les fournisseurs d'identité déclarés par l'entreprise y restent aussi, sans accord de personne.
   Sans effacement, un compte désactivé perd ses mémoires personnelles 30 jours après par
   défaut, de 7 à 90 selon l'entreprise (ADR-185, ADR-195), et ses conversations 24 mois
   après leur dernière activité par défaut, de 1 à 60 selon l'entreprise (ADR-186, ADR-195). Un document
@@ -929,8 +929,8 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   par `document_search` et `document_read` (ADR-096), que ce que son utilisateur peut
   lire, avec ses droits du moment ; un document hors de portée lui répond comme
   inexistant, et ses passages lui sont remis comme données. Une suppression n'atteint
-  pas les sauvegardes déjà faites (ADR-166) : la donnée y reste, chiffrée, jusqu'à ce
-  que la conservation fixée par l'exploitant retire ces sauvegardes.
+  pas les sauvegardes déjà faites (ADR-166), ni l'archive des WAL (ADR-206) : la donnée y
+  reste, chiffrée, jusqu'à ce que la conservation fixée par l'exploitant les retire.
 - **Export du journal d'audit** (ADR-181) : le SIEM de l'entreprise reçoit les
   identifiants des comptes, les adresses IP et les identifiants des personnes chez
   Slack, Telegram ou Teams que le journal porte ; l'entreprise,
@@ -1097,7 +1097,9 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   (phase 2), revue des licences (MIT/Apache/BSD privilégiées, AGPL exclue).
 - Sauvegardes de la base chiffrées par `age` pour des clés publiques, l'identité qui les
   ouvre restant hors du serveur, et restauration dans une pile nouvelle vérifiée en CI
-  (ADR-166, `infra/backup/`) ; restauration à un instant précis (WAL) en phase 3.
+  (ADR-166, `infra/backup/`) ; archive continue des WAL et sauvegarde de base, chiffrées
+  de même, l'archive jamais en clair ni remplacée (ADR-206) ; restauration à un instant
+  précis en phase 3.
 
 ## 11. Liste de contrôle pour chaque contribution
 
