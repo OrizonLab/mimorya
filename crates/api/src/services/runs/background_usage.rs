@@ -1,12 +1,13 @@
 //! What a call the platform makes on its own once a run ends costs (a lesson
 //! drawn from it, ADR-076; its conversation summarised, ADR-145): counted in
-//! that run, as its own calls are.
+//! that run, as its own calls are, on its runs' model and key (ADR-208).
 
-use mimorya_agent::llm::{LlmUsage, ModelRole, PriceTable};
+use mimorya_agent::llm::{LlmUsage, ModelRole};
 use mimorya_db::Database;
 use mimorya_db::repositories::usage::{NewUsage, append_usage};
 
 use super::db_ports::RunScope;
+use crate::services::llm::LlmService;
 
 /// The call `model` of `provider` answered, at the cost of `usage`.
 pub struct BackgroundCall<'a> {
@@ -17,11 +18,15 @@ pub struct BackgroundCall<'a> {
 
 pub async fn record_background_usage(
     db: &Database,
-    prices: &PriceTable,
+    llm: &LlmService,
     scope: RunScope,
     call: BackgroundCall<'_>,
 ) -> anyhow::Result<()> {
     let usage = call.usage;
+    let cost_micros = llm.prices().cost_micros(call.model, usage).unwrap_or(0);
+    let charge = llm
+        .charge(scope.tenant_id, ModelRole::Main, cost_micros)
+        .await?;
     let mut tx = db.begin(scope.tenant_id).await?;
     append_usage(
         &mut tx,
@@ -36,7 +41,8 @@ pub async fn record_background_usage(
             // Counted as runs count them: cached tokens are input too.
             input_tokens: i32::try_from(usage.input_total()).unwrap_or(i32::MAX),
             output_tokens: i32::try_from(usage.output_tokens).unwrap_or(i32::MAX),
-            cost_micros: prices.cost_micros(call.model, usage).unwrap_or(0),
+            cost_micros,
+            charge,
         },
     )
     .await?;

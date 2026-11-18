@@ -8,7 +8,6 @@
 
 use std::sync::Arc;
 
-use mimorya_agent::llm::PriceTable;
 use mimorya_agent::runtime::{MAX_KNOWN_LESSONS, RunOutcome, lesson_transcript, propose_lesson};
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
@@ -29,14 +28,12 @@ use crate::services::llm::LlmService;
 pub struct LessonCapture {
     db: Database,
     llm: Arc<LlmService>,
-    prices: Arc<PriceTable>,
     background: Arc<BackgroundTasks>,
 }
 
 impl LessonCapture {
     pub fn new(db: Database, llm: Arc<LlmService>, background: Arc<BackgroundTasks>) -> Self {
         Self {
-            prices: llm.prices().clone(),
             db,
             llm,
             background,
@@ -80,7 +77,7 @@ impl LessonCapture {
             model: &answer.model,
             usage: &answer.usage,
         };
-        record_background_usage(&self.db, &self.prices, scope, call).await?;
+        record_background_usage(&self.db, &self.llm, scope, call).await?;
         let Some(lesson) = answer.lesson else {
             return Ok(None);
         };

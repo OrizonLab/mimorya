@@ -34,7 +34,7 @@ Repères à l'intérieur des crates :
   sa proposition, `grants.rs`, ADR-168), `core/src/tools/`
   (contrat d'outil, outils typés, comptes reliés de la personne servie : `accounts.rs`,
   ADR-117, et son compte à la messagerie standard, ouvert pour un appel, le serveur qui le refuse nommé (`MailServerRole` : IMAP, SMTP ou CalDAV), ADR-205), `core/src/time_zone.rs` (fuseau de la plateforme : date donnée au modèle,
-  jours des outils, début du mois d'un budget mensuel, ADR-207), `core/src/skill_rules.rs` (ce qu'une compétence peut
+  jours des outils, début du mois d'un budget mensuel, ADR-207), `core/src/model_supply/` (formules de fourniture du modèle, bornes du plafond, du coefficient et des crédits, montant refacturé, montants en USD lus et écrits, ADR-208), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/account_links/` (comptes que chacun relie :
   application Microsoft 365 ou client Google Workspace déclaré, permissions déléguées,
   identité qui prouve que le compte est le sien, `microsoft365.rs`, `google.rs` ; ce qui
@@ -81,7 +81,7 @@ Repères à l'intérieur des crates :
   l'entreprise, une table par sorte (export du journal vers son SIEM, ADR-181, SCIM,
   ADR-183) : `bearer_tokens.rs` ; comptes tels que SCIM les lit et les crée, et
   l'identifiant que leur donne le fournisseur : `scim_users.rs`, ADR-183 ; fenêtres des
-  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; escalade de modèle de l'entreprise et ce que ses mécanismes ont dépensé, lu par rôle : `model_escalation.rs`, ADR-207 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives, et consommation de plus de cinq ans : `retention.rs`, ADR-185, ADR-186, ADR-197, selon les durées de chaque entreprise, lues avec ce que la purge applique : `retention_durations.rs`, ADR-195 ; compte effacé, ses liens comptés sous verrou, et sa suppression : `account_erasure.rs`, ADR-189 ; second facteur d'un compte, secret scellé, dernier pas accepté, refus de suite et codes de secours, et comptes qui en ont un actif : `second_factors.rs`, et connexions qui l'attendent, lues avant toute session, terminées à sa réinitialisation : `login_challenges.rs`, ADR-200, ADR-202 ; second facteur exigé par l'entreprise : `second_factor_settings.rs`, ADR-201 ; avis à l'auteur
+  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; escalade de modèle de l'entreprise et ce que ses mécanismes ont dépensé, lu par rôle : `model_escalation.rs`, ADR-207 ; formule de fourniture du modèle, registre des crédits en ajout seul et consommation sur la clé de l'exploitant, écrits par le seul rôle propriétaire : `model_supply.rs`, ADR-208 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives, et consommation de plus de cinq ans : `retention.rs`, ADR-185, ADR-186, ADR-197, selon les durées de chaque entreprise, lues avec ce que la purge applique : `retention_durations.rs`, ADR-195 ; compte effacé, ses liens comptés sous verrou, et sa suppression : `account_erasure.rs`, ADR-189 ; second facteur d'un compte, secret scellé, dernier pas accepté, refus de suite et codes de secours, et comptes qui en ont un actif : `second_factors.rs`, et connexions qui l'attendent, lues avant toute session, terminées à sa réinitialisation : `login_challenges.rs`, ADR-200, ADR-202 ; second facteur exigé par l'entreprise : `second_factor_settings.rs`, ADR-201 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
@@ -351,7 +351,7 @@ Repères à l'intérieur des crates :
   ensemble : ce qu'un processus change annoncé aux autres par PostgreSQL, ADR-085),
   `api/src/services/llm/` (fournisseurs de modèle de
   chaque entreprise : celui de ses conversations et celui qui relit leurs réponses,
-  chargés ensemble, `load.rs`, ADR-108), `api/src/services/embeddings/` (modèle d'embeddings de chaque
+  chargés ensemble, `load.rs`, ADR-108 ; formule de l'exploitant chargée avec eux, le modèle de la plateforme réservé aux formules 2 et 3, et ce que chaque appel est compté, `supply.rs`, ADR-208), `api/src/services/embeddings/` (modèle d'embeddings de chaque
   entreprise, vecteur d'une demande, indexation de la mémoire et des passages des
   documents, `sources.rs`, ADR-074, ADR-096), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),
@@ -378,7 +378,9 @@ Repères à l'intérieur des crates :
   (`connector_authorization/revocation/company.rs`), passerelle retirée comme par
   l'administration (`services/admin/gateway_withdrawal.rs`), ADR-193,
   vérification du journal d'audit scellé, `verify.rs`, et ce qu'elle dit à
-  l'exploitant, `report.rs`, ADR-178),
+  l'exploitant, `report.rs`, ADR-178, formule de fourniture du modèle d'une entreprise,
+  plafond, coefficient et crédits, par le rôle propriétaire, `model_supply.rs` et
+  `bin/admin/supply.rs`, ADR-208),
   `api/src/mail/` (envoi SMTP), `api/src/secrets/` (chiffrement AES-256-GCM des secrets),
   `api/tests/` (intégration, harnais dans `support/`, dont les fournisseurs d'identité
   simulés, OpenID Connect (qui joue aussi Google, ADR-121) et SAML, et les serveurs de messagerie simulés que l'API atteint, leur autorité reconnue (`mail_servers.rs`, `BuildOptions::connector_test_roots`, ADR-205)).
@@ -556,9 +558,12 @@ Avant chaque commit : `pnpm check && pnpm test:int` doivent passer.
      `tenant_id` vers `tenants`, `ON DELETE CASCADE` (ADR-192) ;
      `crates/db/tests/tenant_deletion.rs` échoue sinon.
    - Le runtime utilise exclusivement `DATABASE_APP_URL` (rôle `mimorya_app`, RLS
-     appliquée). Le rôle propriétaire ne sert qu'aux migrations, au seed et à la
+     appliquée). Le rôle propriétaire ne sert qu'aux migrations, au seed, à la
      suppression d'une entreprise suspendue par l'exploitant (ADR-192 :
-     `mimorya-admin delete-company`), qu'aucun processus de l'application ne peut faire.
+     `mimorya-admin delete-company`), qu'aucun processus de l'application ne peut faire,
+     et à la fourniture du modèle d'une entreprise par l'exploitant (ADR-208 : formule,
+     plafond, coefficient et crédits, `mimorya-admin set-model-supply`…), que le rôle
+     applicatif ne peut que lire.
    - Migrations : nouveau fichier SQL numéroté dans `crates/db/migrations/`
      (`NNNN_description.sql`), écrit et relu à la main, appliqué par
      `run_migrations` avec le rôle propriétaire. **Ne jamais modifier une migration

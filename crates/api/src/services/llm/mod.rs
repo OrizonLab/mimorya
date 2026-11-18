@@ -1,5 +1,6 @@
 //! Which model providers serve a company (ADR-024): for its runs, its own
-//! when an administrator configured one, else the platform's; for reviewing
+//! when an administrator configured one, else the platform's, only while
+//! the operator supplies it (ADR-208); for reviewing
 //! their answers, one it chose apart, else the same as its runs (ADR-108).
 //! When the company's own provider for its runs cannot be used, its runs
 //! stop rather than fall back: the company decided where its data goes. When
@@ -21,11 +22,13 @@ use crate::secrets::SecretStore;
 
 mod escalation;
 mod load;
+mod supply;
 
 pub use escalation::{
     EscalationModel, MonthSpending, conversations_choice, escalation_choice, month_spending,
 };
 pub use load::api_key_secret;
+pub use supply::Supply;
 
 /// Builds a provider from a configuration (tests substitute a scripted one).
 pub type ProviderFactory =
@@ -38,7 +41,8 @@ pub fn default_factory() -> ProviderFactory {
 /// Where a company's runs go.
 #[derive(Clone)]
 pub enum Resolution {
-    /// The company has no provider of its own.
+    /// The company has no provider of its own: the platform's, if the
+    /// operator configured one and supplies the company (ADR-208).
     Platform(Option<Arc<dyn LlmProvider>>),
     Company(Arc<dyn LlmProvider>),
     /// The company's own cannot be used; why, in French, for its administrators.
@@ -62,6 +66,8 @@ pub struct Models {
     pub review: Review,
     /// Its escalation model, if its runs may use one (ADR-207).
     pub escalation: Option<EscalationModel>,
+    /// How the operator supplies it (ADR-208).
+    pub supply: Supply,
 }
 
 /// The company chose its own provider and it cannot be used (as opposed to
@@ -138,11 +144,14 @@ impl LlmService {
             Err(generation) => generation,
         };
         let mut tx = self.db.begin(tenant_id).await?;
+        let supply = supply::company_supply(&mut tx, tenant_id).await?;
         let runs = match self
             .company_choice(&mut tx, tenant_id, ModelPurpose::Conversations)
             .await?
         {
-            None => Resolution::Platform(self.platform.clone()),
+            // Never on the operator's key without a formula of its (ADR-208).
+            None if supply.formula.on_operator_key() => Resolution::Platform(self.platform.clone()),
+            None => Resolution::Platform(None),
             Some(Ok(provider)) => Resolution::Company(provider),
             Some(Err(reason)) => Resolution::Refused(reason),
         };
@@ -160,6 +169,7 @@ impl LlmService {
             runs,
             review,
             escalation,
+            supply,
         });
         if let Resolution::Refused(reason) = &models.runs {
             tracing::warn!(%tenant_id, reason = %reason, "Company model provider unusable");

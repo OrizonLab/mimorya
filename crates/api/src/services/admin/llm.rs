@@ -199,6 +199,18 @@ pub async fn test_llm(
         on_text_delta: None,
     };
     let outcome = provider.complete(&request).await;
+    let role = match purpose {
+        ModelPurpose::Conversations => ModelRole::Main,
+        ModelPurpose::Verification => ModelRole::Review,
+    };
+    // Charged as the company's other calls, on whose key (ADR-208).
+    let cost_micros = match &outcome {
+        Ok(response) => prices
+            .cost_micros(&response.model, &response.usage)
+            .unwrap_or(0),
+        Err(_) => 0,
+    };
+    let charge = llm.charge(tenant_id, role, cost_micros).await?;
     let mut tx = db.begin(tenant_id).await?;
     let result = match outcome {
         Ok(response) => {
@@ -209,14 +221,9 @@ pub async fn test_llm(
                     user_id: Some(access.subject.user_id),
                     run_id: None,
                     kind: "llm",
-                    role: match purpose {
-                        ModelPurpose::Conversations => ModelRole::Main,
-                        ModelPurpose::Verification => ModelRole::Review,
-                    }
-                    .as_str(),
-                    cost_micros: prices
-                        .cost_micros(&response.model, &response.usage)
-                        .unwrap_or(0),
+                    role: role.as_str(),
+                    cost_micros,
+                    charge,
                     provider: response.provider,
                     model: response.model.clone(),
                     // Counted as runs count them: cached tokens are input too.

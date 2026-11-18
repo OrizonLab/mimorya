@@ -462,7 +462,16 @@ qu'au-delà de ce que PostgreSQL tient.
   pour les mémoires actives, et pour chaque demande au moment de chercher.
 - Suivi des coûts : chaque appel enregistre fournisseur, modèle, rôle (principal,
   escalade, classement, conseiller, contrôle), tokens et coût estimé dans
-  `usage_records`.
+  `usage_records`, avec la formule sous laquelle il est fait et, sur la clé de
+  l'exploitant, son montant refacturé (ADR-208).
+- **Formules de fourniture du modèle** (ADR-208) : la clé de l'entreprise (formule 1), la
+  clé de l'exploitant dans un plafond mensuel (formule 2) ou contre un crédit prépayé
+  (formule 3). Le modèle de la plateforme ne sert que les formules 2 et 3 ; l'exploitant
+  les attribue, avec le plafond, le coefficient de refacturation et les crédits, par
+  `mimorya-admin` et le rôle propriétaire, l'application ne faisant que les lire
+  (`services/llm/supply.rs`, chargées avec les modèles de l'entreprise). Fait : les
+  formules, les commandes et le compte de chaque appel (étape 0) ; les limites,
+  l'escalade en formules 2 et 3 et les écrans suivent.
 - **Escalade de modèle** (ADR-207) : un modèle plus puissant, chez le fournisseur propre
   de l'entreprise, appelé quand un mécanisme le demande, dans un budget mensuel et un
   nombre d'escalades par run (réglages, escalade après échec du contrôle et routeur en

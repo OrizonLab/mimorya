@@ -39,6 +39,7 @@ use crate::services::access::AccessService;
 use crate::services::account_links::{AccountLinkService, PersonAccounts};
 use crate::services::embeddings::{EmbeddingService, UsageBy};
 use crate::services::event_bus::RunEventBus;
+use crate::services::llm::LlmService;
 
 /// No event recorded yet by this execution.
 const NO_EVENT: i32 = -1;
@@ -91,6 +92,8 @@ pub struct DbPorts {
     pub(super) sub_run: bool,
     /// The accounts the run's user linked, for its tools (ADR-117).
     account_links: Arc<AccountLinkService>,
+    /// What each model call is charged, on whose key (ADR-208).
+    llm: Arc<LlmService>,
 }
 
 /// The ports of `scope`'s run, executed by `executor` under `fence`.
@@ -110,6 +113,7 @@ pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) 
         leased: scope.run_id,
         sub_run: false,
         account_links: executor.account_links.clone(),
+        llm: executor.llm.clone(),
     }
     .into_engine_ports()
 }
@@ -302,6 +306,15 @@ impl ApprovalStore for DbPorts {
 #[async_trait]
 impl UsageSink for DbPorts {
     async fn record(&self, record: UsageRecord) -> anyhow::Result<()> {
+        // A model call is charged as the company's models stand (ADR-208).
+        let charge = match record.kind {
+            "llm" => {
+                self.llm
+                    .charge(self.scope.tenant_id, record.role, record.cost_micros)
+                    .await?
+            }
+            _ => usage::UsageCharge::CLIENT_KEY,
+        };
         let mut tx = self.tx().await?;
         usage::append_usage(
             &mut tx,
@@ -316,6 +329,7 @@ impl UsageSink for DbPorts {
                 input_tokens: saturating_i32(record.input_tokens),
                 output_tokens: saturating_i32(record.output_tokens),
                 cost_micros: record.cost_micros,
+                charge,
             },
         )
         .await?;

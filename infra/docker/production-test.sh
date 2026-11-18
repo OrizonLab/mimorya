@@ -7,7 +7,9 @@
 # change; no demonstration company exists and the sign-in page lists no demo
 # account; the operator creates a company (ADR-033), whose first
 # administrator opens the invitation link, chooses a password and gets a
-# secure session in a company that is not a demo; the operator suspends the
+# secure session in a company that is not a demo; the operator supplies its
+# model, capped, through the `migrate` service, which the `api` service
+# cannot (ADR-208); the operator suspends the
 # company, whose session is refused at once, then reactivates it, whose
 # session is accepted again (ADR-191); suspended again, what the platform
 # declared for it at other services is withdrawn by the `api` service, which
@@ -66,6 +68,19 @@ fi
 slug=verification-$(date +%s)
 session=$(open_company "$base" "$slug" 'Entreprise de vérification' "$(openssl rand -hex 24)")
 check_company_of "$base" "$session" 'Entreprise de vérification'
+
+# The operator supplies the company's model (ADR-208) as the database's
+# owner, through the service that holds its address; the api service, with
+# the application's role, cannot.
+supplied=$("${compose[@]}" run --rm --no-deps migrate \
+  mimorya-admin set-model-supply --slug "$slug" --formula capped --cap 50) ||
+  fail "model not supplied: $supplied"
+grep -q 'modèle fourni avec plafond' <<<"$supplied" || fail "unexpected supply: $supplied"
+grep -q 'Plafond : 50,00 USD par mois' <<<"$supplied" || fail "unexpected cap: $supplied"
+if "${compose[@]}" exec -T api mimorya-admin set-model-supply --slug "$slug" \
+  --formula prepaid >/dev/null 2>&1; then
+  fail "the api service supplied a company's model"
+fi
 
 suspended=$("${compose[@]}" exec -T api mimorya-admin suspend-company --slug "$slug") ||
   fail "company not suspended: $suspended"

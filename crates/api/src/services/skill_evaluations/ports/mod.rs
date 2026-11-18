@@ -36,7 +36,11 @@ pub struct CasePorts {
 }
 
 pub fn case_ports(services: &Services, scope: CaseScope, evaluated: EvaluatedVersion) -> CasePorts {
-    let journal = Arc::new(Journal::new(services.db.clone(), scope));
+    let journal = Arc::new(Journal::new(
+        services.db.clone(),
+        services.llm.clone(),
+        scope,
+    ));
     let knowledge = Arc::new(Knowledge::new(
         services.db.clone(),
         services.embeddings.clone(),

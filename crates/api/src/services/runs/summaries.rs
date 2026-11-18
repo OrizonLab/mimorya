@@ -12,7 +12,6 @@
 
 use std::sync::Arc;
 
-use mimorya_agent::llm::PriceTable;
 use mimorya_agent::runtime::{FoldedMessage, RunOutcome, summarise_conversation};
 use mimorya_core::conversation_summary::{MAX_PASSES, Speaker, Unfolded, messages_to_fold};
 use mimorya_db::Database;
@@ -42,7 +41,6 @@ pub struct ConversationSummaries {
     /// Whom the pass is for may still use the agent (ADR-035).
     access: Arc<AccessService>,
     llm: Arc<LlmService>,
-    prices: Arc<PriceTable>,
     background: Arc<BackgroundTasks>,
     /// Raised when the service stops: no further pass is chained.
     stopping: watch::Receiver<bool>,
@@ -56,7 +54,6 @@ impl ConversationSummaries {
         background: Arc<BackgroundTasks>,
     ) -> Self {
         Self {
-            prices: llm.prices().clone(),
             db,
             access,
             llm,
@@ -157,7 +154,7 @@ impl ConversationSummaries {
             model: &answer.model,
             usage: &answer.usage,
         };
-        record_background_usage(&self.db, &self.prices, scope, call).await?;
+        record_background_usage(&self.db, &self.llm, scope, call).await?;
         let Some(content) = answer.summary else {
             return Ok(false);
         };

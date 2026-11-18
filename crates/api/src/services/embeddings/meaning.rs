@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use mimorya_agent::llm::{Embedded, LlmUsage, ModelRole};
 use mimorya_db::repositories::memory::Meaning;
-use mimorya_db::repositories::usage::{NewUsage, append_usage};
+use mimorya_db::repositories::usage::{NewUsage, UsageCharge, append_usage};
 use uuid::Uuid;
 
 use super::{CompanyEmbedder, EmbeddingService};
@@ -112,6 +112,8 @@ impl EmbeddingService {
                     .prices
                     .cost_micros(&embedder.model, &usage)
                     .unwrap_or(0),
+                // Always the company's own model (ADR-074, ADR-208).
+                charge: UsageCharge::CLIENT_KEY,
             },
         )
         .await?;

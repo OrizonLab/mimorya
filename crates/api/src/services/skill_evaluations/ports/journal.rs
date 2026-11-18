@@ -1,9 +1,10 @@
 //! What a case played for an evaluation records (ADR-104): the tools it
 //! called, kept with its result, and what the audit and the company's
-//! consumption say of it, in the name of whom it ran for. It is no run:
-//! no event streamed, no step saved, no journal of calls.
+//! consumption say of it, in the name of whom it ran for, charged as the
+//! company's models stand (ADR-208). It is no run: no event streamed, no
+//! step saved, no journal of calls.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use mimorya_agent::runtime::{
@@ -17,6 +18,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::CaseScope;
+use crate::services::llm::LlmService;
 
 /// A tool the case called, and what came of it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -29,14 +31,16 @@ pub struct ToolTrace {
 
 pub struct Journal {
     db: Database,
+    llm: Arc<LlmService>,
     scope: CaseScope,
     tools: Mutex<Vec<ToolTrace>>,
 }
 
 impl Journal {
-    pub fn new(db: Database, scope: CaseScope) -> Self {
+    pub fn new(db: Database, llm: Arc<LlmService>, scope: CaseScope) -> Self {
         Self {
             db,
+            llm,
             scope,
             tools: Mutex::new(Vec::new()),
         }
@@ -99,6 +103,14 @@ impl AuditSink for Journal {
 #[async_trait]
 impl UsageSink for Journal {
     async fn record(&self, record: UsageRecord) -> anyhow::Result<()> {
+        let charge = match record.kind {
+            "llm" => {
+                self.llm
+                    .charge(self.scope.tenant_id, record.role, record.cost_micros)
+                    .await?
+            }
+            _ => usage::UsageCharge::CLIENT_KEY,
+        };
         let mut tx = self.db.begin(self.scope.tenant_id).await?;
         usage::append_usage(
             &mut tx,
@@ -113,6 +125,7 @@ impl UsageSink for Journal {
                 input_tokens: i32::try_from(record.input_tokens).unwrap_or(i32::MAX),
                 output_tokens: i32::try_from(record.output_tokens).unwrap_or(i32::MAX),
                 cost_micros: record.cost_micros,
+                charge,
             },
         )
         .await?;

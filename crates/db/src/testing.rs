@@ -4,6 +4,7 @@
 use std::str::FromStr;
 use std::time::Duration;
 
+use mimorya_core::model_supply::DEFAULT_MONTHLY_CAP_MICROS;
 use serde_json::json;
 use sqlx::postgres::PgConnectOptions;
 use sqlx::{ConnectOptions, Connection, PgConnection};
@@ -103,6 +104,16 @@ pub async fn reset_test_database(
         "insert into tenants (id, slug, name) values ($1, 'autre-entreprise', 'Autre entreprise')",
     )
     .bind(OTHER_TENANT_ID)
+    .execute(&mut *tx)
+    .await?;
+    // On the platform's model, as the companies the migration kept on it
+    // (ADR-208).
+    sqlx::query(
+        "insert into tenant_model_supply (tenant_id, formula, monthly_cap_micros) \
+         values ($1, 'capped', $2)",
+    )
+    .bind(OTHER_TENANT_ID)
+    .bind(DEFAULT_MONTHLY_CAP_MICROS)
     .execute(&mut *tx)
     .await?;
     sqlx::query(

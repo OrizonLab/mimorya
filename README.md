@@ -123,6 +123,11 @@ mimorya-admin release-company --slug acme      # révoque ce que la plateforme a
 mimorya-admin delete-company --slug acme       # DATABASE_URL : montre ce qu'une entreprise suspendue garde (ADR-192)
 mimorya-admin delete-company --slug acme --confirm acme   # la supprime avec tout, son journal d'audit compris
 mimorya-admin verify-audit --anchor <entreprise>:<place>:<sceau>   # journal d'audit scellé (ADR-178)
+mimorya-admin model-supply --slug acme         # DATABASE_URL : formule de fourniture du modèle, consommation et solde (ADR-208)
+mimorya-admin set-model-supply --slug acme --formula capped --cap 250   # clé de l'exploitant, 250 USD par mois
+mimorya-admin set-model-supply --slug acme --formula prepaid            # clé de l'exploitant contre un crédit prépayé
+mimorya-admin set-markup --slug acme --percent 15                       # coefficient de refacturation
+mimorya-admin add-credit --slug acme --amount 500 --reference FAC-2026-0042   # versement ; négatif pour une correction
 ```
 
 `create-company`, `invite`, `suspend-company`, `reactivate-company`, `release-company` et
@@ -133,6 +138,16 @@ et ferme les instances de ses connecteurs : au mieux, comme toute invalidation (
 `delete-company` passe par le rôle propriétaire (`DATABASE_URL`), seul à pouvoir supprimer
 une entreprise : dans la pile de production,
 `docker compose run --rm migrate mimorya-admin delete-company --slug acme --confirm acme`.
+La fourniture du modèle d'une entreprise (ADR-208) aussi : le rôle applicatif ne fait que la
+lire. Une entreprise neuve est en formule 1, sa propre clé : sans elle, elle n'a pas de
+modèle, jusqu'à ce que l'exploitant lui donne la formule 2, la clé de l'exploitant dans un
+plafond mensuel (`--formula capped`, 100 USD sans `--cap`, sans plafond seulement avec
+`--cap unlimited`), ou 3, contre un crédit prépayé (`--formula prepaid`, puis `add-credit`).
+`model-supply` montre la formule, le coefficient, la consommation du mois sur la clé de
+l'exploitant, au coût réel et au montant refacturé, les versements et le solde, recalculé à
+chaque fois. Chaque changement est tracé dans le journal d'audit de l'entreprise (acteur
+`system`) ; un versement n'est jamais modifié : une correction est un versement de plus,
+avec sa propre référence.
 Gardez sa sortie : le journal d'audit de l'entreprise part avec elle, et ses sauvegardes la
 gardent jusqu'à leur retrait (après une restauration, supprimez-la de nouveau). Avant elle,
 `release-company`, dans le service `api` qui a la clé maître
