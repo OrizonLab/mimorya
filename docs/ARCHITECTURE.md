@@ -465,7 +465,7 @@ qu'au-delà de ce que PostgreSQL tient.
   `usage_records`.
 - **Escalade de modèle** (ADR-207) : un modèle plus puissant, chez le fournisseur propre
   de l'entreprise, appelé quand un mécanisme le demande, dans un budget mensuel et un
-  nombre d'escalades par run (réglages faits, mécanismes à venir).
+  nombre d'escalades par run (réglages et escalade après échec du contrôle faits ; routeur et advisor à venir).
 
 ## 10. Observabilité et exploitation
 

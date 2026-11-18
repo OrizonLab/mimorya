@@ -11,6 +11,7 @@ mod conversation_turn;
 mod db_ports;
 mod deliverables;
 mod document_ports;
+mod escalation_budget;
 mod events;
 mod executor;
 mod expiry;

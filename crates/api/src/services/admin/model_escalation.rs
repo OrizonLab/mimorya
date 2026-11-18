@@ -8,24 +8,23 @@
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::llm::{
-    ESCALATION_BUDGET_ROLES, EscalationChoice, EscalationRequest, PriceTable, TenantLlmChoice,
-    check_escalation, escalation_problem,
+    EscalationChoice, EscalationRequest, TenantLlmChoice, check_escalation, escalation_problem,
 };
 use mimorya_core::DomainError;
-use mimorya_core::time_zone::month_start;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
-use mimorya_db::repositories::llm_settings::{ModelPurpose, get_llm_settings};
 use mimorya_db::repositories::model_escalation::{
-    ModelEscalationRow, NewModelEscalation, escalation_spent, model_escalation,
-    remove_model_escalation, set_model_escalation,
+    NewModelEscalation, model_escalation, remove_model_escalation, set_model_escalation,
 };
 use serde_json::json;
 use sqlx::PgConnection;
 
 use super::{audit_entry, begin_change};
 use crate::contract::admin::ModelEscalationUpdate;
-use crate::services::AccessContext;
+use crate::services::llm::{
+    MonthSpending, conversations_choice, escalation_choice, month_spending,
+};
+use crate::services::{AccessContext, LlmService};
 
 const PERMISSION: &str = "settings:manage";
 
@@ -44,25 +43,25 @@ pub struct StoredEscalation {
     pub updated_at: DateTime<Utc>,
 }
 
-/// What the mechanisms cost since the start of the month.
-pub struct MonthSpending {
-    pub spent_micros: i64,
-    pub month_start: DateTime<Utc>,
-}
-
 pub async fn company_model_escalation(
     db: &Database,
+    llm: &LlmService,
     access: &AccessContext,
 ) -> anyhow::Result<EscalationOverview> {
     access.require_tenant_wide(PERMISSION)?;
     let mut tx = db.begin(access.subject.tenant_id).await?;
     let main = conversations_choice(&mut tx).await?;
-    let stored = model_escalation(&mut tx).await?.map(stored_escalation);
+    let stored = model_escalation(&mut tx)
+        .await?
+        .map(|row| StoredEscalation {
+            updated_at: row.updated_at,
+            choice: escalation_choice(row),
+        });
     let spending = month_spending(&mut tx).await?;
     tx.commit().await?;
     let problem = stored
         .as_ref()
-        .and_then(|stored| escalation_problem(&stored.choice, main.as_ref()));
+        .and_then(|stored| escalation_problem(&stored.choice, main.as_ref(), llm.prices()));
     Ok(EscalationOverview {
         main,
         stored,
@@ -72,11 +71,12 @@ pub async fn company_model_escalation(
 }
 
 /// Sets the company's escalation, if it has its own provider and the
-/// choice keeps to the rules, its model priced.
+/// choice keeps to the rules, its model priced; its runs load it again,
+/// here and in the other processes.
 pub async fn set_company_model_escalation(
     db: &Database,
+    llm: &LlmService,
     access: &AccessContext,
-    prices: &PriceTable,
     update: &ModelEscalationUpdate,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
@@ -92,7 +92,7 @@ pub async fn set_company_model_escalation(
         max_per_run: update.max_per_run,
     };
     let choice =
-        check_escalation(main.as_ref(), &request, prices).map_err(DomainError::validation)?;
+        check_escalation(main.as_ref(), &request, llm.prices()).map_err(DomainError::validation)?;
     let previous = model_escalation(&mut tx).await?;
     let max_per_run = i32::try_from(choice.max_per_run)?;
     set_model_escalation(
@@ -125,12 +125,14 @@ pub async fn set_company_model_escalation(
     )
     .await?;
     tx.commit().await?;
+    llm.invalidate(tenant_id);
     Ok(())
 }
 
 /// Removes the company's escalation: its runs keep their main model.
 pub async fn reset_company_model_escalation(
     db: &Database,
+    llm: &LlmService,
     access: &AccessContext,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
@@ -145,6 +147,7 @@ pub async fn reset_company_model_escalation(
     )
     .await?;
     tx.commit().await?;
+    llm.invalidate(tenant_id);
     Ok(())
 }
 
@@ -160,41 +163,4 @@ pub async fn escalation_budget(
         row.monthly_budget_micros,
         month_spending(conn).await?,
     )))
-}
-
-async fn month_spending(conn: &mut PgConnection) -> anyhow::Result<MonthSpending> {
-    let month_start = month_start(Utc::now());
-    let roles = ESCALATION_BUDGET_ROLES.map(|role| role.as_str());
-    Ok(MonthSpending {
-        spent_micros: escalation_spent(conn, month_start, &roles).await?,
-        month_start,
-    })
-}
-
-/// The model of the company's conversations, if it has its own provider.
-async fn conversations_choice(conn: &mut PgConnection) -> anyhow::Result<Option<TenantLlmChoice>> {
-    Ok(get_llm_settings(conn, ModelPurpose::Conversations)
-        .await?
-        .map(|row| TenantLlmChoice {
-            provider: row.provider,
-            model: row.model,
-            base_url: row.base_url,
-        }))
-}
-
-fn stored_escalation(row: ModelEscalationRow) -> StoredEscalation {
-    StoredEscalation {
-        choice: EscalationChoice {
-            provider: row.provider,
-            base_url: row.base_url,
-            model: row.model,
-            after_failure: row.after_failure,
-            router: row.router,
-            advisor: row.advisor,
-            monthly_budget_micros: row.monthly_budget_micros,
-            // Kept between 1 and 50 by the table.
-            max_per_run: u32::try_from(row.max_per_run).unwrap_or(1),
-        },
-        updated_at: row.updated_at,
-    }
 }

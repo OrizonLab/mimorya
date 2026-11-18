@@ -229,7 +229,7 @@ Deux niveaux, cumulables :
 
 En cas d'échec : la critique est renvoyée à l'agent dans un message de la plateforme
 (« Contrôle qualité automatique ») et l'agent corrige,
-dans la limite de `maxCorrectionAttempts` (défaut 2). Les échecs résiduels sont
+dans la limite de `maxCorrectionAttempts` (défaut 2). Ses corrections épuisées, si l'entreprise a activé l'escalade après échec (ADR-207), le run continue, une fois, avec son modèle d'escalade, depuis où il en est : les actions faites ne sont pas refaites, les validations restent les mêmes, dans le budget du mois et les escalades permises par run. Les échecs résiduels sont
 **affichés** à l'utilisateur, jamais masqués. Chaque verdict est enregistré dans
 `agent_runs.verification` et alimente l'apprentissage (§8).
 
@@ -417,4 +417,6 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   désactivés par défaut : après un échec du contrôle de la réponse, par un routeur en
   amont, par l'advisor d'Anthropic. Un budget mensuel (USD) et un nombre d'escalades par
   run le bornent ; au-delà, le run continue avec le modèle principal. Fait : les
-  réglages (étape 0) ; les mécanismes suivent, étape par étape.
+  réglages (étape 0) et l'escalade après échec (étape 1) ; le routeur et l'advisor
+  suivent. Seul un modèle tarifé sert (aujourd'hui, ceux d'Anthropic), et la table des
+  prix n'est remplacée que par les tests.

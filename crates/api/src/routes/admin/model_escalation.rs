@@ -25,7 +25,7 @@ pub async fn show(
     Auth(identity): Auth,
 ) -> ApiResult<Json<ModelEscalationView>> {
     let access = state.access.context(identity).await?;
-    let overview = company_model_escalation(&state.db, &access).await?;
+    let overview = company_model_escalation(&state.db, &state.llm, &access).await?;
     Ok(Json(ModelEscalationView {
         main_model: overview.main.map(|main| main.model),
         settings: overview.stored.map(|stored| ModelEscalationSettings {
@@ -65,12 +65,12 @@ pub async fn update(
     Body(body): Body<ModelEscalationUpdate>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    set_company_model_escalation(&state.db, &access, state.llm.prices(), &body).await?;
+    set_company_model_escalation(&state.db, &state.llm, &access, &body).await?;
     Ok(Json(Done::OK))
 }
 
 pub async fn reset(State(state): State<AppState>, Auth(identity): Auth) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    reset_company_model_escalation(&state.db, &access).await?;
+    reset_company_model_escalation(&state.db, &state.llm, &access).await?;
     Ok(Json(Done::OK))
 }

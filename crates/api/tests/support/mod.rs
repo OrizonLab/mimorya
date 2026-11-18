@@ -138,6 +138,8 @@ pub struct TestApi {
     pub company_model: Arc<ScriptedProvider>,
     /// Reviews the answers of a company that chose `llm::REVIEW_MODEL` (ADR-108).
     pub review_model: Arc<ScriptedProvider>,
+    /// Serves a company that escalates to `llm::ESCALATION_MODEL` (ADR-207).
+    pub escalation_model: Arc<ScriptedProvider>,
     /// Every configuration a company provider was built from (key included).
     pub built: Arc<Mutex<Vec<ProviderConfig>>>,
     /// What the app e-mailed, when started with `start_with_mailer`.
@@ -266,11 +268,13 @@ impl TestApi {
         ]);
         vars.extend(env.iter().map(|(k, v)| (*k, (*v).to_string())));
         let config = AppConfig::from_vars(|key| vars.get(key).cloned()).expect("config");
-        let company_model = Arc::new(ScriptedProvider::new(Vec::new()));
-        let review_model = Arc::new(ScriptedProvider::new(Vec::new()));
+        let models = llm::CompanyModels {
+            company: Arc::new(ScriptedProvider::new(Vec::new())),
+            review: Arc::new(ScriptedProvider::new(Vec::new())),
+            escalation: Arc::new(ScriptedProvider::new(Vec::new())),
+        };
         let built = Arc::new(Mutex::new(Vec::new()));
-        let factory =
-            llm::company_factory(company_model.clone(), review_model.clone(), built.clone());
+        let factory = llm::company_factory(&models, built.clone());
         let embedder = Arc::new(ConceptEmbedder::new(embeddings::CONCEPTS));
         let embedders_built = Arc::new(Mutex::new(Vec::new()));
         let embedding_factory: EmbeddingFactory = {
@@ -310,8 +314,9 @@ impl TestApi {
         Self {
             app,
             model,
-            company_model,
-            review_model,
+            company_model: models.company,
+            review_model: models.review,
+            escalation_model: models.escalation,
             built,
             mail,
             dns,

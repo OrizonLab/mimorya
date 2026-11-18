@@ -71,7 +71,11 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
           Un modèle plus puissant, chez le même fournisseur que vos conversations et avec la même
           clé, n’intervient que quand un mécanisme activé le demande. Chaque appel compte dans un
           budget mensuel (USD) et dans un nombre d’escalades par run ; au-delà, le run continue avec
-          le modèle principal.
+          le modèle principal. Seul un modèle dont la plateforme connaît le prix peut servir
+          (aujourd’hui, ceux d’Anthropic) : sans prix, le budget ne pourrait pas borner ses appels.
+          Après un échec du contrôle des réponses, une fois les corrections du modèle principal
+          épuisées, le modèle d’escalade reprend le run là où il en est, une fois par run ; les
+          actions déjà faites ne sont pas refaites, et les validations restent les mêmes.
         </p>
         {!own && (
           <p className="text-sm">

@@ -124,7 +124,7 @@ Repères à l'intérieur des crates :
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
   (`lesson.rs`, ADR-076), résumé des messages anciens d'une conversation
   (`conversation_summary.rs`, ADR-145), point d'étape d'une mission dont le budget est atteint
-  (`handoff.rs`, ADR-089), ports, dont les documents lus par un run
+  (`handoff.rs`, ADR-089), revue d'une réponse candidate (`final_answer.rs`), modèle d'escalade appel par appel et après un échec du contrôle, ses bornes et son état dans le point de reprise (`escalation.rs`, ADR-207), ports, dont les documents lus par un run
   (`document_store.rs`, ADR-096), sous-agents : profils, consignes, run enfant et
   sa part du budget (`delegation/`), délégations d'une étape en parallèle
   (`tool_calls/delegated.rs`), ADR-098),
@@ -301,7 +301,7 @@ Repères à l'intérieur des crates :
   `api/src/services/skill_evaluations/` (évaluations des compétences : une passe par
   entreprise, quatre à la fois par processus (`pass.rs`, ADR-157), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
   (`ports/`), lecture (`view.rs`), ADR-104 ; ce qu'elles peuvent coûter sur trente jours
-  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; escalade de modèle de l'entreprise, choisie et lue avec la dépense du mois par `services/admin/model_escalation.rs`, ADR-207 ; une
+  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; escalade de modèle de l'entreprise, choisie et lue avec la dépense du mois par `services/admin/model_escalation.rs`, chargée pour ses runs avec ses autres modèles (`services/llm/escalation.rs`) et bornée par la dépense du mois (`services/runs/escalation_budget.rs`), ADR-207 ; une
   proposition de l'agent jouée sans les connecteurs qui joignent l'extérieur, retirés par
   `services/connectors/tenant_tools.rs`, ADR-153),
   `api/src/services/connectors/` (instances des connecteurs gardées par processus,

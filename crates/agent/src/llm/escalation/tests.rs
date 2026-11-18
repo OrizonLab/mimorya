@@ -41,7 +41,10 @@ fn a_model_of_the_conversations_provider_is_kept_with_its_provider_and_endpoint(
             max_per_run: 5,
         }
     );
-    assert_eq!(escalation_problem(&choice, Some(&haiku())), None);
+    assert_eq!(
+        escalation_problem(&choice, Some(&haiku()), &PriceTable::default()),
+        None
+    );
 }
 
 #[test]
@@ -138,12 +141,12 @@ fn a_choice_stops_serving_once_the_conversations_provider_changes() {
         base_url: Some("http://llm.interne/v1".into()),
     };
     assert!(
-        escalation_problem(&choice, Some(&moved))
+        escalation_problem(&choice, Some(&moved), &PriceTable::default())
             .unwrap()
             .contains("a changé")
     );
     assert!(
-        escalation_problem(&choice, None)
+        escalation_problem(&choice, None, &PriceTable::default())
             .unwrap()
             .contains("fournisseur propre")
     );
@@ -152,7 +155,7 @@ fn a_choice_stops_serving_once_the_conversations_provider_changes() {
         ..haiku()
     };
     assert!(
-        escalation_problem(&choice, Some(&same))
+        escalation_problem(&choice, Some(&same), &PriceTable::default())
             .unwrap()
             .contains("doit différer")
     );
@@ -167,4 +170,20 @@ fn a_model_without_a_known_price_is_refused_the_budget_could_not_bound_it() {
     )
     .unwrap_err();
     assert!(refused.contains("ne connaît pas le prix"), "{refused}");
+}
+
+#[test]
+fn a_stored_model_that_lost_its_price_stops_serving() {
+    let mut stored = check_escalation(
+        Some(&haiku()),
+        &request("claude-opus-5-5"),
+        &PriceTable::default(),
+    )
+    .unwrap();
+    stored.model = "claude-retire".into();
+    assert!(
+        escalation_problem(&stored, Some(&haiku()), &PriceTable::default())
+            .unwrap()
+            .contains("ne connaît plus le prix")
+    );
 }

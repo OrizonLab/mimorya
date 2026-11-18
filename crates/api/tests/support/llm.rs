@@ -43,19 +43,36 @@ pub fn scripted_prices() -> PriceTable {
     PriceTable::new(HashMap::from([("scripted-model".to_string(), price)]))
 }
 
+/// The escalation model the tests choose (ADR-207): priced, and served by
+/// a scripted model of its own.
+pub const ESCALATION_MODEL: &str = "claude-opus-4-8";
+
+/// A company's own scripted models: its runs', its review model's and its
+/// escalation model's.
+pub struct CompanyModels {
+    pub company: Arc<ScriptedProvider>,
+    pub review: Arc<ScriptedProvider>,
+    pub escalation: Arc<ScriptedProvider>,
+}
+
 /// Builds a company's own providers, each configuration recorded in
-/// `built`: `review` for `REVIEW_MODEL`, `company` for any other.
+/// `built`: `review` for `REVIEW_MODEL`, `escalation` for
+/// `ESCALATION_MODEL`, `company` for any other.
 pub fn company_factory(
-    company: Arc<ScriptedProvider>,
-    review: Arc<ScriptedProvider>,
+    models: &CompanyModels,
     built: Arc<Mutex<Vec<ProviderConfig>>>,
 ) -> ProviderFactory {
+    let (company, review, escalation) = (
+        models.company.clone(),
+        models.review.clone(),
+        models.escalation.clone(),
+    );
     Arc::new(move |config: &ProviderConfig| {
         built.lock().expect("built").push(config.clone());
-        let provider: Arc<dyn LlmProvider> = if config.model.as_deref() == Some(REVIEW_MODEL) {
-            review.clone()
-        } else {
-            company.clone()
+        let provider: Arc<dyn LlmProvider> = match config.model.as_deref() {
+            Some(REVIEW_MODEL) => review.clone(),
+            Some(ESCALATION_MODEL) => escalation.clone(),
+            _ => company.clone(),
         };
         Ok(provider)
     })
