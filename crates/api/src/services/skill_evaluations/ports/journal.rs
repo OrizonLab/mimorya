@@ -103,10 +103,7 @@ impl AuditSink for Journal {
 #[async_trait]
 impl UsageSink for Journal {
     async fn record(&self, record: UsageRecord) -> anyhow::Result<()> {
-        let charge = match record.kind {
-            "llm" => self.models.charge(record.role, record.cost_micros),
-            _ => usage::UsageCharge::CLIENT_KEY,
-        };
+        let charge = self.models.usage_charge(&record);
         let mut tx = self.db.begin(self.scope.tenant_id).await?;
         usage::append_usage(
             &mut tx,

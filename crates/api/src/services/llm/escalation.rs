@@ -105,11 +105,6 @@ impl LlmService {
             monthly_budget_micros: stored.monthly_budget_micros,
         }))
     }
-
-    /// The company's escalation, if its runs have one they can use.
-    pub async fn escalation_for(&self, tenant_id: Uuid) -> anyhow::Result<Option<EscalationModel>> {
-        Ok(self.resolve(tenant_id).await?.escalation.clone())
-    }
 }
 
 /// What the company's escalation mechanisms spent this month.

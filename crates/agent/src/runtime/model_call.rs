@@ -2,6 +2,8 @@
 //! retries, and the accounting of what they cost, with the role each call
 //! played: the main model's, or the escalation model's while the run is
 //! escalated (ADR-207), which hands back to the main one should it fail.
+//! None is made once the operator's supply of the company is spent
+//! (ADR-208): the run then stops, saying why.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,6 +11,7 @@ use std::time::Duration;
 use super::escalation::{escalation_failed, next_model};
 use super::ports::{CurrentAccess, EnginePorts, RunEvent, UsageRecord};
 use super::state::RunCheckpoint;
+use super::supply::supply_stopped;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{
     LlmError, LlmErrorKind, LlmProvider, LlmRequest, LlmResponse, ModelRole, PriceTable, TaskClass,
@@ -48,6 +51,10 @@ pub async fn call_model(
         effort: config.effort,
         on_text_delta: Some(Arc::new(move |text: &str| events.publish_delta(text))),
     };
+    // The escalation model is on the same key as the main one.
+    if let Some(stop) = supply_stopped(deps, state, ModelRole::Main).await? {
+        return Ok(ModelTurn::Failed(stop.message().into()));
+    }
     let (mut provider, mut role) = next_model(deps, state).await?;
     let complete = |provider: Arc<dyn LlmProvider>| {
         let request = &request;
@@ -74,6 +81,7 @@ pub async fn call_model(
             state.usage.steps += 1;
             let call = ModelCall {
                 role,
+                by_runs_model: role == ModelRole::Main,
                 requested: provider.model(),
             };
             record_model_usage(&deps.ports, &deps.prices, state, &response, call).await?;
@@ -110,6 +118,8 @@ pub async fn complete_with_retry(
 #[derive(Debug, Clone, Copy)]
 pub struct ModelCall<'a> {
     pub role: ModelRole,
+    /// Whether the run's own model made it, whatever its role (ADR-208).
+    pub by_runs_model: bool,
     pub requested: &'a str,
 }
 
@@ -138,6 +148,7 @@ pub async fn record_model_usage(
         .record(UsageRecord {
             kind: "llm",
             role,
+            by_runs_model: call.by_runs_model,
             provider: response.provider.clone(),
             model: response.model.clone(),
             input_tokens,

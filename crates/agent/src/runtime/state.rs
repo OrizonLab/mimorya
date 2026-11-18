@@ -66,6 +66,10 @@ pub struct RunCheckpoint {
     /// kept so that a run another process takes up stays on the same model.
     #[serde(default, skip_serializing_if = "EscalationState::is_untouched")]
     pub escalation: EscalationState,
+    /// Whether the operator's supply stopped a call of the run (ADR-208):
+    /// said once a run.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub supply_stopped: bool,
 }
 
 /// A run's model escalation (ADR-207).
@@ -109,6 +113,7 @@ impl RunCheckpoint {
             resumptions: 0,
             skill_criteria: Vec::new(),
             escalation: EscalationState::default(),
+            supply_stopped: false,
         }
     }
 }

@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use mimorya_agent::llm::ModelRole;
 use mimorya_agent::runtime::{MAX_KNOWN_LESSONS, RunOutcome, lesson_transcript, propose_lesson};
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
@@ -22,7 +23,7 @@ use uuid::Uuid;
 use super::background_usage::{BackgroundCall, record_background_usage};
 use super::db_ports::RunScope;
 use crate::services::background::BackgroundTasks;
-use crate::services::llm::LlmService;
+use crate::services::llm::{LlmService, supply_stopped};
 
 #[derive(Clone)]
 pub struct LessonCapture {
@@ -74,6 +75,13 @@ impl LessonCapture {
         let Ok(Some(provider)) = models.runs_provider() else {
             return Ok(None);
         };
+        // Nothing past the operator's supply (ADR-208).
+        if supply_stopped(&self.db, &models, scope.tenant_id, ModelRole::Main)
+            .await?
+            .is_some()
+        {
+            return Ok(None);
+        }
         let answer = propose_lesson(provider.as_ref(), transcript, &known).await?;
         // Counted on its own: what the call cost stays, whatever follows.
         let call = BackgroundCall {

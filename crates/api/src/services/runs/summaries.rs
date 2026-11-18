@@ -12,6 +12,7 @@
 
 use std::sync::Arc;
 
+use mimorya_agent::llm::ModelRole;
 use mimorya_agent::runtime::{FoldedMessage, RunOutcome, summarise_conversation};
 use mimorya_core::conversation_summary::{MAX_PASSES, Speaker, Unfolded, messages_to_fold};
 use mimorya_db::Database;
@@ -29,7 +30,7 @@ use super::db_ports::RunScope;
 use super::run_access::stopped_by;
 use crate::services::access::AccessService;
 use crate::services::background::BackgroundTasks;
-use crate::services::llm::LlmService;
+use crate::services::llm::{LlmService, supply_stopped};
 
 /// Messages not covered yet that one pass reads at most: more than it folds
 /// and keeps, the rest waiting for the next pass.
@@ -143,6 +144,13 @@ impl ConversationSummaries {
         let Ok(Some(provider)) = models.runs_provider() else {
             return Ok(false);
         };
+        // Nothing past the operator's supply (ADR-208).
+        if supply_stopped(&self.db, &models, scope.tenant_id, ModelRole::Main)
+            .await?
+            .is_some()
+        {
+            return Ok(false);
+        }
         let folded: Vec<FoldedMessage<'_>> = unfolded[..count]
             .iter()
             .map(|m| FoldedMessage {

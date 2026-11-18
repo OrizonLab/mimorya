@@ -33,6 +33,7 @@ async fn cached_input_tokens_count_once_everywhere() {
         &response,
         ModelCall {
             role: ModelRole::Main,
+            by_runs_model: true,
             requested: "scripted-model",
         },
     )

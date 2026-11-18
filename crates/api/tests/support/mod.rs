@@ -44,6 +44,7 @@ pub mod manager_approvals;
 pub mod mcp;
 pub mod mission_notices;
 pub mod missions;
+pub mod model_supply;
 pub mod notification_choices;
 pub mod old_audit;
 pub mod owner;

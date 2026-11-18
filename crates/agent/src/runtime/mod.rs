@@ -19,6 +19,7 @@ mod routing;
 #[allow(clippy::module_inception)]
 pub mod runtime;
 pub mod state;
+pub mod supply;
 pub mod tool_calls;
 mod tool_refusals;
 pub mod types;
@@ -48,6 +49,7 @@ pub use ports::{
 pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
 pub use state::{EscalationState, PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
+pub use supply::SupplyLimit;
 pub use types::{
     ApprovalDecision, ApprovalDecisions, DEFAULT_TOOL_TIMEOUT, RunConfig, RunOutcome, RuntimeDeps,
     VerificationConfig,

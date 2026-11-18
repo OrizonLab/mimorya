@@ -5,7 +5,7 @@
 //! not bound: every query names its company.
 
 use chrono::{DateTime, Utc};
-use mimorya_core::model_supply::SupplyFormula;
+use mimorya_core::model_supply::{SupplyFormula, SupplyState};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -189,4 +189,29 @@ pub async fn supply_spending(
     .bind(since)
     .fetch_one(conn)
     .await
+}
+
+/// What the company's supply stands at before a call (ADR-208, step 1),
+/// read as the application: its formula and cap, and, as the operator's
+/// report reads them (`supply_spending`), what its month was re-invoiced
+/// under the cap and its credit's balance.
+pub async fn supply_state(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    month_start: DateTime<Utc>,
+) -> sqlx::Result<SupplyState> {
+    let row = model_supply(&mut *conn, tenant_id).await?;
+    let spending = supply_spending(conn, tenant_id, month_start).await?;
+    // A formula the table does not know is none of the operator's.
+    let formula = row
+        .as_ref()
+        .and_then(|row| SupplyFormula::parse(&row.formula))
+        .unwrap_or_default();
+    Ok(SupplyState {
+        formula,
+        monthly_cap_micros: row.as_ref().and_then(|row| row.monthly_cap_micros),
+        unlimited: row.is_some_and(|row| row.unlimited),
+        capped_month_billed_micros: spending.capped_billed_micros,
+        prepaid_balance_micros: spending.balance_micros(),
+    })
 }

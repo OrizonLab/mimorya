@@ -15056,3 +15056,74 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     (`crates/api/tests/model_supply_charges.rs`), compte rendu de l'exploitant, migration
     d'entreprises existantes, isolation, écran d'une entreprise non fournie
     (`apps/web/e2e/model-supply.spec.ts`).
+- **Complément (étape 1, limites)** :
+  - **quand** : le plafond est atteint quand ce que le mois a refacturé sous la formule 2
+    l'atteint ; le crédit est épuisé quand son solde est nul ou négatif ; la fourniture est
+    retirée quand l'entreprise n'a plus de formule de l'exploitant. Le mode sans plafond
+    n'a pas de limite. La règle est pure (`core/src/model_supply/limits.rs`) ;
+  - **au lancement** : tous les lancements passent par la même vérification
+    (`ready_to_run`) : conversation, passerelle, tâche planifiée, déclencheur, mission. Sur
+    la clé de l'exploitant, au-delà de la limite, aucun run n'est lancé : la personne lit
+    « Le plafond mensuel de consommation du modèle de votre entreprise est atteint :
+    contactez votre administrateur. », ou « Le crédit de consommation du modèle de votre
+    entreprise est épuisé : contactez votre administrateur. ». Le refus est tracé
+    (`model_supply.limited`, acteur la personne, raison `monthly_cap`, `credit_spent` ou
+    `withdrawn`, sans contenu) ;
+  - **avant chaque appel** : le moteur demande, avant chaque appel au modèle, si un appel
+    de ce rôle peut encore partir sur la clé de l'exploitant (port `SupplyLimit`, relu en
+    base à chaque fois). Sinon :
+    - un run s'arrête avant son appel suivant, sans rien refaire de ce qu'il a fait, en
+      échec avec le message ;
+    - un classement n'est pas demandé ;
+    - une réponse n'est pas jugée par un modèle, ses contrôles déterministes restant ;
+    - le modèle des runs ne juge pas à la place du modèle de contrôle choisi à part
+      (ADR-108) quand celui-ci échoue : chaque juge est vérifié pour sa propre clé. Un
+      jugement que le modèle des runs rend à sa place est compté sur la clé des runs
+      (`UsageRecord.by_runs_model`), et non plus sur celle du modèle de contrôle ;
+    - un sous-agent y est tenu comme son parent.
+
+    L'arrêt est tracé une fois par run (`model_supply.limited`, acteur l'agent). Les
+    leçons et les résumés ne sont pas faits. Une évaluation n'est pas lancée ; en cours,
+    chaque appel d'un cas, celui de l'agent comme celui du juge, est vérifié de même, et
+    elle s'arrête en le disant. Un test de connexion est refusé. Ces refus sont tracés
+    comme celui d'un lancement (`trace_held_back`, acteur la personne). Un appel sur la
+    clé de l'entreprise n'est jamais retenu ;
+
+  - **ce qui fait foi** : la clé d'un appel vient des modèles que l'exécution a pris
+    (étape 0) ; la limite, elle, est relue avant chaque appel. Un plafond relevé laisse
+    repartir les runs ; une formule retirée arrête un run sur la clé de l'exploitant
+    avant son appel suivant. Une entreprise passée de la formule 2 à la formule 3 pendant
+    un run est tenue à son crédit dès l'appel suivant, mais les appels de ce run restent
+    comptés sous le plafond, comme l'exécution les a pris : ils n'entament pas le
+    crédit, dans la limite du budget du run. Le solde et le mois sont lus par la même
+    requête que le compte rendu de l'exploitant (`supply_spending`) ;
+  - **dépassement borné** : un appel n'est vérifié qu'avant d'être fait, et son coût
+    n'est compté qu'une fois fait. Au moment où la limite est franchie, chaque run,
+    sous-agent, classement, contrôle, leçon, résumé, évaluation ou test de l'entreprise
+    peut avoir un appel en vol, que rien n'arrête. Le dépassement est au plus la somme de ces
+    appels, chacun borné par la taille de sa demande et son plafond de sortie. Il est
+    compté dans le mois ou le crédit comme toute consommation, et les appels suivants
+    sont refusés. Comme pour le budget d'escalade (ADR-207), une réservation avant chaque
+    appel n'a pas été retenue : elle demanderait d'estimer chaque appel avant de le faire ;
+  - **tests** :
+    - `crates/core/src/model_supply/limits.rs` : plafond atteint, crédit épuisé, mode sans
+      plafond, fourniture retirée ;
+    - `crates/agent/tests/runtime_supply.rs` : aucun appel au-delà, arrêt avant l'appel
+      suivant (ce qui est fait reste), réponse non jugée, classement non demandé,
+      sous-agent tenu, trace une fois ; le modèle des runs ne remplace pas au-delà un
+      modèle de contrôle qui échoue, et son jugement est compté comme le sien ;
+    - `crates/api/tests/model_supply_limits.rs` : lancement refusé au-delà du plafond
+      puis du crédit, avec le message et la trace, test de connexion refusé et tracé,
+      runs repris sans plafond ; run arrêté avant son appel suivant au-delà du plafond
+      comme du crédit ; deux runs en même temps près du plafond, qui le dépassent au plus
+      du coût de leurs deux appels en vol ; la clé de l'entreprise jamais retenue ;
+    - `crates/api/tests/model_supply_held_back.rs` : au-delà du plafond, aucune leçon ni
+      aucun résumé ; une évaluation ne fait plus aucun appel, son juge compris, s'arrête
+      avec le message, et la suivante est refusée, l'un et l'autre tracés ;
+    - `crates/db/tests/model_supply.rs` : le solde lu avant un appel, consommation purgée
+      après cinq ans comprise, et le crédit épuisé quand la consommation atteint les
+      versements ;
+    - `crates/api/tests/model_supply_charges.rs` : la formule retirée pendant un run,
+      arrêté avant son appel suivant, son premier appel compté comme l'exécution l'a
+      pris ; le coefficient changé ou un crédit donné pendant un run, ses appels comptés
+      à la formule et au coefficient de son départ.

@@ -3,12 +3,14 @@
 //! as they stand now, beside the active version when another one is
 //! evaluated. Every case runs for the administrator, with their rights: they
 //! must be able to use the agent, and the agent to read the skills for
-//! them; the company needs a model. One evaluation queued or running per
+//! them; the company needs a model, within the operator's supply of it
+//! (ADR-208). One evaluation queued or running per
 //! company, none once its evaluations reached what they may cost over
 //! thirty days (ADR-154); the oldest of a skill are deleted past the last
 //! ones kept. A process that executes runs plays it
 //! (`services::skill_evaluations`).
 
+use mimorya_agent::llm::ModelRole;
 use mimorya_core::DomainError;
 use mimorya_core::authz::Actor;
 use mimorya_core::skill_evaluations::EVALUATIONS_KEPT_PER_SKILL;
@@ -24,6 +26,7 @@ use super::skills::existing;
 use super::{audit_entry, begin_change};
 use crate::app::AppState;
 use crate::services::AccessContext;
+use crate::services::llm::{supply_stopped, trace_held_back};
 use crate::services::skill_evaluations::{StoredCase, spending, wake};
 
 const PERMISSION: &str = "skill:manage";
@@ -53,10 +56,15 @@ pub async fn launch_evaluation(
         .into());
     }
     let tenant_id = access.subject.tenant_id;
-    if services.llm.provider_for(tenant_id).await?.is_none() {
+    let models = services.llm.resolve(tenant_id).await?;
+    if models.runs_provider()?.is_none() {
         return Err(
             DomainError::validation("Aucun modèle n’est configuré pour l’entreprise").into(),
         );
+    }
+    if let Some(stop) = supply_stopped(&services.db, &models, tenant_id, ModelRole::Main).await? {
+        trace_held_back(&services.db, tenant_id, access.subject.user_id, stop).await?;
+        return Err(DomainError::unavailable(stop.message()).into());
     }
     let mut tx = begin_change(&services.db, access, PERMISSION).await?;
     let skill = existing(&mut tx, skill_id).await?;

@@ -40,7 +40,7 @@ use crate::services::account_links::AccountLinkService;
 use crate::services::connectors::ConnectorService;
 use crate::services::embeddings::EmbeddingService;
 use crate::services::event_bus::RunEventBus;
-use crate::services::llm::{LlmService, Models};
+use crate::services::llm::{LlmService, Models, SupplyGuard};
 
 const MAX_CORRECTION_ATTEMPTS: u32 = 2;
 
@@ -301,6 +301,13 @@ impl RunExecutor {
                 model.monthly_budget_micros,
             )),
         });
+        // Held to the operator's supply of the company before each call
+        // (ADR-208), its sub-agents with it.
+        deps.supply = Some(Arc::new(SupplyGuard::new(
+            self.db.clone(),
+            tenant_id,
+            Arc::clone(&models),
+        )));
         let runtime = AgentRuntime::new(
             deps,
             RunConfig {

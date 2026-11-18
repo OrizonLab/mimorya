@@ -313,10 +313,7 @@ impl ApprovalStore for DbPorts {
 impl UsageSink for DbPorts {
     async fn record(&self, record: UsageRecord) -> anyhow::Result<()> {
         // A model call is charged by the models it was made with (ADR-208).
-        let charge = match record.kind {
-            "llm" => self.models.charge(record.role, record.cost_micros),
-            _ => usage::UsageCharge::CLIENT_KEY,
-        };
+        let charge = self.models.usage_charge(&record);
         let mut tx = self.tx().await?;
         usage::append_usage(
             &mut tx,

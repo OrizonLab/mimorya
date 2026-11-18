@@ -73,6 +73,12 @@ impl ModelRouter {
 
     /// The providers to try for `task`, in order: for verification, the one
     /// routed apart, then the agent's should it fail (ADR-108).
+    /// The model the company chose apart to review answers, if any
+    /// (ADR-108).
+    pub fn reviewer(&self) -> Option<Arc<dyn LlmProvider>> {
+        self.verification.clone()
+    }
+
     pub fn providers_for(&self, task: TaskClass) -> Vec<Arc<dyn LlmProvider>> {
         match (task, &self.verification) {
             (TaskClass::Verification, Some(provider)) => vec![provider.clone(), self.agent.clone()],

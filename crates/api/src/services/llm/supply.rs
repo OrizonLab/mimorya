@@ -6,6 +6,7 @@
 //! by the same, whatever changes meanwhile.
 
 use mimorya_agent::llm::ModelRole;
+use mimorya_agent::runtime::UsageRecord;
 use mimorya_core::model_supply::{SupplyFormula, billed_micros};
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::model_supply::model_supply;
@@ -58,6 +59,20 @@ impl Models {
             formula: self.supply.formula,
             billed_micros: Some(billed_micros(cost_micros, self.supply.markup_bps)),
         }
+    }
+
+    /// What `record` is charged: a model call by its role, or as the runs'
+    /// calls when their own model made it (a review no model chosen apart
+    /// gave, ADR-108); any other use, nothing.
+    pub fn usage_charge(&self, record: &UsageRecord) -> UsageCharge {
+        if record.kind != "llm" {
+            return UsageCharge::CLIENT_KEY;
+        }
+        let role = match record.by_runs_model {
+            true => ModelRole::Main,
+            false => record.role,
+        };
+        self.charge(role, record.cost_micros)
     }
 }
 
@@ -115,6 +130,22 @@ mod tests {
                 UsageCharge::CLIENT_KEY
             );
             assert_eq!(apart.charge(ModelRole::Main, 200_000).formula, formula);
+            // Unless the runs' own model gave it, that one failing.
+            let review = |by_runs_model: bool| UsageRecord {
+                kind: "llm",
+                role: ModelRole::Review,
+                by_runs_model,
+                provider: "anthropic".into(),
+                model: "claude-haiku-5-5".into(),
+                input_tokens: 10,
+                output_tokens: 10,
+                cost_micros: 200_000,
+            };
+            assert_eq!(apart.usage_charge(&review(false)), UsageCharge::CLIENT_KEY);
+            assert_eq!(
+                apart.usage_charge(&review(true)),
+                apart.charge(ModelRole::Main, 200_000)
+            );
         }
     }
 
