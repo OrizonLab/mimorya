@@ -9,6 +9,8 @@
 //!   tool_calls.rs     policy enforcement and execution of tool calls
 //!   model_call.rs     model calls, their retries and usage accounting
 //!   answer_review.rs  verification of the final answer
+//!   final_answer.rs   the review of an answer candidate in a run
+//!   escalation.rs     the escalation model, after a failed review (ADR-207)
 //!   handoff.rs        the progress note ending a mission's stage
 
 use std::time::Instant;
@@ -16,9 +18,10 @@ use std::time::Instant;
 use mimorya_core::tools::Citation;
 use serde_json::json;
 
-use super::answer_review::{AnswerReview, present_answer, review_answer, review_criteria};
+use super::answer_review::present_answer;
 use super::budget::check_budget;
-use super::model_call::{ModelTurn, call_model, record_model_usage};
+use super::escalation::escalate_after_failure;
+use super::model_call::{ModelTurn, call_model};
 use super::ports::{CurrentAccess, RunEvent, StepAccess};
 use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
@@ -26,9 +29,7 @@ use super::tool_refusals::{Since, since, why_not_run};
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
 use super::unavailable::UnavailableConnectors;
 use super::verification::correction_message;
-use crate::llm::{
-    LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, ModelRole, StopReason, TaskClass,
-};
+use crate::llm::{LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, StopReason};
 
 /// Why a run stops when its user's account is no longer active.
 pub const ACCOUNT_INACTIVE: &str = "Arrêt : le compte de l’utilisateur n’est plus actif";
@@ -230,50 +231,7 @@ impl AgentRuntime {
             if let StepAccess::Ended(reason) = self.deps.access.current().await? {
                 return self.end_without_access(state, reason).await;
             }
-            let answer = response.text.trim().to_string();
-            // The criteria of a skill loaded are reviewed by a model, as
-            // explicit ones are when the platform asks for it (ADR-106).
-            let verification = self.config.verification;
-            let criteria = review_criteria(
-                &self.config.success_criteria,
-                &state.skill_criteria,
-                verification.skill_criteria,
-            );
-            let judged = verification.llm_judge
-                || (verification.skill_criteria && !state.skill_criteria.is_empty());
-            let judges = match judged {
-                true => self.deps.router.providers_for(TaskClass::Verification),
-                false => Vec::new(),
-            };
-            let (report, judge_response) = review_answer(AnswerReview {
-                answer: &answer,
-                truncated: response.stop_reason == StopReason::MaxTokens,
-                evidence: &state.evidence,
-                registry: &self.deps.registry,
-                objective: &self.config.objective,
-                success_criteria: &criteria,
-                judges: &judges,
-            })
-            .await;
-            if let Some(judge_response) = judge_response {
-                record_model_usage(
-                    &self.deps.ports,
-                    &self.deps.prices,
-                    &mut state,
-                    &judge_response,
-                    ModelRole::Review,
-                )
-                .await?;
-            }
-            self.deps
-                .ports
-                .events
-                .emit(RunEvent::Verification {
-                    attempt: state.correction_attempts + 1,
-                    passed: report.passed,
-                    issues: report.issues.clone(),
-                })
-                .await?;
+            let (answer, report) = self.review_candidate(&mut state, &response).await?;
             let can_correct =
                 state.correction_attempts < self.config.verification.max_correction_attempts;
             if !report.passed && can_correct {
@@ -281,6 +239,14 @@ impl AgentRuntime {
                 state
                     .messages
                     .push(LlmMessage::user(correction_message(&report.issues)));
+                self.deps.ports.runs.checkpoint(&state).await?;
+                continue;
+            }
+            // The main model's corrections did not pass: the escalation
+            // model takes over from here, once a run (ADR-207).
+            if !report.passed
+                && escalate_after_failure(&self.deps, &mut state, &report.issues).await?
+            {
                 self.deps.ports.runs.checkpoint(&state).await?;
                 continue;
             }

@@ -8,6 +8,8 @@ pub mod context;
 pub mod conversation_summary;
 pub mod delegation;
 mod document_store;
+pub mod escalation;
+mod final_answer;
 mod handoff;
 pub mod lesson;
 pub mod model_call;
@@ -31,6 +33,7 @@ pub use delegation::{
     MAX_PER_TURN, SUB_AGENT_BUDGET, SubAgentProfile, SubRun, SubRunRequest, SubRunStore,
 };
 pub use document_store::{DocumentExcerpt, DocumentHit, DocumentPassage, DocumentStore};
+pub use escalation::{Escalation, EscalationBudget, escalation_message};
 pub use handoff::NO_NOTE;
 pub use lesson::{
     LessonAnswer, MAX_KNOWN_LESSONS, ProposedLesson, lesson_transcript, propose_lesson,
@@ -43,7 +46,7 @@ pub use ports::{
 };
 pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
-pub use state::{PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
+pub use state::{EscalationState, PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
 pub use types::{
     ApprovalDecision, ApprovalDecisions, DEFAULT_TOOL_TIMEOUT, RunConfig, RunOutcome, RuntimeDeps,
     VerificationConfig,

@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use mimorya_agent::llm::{LlmProvider, ModelRouter, PriceTable};
 use mimorya_agent::runtime::UnavailableConnectors;
 use mimorya_agent::runtime::{
-    AgentRuntime, BudgetLimits, DEFAULT_BUDGET, NewMemory, RunConfig, RunOutcome, RuntimeDeps,
-    StartInput, VerificationConfig,
+    AgentRuntime, BudgetLimits, DEFAULT_BUDGET, Escalation, NewMemory, RunConfig, RunOutcome,
+    RuntimeDeps, StartInput, VerificationConfig,
 };
 use mimorya_agent::testing::{
     InMemoryPorts, ScriptedProvider, ScriptedStep, SkillFixture, TestAccess,
@@ -239,6 +239,8 @@ pub struct Options {
     pub platform: Option<Vec<NewMemory>>,
     /// The company's active skills.
     pub skills: Vec<SkillFixture>,
+    /// The company's model escalation (ADR-207).
+    pub escalation: Option<Escalation>,
 }
 
 pub struct Harness {
@@ -341,6 +343,7 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
         Arc::new(PriceTable::default()),
     );
     deps.retry_delay = Duration::from_millis(1);
+    deps.escalation = options.escalation;
     let mut actor = Actor::agent(Some(run_id));
     actor.allowed_permissions = options.allowed_permissions;
     let config = RunConfig {

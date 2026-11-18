@@ -14765,3 +14765,74 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     checkpoint, JSON de classement invalide, configuration de l'advisor invalide, lecture
     du flux de l'advisor ; tests PostgreSQL des réglages et de leur isolation ; test de
     bout en bout de l'écran.
+- **Complément (étape 1, escalade après échec du contrôle)** :
+  - **quand** : la réponse échoue au contrôle, et les corrections du modèle principal
+    (deux par run) sont épuisées. Le run passe alors au modèle d'escalade, une seule fois
+    par run. Le message de correction de la plateforme y ajoute que les actions déjà
+    exécutées l'ont été et ne doivent pas être refaites. Une réponse du modèle d'escalade
+    qui échoue encore est présentée avec ses avertissements, comme avant ;
+  - **appel par appel** : tant que le run est escaladé, chaque appel au modèle (y compris
+    ceux qui demandent des outils, passés par le PEP et ses validations) va au modèle
+    d'escalade. Avant chacun, les bornes sont relues :
+    - le nombre d'appels déjà faits au modèle d'escalade dans le run ;
+    - la dépense du mois, relue dans `usage_records` par le moteur (`EscalationBudget`).
+
+    Le réglage lui-même (modèle, mécanismes, montant du budget, nombre d'escalades par
+    run) est lu au début de chaque exécution du run : son départ, sa reprise après une
+    validation, sa reprise par un autre processus. Un changement fait pendant une
+    exécution s'applique à la suivante ;
+
+  - **retour au modèle principal** : le run revient au modèle principal dans trois cas :
+    - une borne est atteinte : `model_escalation.limited`, raison `monthly_budget` ou
+      `per_run`, une fois par run ;
+    - un appel au modèle d'escalade échoue, relances comprises : `model_escalation.failed`,
+      sans contenu ;
+    - l'escalade a été retirée ou est devenue inutilisable avant la reprise du run :
+      jamais construit, le modèle d'escalade ne reçoit ni la clé des conversations ni
+      leurs données.
+
+    L'escalade elle-même est tracée (`model_escalation.started`, raison `after_failure`).
+    Aucune de ces traces n'est un échec du run ;
+
+  - **état** : `RunCheckpoint.escalation` dit si le run est escaladé, combien d'appels il
+    a faits au modèle d'escalade, si l'escalade après échec a servi et si une borne a été
+    dite. Un run repris par un autre processus, après une validation par exemple, reste
+    donc sur le même modèle. Les réglages sont relus à la reprise ;
+  - **chargement** : le modèle d'escalade est chargé avec les autres modèles de
+    l'entreprise (`LlmService`), avec la clé et l'adresse de ses conversations, seulement
+    quand :
+    - un mécanisme livré est activé ;
+    - le réglage sert encore : même fournisseur, même adresse, modèle différent du
+      principal et toujours tarifé.
+
+    Chaque changement du réglage vide ce chargement, dans tous les processus ;
+
+  - **prix** :
+    - un appel est d'abord tarifé au nom de modèle que donne la réponse ; s'il est
+      inconnu, au prix du modèle demandé. Ainsi, les appels de l'escalade ne comptent
+      jamais pour rien dans son budget ;
+    - un identifiant daté (`claude-opus-4-5-20251101`) est tarifé comme son alias, et
+      nomme le même modèle : un modèle d'escalade qui ne diffère du modèle principal
+      que par sa date est refusé ;
+  - **limite connue** : en production, la plateforme ne connaît que les prix d'Anthropic.
+    Une entreprise sur Ollama ou sur un fournisseur compatible OpenAI ne peut donc pas
+    encore choisir d'escalade : sans prix, le budget ne la bornerait pas. L'écran le dit.
+    Laisser l'exploitant tarifer d'autres modèles est une évolution à part ;
+  - **tests** :
+    - `crates/agent/tests/runtime_escalation.rs`, avec des modèles simulés :
+      - le run repart de là où il en est et la recherche n'est pas refaite ;
+      - les rôles sont comptés à part ;
+      - une seule escalade après échec par run ;
+      - le budget du mois atteint, puis le nombre d'appels par run atteint ;
+      - un modèle d'escalade en échec rend la main au modèle principal ;
+      - un run repris depuis son point de reprise reste escaladé, sauf si l'escalade a
+        été retirée entre-temps : il continue avec le modèle principal ;
+      - rien ne se passe sans le mécanisme ;
+      - un appel est tarifé au modèle demandé ;
+    - `crates/api/tests/model_escalation_runs.rs`, sur PostgreSQL :
+      - un run de l'API escalade, et sa dépense compte dans le mois ;
+      - une escalade retirée ne sert plus ;
+      - au-delà du budget, le run garde son modèle principal, et c'est tracé ;
+      - une fois les conversations passées chez un autre fournisseur, le modèle
+        d'escalade n'est jamais construit ;
+    - le parcours de bout en bout active le mécanisme.

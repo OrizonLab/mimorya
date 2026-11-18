@@ -6,7 +6,7 @@
 //! has a price the platform knows: unpriced, its calls would count for
 //! nothing, and the budget would never bound them.
 
-use super::pricing::PriceTable;
+use super::pricing::{PriceTable, model_alias};
 use super::router::ModelRole;
 use super::settings::{TenantLlmChoice, check_model_name};
 
@@ -29,7 +29,7 @@ pub enum Mechanism {
 
 /// The mechanisms delivered so far: the others are refused, never accepted
 /// without effect.
-pub const AVAILABLE_MECHANISMS: &[Mechanism] = &[];
+pub const AVAILABLE_MECHANISMS: &[Mechanism] = &[Mechanism::AfterFailure];
 
 impl Mechanism {
     pub fn label(self) -> &'static str {
@@ -95,7 +95,7 @@ pub fn check_escalation(
         return Err("Indiquez le modèle d’escalade".into());
     }
     check_model_name(model)?;
-    if model == conversations.model {
+    if model_alias(model) == model_alias(&conversations.model) {
         return Err(same_model(&conversations.model));
     }
     if !prices.has(model) {
@@ -133,11 +133,13 @@ pub fn check_escalation(
 }
 
 /// Why a stored choice no longer serves, the company's conversations model
-/// being what it is now; `None` while it does. Runs then keep the main
-/// model, and the screen says why (in French).
+/// and the platform's prices being what they are now; `None` while it
+/// does. Runs then keep the main model, and the screen says why (in
+/// French).
 pub fn escalation_problem(
     stored: &EscalationChoice,
     conversations: Option<&TenantLlmChoice>,
+    prices: &PriceTable,
 ) -> Option<String> {
     let Some(conversations) = conversations else {
         return Some(NO_OWN_PROVIDER.to_string());
@@ -149,7 +151,16 @@ pub fn escalation_problem(
                 .into(),
         );
     }
-    (conversations.model == stored.model).then(|| same_model(&conversations.model))
+    if model_alias(&conversations.model) == model_alias(&stored.model) {
+        return Some(same_model(&conversations.model));
+    }
+    (!prices.has(&stored.model)).then(|| {
+        format!(
+            "La plateforme ne connaît plus le prix de « {} » : le budget d’escalade ne \
+             pourrait pas borner ses appels",
+            stored.model
+        )
+    })
 }
 
 /// The roles of the model calls the escalation budget counts: what the

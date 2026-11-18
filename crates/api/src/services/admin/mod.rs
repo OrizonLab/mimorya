@@ -122,8 +122,8 @@ pub use mission_settings::{
     company_mission_limits, reset_company_mission_limits, set_company_mission_limits,
 };
 pub use model_escalation::{
-    EscalationOverview, MonthSpending, StoredEscalation, company_model_escalation,
-    escalation_budget, reset_company_model_escalation, set_company_model_escalation,
+    EscalationOverview, StoredEscalation, company_model_escalation, escalation_budget,
+    reset_company_model_escalation, set_company_model_escalation,
 };
 pub use oauth_version::OAuthSeen;
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};

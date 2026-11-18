@@ -1,9 +1,12 @@
 //! Model calls with the tools the user may use at this step, bounded
-//! retries, and the accounting of what they cost.
+//! retries, and the accounting of what they cost, with the role each call
+//! played: the main model's, or the escalation model's while the run is
+//! escalated (ADR-207), which hands back to the main one should it fail.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::escalation::{escalation_failed, next_model};
 use super::ports::{CurrentAccess, EnginePorts, RunEvent, UsageRecord};
 use super::state::RunCheckpoint;
 use super::types::{RunConfig, RuntimeDeps};
@@ -45,19 +48,35 @@ pub async fn call_model(
         effort: config.effort,
         on_text_delta: Some(Arc::new(move |text: &str| events.publish_delta(text))),
     };
-    let provider = deps.router.provider_for(TaskClass::Agent);
-    match complete_with_retry(
-        provider.as_ref(),
-        &request,
-        deps.max_provider_retries,
-        deps.retry_delay,
-    )
-    .await
+    let (mut provider, mut role) = next_model(deps, state).await?;
+    let complete = |provider: Arc<dyn LlmProvider>| {
+        let request = &request;
+        async move {
+            complete_with_retry(
+                provider.as_ref(),
+                request,
+                deps.max_provider_retries,
+                deps.retry_delay,
+            )
+            .await
+        }
+    };
+    let mut outcome = complete(provider.clone()).await;
+    if let (ModelRole::Escalation, Err(error)) = (role, &outcome)
+        && error.kind != LlmErrorKind::Aborted
     {
+        escalation_failed(deps, state, &error.message).await?;
+        (provider, role) = (deps.router.provider_for(TaskClass::Agent), ModelRole::Main);
+        outcome = complete(provider.clone()).await;
+    }
+    match outcome {
         Ok(response) => {
             state.usage.steps += 1;
-            record_model_usage(&deps.ports, &deps.prices, state, &response, ModelRole::Main)
-                .await?;
+            let call = ModelCall {
+                role,
+                requested: provider.model(),
+            };
+            record_model_usage(&deps.ports, &deps.prices, state, &response, call).await?;
             Ok(ModelTurn::Response(Box::new(response)))
         }
         Err(error) if error.kind == LlmErrorKind::Aborted => {
@@ -87,16 +106,28 @@ pub async fn complete_with_retry(
     }
 }
 
+/// What a model call was: the role it played, and the model it asked for.
+#[derive(Debug, Clone, Copy)]
+pub struct ModelCall<'a> {
+    pub role: ModelRole,
+    pub requested: &'a str,
+}
+
 /// Adds a model response to the run totals, records it for metering, with
-/// the role the call played, and notifies listeners.
+/// the role the call played, and notifies listeners. A response naming a
+/// model the platform has no price for is priced as the model asked for:
+/// an escalation's calls are never counted for nothing against its budget.
 pub async fn record_model_usage(
     ports: &EnginePorts,
     prices: &PriceTable,
     state: &mut RunCheckpoint,
     response: &LlmResponse,
-    role: ModelRole,
+    call: ModelCall<'_>,
 ) -> anyhow::Result<()> {
-    let cost = prices.cost_micros(&response.model, &response.usage);
+    let cost = prices
+        .cost_micros(&response.model, &response.usage)
+        .or_else(|| prices.cost_micros(call.requested, &response.usage));
+    let role = call.role;
     let usage = response.usage;
     let input_tokens = usage.input_total();
     state.usage.input_tokens += input_tokens;

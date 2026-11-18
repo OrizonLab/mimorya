@@ -13,9 +13,9 @@ use futures::FutureExt;
 use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable};
 
 use mimorya_agent::runtime::{
-    AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, InterruptedCall, RunCheckpoint,
-    RunConfig, RunEvent, RuntimeDeps, StartInput, UnavailableConnectors, VerificationConfig,
-    build_user_turn,
+    AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, Escalation, InterruptedCall,
+    RunCheckpoint, RunConfig, RunEvent, RuntimeDeps, StartInput, UnavailableConnectors,
+    VerificationConfig, build_user_turn,
 };
 use mimorya_core::authz::{Actor, HOOK_CHANNEL};
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
@@ -28,6 +28,7 @@ use mimorya_db::repositories::scheduled_tasks::started_by_a_task;
 use super::approval_notice::ApprovalNotifier;
 use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
+use super::escalation_budget::MonthlyBudget;
 use super::events::record_run_event;
 use super::fence::{LeaseFence, lost};
 use super::lesson_capture::LessonCapture;
@@ -245,7 +246,7 @@ impl RunExecutor {
         let budget: BudgetLimits = serde_json::from_value(run.budget.clone())?;
         let level = AutonomyLevel::parse(&run.autonomy_level)
             .ok_or_else(|| anyhow::anyhow!("unknown autonomy level {}", run.autonomy_level))?;
-        let deps = RuntimeDeps::new(
+        let mut deps = RuntimeDeps::new(
             router,
             Arc::new(RunAccess::new(
                 self.access.clone(),
@@ -257,6 +258,22 @@ impl RunExecutor {
             ports.clone(),
             self.prices.clone(),
         );
+        // The company's stronger model, if its runs may escalate (ADR-207).
+        let tenant_id = access.subject.tenant_id;
+        deps.escalation = self
+            .llm
+            .escalation_for(tenant_id)
+            .await?
+            .map(|model| Escalation {
+                provider: model.provider,
+                after_failure: model.after_failure,
+                max_per_run: model.max_per_run,
+                budget: Arc::new(MonthlyBudget::new(
+                    self.db.clone(),
+                    tenant_id,
+                    model.monthly_budget_micros,
+                )),
+            });
         let runtime = AgentRuntime::new(
             deps,
             RunConfig {

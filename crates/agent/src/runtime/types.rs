@@ -9,6 +9,7 @@ use mimorya_core::autonomy::AutonomyPolicy;
 use uuid::Uuid;
 
 use super::budget::BudgetLimits;
+use super::escalation::Escalation;
 use super::ports::{AccessSource, EnginePorts};
 use super::state::{PendingApproval, RunCheckpoint};
 use super::verification::VerificationReport;
@@ -27,6 +28,8 @@ pub struct RuntimeDeps {
     pub max_provider_retries: u32,
     pub retry_delay: Duration,
     pub tool_timeout: Duration,
+    /// The company's model escalation, if its runs have one (ADR-207).
+    pub escalation: Option<Escalation>,
 }
 
 /// How long a tool call may take before the executor stops it: past a
@@ -51,6 +54,7 @@ impl RuntimeDeps {
             max_provider_retries: 2,
             retry_delay: Duration::from_secs(1),
             tool_timeout: DEFAULT_TOOL_TIMEOUT,
+            escalation: None,
         }
     }
 }

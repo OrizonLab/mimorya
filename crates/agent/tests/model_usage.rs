@@ -2,7 +2,7 @@
 //! metering record and the event listeners receive.
 
 use mimorya_agent::llm::{LlmResponse, LlmUsage, ModelRole, PriceTable, StopReason};
-use mimorya_agent::runtime::model_call::record_model_usage;
+use mimorya_agent::runtime::model_call::{ModelCall, record_model_usage};
 use mimorya_agent::runtime::{RunCheckpoint, RunEvent};
 use mimorya_agent::testing::InMemoryPorts;
 use mimorya_core::demo::user;
@@ -31,7 +31,10 @@ async fn cached_input_tokens_count_once_everywhere() {
         &PriceTable::default(),
         &mut state,
         &response,
-        ModelRole::Main,
+        ModelCall {
+            role: ModelRole::Main,
+            requested: "scripted-model",
+        },
     )
     .await
     .unwrap();

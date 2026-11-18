@@ -4,7 +4,8 @@
 //! When the company's own provider for its runs cannot be used, its runs
 //! stop rather than fall back: the company decided where its data goes. When
 //! the one it chose for reviews cannot be used, its runs' model reviews
-//! meanwhile: it already reads all that a review reads.
+//! meanwhile: it already reads all that a review reads. Its escalation
+//! model, if it chose one its runs may use, is loaded with them (ADR-207).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,8 +19,12 @@ use super::invalidations::{Invalidation, Invalidations};
 use super::tenant_cache::TenantCache;
 use crate::secrets::SecretStore;
 
+mod escalation;
 mod load;
 
+pub use escalation::{
+    EscalationModel, MonthSpending, conversations_choice, escalation_choice, month_spending,
+};
 pub use load::api_key_secret;
 
 /// Builds a provider from a configuration (tests substitute a scripted one).
@@ -55,6 +60,8 @@ pub enum Review {
 pub struct Models {
     pub runs: Resolution,
     pub review: Review,
+    /// Its escalation model, if its runs may use one (ADR-207).
+    pub escalation: Option<EscalationModel>,
 }
 
 /// The company chose its own provider and it cannot be used (as opposed to
@@ -147,8 +154,13 @@ impl LlmService {
             Some(Ok(provider)) => Review::Company(provider),
             Some(Err(reason)) => Review::Refused(reason),
         };
+        let escalation = self.company_escalation(&mut tx, tenant_id, &runs).await?;
         tx.commit().await?;
-        let models = Arc::new(Models { runs, review });
+        let models = Arc::new(Models {
+            runs,
+            review,
+            escalation,
+        });
         if let Resolution::Refused(reason) = &models.runs {
             tracing::warn!(%tenant_id, reason = %reason, "Company model provider unusable");
         }

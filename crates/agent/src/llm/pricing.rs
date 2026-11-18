@@ -106,12 +106,12 @@ impl PriceTable {
     }
 
     pub fn has(&self, model: &str) -> bool {
-        self.prices.contains_key(model)
+        self.price_of(model).is_some()
     }
 
     /// Estimated cost in micro-dollars, or `None` when the model is not priced.
     pub fn cost_micros(&self, model: &str, usage: &LlmUsage) -> Option<i64> {
-        let tier = self.prices.get(model)?.tier_for(usage.input_total());
+        let tier = self.price_of(model)?.tier_for(usage.input_total());
         // $/MTok equals micro-dollars per token.
         let micros = usage.input_tokens as f64 * tier.input_per_mtok
             + usage.output_tokens as f64 * tier.output_per_mtok
@@ -119,6 +119,29 @@ impl PriceTable {
             + usage.cache_write_tokens as f64 * tier.cache_write_per_mtok;
         Some(micros.round() as i64)
     }
+}
+
+impl PriceTable {
+    /// The price of `model`, or of its alias when it names a dated snapshot
+    /// (`claude-opus-4-5-20251101` is `claude-opus-4-5`).
+    fn price_of(&self, model: &str) -> Option<&ModelPrice> {
+        self.prices
+            .get(model)
+            .or_else(|| self.prices.get(undated(model)?))
+    }
+}
+
+/// The model an identifier names, its date left out: two identifiers name
+/// the same model when their aliases are equal.
+pub fn model_alias(model: &str) -> &str {
+    undated(model).unwrap_or(model)
+}
+
+/// The alias of a dated model identifier: its name before an eight-digit
+/// date.
+fn undated(model: &str) -> Option<&str> {
+    let (alias, date) = model.rsplit_once('-')?;
+    (date.len() == 8 && date.bytes().all(|b| b.is_ascii_digit())).then_some(alias)
 }
 
 impl ModelPrice {
@@ -179,6 +202,20 @@ mod tests {
         assert_eq!(cost("claude-fable-5-2", reads), Some(200_000));
         assert_eq!(cost("claude-opus-4-8", reads), Some(500_000));
         assert_eq!(cost("claude-fable-5", reads), Some(1_000_000));
+    }
+
+    #[test]
+    fn a_dated_identifier_is_priced_as_its_alias_and_nothing_else_is_guessed() {
+        let call = usage(1_000_000, 0, 0, 0);
+        assert_eq!(cost("claude-opus-4-5-20251101", call), Some(5_000_000));
+        assert_eq!(cost("claude-haiku-4-5-20251001", call), Some(1_000_000));
+        for unpriced in [
+            "claude-opus-4-5-2025110",
+            "claude-opus-4-5-2025110a",
+            "20251101",
+        ] {
+            assert_eq!(cost(unpriced, call), None, "{unpriced}");
+        }
     }
 
     #[test]

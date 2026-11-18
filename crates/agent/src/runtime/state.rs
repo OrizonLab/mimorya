@@ -62,6 +62,31 @@ pub struct RunCheckpoint {
     /// they were loaded, each once.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skill_criteria: Vec<String>,
+    /// Where the run stands with the company's model escalation (ADR-207):
+    /// kept so that a run another process takes up stays on the same model.
+    #[serde(default, skip_serializing_if = "EscalationState::is_untouched")]
+    pub escalation: EscalationState,
+}
+
+/// A run's model escalation (ADR-207).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EscalationState {
+    /// Whether the run's model calls go to the escalation model.
+    pub escalated: bool,
+    /// The calls made to it.
+    pub calls: u32,
+    /// Whether the run escalated after a failed review: once a run.
+    pub after_failure_used: bool,
+    /// Whether a bound (the month's budget, the run's escalations) stopped
+    /// an escalation: said once a run.
+    pub limited: bool,
+}
+
+impl EscalationState {
+    fn is_untouched(&self) -> bool {
+        self == &Self::default()
+    }
 }
 
 impl RunCheckpoint {
@@ -77,6 +102,7 @@ impl RunCheckpoint {
             pending: None,
             resumptions: 0,
             skill_criteria: Vec::new(),
+            escalation: EscalationState::default(),
         }
     }
 }
