@@ -15199,6 +15199,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - au-delà du plafond, le modèle d'escalade n'est pas appelé ;
     - la fourniture retirée, l'escalade ne sert plus, aucune ne peut être choisie, et
       elle sert de nouveau une fois la fourniture rendue ;
+  - `crates/api/tests/model_supply_escalation_keys.rs` : le réglage suit la clé des runs,
+    jamais une autre. Il est construit avec la clé de l'exploitant seule sur le modèle de
+    la plateforme, avec la clé de l'entreprise seule une fois son fournisseur propre
+    donné (appels hors plafond), puis de nouveau avec celle de l'exploitant une fois ce
+    fournisseur retiré ;
   - `crates/api/tests/model_escalation_spending.rs` : un appel sur la clé de
     l'exploitant compte dans le budget à son montant refacturé ;
   - `apps/web/e2e/model-escalation.spec.ts` : une escalade choisie sur le modèle de la

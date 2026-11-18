@@ -21,6 +21,9 @@ pub const MASTER_KEY: &str = PUBLIC_TEST_MASTER_KEYS[0];
 pub const OTHER_MASTER_KEY: &str = PUBLIC_TEST_MASTER_KEYS[1];
 pub const API_KEY: &str = "sk-ant-api03-cle-de-test-0123456789";
 pub const ENDPOINT: &str = "http://ollama.test:11434/v1";
+/// The operator's key, when a test configures the platform's provider
+/// (`LLM_PROVIDER`, ADR-209).
+pub const OPERATOR_KEY: &str = "sk-ant-cle-de-l-exploitant-0123456789";
 /// The model a company chooses to review its answers (ADR-108): built as
 /// `TestApi::review_model`.
 pub const REVIEW_MODEL: &str = "modele-de-controle";

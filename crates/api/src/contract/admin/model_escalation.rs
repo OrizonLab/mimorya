@@ -25,8 +25,9 @@ pub struct ModelEscalationView {
     pub problem: Option<String>,
     /// Each mechanism, and whether it may be turned on.
     pub mechanisms: Vec<MechanismView>,
-    /// What the mechanisms cost since the start of the month, in
-    /// micro-dollars.
+    /// What the mechanisms cost the company since the start of the month,
+    /// in micro-dollars: their real cost on its own key, the amount
+    /// re-invoiced on the operator's (ADR-209).
     pub spent_micros: i64,
     /// The start of the month, in the platform's time zone (RFC 3339).
     pub month_start: String,

@@ -14,17 +14,16 @@ use mimorya_agent::llm::{
     ESCALATION_BUDGET_ROLES, EscalationChoice, EscalationRoute, EscalationRoutes, LlmProvider,
     Mechanism, ProviderConfig, TenantLlmChoice, company_provider_config, escalation_problem,
 };
-use mimorya_core::model_supply::SupplyFormula;
 use mimorya_core::time_zone::month_start;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::llm_settings::{ModelPurpose, get_llm_settings};
 use mimorya_db::repositories::model_escalation::{
     ModelEscalationRow, escalation_spent, model_escalation,
 };
-use mimorya_db::repositories::model_supply::model_supply;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
+use super::supply::company_supply;
 use super::{LlmService, Resolution, api_key_secret};
 
 /// The company's escalation, ready for its runs.
@@ -55,22 +54,23 @@ pub struct MonthSpending {
 
 impl LlmService {
     /// The model of the company's runs: its own provider's, else the
-    /// platform's while the operator supplies it (ADR-209); none otherwise.
+    /// platform's while the operator supplies it (ADR-209), its formula read
+    /// as its runs read it; none otherwise.
     pub async fn runs_model(
         &self,
-        conn: &mut PgConnection,
+        tx: &mut TenantTx,
         tenant_id: Uuid,
     ) -> anyhow::Result<Option<RunsModel>> {
-        if let Some(choice) = conversations_choice(conn).await? {
+        if let Some(choice) = conversations_choice(tx).await? {
             return Ok(Some(RunsModel {
                 choice,
                 on_operator_key: false,
             }));
         }
-        let supplied = model_supply(conn, tenant_id)
+        let supplied = company_supply(tx, tenant_id)
             .await?
-            .and_then(|row| SupplyFormula::parse(&row.formula))
-            .is_some_and(SupplyFormula::on_operator_key);
+            .formula
+            .on_operator_key();
         Ok(self
             .platform_choice()
             .filter(|_| supplied)

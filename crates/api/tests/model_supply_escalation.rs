@@ -10,23 +10,18 @@
 
 mod support;
 
-use std::time::Duration;
-
 use axum::http::StatusCode;
-use mimorya_agent::testing::ScriptedStep;
 use mimorya_api::services::provisioning::{CapChoice, SupplyChange, model_supply_report};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::model_supply::{SupplyFormula, SupplyStop};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sqlx::PgPool;
-use support::llm::{ESCALATION_MODEL, SCRIPTED_CALL_MICROS};
-use support::model_escalation::{ESCALATION, escalation, refused};
+use support::llm::{ESCALATION_MODEL, OPERATOR_KEY, SCRIPTED_CALL_MICROS};
+use support::model_escalation::{ESCALATION, after_failure, charged, escalated, loaded, refused};
 use support::model_supply::{CAP, capped, spent, supply};
 use support::runs::start_run;
 use support::{TestApi, owner_url};
-use uuid::Uuid;
 
-const OPERATOR_KEY: &str = "sk-ant-cle-de-l-exploitant-0123456789";
 /// 10 %: what a call is re-invoiced, beside its cost.
 const MARKUP_BPS: u32 = 1_000;
 const BILLED: i64 = SCRIPTED_CALL_MICROS + SCRIPTED_CALL_MICROS / 10;
@@ -46,47 +41,6 @@ fn formula(formula: SupplyFormula) -> SupplyChange {
         formula,
         cap: CapChoice::Default,
     }
-}
-
-/// Waits until this process loaded the company's formula and whether it
-/// has an escalation.
-async fn loaded(api: &TestApi, formula: SupplyFormula, escalating: bool) {
-    for _ in 0..100 {
-        let models = api.app.services.llm.resolve(tenant::ID).await.unwrap();
-        if models.supply.formula == formula && models.escalation.is_some() == escalating {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("the company's models were never loaded again");
-}
-
-/// After a failed review, to `ESCALATION_MODEL`.
-fn after_failure() -> Value {
-    let mut chosen = escalation(ESCALATION_MODEL);
-    chosen["afterFailure"] = json!(true);
-    chosen
-}
-
-/// The platform's model answers nothing, then twice again when corrected;
-/// the escalation model answers.
-fn escalated(api: &TestApi) {
-    api.script((0..3).map(|_| ScriptedStep::text("")).collect());
-    api.escalation_model
-        .push([ScriptedStep::text("Trois interventions cette semaine.")]);
-}
-
-/// The model calls of `run`: role, formula, cost and amount re-invoiced.
-async fn charged(api: &TestApi, run: Uuid) -> Vec<(String, String, i64, Option<i64>)> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_as(
-        "select role, supply_formula, cost_micros, billed_micros from usage_records \
-         where run_id = $1 and kind = 'llm' order by id",
-    )
-    .bind(run)
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap()
 }
 
 fn spent_micros(view: &Value) -> i64 {

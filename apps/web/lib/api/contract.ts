@@ -2091,8 +2091,9 @@ problem: string | null,
  */
 mechanisms: Array<MechanismView>,
 /**
- * What the mechanisms cost since the start of the month, in
- * micro-dollars.
+ * What the mechanisms cost the company since the start of the month,
+ * in micro-dollars: their real cost on its own key, the amount
+ * re-invoiced on the operator's (ADR-209).
  */
 spentMicros: number,
 /**
