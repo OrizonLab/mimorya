@@ -2,7 +2,7 @@
 
 import { Card, Cell, DataTable, EmptyState, Loaded } from '@/components/ui';
 import { useApiData, type UsageRow, type UsageSummary } from '@/lib/api';
-import { formatCost, formatDate, formatNumber } from '@/lib/format';
+import { formatCost, formatDate, formatNumber, PLATFORM_TIME_ZONE } from '@/lib/format';
 import { USAGE_KIND_LABELS, USAGE_ROLE_LABELS } from '@/lib/labels';
 
 /** What the company's use of models cost: per model, with the role each
@@ -26,7 +26,8 @@ export function UsageTab() {
           {data.escalation && (
             <Card className="p-4">
               <p className="text-xs text-muted">
-                Escalade de modèle depuis le {formatDate(data.escalation.monthStart)}
+                Escalade de modèle depuis le{' '}
+                {formatDate(data.escalation.monthStart, PLATFORM_TIME_ZONE)}
               </p>
               <p className="mt-1 text-lg font-semibold">
                 {formatCost(data.escalation.spentMicros)} sur{' '}

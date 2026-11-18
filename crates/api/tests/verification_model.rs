@@ -11,13 +11,14 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::{ScriptedProvider, ScriptedStep, call};
-use mimorya_core::demo::{tenant, user};
+use mimorya_core::demo::user;
 use serde_json::{Value, json};
 use support::accounts::{activate, create_partial_admin};
 use support::llm::{API_KEY, MASTER_KEY, OTHER_MASTER_KEY, REVIEW_MODEL};
 use support::refusals::{entries_since, latest_entry};
 use support::runs::start_run;
 use support::skill_evaluations::{detail, forget, launched, play, write_case};
+use support::usage_roles::{calls_outside_runs, recorded_roles};
 use support::{Client, TestApi};
 use uuid::Uuid;
 
@@ -73,18 +74,6 @@ fn judged_by(model: &ScriptedProvider) -> (usize, usize) {
         .filter(|r| r.tool_names() == ["submit_verdict"])
         .count();
     (judged, requests.len() - judged)
-}
-
-/// The roles of the model calls `run` recorded, in order (ADR-207).
-async fn recorded_roles(api: &TestApi, run: Uuid) -> Vec<String> {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_scalar(
-        "select role from usage_records where run_id = $1 and kind = 'llm' order by id",
-    )
-    .bind(run)
-    .fetch_all(&mut *tx)
-    .await
-    .unwrap()
 }
 
 fn first_text(model: &ScriptedProvider) -> String {
@@ -145,10 +134,13 @@ async fn the_review_model_judges_the_answers_until_it_is_removed() {
     let count = |role: &str| roles.iter().filter(|recorded| recorded == &role).count();
     assert_eq!((count("review"), count("main")), (2, 3), "{roles:?}");
 
-    // Tested, then removed: the runs' model judges again.
+    // Tested, then removed: the runs' model judges again. The test is a
+    // review's call.
     api.review_model.push([ScriptedStep::text("OK")]);
+    let reviews = calls_outside_runs(&api, "review").await;
     let tested = paul.post(&format!("{REVIEW}/test"), json!({})).await.json();
     assert_eq!(tested["ok"], true, "{tested}");
+    assert_eq!(calls_outside_runs(&api, "review").await, reviews + 1);
     assert_eq!(paul.delete(REVIEW).await.status, StatusCode::OK);
     let removed = paul.delete(REVIEW).await;
     assert_eq!(removed.status, StatusCode::NOT_FOUND);
@@ -214,8 +206,11 @@ async fn an_evaluation_is_judged_by_the_review_model() {
         verdict(true, &[]),
     ]);
     // Version 2, then the active one beside it.
+    let reviews = calls_outside_runs(&api, "review").await;
     let id = launched(&paul, skill, 2).await;
     play(&api).await;
+    // The one verdict given is recorded as a review.
+    assert_eq!(calls_outside_runs(&api, "review").await, reviews + 1);
 
     assert_eq!(judged_by(api.model.as_ref().unwrap()), (0, 4));
     assert_eq!(judged_by(&api.review_model), (2, 0));

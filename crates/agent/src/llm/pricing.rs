@@ -75,6 +75,7 @@ pub const ANTHROPIC_PRICES: &[(&str, ModelPrice)] = &[
     ("claude-opus-4-8", price(5.0, 25.0, None)),
     ("claude-opus-4-7", price(5.0, 25.0, None)),
     ("claude-opus-4-6", price(5.0, 25.0, None)),
+    ("claude-opus-4-5", price(5.0, 25.0, None)),
     ("claude-sonnet-5-5", price(2.0, 10.0, Some(0.1))),
     ("claude-sonnet-5", price(2.0, 10.0, None)),
     ("claude-sonnet-4-6", price(3.0, 15.0, None)),

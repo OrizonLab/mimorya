@@ -10,7 +10,7 @@ import {
   type ModelEscalationUpdate,
   type ModelEscalationView,
 } from '@/lib/api';
-import { dollarsOf, formatCost, formatDate, microsOf } from '@/lib/format';
+import { dollarsOf, formatCost, formatDate, microsOf, PLATFORM_TIME_ZONE } from '@/lib/format';
 import { useSyncedState } from '@/lib/use-synced-state';
 import { CostField } from './cost-field';
 
@@ -131,7 +131,7 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
           </div>
         </fieldset>
         <p className="text-sm">
-          Dépensé par l’escalade depuis le {formatDate(data.monthStart)} :{' '}
+          Dépensé par l’escalade depuis le {formatDate(data.monthStart, PLATFORM_TIME_ZONE)} :{' '}
           {formatCost(data.spentMicros)}
           {settings && ` sur ${formatCost(settings.monthlyBudgetMicros)}`}.
         </p>

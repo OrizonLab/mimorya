@@ -1,4 +1,5 @@
 use super::*;
+use crate::llm::PriceTable;
 
 fn haiku() -> TenantLlmChoice {
     TenantLlmChoice {
@@ -21,7 +22,12 @@ fn request(model: &str) -> EscalationRequest<'_> {
 
 #[test]
 fn a_model_of_the_conversations_provider_is_kept_with_its_provider_and_endpoint() {
-    let choice = check_escalation(Some(&haiku()), &request("  claude-opus-5-5 ")).unwrap();
+    let choice = check_escalation(
+        Some(&haiku()),
+        &request("  claude-opus-5-5 "),
+        &PriceTable::default(),
+    )
+    .unwrap();
     assert_eq!(
         choice,
         EscalationChoice {
@@ -40,7 +46,8 @@ fn a_model_of_the_conversations_provider_is_kept_with_its_provider_and_endpoint(
 
 #[test]
 fn a_company_on_the_platform_s_model_may_not_choose_one() {
-    let refused = check_escalation(None, &request("claude-opus-5-5")).unwrap_err();
+    let refused =
+        check_escalation(None, &request("claude-opus-5-5"), &PriceTable::default()).unwrap_err();
     assert!(refused.contains("fournisseur propre"), "{refused}");
 }
 
@@ -51,7 +58,8 @@ fn the_model_is_named_well_and_differs_from_the_main_one() {
         ("claude opus", "Nom de modèle invalide"),
         ("claude-haiku-5-5", "doit différer du modèle principal"),
     ] {
-        let refused = check_escalation(Some(&haiku()), &request(model)).unwrap_err();
+        let refused =
+            check_escalation(Some(&haiku()), &request(model), &PriceTable::default()).unwrap_err();
         assert!(refused.contains(said), "{model}: {refused}");
     }
 }
@@ -69,7 +77,7 @@ fn the_budget_and_the_escalations_per_run_keep_to_their_bounds() {
             max_per_run: per_run,
             ..request("claude-opus-5-5")
         };
-        let refused = check_escalation(Some(&haiku()), &asked).unwrap_err();
+        let refused = check_escalation(Some(&haiku()), &asked, &PriceTable::default()).unwrap_err();
         assert!(refused.contains(said), "{budget}, {per_run}: {refused}");
     }
     let widest = EscalationRequest {
@@ -77,7 +85,7 @@ fn the_budget_and_the_escalations_per_run_keep_to_their_bounds() {
         max_per_run: MAX_ESCALATIONS_PER_RUN,
         ..request("claude-opus-5-5")
     };
-    assert!(check_escalation(Some(&haiku()), &widest).is_ok());
+    assert!(check_escalation(Some(&haiku()), &widest, &PriceTable::default()).is_ok());
 }
 
 #[test]
@@ -105,7 +113,7 @@ fn a_mechanism_not_delivered_yet_is_refused_rather_than_kept_without_effect() {
             Mechanism::Advisor,
         ),
     ] {
-        let result = check_escalation(Some(&haiku()), &asked);
+        let result = check_escalation(Some(&haiku()), &asked, &PriceTable::default());
         if label.available() {
             assert!(result.is_ok(), "{label:?}");
         } else {
@@ -118,7 +126,12 @@ fn a_mechanism_not_delivered_yet_is_refused_rather_than_kept_without_effect() {
 
 #[test]
 fn a_choice_stops_serving_once_the_conversations_provider_changes() {
-    let choice = check_escalation(Some(&haiku()), &request("claude-opus-5-5")).unwrap();
+    let choice = check_escalation(
+        Some(&haiku()),
+        &request("claude-opus-5-5"),
+        &PriceTable::default(),
+    )
+    .unwrap();
     let moved = TenantLlmChoice {
         provider: "openai_compatible".into(),
         model: "mistral-large".into(),
@@ -143,4 +156,15 @@ fn a_choice_stops_serving_once_the_conversations_provider_changes() {
             .unwrap()
             .contains("doit différer")
     );
+}
+
+#[test]
+fn a_model_without_a_known_price_is_refused_the_budget_could_not_bound_it() {
+    let refused = check_escalation(
+        Some(&haiku()),
+        &request("claude-sans-prix"),
+        &PriceTable::default(),
+    )
+    .unwrap_err();
+    assert!(refused.contains("ne connaît pas le prix"), "{refused}");
 }

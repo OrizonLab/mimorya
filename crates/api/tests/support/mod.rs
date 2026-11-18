@@ -91,6 +91,7 @@ pub mod telegram_conversations;
 pub mod telegram_validations;
 pub mod token_endpoints;
 pub mod usage_records;
+pub mod usage_roles;
 
 pub use client::{Client, TestResponse};
 use fixtures::urls;

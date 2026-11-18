@@ -65,7 +65,7 @@ pub async fn update(
     Body(body): Body<ModelEscalationUpdate>,
 ) -> ApiResult<Json<Done>> {
     let access = state.access.context(identity).await?;
-    set_company_model_escalation(&state.db, &access, &body).await?;
+    set_company_model_escalation(&state.db, &access, state.llm.prices(), &body).await?;
     Ok(Json(Done::OK))
 }
 

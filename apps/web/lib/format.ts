@@ -22,6 +22,10 @@ export function microsOf(dollars: string): number {
   return Math.round(Number(dollars) * MICROS_PER_DOLLAR);
 }
 
+/** The platform's time zone (`core/src/time_zone.rs`): a monthly budget
+ * starts at midnight on the first, there (ADR-207). */
+export const PLATFORM_TIME_ZONE = 'Europe/Paris';
+
 /** Date and time, in `timeZone` when given (a scheduled task's), else the reader's. */
 export function formatDate(value: string | null | undefined, timeZone?: string): string {
   if (!value) return '—';

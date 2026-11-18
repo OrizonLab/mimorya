@@ -5,12 +5,15 @@
 //! one, and one chosen stops serving once the conversations' provider
 //! changes. What its mechanisms cost this month is read from the usage by
 //! role, shown with the usage, and kept to the company: another neither
-//! reads nor writes it.
+//! reads nor writes it. The table keeps to the bounds the rules check.
 
 mod support;
 
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
+use mimorya_agent::llm::{
+    MAX_ESCALATION_BUDGET_MICROS, MAX_ESCALATIONS_PER_RUN, MIN_ESCALATION_BUDGET_MICROS,
+};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::time_zone::month_start;
 use mimorya_db::testing::OTHER_TENANT_ID;
@@ -89,6 +92,7 @@ async fn a_company_chooses_its_escalation_model_within_its_bounds() {
         (escalation(MAIN), "doit différer du modèle principal"),
         (escalation(""), "Indiquez le modèle d’escalade"),
         (escalation("claude opus"), "Nom de modèle invalide"),
+        (escalation("claude-sans-prix"), "ne connaît pas le prix"),
         (cheap, "1 à 10 000 USD"),
     ] {
         refused(&paul, body, said).await;
@@ -313,4 +317,64 @@ async fn the_month_s_spending_counts_the_mechanisms_alone_and_stays_with_the_com
     assert_eq!(paul.delete(ESCALATION).await.status, StatusCode::OK);
     assert!(paul.get("/admin/usage").await.json()["escalation"].is_null());
     assert_eq!(paul.delete("/admin/llm").await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_table_keeps_to_the_bounds_the_rules_check() {
+    let api = start().await;
+    let insert = |budget: i64, per_run: u32| {
+        let db = api.app.services.db.clone();
+        async move {
+            let mut tx = db.begin(tenant::ID).await.unwrap();
+            let written = sqlx::query(
+                "insert into tenant_model_escalation (tenant_id, provider, model, \
+                 monthly_budget_micros, max_per_run) values ($1, 'anthropic', $2, $3, $4)",
+            )
+            .bind(tenant::ID)
+            .bind(STRONGER)
+            .bind(budget)
+            .bind(i32::try_from(per_run).unwrap())
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| error.to_string());
+            // Rolled back: nothing is left for the other tests.
+            drop(tx);
+            written
+        }
+    };
+    for (budget, per_run, constraint) in [
+        (
+            MIN_ESCALATION_BUDGET_MICROS - 1,
+            1,
+            "tenant_model_escalation_budget",
+        ),
+        (
+            MAX_ESCALATION_BUDGET_MICROS + 1,
+            1,
+            "tenant_model_escalation_budget",
+        ),
+        (
+            MIN_ESCALATION_BUDGET_MICROS,
+            0,
+            "tenant_model_escalation_per_run",
+        ),
+        (
+            MIN_ESCALATION_BUDGET_MICROS,
+            MAX_ESCALATIONS_PER_RUN + 1,
+            "tenant_model_escalation_per_run",
+        ),
+    ] {
+        let refused = insert(budget, per_run).await.unwrap_err();
+        assert!(
+            refused.contains(constraint),
+            "{budget}, {per_run}: {refused}"
+        );
+    }
+    for (budget, per_run) in [
+        (MIN_ESCALATION_BUDGET_MICROS, 1),
+        (MAX_ESCALATION_BUDGET_MICROS, MAX_ESCALATIONS_PER_RUN),
+    ] {
+        insert(budget, per_run).await.unwrap();
+    }
 }

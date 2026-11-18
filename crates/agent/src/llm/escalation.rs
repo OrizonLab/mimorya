@@ -2,8 +2,12 @@
 //! the same provider as its conversations, with the same key and endpoint,
 //! called when its mechanisms ask for it, within a monthly budget (USD, as
 //! every cost of the platform) and a number of escalations per run. Only a
-//! company with its own provider may choose one: it pays for it.
+//! company with its own provider may choose one: it pays for it. The model
+//! has a price the platform knows: unpriced, its calls would count for
+//! nothing, and the budget would never bound them.
 
+use super::pricing::PriceTable;
+use super::router::ModelRole;
 use super::settings::{TenantLlmChoice, check_model_name};
 
 /// A monthly budget from 1 to 10,000 USD.
@@ -83,6 +87,7 @@ impl EscalationRequest<'_> {
 pub fn check_escalation(
     conversations: Option<&TenantLlmChoice>,
     request: &EscalationRequest<'_>,
+    prices: &PriceTable,
 ) -> Result<EscalationChoice, String> {
     let conversations = conversations.ok_or_else(|| NO_OWN_PROVIDER.to_string())?;
     let model = request.model.trim();
@@ -92,6 +97,12 @@ pub fn check_escalation(
     check_model_name(model)?;
     if model == conversations.model {
         return Err(same_model(&conversations.model));
+    }
+    if !prices.has(model) {
+        return Err(format!(
+            "La plateforme ne connaît pas le prix de « {model} » : sans prix, le budget \
+             d’escalade ne pourrait pas borner ses appels"
+        ));
     }
     if !(MIN_ESCALATION_BUDGET_MICROS..=MAX_ESCALATION_BUDGET_MICROS)
         .contains(&request.monthly_budget_micros)
@@ -140,6 +151,14 @@ pub fn escalation_problem(
     }
     (conversations.model == stored.model).then(|| same_model(&conversations.model))
 }
+
+/// The roles of the model calls the escalation budget counts: what the
+/// mechanisms add to the main model's calls (not the reviews of answers).
+pub const ESCALATION_BUDGET_ROLES: [ModelRole; 3] = [
+    ModelRole::Escalation,
+    ModelRole::Classification,
+    ModelRole::Advisor,
+];
 
 const NO_OWN_PROVIDER: &str = "L’escalade demande le fournisseur propre de l’entreprise, \
      qui en paie les appels : choisissez d’abord celui de ses conversations";

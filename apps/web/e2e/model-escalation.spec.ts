@@ -1,8 +1,8 @@
 // The company's model escalation (ADR-207): refused while the company is on
 // the platform's model; with its own provider, a stronger model of it is
 // chosen within a monthly budget and a number of escalations per run, read
-// back as the API recorded it, shown in the consumption with its budget,
-// then removed. The mechanisms not delivered yet cannot be turned on.
+// back as the API recorded it, shown in the consumption with its budget
+// beside what each role of the model calls cost, then removed. The mechanisms not delivered yet cannot be turned on.
 // Whatever happens, the company is back on the platform's model, without
 // escalation, afterwards.
 import type { Page } from '@playwright/test';
@@ -47,9 +47,12 @@ test('a stronger model is chosen within a monthly budget, then removed', async (
   await page.reload();
   await page.getByRole('tab', { name: 'Modèle d’IA' }).click();
   await expect(form.getByLabel(`Modèle d’escalade (modèle principal : ${MAIN})`)).toBeVisible();
-  for (const label of ['Escalade après échec du contrôle', 'Routeur en amont']) {
-    const mechanism = form.getByRole('checkbox', { name: new RegExp(label) });
-    await expect(mechanism).toBeDisabled();
+  for (const label of [
+    'Escalade après échec du contrôle',
+    'Routeur en amont',
+    'Conseiller d’Anthropic (advisor)',
+  ]) {
+    await expect(form.getByRole('checkbox', { name: label })).toBeDisabled();
   }
   await expect(form).toContainText('Bientôt disponible');
 
@@ -69,10 +72,18 @@ test('a stronger model is chosen within a monthly budget, then removed', async (
   expect(chosen.settings?.maxPerRun).toBe(3);
   expect([chosen.settings?.afterFailure, chosen.settings?.router]).toEqual([false, false]);
 
-  // The consumption shows the escalation's budget for the month.
+  // The consumption shows the escalation's budget for the month, and what
+  // each role cost: the server left a call of each at its start
+  // (`e2e_server/usage_records.rs`); the scripted model's cost nothing.
   await page.getByRole('tab', { name: 'Consommation' }).click();
   await expect(page.getByText(/Escalade de modèle depuis le/)).toBeVisible();
   await expect(page.getByText(/sur 25,000\s\$US/)).toBeVisible();
+  const roles = page.getByRole('list', { name: 'Répartition par rôle' });
+  await expect(roles).toContainText(/Modèle principal : 2,500\s\$US/);
+  await expect(roles).toContainText(/Escalade : 1,000\s\$US/);
+  await expect(roles).toContainText(/Contrôle des réponses : 0,500\s\$US/);
+  const escalated = page.getByRole('row').filter({ hasText: 'claude-opus-5-5' });
+  await expect(escalated.getByRole('cell').nth(1)).toHaveText('Escalade');
 
   await page.getByRole('tab', { name: 'Modèle d’IA' }).click();
   await form.getByRole('button', { name: 'Retirer l’escalade' }).click();

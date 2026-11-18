@@ -8,7 +8,8 @@
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::llm::{
-    EscalationChoice, EscalationRequest, TenantLlmChoice, check_escalation, escalation_problem,
+    ESCALATION_BUDGET_ROLES, EscalationChoice, EscalationRequest, PriceTable, TenantLlmChoice,
+    check_escalation, escalation_problem,
 };
 use mimorya_core::DomainError;
 use mimorya_core::time_zone::month_start;
@@ -71,10 +72,11 @@ pub async fn company_model_escalation(
 }
 
 /// Sets the company's escalation, if it has its own provider and the
-/// choice keeps to the rules.
+/// choice keeps to the rules, its model priced.
 pub async fn set_company_model_escalation(
     db: &Database,
     access: &AccessContext,
+    prices: &PriceTable,
     update: &ModelEscalationUpdate,
 ) -> anyhow::Result<()> {
     access.require_tenant_wide(PERMISSION)?;
@@ -89,7 +91,8 @@ pub async fn set_company_model_escalation(
         monthly_budget_micros: update.monthly_budget_micros,
         max_per_run: update.max_per_run,
     };
-    let choice = check_escalation(main.as_ref(), &request).map_err(DomainError::validation)?;
+    let choice =
+        check_escalation(main.as_ref(), &request, prices).map_err(DomainError::validation)?;
     let previous = model_escalation(&mut tx).await?;
     let max_per_run = i32::try_from(choice.max_per_run)?;
     set_model_escalation(
@@ -161,8 +164,9 @@ pub async fn escalation_budget(
 
 async fn month_spending(conn: &mut PgConnection) -> anyhow::Result<MonthSpending> {
     let month_start = month_start(Utc::now());
+    let roles = ESCALATION_BUDGET_ROLES.map(|role| role.as_str());
     Ok(MonthSpending {
-        spent_micros: escalation_spent(conn, month_start).await?,
+        spent_micros: escalation_spent(conn, month_start, &roles).await?,
         month_start,
     })
 }

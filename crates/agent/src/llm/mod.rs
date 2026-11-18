@@ -16,9 +16,9 @@ pub use embedding::{
     EMBEDDING_DIMENSIONS, Embedded, EmbeddingConfig, EmbeddingProvider, TenantEmbeddingChoice,
 };
 pub use escalation::{
-    AVAILABLE_MECHANISMS, EscalationChoice, EscalationRequest, MAX_ESCALATION_BUDGET_MICROS,
-    MAX_ESCALATIONS_PER_RUN, MIN_ESCALATION_BUDGET_MICROS, Mechanism, check_escalation,
-    escalation_problem,
+    AVAILABLE_MECHANISMS, ESCALATION_BUDGET_ROLES, EscalationChoice, EscalationRequest,
+    MAX_ESCALATION_BUDGET_MICROS, MAX_ESCALATIONS_PER_RUN, MIN_ESCALATION_BUDGET_MICROS, Mechanism,
+    check_escalation, escalation_problem,
 };
 pub use factory::{PROVIDER_KINDS, ProviderConfig, create_provider};
 pub use pricing::{LongPromptPrice, ModelPrice, PriceTable, TierPrice};

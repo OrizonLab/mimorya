@@ -14645,8 +14645,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
        cours de génération (étape 3) ;
   - **le modèle d'escalade** est choisi chez le même fournisseur que le modèle des
     conversations de l'entreprise, avec la même clé et la même adresse : seul le nom du
-    modèle change, vérifié par les règles des noms de modèle (`check_model_name`,
-    ADR-024). Il diffère du modèle principal. Le fournisseur et l'adresse du moment
+    modèle change, vérifié par les règles des noms de modèle (`check_model_name`, ADR-024). Il diffère du modèle principal et a un prix connu de la plateforme : sans prix, ses appels compteraient pour rien et le budget ne le bornerait pas. Le fournisseur et l'adresse du moment
     sont gardés avec lui : si l'entreprise change de fournisseur ou d'adresse, ou retire
     son fournisseur, le réglage reste, mais il est dit inutilisable, avec la raison, et
     aucun mécanisme ne s'applique. Un run n'échoue jamais pour autant : il garde le
@@ -14660,8 +14659,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - un budget mensuel par entreprise, en USD comme tous les coûts de la plateforme
       (prix des modèles, limites des missions, ADR-093, et des évaluations, ADR-154), de
       1 à 10 000 USD. Il porte sur le mois civil dans le fuseau de la plateforme
-      (`PLATFORM_TIME_ZONE`) et compte tout ce que les mécanismes ajoutent : appels au
-      modèle d'escalade, appels de classement et consultations du conseiller ;
+      (`PLATFORM_TIME_ZONE`) et compte tout ce que les mécanismes ajoutent : appels au modèle d'escalade, appels de classement et consultations du conseiller (rôles que le moteur nomme, `ESCALATION_BUDGET_ROLES`) ;
     - un nombre maximal d'escalades par run, de 1 à 50. Au-delà de l'une ou de l'autre,
       plus d'escalade : le run continue avec le modèle principal, et l'événement est
       journalisé une fois par run (journal d'audit `model_escalation.limited`, avec la

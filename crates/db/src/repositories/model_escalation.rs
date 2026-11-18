@@ -1,14 +1,11 @@
 //! A company's model escalation (ADR-207): its stronger model, the
 //! mechanisms that call it and their bounds; and what those mechanisms
-//! have cost since a moment, read from the usage records by their role.
+//! have cost since a moment, read from the usage records of the roles the
+//! engine says its budget counts.
 
 use chrono::{DateTime, Utc};
 use sqlx::PgConnection;
 use uuid::Uuid;
-
-/// The roles of model calls the escalation budget counts: what the
-/// mechanisms add to the main model's calls.
-pub const ESCALATION_ROLES: [&str; 3] = ["escalation", "classification", "advisor"];
 
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct ModelEscalationRow {
@@ -85,15 +82,19 @@ pub async fn remove_model_escalation(conn: &mut PgConnection) -> sqlx::Result<bo
     Ok(removed.rows_affected() > 0)
 }
 
-/// What the company's escalation mechanisms have cost since `since`, in
+/// What the model calls of `roles` have cost since `since`, in
 /// micro-dollars.
-pub async fn escalation_spent(conn: &mut PgConnection, since: DateTime<Utc>) -> sqlx::Result<i64> {
+pub async fn escalation_spent(
+    conn: &mut PgConnection,
+    since: DateTime<Utc>,
+    roles: &[&str],
+) -> sqlx::Result<i64> {
     sqlx::query_scalar(
         "select coalesce(sum(cost_micros), 0)::bigint from usage_records \
          where created_at >= $1 and role = any($2)",
     )
     .bind(since)
-    .bind(&ESCALATION_ROLES[..])
+    .bind(roles)
     .fetch_one(conn)
     .await
 }
