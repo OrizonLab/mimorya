@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
-use mimorya_agent::llm::{Effort, LlmProvider, ModelRouter};
+use mimorya_agent::llm::{Effort, LlmProvider, ModelRole, ModelRouter};
 use mimorya_agent::runtime::answer_review::review_criteria;
 use mimorya_agent::runtime::verification::{JudgeInput, judge_answer};
 use mimorya_agent::runtime::{
@@ -252,6 +252,7 @@ async fn answer_and_judge(
     journal
         .record(UsageRecord {
             kind: "llm",
+            role: ModelRole::Review,
             provider: response.provider.clone(),
             model: response.model.clone(),
             input_tokens: response.usage.input_tokens,

@@ -34,7 +34,7 @@ Repères à l'intérieur des crates :
   sa proposition, `grants.rs`, ADR-168), `core/src/tools/`
   (contrat d'outil, outils typés, comptes reliés de la personne servie : `accounts.rs`,
   ADR-117, et son compte à la messagerie standard, ouvert pour un appel, le serveur qui le refuse nommé (`MailServerRole` : IMAP, SMTP ou CalDAV), ADR-205), `core/src/time_zone.rs` (fuseau de la plateforme : date donnée au modèle,
-  jours des outils), `core/src/skill_rules.rs` (ce qu'une compétence peut
+  jours des outils, début du mois d'un budget mensuel, ADR-207), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/account_links/` (comptes que chacun relie :
   application Microsoft 365 ou client Google Workspace déclaré, permissions déléguées,
   identité qui prouve que le compte est le sien, `microsoft365.rs`, `google.rs` ; ce qui
@@ -81,7 +81,7 @@ Repères à l'intérieur des crates :
   l'entreprise, une table par sorte (export du journal vers son SIEM, ADR-181, SCIM,
   ADR-183) : `bearer_tokens.rs` ; comptes tels que SCIM les lit et les crée, et
   l'identifiant que leur donne le fournisseur : `scim_users.rs`, ADR-183 ; fenêtres des
-  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives, et consommation de plus de cinq ans : `retention.rs`, ADR-185, ADR-186, ADR-197, selon les durées de chaque entreprise, lues avec ce que la purge applique : `retention_durations.rs`, ADR-195 ; compte effacé, ses liens comptés sous verrou, et sa suppression : `account_erasure.rs`, ADR-189 ; second facteur d'un compte, secret scellé, dernier pas accepté, refus de suite et codes de secours, et comptes qui en ont un actif : `second_factors.rs`, et connexions qui l'attendent, lues avant toute session, terminées à sa réinitialisation : `login_challenges.rs`, ADR-200, ADR-202 ; second facteur exigé par l'entreprise : `second_factor_settings.rs`, ADR-201 ; avis à l'auteur
+  limites d'authentification partagées : `rate_limits.rs`, ADR-088 ; escalade de modèle de l'entreprise et ce que ses mécanismes ont dépensé, lu par rôle : `model_escalation.rs`, ADR-207 ; rétention appliquée à toutes les entreprises, sessions, mémoires et conversations inactives, et consommation de plus de cinq ans : `retention.rs`, ADR-185, ADR-186, ADR-197, selon les durées de chaque entreprise, lues avec ce que la purge applique : `retention_durations.rs`, ADR-195 ; compte effacé, ses liens comptés sous verrou, et sa suppression : `account_erasure.rs`, ADR-189 ; second facteur d'un compte, secret scellé, dernier pas accepté, refus de suite et codes de secours, et comptes qui en ont un actif : `second_factors.rs`, et connexions qui l'attendent, lues avant toute session, terminées à sa réinitialisation : `login_challenges.rs`, ADR-200, ADR-202 ; second facteur exigé par l'entreprise : `second_factor_settings.rs`, ADR-201 ; avis à l'auteur
   d'une tâche planifiée ou d'une mission dont le run attend sa validation :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
@@ -116,7 +116,10 @@ Repères à l'intérieur des crates :
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
   connecteurs, mémoires, documents, compétences de démonstration), `db/src/testing.rs`.
-- `agent/src/llm/<fournisseur>/`, `agent/src/llm/embedding/` (modèles d'embeddings de la
+- `agent/src/llm/<fournisseur>/`, `agent/src/llm/escalation.rs` (ce qu'une entreprise peut
+  choisir comme escalade de modèle : modèle de son fournisseur propre, budget mensuel en USD,
+  escalades par run, mécanismes livrés, ADR-207), `agent/src/llm/pricing.rs` (prix datés,
+  palier de Claude Haiku 5.5), rôle de chaque appel (`ModelRole`, `router.rs`), `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
   (`lesson.rs`, ADR-076), résumé des messages anciens d'une conversation
@@ -298,7 +301,7 @@ Repères à l'intérieur des crates :
   `api/src/services/skill_evaluations/` (évaluations des compétences : une passe par
   entreprise, quatre à la fois par processus (`pass.rs`, ADR-157), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
   (`ports/`), lecture (`view.rs`), ADR-104 ; ce qu'elles peuvent coûter sur trente jours
-  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; une
+  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; escalade de modèle de l'entreprise, choisie et lue avec la dépense du mois par `services/admin/model_escalation.rs`, ADR-207 ; une
   proposition de l'agent jouée sans les connecteurs qui joignent l'extérieur, retirés par
   `services/connectors/tenant_tools.rs`, ADR-153),
   `api/src/services/connectors/` (instances des connecteurs gardées par processus,
@@ -396,7 +399,7 @@ Repères à l'intérieur des crates :
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
   et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174, et si le compte de chacun est vérifié, ADR-175, une déclaration refusée si elle a changé depuis l'ouverture de son formulaire, ADR-176,
   `admin/retention/` : durées de rétention de l'entreprise, un raccourcissement demandé d'abord, sa date montrée, l'onglet ouvert à qui détient `retention:manage`, une page restée ouverte refusée si elles ont changé, ADR-196, `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/audit-chain/` : vérification du journal d'audit à la demande et ancres gardées, ADR-179, `admin/audit-export/` : jetons de l'export du journal vers le SIEM de l'entreprise, secret montré une fois, l'onglet ouvert à qui lit ou exporte le journal (`lib/admin-sections.ts`), ADR-182, `admin/bearer-tokens/` : section commune aux jetons qu'un autre système détient de l'entreprise, ADR-184, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
-  ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, `admin/users/` :
+  ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, escalade de modèle, son budget et ses mécanismes (`escalation-section.tsx`), ADR-207, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et les jetons SCIM du fournisseur d'identité (`scim-tokens.tsx`), ADR-184, et l'effacement d'un compte désactivé (`erasure-form.tsx`, ce qui est parti : `erased-notice.tsx`), ADR-190, et le second facteur actif et sa réinitialisation (`second-factor-reset.tsx`), ADR-204, `admin/identity-providers/` : onglet « Connexion », dont le second facteur exigé par l'entreprise (`second-factor-policy.tsx`), ADR-204, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
   ADR-105, critères de qualité, ADR-107, dépense et limite des évaluations, ADR-155 —, approvals — dont la

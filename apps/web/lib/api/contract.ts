@@ -919,6 +919,13 @@ details?: unknown, };
 
 export type ErrorKind = "validation" | "unauthenticated" | "forbidden" | "not_found" | "conflict" | "budget_exceeded" | "unavailable" | "request" | "rate_limited" | "internal";
 
+export type EscalationMechanism = "afterFailure" | "router" | "advisor";
+
+/**
+ * What a company's escalation spent this month, shown with its usage.
+ */
+export type EscalationSpending = { budgetMicros: number, spentMicros: number, monthStart: string, };
+
 export type EvaluatedCaseView = { name: string, request: string, criteria: Array<string>,
 /**
  * For the version evaluated; `None` while not played.
@@ -1837,6 +1844,12 @@ mustChangePassword: boolean,
  */
 hasPassword: boolean, };
 
+export type MechanismView = { key: EscalationMechanism, label: string, available: boolean,
+/**
+ * Why it may not be turned on (in French).
+ */
+reason: string | null, };
+
 export type MemoryItem = { id: string, scope: MemoryScope,
 /**
  * Name of the unit sharing it, for a unit's memory.
@@ -2036,6 +2049,58 @@ minCostMicros: number,
 maxCostCeilingMicros: number, };
 
 export type MissionStatus = "in_progress" | "awaiting_approval" | "done" | "failed" | "cancelled";
+
+export type ModelEscalationSettings = { model: string, afterFailure: boolean, router: boolean, advisor: boolean, monthlyBudgetMicros: number, maxPerRun: number, updatedAt: string, };
+
+/**
+ * Body of `PUT /admin/model-escalation`: checked by the service, which
+ * says its bounds in its refusal.
+ */
+export type ModelEscalationUpdate = { model: string, afterFailure: boolean, router: boolean, advisor: boolean, monthlyBudgetMicros: number, maxPerRun: number, };
+
+/**
+ * `GET /admin/model-escalation`.
+ */
+export type ModelEscalationView = {
+/**
+ * The model of the company's conversations, if it has its own
+ * provider: without one, nothing may be chosen.
+ */
+mainModel: string | null,
+/**
+ * The escalation chosen, if any.
+ */
+settings: ModelEscalationSettings | null,
+/**
+ * Why the escalation chosen does not serve now (in French): runs keep
+ * the main model.
+ */
+problem: string | null,
+/**
+ * Each mechanism, and whether it may be turned on.
+ */
+mechanisms: Array<MechanismView>,
+/**
+ * What the mechanisms cost since the start of the month, in
+ * micro-dollars.
+ */
+spentMicros: number,
+/**
+ * The start of the month, in the platform's time zone (RFC 3339).
+ */
+monthStart: string,
+/**
+ * A monthly budget goes from this much…
+ */
+minBudgetMicros: number,
+/**
+ * …to this much.
+ */
+maxBudgetMicros: number,
+/**
+ * The most escalations a run may be allowed.
+ */
+maxPerRunCeiling: number, };
 
 /**
  * Body of `POST /admin/users`: the account is invited (ADR-027).
@@ -3357,9 +3422,14 @@ costMicros: number | null, };
 export type UsageKind = "llm" | "embedding" | "tool";
 
 /**
+ * The role of a model call (ADR-207); other uses are the main model's.
+ */
+export type UsageRole = "main" | "escalation" | "classification" | "advisor" | "review";
+
+/**
  * Usage of one model, summed over the period.
  */
-export type UsageRow = { provider: string, model: string, kind: UsageKind, calls: number, inputTokens: number, outputTokens: number,
+export type UsageRow = { provider: string, model: string, kind: UsageKind, role: UsageRole, calls: number, inputTokens: number, outputTokens: number,
 /**
  * Estimated cost, in millionths of the currency unit.
  */
@@ -3372,7 +3442,12 @@ export type UsageSummary = {
 /**
  * Start of the period.
  */
-since: string, rows: Array<UsageRow>, };
+since: string, rows: Array<UsageRow>,
+/**
+ * What the company's model escalation spent this month, against its
+ * budget, if it chose one (ADR-207).
+ */
+escalation: EscalationSpending | null, };
 
 /**
  * `POST /admin/users`.

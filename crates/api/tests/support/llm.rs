@@ -38,6 +38,7 @@ pub fn scripted_prices() -> PriceTable {
         output_per_mtok: 2500.0,
         cache_read_per_mtok: None,
         cache_write_per_mtok: None,
+        long_prompt: None,
     };
     PriceTable::new(HashMap::from([("scripted-model".to_string(), price)]))
 }

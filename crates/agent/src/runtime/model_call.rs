@@ -8,7 +8,7 @@ use super::ports::{CurrentAccess, EnginePorts, RunEvent, UsageRecord};
 use super::state::RunCheckpoint;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{
-    LlmError, LlmErrorKind, LlmProvider, LlmRequest, LlmResponse, PriceTable, TaskClass,
+    LlmError, LlmErrorKind, LlmProvider, LlmRequest, LlmResponse, ModelRole, PriceTable, TaskClass,
 };
 use crate::tools::to_tool_spec;
 
@@ -56,7 +56,8 @@ pub async fn call_model(
     {
         Ok(response) => {
             state.usage.steps += 1;
-            record_model_usage(&deps.ports, &deps.prices, state, &response).await?;
+            record_model_usage(&deps.ports, &deps.prices, state, &response, ModelRole::Main)
+                .await?;
             Ok(ModelTurn::Response(Box::new(response)))
         }
         Err(error) if error.kind == LlmErrorKind::Aborted => {
@@ -86,13 +87,14 @@ pub async fn complete_with_retry(
     }
 }
 
-/// Adds a model response to the run totals, records it for metering and
-/// notifies listeners.
+/// Adds a model response to the run totals, records it for metering, with
+/// the role the call played, and notifies listeners.
 pub async fn record_model_usage(
     ports: &EnginePorts,
     prices: &PriceTable,
     state: &mut RunCheckpoint,
     response: &LlmResponse,
+    role: ModelRole,
 ) -> anyhow::Result<()> {
     let cost = prices.cost_micros(&response.model, &response.usage);
     let usage = response.usage;
@@ -104,6 +106,7 @@ pub async fn record_model_usage(
         .usage
         .record(UsageRecord {
             kind: "llm",
+            role,
             provider: response.provider.clone(),
             model: response.model.clone(),
             input_tokens,

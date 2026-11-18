@@ -460,8 +460,12 @@ qu'au-delà de ce que PostgreSQL tient.
   Mistral, OpenAI, serveurs listés par l'exploitant), choisi par l'entreprise et
   désactivé par défaut (ADR-074) ; vecteurs de 1024 dimensions calculés en arrière-plan
   pour les mémoires actives, et pour chaque demande au moment de chercher.
-- Suivi des coûts : chaque appel enregistre fournisseur, modèle, tokens et coût estimé
-  dans `usage_records`.
+- Suivi des coûts : chaque appel enregistre fournisseur, modèle, rôle (principal,
+  escalade, classement, conseiller, contrôle), tokens et coût estimé dans
+  `usage_records`.
+- **Escalade de modèle** (ADR-207) : un modèle plus puissant, chez le fournisseur propre
+  de l'entreprise, appelé quand un mécanisme le demande, dans un budget mensuel et un
+  nombre d'escalades par run (réglages faits, mécanismes à venir).
 
 ## 10. Observabilité et exploitation
 

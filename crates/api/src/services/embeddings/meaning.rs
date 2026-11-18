@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use mimorya_agent::llm::{Embedded, LlmUsage};
+use mimorya_agent::llm::{Embedded, LlmUsage, ModelRole};
 use mimorya_db::repositories::memory::Meaning;
 use mimorya_db::repositories::usage::{NewUsage, append_usage};
 use uuid::Uuid;
@@ -103,6 +103,7 @@ impl EmbeddingService {
                 user_id: by.user_id,
                 run_id: by.run_id,
                 kind: "embedding",
+                role: ModelRole::Main.as_str(),
                 provider: embedder.provider.id().to_string(),
                 model: embedder.model.clone(),
                 input_tokens: i32::try_from(usage.input_tokens).unwrap_or(i32::MAX),

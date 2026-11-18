@@ -57,7 +57,8 @@
 //! evaluations left: what they spent today and one played without the
 //! connectors that reach outside (`evaluation_records`, ADR-155, ADR-156),
 //! and the demo company's audit log sealed from the start (`audit_chain`,
-//! ADR-179).
+//! ADR-179), and what its model calls cost, by role (`usage_records`,
+//! ADR-207).
 
 mod audit_chain;
 mod dns_server;
@@ -94,6 +95,7 @@ mod summaries;
 mod teams;
 mod telegram;
 mod unreadable_oauth;
+mod usage_records;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -240,6 +242,7 @@ async fn main() -> anyhow::Result<()> {
     queued::leave(&app).await?;
     summaries::leave(&app).await?;
     evaluation_records::leave(&app).await?;
+    usage_records::leave(&app).await?;
     unreadable_oauth::leave(&app).await?;
     person_renewal::leave(&app).await?;
     audit_chain::leave(&app).await?;

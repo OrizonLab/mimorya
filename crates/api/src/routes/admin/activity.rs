@@ -9,9 +9,10 @@ use serde::Deserialize;
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::admin::{AuditEntry, AuditLog, UsageRow, UsageSummary};
+use crate::contract::admin::{AuditEntry, AuditLog, EscalationSpending, UsageRow, UsageSummary};
 use crate::http::{ApiResult, Query, iso};
 use crate::plugins::Auth;
+use crate::services::admin::escalation_budget;
 
 #[derive(Deserialize, Validate)]
 pub struct AuditParams {
@@ -63,6 +64,7 @@ pub async fn usage(
     let since = Utc::now() - Duration::days(params.days.unwrap_or(30));
     let mut tx = state.db.begin(identity.tenant_id).await?;
     let rows = usage_summary(&mut tx, since).await?;
+    let escalation = escalation_budget(&mut tx).await?;
     tx.commit().await?;
     Ok(Json(UsageSummary {
         since: iso(&since),
@@ -70,5 +72,10 @@ pub async fn usage(
             .iter()
             .map(UsageRow::from_row)
             .collect::<anyhow::Result<_>>()?,
+        escalation: escalation.map(|(budget_micros, spending)| EscalationSpending {
+            budget_micros,
+            spent_micros: spending.spent_micros,
+            month_start: iso(&spending.month_start),
+        }),
     }))
 }

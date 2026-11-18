@@ -1,7 +1,7 @@
 //! Model usage: cached input tokens count once, in the run totals, the
 //! metering record and the event listeners receive.
 
-use mimorya_agent::llm::{LlmResponse, LlmUsage, PriceTable, StopReason};
+use mimorya_agent::llm::{LlmResponse, LlmUsage, ModelRole, PriceTable, StopReason};
 use mimorya_agent::runtime::model_call::record_model_usage;
 use mimorya_agent::runtime::{RunCheckpoint, RunEvent};
 use mimorya_agent::testing::InMemoryPorts;
@@ -31,11 +31,13 @@ async fn cached_input_tokens_count_once_everywhere() {
         &PriceTable::default(),
         &mut state,
         &response,
+        ModelRole::Main,
     )
     .await
     .unwrap();
     assert_eq!(state.usage.input_tokens, 55);
     assert_eq!(ports.usage_records()[0].input_tokens, 55);
+    assert_eq!(ports.usage_records()[0].role, ModelRole::Main);
     let emitted = ports.emitted();
     let Some(RunEvent::Usage {
         input_tokens,
