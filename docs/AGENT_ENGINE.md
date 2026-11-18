@@ -412,8 +412,9 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   appel, enregistré avec le rôle de l'appel (principal, escalade, classement, conseiller,
   contrôle) ; budgets par run et quotas mensuels par entreprise (phase 3 pour la
   facturation).
-- **Escalade de modèle** (ADR-207) : un modèle plus puissant du fournisseur propre de
-  l'entreprise (même clé, même adresse), appelé par trois mécanismes indépendants,
+- **Escalade de modèle** (ADR-207) : un modèle plus puissant du fournisseur des runs de
+  l'entreprise (même clé, même adresse : le sien, ou celui de la plateforme en formule 2
+  ou 3, ADR-209), appelé par trois mécanismes indépendants,
   désactivés par défaut : après un échec du contrôle de la réponse, par un routeur en
   amont, par l'advisor d'Anthropic. Un budget mensuel (USD) et un nombre d'escalades par
   run le bornent ; au-delà, le run continue avec le modèle principal. Fait : les

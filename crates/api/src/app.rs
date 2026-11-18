@@ -140,6 +140,9 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         db.clone(),
         LlmServiceOptions {
             platform: provider,
+            // The escalation of a company the platform's model serves is
+            // built with its configuration (ADR-209).
+            platform_config: config.llm.clone(),
             secrets: SecretStore::new(config.secrets.clone()),
             listed_endpoints: config.tenant_llm_endpoints.clone(),
             factory: options.provider_factory.unwrap_or_else(default_factory),

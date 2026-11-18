@@ -55,7 +55,11 @@ export default defineConfig({
         DATABASE_APP_URL: databaseAppUrl,
         DEMO_PASSWORD: 'demo-mimorya',
         WEB_ORIGIN: 'http://localhost:3000',
-        LLM_PROVIDER: 'none',
+        // The platform's model as the operator configures it: the server
+        // serves it scripted, and builds a supplied company's escalation from
+        // this configuration (ADR-209), by a scripted factory too.
+        LLM_PROVIDER: 'anthropic',
+        ANTHROPIC_API_KEY: 'cle-exploitant-e2e',
         // A public test key (`PUBLIC_TEST_MASTER_KEYS`, refused in production),
         // so that the administration can store secrets (a token, an API key).
         MIMORYA_MASTER_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',

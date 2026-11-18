@@ -17,7 +17,8 @@ import { MAIN_ROUTES, RouterRoutesFields } from './router-routes';
 
 const ESCALATION = '/admin/model-escalation';
 
-/** A stronger model of the conversations' provider, called by the
+/** A stronger model of the provider of the company's runs (its own, or the
+ * platform's in the formulas the operator gives it, ADR-209), called by the
  * mechanisms the company turns on, within a monthly budget (ADR-207). */
 export function EscalationSection() {
   const state = useApiData<ModelEscalationView>(ESCALATION);
@@ -39,7 +40,7 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
   const [advisor, setAdvisor] = useSyncedState(settings?.advisor ?? false);
   const [routes, setRoutes] = useSyncedState(settings?.routes ?? MAIN_ROUTES);
   const action = useAction();
-  const own = data.mainModel !== null;
+  const served = data.mainModel !== null;
   const turnedOn: Record<EscalationMechanism, [boolean, (on: boolean) => void]> = {
     afterFailure: [afterFailure, setAfterFailure],
     router: [router, setRouter],
@@ -72,26 +73,36 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
         <p className="font-medium">Escalade de modèle</p>
         <p className="text-xs text-muted">
           Un modèle plus puissant, chez le même fournisseur que vos conversations et avec la même
-          clé, n’intervient que quand un mécanisme activé le demande. Chaque appel compte dans un
-          budget mensuel (USD) et dans un nombre d’escalades par run ; au-delà, le run continue avec
-          le modèle principal. Seul un modèle dont la plateforme connaît le prix peut servir
-          (aujourd’hui, ceux d’Anthropic) : sans prix, le budget ne pourrait pas borner ses appels.
-          Après un échec du contrôle des réponses, une fois les corrections du modèle principal
-          épuisées, le modèle d’escalade reprend le run là où il en est, une fois par run ; les
-          actions déjà faites ne sont pas refaites, et les validations restent les mêmes. Le routeur
-          choisit le modèle au début du run, selon sa sorte.
+          clé (celle de votre entreprise, ou celle de l’exploitant si elle utilise le modèle de la
+          plateforme), n’intervient que quand un mécanisme activé le demande. Chaque appel compte
+          dans un budget mensuel (USD) et dans un nombre d’escalades par run ; au-delà, le run
+          continue avec le modèle principal. Seul un modèle dont la plateforme connaît le prix peut
+          servir (aujourd’hui, ceux d’Anthropic) : sans prix, le budget ne pourrait pas borner ses
+          appels. Après un échec du contrôle des réponses, une fois les corrections du modèle
+          principal épuisées, le modèle d’escalade reprend le run là où il en est, une fois par run
+          ; les actions déjà faites ne sont pas refaites, et les validations restent les mêmes. Le
+          routeur choisit le modèle au début du run, selon sa sorte.
         </p>
-        {!own && (
+        {!served && (
           <p className="text-sm">
-            L’escalade demande le fournisseur propre de votre entreprise, qui en paie les appels :
-            choisissez d’abord celui de vos conversations.
+            L’escalade demande un modèle pour vos conversations : le fournisseur propre de votre
+            entreprise, ou le modèle de la plateforme que l’exploitant lui fournit.
+          </p>
+        )}
+        {data.onOperatorKey && (
+          <p className="text-sm">
+            Votre entreprise utilise le modèle de la plateforme : chaque appel d’escalade compte
+            dans ce budget et dans le plafond ou le crédit de sa formule, à son montant refacturé,
+            sans être facturé deux fois.
           </p>
         )}
         {data.problem && <ErrorNote message={data.problem} />}
-        <fieldset disabled={!own} className="flex flex-col gap-3">
+        <fieldset disabled={!served} className="flex flex-col gap-3">
           <Field
             label={
-              own ? `Modèle d’escalade (modèle principal : ${data.mainModel})` : 'Modèle d’escalade'
+              served
+                ? `Modèle d’escalade (modèle principal : ${data.mainModel})`
+                : 'Modèle d’escalade'
             }
           >
             <Input
@@ -150,7 +161,7 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
         </p>
         {action.error && <ErrorNote message={action.error} />}
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" loading={action.pending} disabled={!own}>
+          <Button type="submit" loading={action.pending} disabled={!served}>
             Enregistrer
           </Button>
           {settings && (

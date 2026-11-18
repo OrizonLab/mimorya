@@ -2067,10 +2067,16 @@ routes: RouterRoutes, monthlyBudgetMicros: number, maxPerRun: number, };
  */
 export type ModelEscalationView = {
 /**
- * The model of the company's conversations, if it has its own
- * provider: without one, nothing may be chosen.
+ * The model of the company's runs, if it has one: its own provider's,
+ * or the platform's in the formulas the operator gives it (ADR-209);
+ * without one, nothing may be chosen.
  */
 mainModel: string | null,
+/**
+ * Whether the escalation's calls go to the operator's key: they count
+ * in the company's cap or credit as well as in its budget.
+ */
+onOperatorKey: boolean,
 /**
  * The escalation chosen, if any.
  */
@@ -2085,8 +2091,9 @@ problem: string | null,
  */
 mechanisms: Array<MechanismView>,
 /**
- * What the mechanisms cost since the start of the month, in
- * micro-dollars.
+ * What the mechanisms cost the company since the start of the month,
+ * in micro-dollars: their real cost on its own key, the amount
+ * re-invoiced on the operator's (ADR-209).
  */
 spentMicros: number,
 /**

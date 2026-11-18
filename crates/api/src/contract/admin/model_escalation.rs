@@ -11,9 +11,13 @@ use validator::Validate;
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelEscalationView {
-    /// The model of the company's conversations, if it has its own
-    /// provider: without one, nothing may be chosen.
+    /// The model of the company's runs, if it has one: its own provider's,
+    /// or the platform's in the formulas the operator gives it (ADR-209);
+    /// without one, nothing may be chosen.
     pub main_model: Option<String>,
+    /// Whether the escalation's calls go to the operator's key: they count
+    /// in the company's cap or credit as well as in its budget.
+    pub on_operator_key: bool,
     /// The escalation chosen, if any.
     pub settings: Option<ModelEscalationSettings>,
     /// Why the escalation chosen does not serve now (in French): runs keep
@@ -21,8 +25,9 @@ pub struct ModelEscalationView {
     pub problem: Option<String>,
     /// Each mechanism, and whether it may be turned on.
     pub mechanisms: Vec<MechanismView>,
-    /// What the mechanisms cost since the start of the month, in
-    /// micro-dollars.
+    /// What the mechanisms cost the company since the start of the month,
+    /// in micro-dollars: their real cost on its own key, the amount
+    /// re-invoiced on the operator's (ADR-209).
     pub spent_micros: i64,
     /// The start of the month, in the platform's time zone (RFC 3339).
     pub month_start: String,

@@ -1,10 +1,11 @@
-// The company's model escalation (ADR-207): refused while the company is on
-// the platform's model; with its own provider, a stronger model of it is
-// chosen within a monthly budget and a number of escalations per run, read
-// back as the API recorded it, the escalation after a failed review and the
-// router turned on, the router's rule for each kind of run chosen, shown in
-// the consumption with its budget beside what each role of the model calls
-// cost, then removed. The mechanism not delivered yet cannot be turned on.
+// The company's model escalation (ADR-207): on the platform's model the
+// operator supplies it with (ADR-209), one is chosen beside it, told to
+// count in the formula's cap or credit too; with its own provider, a
+// stronger model of it is chosen within a monthly budget and a number of
+// escalations per run, read back as the API recorded it, the escalation
+// after a failed review and the router turned on, the router's rule for each
+// kind of run chosen, shown in the consumption with its budget beside what
+// each role of the model calls cost, then removed. The mechanism not delivered yet cannot be turned on.
 // Whatever happens, the company is back on the platform's model, without
 // escalation, afterwards.
 import type { Page } from '@playwright/test';
@@ -34,11 +35,32 @@ async function shown(page: Page): Promise<ModelEscalationView> {
   return (await (await page.request.get(ESCALATION)).json()) as ModelEscalationView;
 }
 
+test('on the platform’s model, an escalation counts in the formula too', async ({ page }) => {
+  await openAdmin(page, 'Modèle d’IA');
+  const form = page.getByRole('form', { name: 'Escalade de modèle' });
+  const supplied = await shown(page);
+  expect(supplied.onOperatorKey).toBe(true);
+  await expect(form).toContainText('Votre entreprise utilise le modèle de la plateforme');
+  await expect(
+    form.getByLabel(`Modèle d’escalade (modèle principal : ${supplied.mainModel})`),
+  ).toBeVisible();
+  await form.getByRole('checkbox', { name: 'Escalade après échec du contrôle' }).check();
+  await form.getByLabel(/^Modèle d’escalade/).fill(STRONGER);
+  await form.getByLabel('Budget mensuel d’escalade (USD)').fill('10');
+  await form.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(form.getByRole('button', { name: 'Retirer l’escalade' })).toBeVisible();
+
+  // As the API recorded it, serving.
+  const chosen = await shown(page);
+  expect(chosen.settings?.model).toBe(STRONGER);
+  expect(chosen.settings?.monthlyBudgetMicros).toBe(10_000_000);
+  expect(chosen.problem).toBeNull();
+  await noError(page);
+});
+
 test('a stronger model is chosen within a monthly budget, then removed', async ({ page }) => {
   await openAdmin(page, 'Modèle d’IA');
   const form = page.getByRole('form', { name: 'Escalade de modèle' });
-  await expect(form).toContainText('L’escalade demande le fournisseur propre');
-  await expect(form.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
 
   // The company's own provider for its conversations.
   const own = await page.request.put('/api/admin/llm', {
@@ -49,6 +71,9 @@ test('a stronger model is chosen within a monthly budget, then removed', async (
   await page.reload();
   await page.getByRole('tab', { name: 'Modèle d’IA' }).click();
   await expect(form.getByLabel(`Modèle d’escalade (modèle principal : ${MAIN})`)).toBeVisible();
+  // On its own key: nothing counts in the operator's formula.
+  expect((await shown(page)).onOperatorKey).toBe(false);
+  await expect(form).not.toContainText('Votre entreprise utilise le modèle de la plateforme');
   // The escalation after a failed review and the router are delivered; the
   // advisor not yet.
   await expect(

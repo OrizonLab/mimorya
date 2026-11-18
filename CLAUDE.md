@@ -301,7 +301,7 @@ Repères à l'intérieur des crates :
   `api/src/services/skill_evaluations/` (évaluations des compétences : une passe par
   entreprise, quatre à la fois par processus (`pass.rs`, ADR-157), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
   (`ports/`), lecture (`view.rs`), ADR-104 ; ce qu'elles peuvent coûter sur trente jours
-  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; escalade de modèle de l'entreprise, choisie et lue avec la dépense du mois par `services/admin/model_escalation.rs`, chargée pour ses runs avec ses autres modèles (`services/llm/escalation.rs`) et bornée par la dépense du mois (`services/runs/escalation_budget.rs`), la règle du routeur prise selon la sorte du run (`services/runs/run_kind.rs`), ADR-207 ; une
+  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; escalade de modèle de l'entreprise, choisie et lue avec la dépense du mois par `services/admin/model_escalation.rs`, chargée pour ses runs avec ses autres modèles, sur sa clé ou, en formule 2 ou 3, sur celle de l'exploitant, à côté du modèle de ses runs (`services/llm/escalation.rs`, ADR-209) et bornée par la dépense du mois (`services/runs/escalation_budget.rs`), la règle du routeur prise selon la sorte du run (`services/runs/run_kind.rs`), ADR-207 ; une
   proposition de l'agent jouée sans les connecteurs qui joignent l'extérieur, retirés par
   `services/connectors/tenant_tools.rs`, ADR-153),
   `api/src/services/connectors/` (instances des connecteurs gardées par processus,

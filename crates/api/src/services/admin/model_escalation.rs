@@ -1,14 +1,15 @@
 //! The company's model escalation (ADR-207), chosen by those who manage its
 //! settings (`settings:manage`, company-wide), under the administration
-//! lock that its conversations' model is changed under too: a model of that
-//! provider, with its key and endpoint, the mechanisms that call it, their
-//! monthly budget and the escalations a run may have. Read with why it does
-//! not serve, if so, and what the mechanisms spent this month. Each change
-//! is audited, with the choice alone.
+//! lock that its conversations' model is changed under too: a model of its
+//! runs' provider (its own, or the platform's in the formulas the operator
+//! gives it, ADR-209), with its key and endpoint, the mechanisms that call
+//! it, their monthly budget and the escalations a run may have. Read with
+//! why it does not serve, if so, and what the mechanisms spent this month.
+//! Each change is audited, with the choice alone.
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::llm::{
-    EscalationChoice, EscalationRequest, TenantLlmChoice, check_escalation, escalation_problem,
+    EscalationChoice, EscalationRequest, check_escalation, escalation_problem,
 };
 use mimorya_core::DomainError;
 use mimorya_db::Database;
@@ -21,17 +22,16 @@ use sqlx::PgConnection;
 
 use super::{audit_entry, begin_change};
 use crate::contract::admin::{ModelEscalationUpdate, RouterRoutes};
-use crate::services::llm::{
-    MonthSpending, conversations_choice, escalation_choice, month_spending,
-};
+use crate::services::llm::{MonthSpending, RunsModel, escalation_choice, month_spending};
 use crate::services::{AccessContext, LlmService};
 
 const PERMISSION: &str = "settings:manage";
 
 /// What an administrator reads of the company's escalation.
 pub struct EscalationOverview {
-    /// The model of its conversations, if it has its own provider.
-    pub main: Option<TenantLlmChoice>,
+    /// The model of its runs, if it has one: its own provider's, or the
+    /// platform's on the operator's key.
+    pub runs: Option<RunsModel>,
     pub stored: Option<StoredEscalation>,
     /// Why the escalation stored does not serve now.
     pub problem: Option<String>,
@@ -49,8 +49,9 @@ pub async fn company_model_escalation(
     access: &AccessContext,
 ) -> anyhow::Result<EscalationOverview> {
     access.require_tenant_wide(PERMISSION)?;
-    let mut tx = db.begin(access.subject.tenant_id).await?;
-    let main = conversations_choice(&mut tx).await?;
+    let tenant_id = access.subject.tenant_id;
+    let mut tx = db.begin(tenant_id).await?;
+    let runs = llm.runs_model(&mut tx, tenant_id).await?;
     let stored = model_escalation(&mut tx)
         .await?
         .map(|row| StoredEscalation {
@@ -59,19 +60,20 @@ pub async fn company_model_escalation(
         });
     let spending = month_spending(&mut tx).await?;
     tx.commit().await?;
-    let problem = stored
-        .as_ref()
-        .and_then(|stored| escalation_problem(&stored.choice, main.as_ref(), llm.prices()));
+    let problem = stored.as_ref().and_then(|stored| {
+        let main = runs.as_ref().map(|runs| &runs.choice);
+        escalation_problem(&stored.choice, main, llm.prices())
+    });
     Ok(EscalationOverview {
-        main,
+        runs,
         stored,
         problem,
         spending,
     })
 }
 
-/// Sets the company's escalation, if it has its own provider and the
-/// choice keeps to the rules, its model priced; its runs load it again,
+/// Sets the company's escalation, if its runs have a model (ADR-209) and
+/// the choice keeps to the rules, its model priced; its runs load it again,
 /// here and in the other processes.
 pub async fn set_company_model_escalation(
     db: &Database,
@@ -82,7 +84,7 @@ pub async fn set_company_model_escalation(
     access.require_tenant_wide(PERMISSION)?;
     let tenant_id = access.subject.tenant_id;
     let mut tx = begin_change(db, access, PERMISSION).await?;
-    let main = conversations_choice(&mut tx).await?;
+    let runs = llm.runs_model(&mut tx, tenant_id).await?;
     let request = EscalationRequest {
         model: &update.model,
         after_failure: update.after_failure,
@@ -92,8 +94,8 @@ pub async fn set_company_model_escalation(
         monthly_budget_micros: update.monthly_budget_micros,
         max_per_run: update.max_per_run,
     };
-    let choice =
-        check_escalation(main.as_ref(), &request, llm.prices()).map_err(DomainError::validation)?;
+    let main = runs.as_ref().map(|runs| &runs.choice);
+    let choice = check_escalation(main, &request, llm.prices()).map_err(DomainError::validation)?;
     let previous = model_escalation(&mut tx).await?;
     let max_per_run = i32::try_from(choice.max_per_run)?;
     set_model_escalation(
@@ -126,6 +128,7 @@ pub async fn set_company_model_escalation(
             "routes": RouterRoutes::from(choice.routes),
             "monthlyBudgetMicros": choice.monthly_budget_micros,
             "maxPerRun": choice.max_per_run,
+            "onOperatorKey": runs.is_some_and(|runs| runs.on_operator_key),
             "previousModel": previous.map(|row| row.model),
         })),
     )

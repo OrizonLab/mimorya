@@ -21,6 +21,9 @@ pub const MASTER_KEY: &str = PUBLIC_TEST_MASTER_KEYS[0];
 pub const OTHER_MASTER_KEY: &str = PUBLIC_TEST_MASTER_KEYS[1];
 pub const API_KEY: &str = "sk-ant-api03-cle-de-test-0123456789";
 pub const ENDPOINT: &str = "http://ollama.test:11434/v1";
+/// The operator's key, when a test configures the platform's provider
+/// (`LLM_PROVIDER`, ADR-209).
+pub const OPERATOR_KEY: &str = "sk-ant-cle-de-l-exploitant-0123456789";
 /// The model a company chooses to review its answers (ADR-108): built as
 /// `TestApi::review_model`.
 pub const REVIEW_MODEL: &str = "modele-de-controle";
@@ -31,7 +34,8 @@ pub const REVIEW_MODEL: &str = "modele-de-controle";
 pub const SCRIPTED_CALL_MICROS: i64 = 200_000;
 
 /// The prices that make each call of the scripted model cost
-/// `SCRIPTED_CALL_MICROS`.
+/// `SCRIPTED_CALL_MICROS`, the escalation model the tests choose priced
+/// alike (ADR-207: unpriced, it may not be chosen).
 pub fn scripted_prices() -> PriceTable {
     let price = ModelPrice {
         input_per_mtok: 1500.0,
@@ -40,7 +44,10 @@ pub fn scripted_prices() -> PriceTable {
         cache_write_per_mtok: None,
         long_prompt: None,
     };
-    PriceTable::new(HashMap::from([("scripted-model".to_string(), price)]))
+    PriceTable::new(HashMap::from([
+        ("scripted-model".to_string(), price),
+        (ESCALATION_MODEL.to_string(), price),
+    ]))
 }
 
 /// The escalation model the tests choose (ADR-207): priced, and served by
