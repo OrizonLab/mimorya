@@ -1,6 +1,7 @@
 //! Usage metering (model calls, embeddings, tools) and summaries.
 
 use chrono::{DateTime, Utc};
+use mimorya_core::model_supply::SupplyFormula;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -27,12 +28,32 @@ pub struct NewUsage {
     pub output_tokens: i32,
     /// Unknown prices are recorded as 0 (and flagged in the run events).
     pub cost_micros: i64,
+    /// Who supplied the model, and what the call is re-invoiced (ADR-208).
+    pub charge: UsageCharge,
+}
+
+/// The formula a call was made under (`usage_records_supply_formula`,
+/// ADR-208): on the company's own key, nothing re-invoiced; on the
+/// operator's, its formula and the amount re-invoiced beside the real cost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsageCharge {
+    pub formula: SupplyFormula,
+    pub billed_micros: Option<i64>,
+}
+
+impl UsageCharge {
+    /// On the company's own key.
+    pub const CLIENT_KEY: UsageCharge = UsageCharge {
+        formula: SupplyFormula::ClientKey,
+        billed_micros: None,
+    };
 }
 
 pub async fn append_usage(conn: &mut PgConnection, entry: NewUsage) -> sqlx::Result<()> {
     sqlx::query(
         "insert into usage_records (tenant_id, user_id, run_id, kind, role, provider, model, \
-         input_tokens, output_tokens, cost_micros) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+         input_tokens, output_tokens, cost_micros, supply_formula, billed_micros) \
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
     )
     .bind(entry.tenant_id)
     .bind(entry.user_id)
@@ -44,6 +65,8 @@ pub async fn append_usage(conn: &mut PgConnection, entry: NewUsage) -> sqlx::Res
     .bind(entry.input_tokens)
     .bind(entry.output_tokens)
     .bind(entry.cost_micros)
+    .bind(entry.charge.formula.as_str())
+    .bind(entry.charge.billed_micros)
     .execute(conn)
     .await?;
     Ok(())

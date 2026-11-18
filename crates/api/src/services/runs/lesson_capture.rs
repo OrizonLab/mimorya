@@ -8,7 +8,6 @@
 
 use std::sync::Arc;
 
-use mimorya_agent::llm::PriceTable;
 use mimorya_agent::runtime::{MAX_KNOWN_LESSONS, RunOutcome, lesson_transcript, propose_lesson};
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemorySource, MemoryStatus};
@@ -29,14 +28,12 @@ use crate::services::llm::LlmService;
 pub struct LessonCapture {
     db: Database,
     llm: Arc<LlmService>,
-    prices: Arc<PriceTable>,
     background: Arc<BackgroundTasks>,
 }
 
 impl LessonCapture {
     pub fn new(db: Database, llm: Arc<LlmService>, background: Arc<BackgroundTasks>) -> Self {
         Self {
-            prices: llm.prices().clone(),
             db,
             llm,
             background,
@@ -70,7 +67,11 @@ impl LessonCapture {
         tx.commit().await?;
         // The model of the company's runs: a company that cannot use its own
         // has none reread either.
-        let Ok(Some(provider)) = self.llm.provider_for(scope.tenant_id).await else {
+        // Called and charged by the same models (ADR-208).
+        let Ok(models) = self.llm.resolve(scope.tenant_id).await else {
+            return Ok(None);
+        };
+        let Ok(Some(provider)) = models.runs_provider() else {
             return Ok(None);
         };
         let answer = propose_lesson(provider.as_ref(), transcript, &known).await?;
@@ -80,7 +81,7 @@ impl LessonCapture {
             model: &answer.model,
             usage: &answer.usage,
         };
-        record_background_usage(&self.db, &self.prices, scope, call).await?;
+        record_background_usage(&self.db, self.llm.prices(), &models, scope, call).await?;
         let Some(lesson) = answer.lesson else {
             return Ok(None);
         };

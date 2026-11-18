@@ -42,11 +42,17 @@ pub async fn show(State(state): State<AppState>, Auth(identity): Auth) -> ApiRes
         settings_view(&state, &mut tx, ModelPurpose::Verification, review_problem).await?;
     tx.commit().await?;
     let prices = state.llm.prices();
-    let platform = state.llm.platform().map(|p| PlatformModel {
-        provider: p.id().into(),
-        model: p.model().into(),
-        priced: prices.has(p.model()),
-    });
+    // Shown only to a company the operator supplies (ADR-208).
+    let supplied = models.supply.formula.on_operator_key();
+    let platform = state
+        .llm
+        .platform()
+        .filter(|_| supplied)
+        .map(|p| PlatformModel {
+            provider: p.id().into(),
+            model: p.model().into(),
+            priced: prices.has(p.model()),
+        });
     let providers = PROVIDER_KINDS
         .iter()
         .map(|kind| ProviderKind {

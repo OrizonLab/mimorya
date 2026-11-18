@@ -39,6 +39,7 @@ use crate::services::access::AccessService;
 use crate::services::account_links::{AccountLinkService, PersonAccounts};
 use crate::services::embeddings::{EmbeddingService, UsageBy};
 use crate::services::event_bus::RunEventBus;
+use crate::services::llm::Models;
 
 /// No event recorded yet by this execution.
 const NO_EVENT: i32 = -1;
@@ -91,10 +92,18 @@ pub struct DbPorts {
     pub(super) sub_run: bool,
     /// The accounts the run's user linked, for its tools (ADR-117).
     account_links: Arc<AccountLinkService>,
+    /// The company's models the execution took: what each of its model
+    /// calls is charged, on whose key (ADR-208).
+    models: Arc<Models>,
 }
 
 /// The ports of `scope`'s run, executed by `executor` under `fence`.
-pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) -> EnginePorts {
+pub fn engine_ports(
+    executor: &RunExecutor,
+    scope: RunScope,
+    fence: LeaseFence,
+    models: Arc<Models>,
+) -> EnginePorts {
     DbPorts {
         db: executor.db.clone(),
         scope,
@@ -110,6 +119,7 @@ pub fn engine_ports(executor: &RunExecutor, scope: RunScope, fence: LeaseFence) 
         leased: scope.run_id,
         sub_run: false,
         account_links: executor.account_links.clone(),
+        models,
     }
     .into_engine_ports()
 }
@@ -302,6 +312,11 @@ impl ApprovalStore for DbPorts {
 #[async_trait]
 impl UsageSink for DbPorts {
     async fn record(&self, record: UsageRecord) -> anyhow::Result<()> {
+        // A model call is charged by the models it was made with (ADR-208).
+        let charge = match record.kind {
+            "llm" => self.models.charge(record.role, record.cost_micros),
+            _ => usage::UsageCharge::CLIENT_KEY,
+        };
         let mut tx = self.tx().await?;
         usage::append_usage(
             &mut tx,
@@ -316,6 +331,7 @@ impl UsageSink for DbPorts {
                 input_tokens: saturating_i32(record.input_tokens),
                 output_tokens: saturating_i32(record.output_tokens),
                 cost_micros: record.cost_micros,
+                charge,
             },
         )
         .await?;

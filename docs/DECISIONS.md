@@ -14901,3 +14901,158 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         comme dans l'autre (`skill_proposal_escalation.rs`) ;
       - la table refuse une règle inconnue ;
     - les parcours de bout en bout règlent le routeur et cochent la case d'une version.
+
+## ADR-208 — Formules de fourniture du modèle : clé du client, modèle fourni avec plafond, crédit prépayé (chantier 6)
+
+- **Statut** : accepté (2026-11-18) · complète ADR-024 (modèle de chaque entreprise : sans
+  configuration, ses runs n'utilisent plus le fournisseur du serveur que si l'exploitant
+  la fournit) ; s'appuie sur
+  ADR-033, ADR-191 et ADR-192 (commandes de l'exploitant), ADR-207 (escalade de modèle),
+  ADR-094 (avis par e-mail).
+- **Contexte** : une entreprise utilise soit sa propre clé (ADR-024), soit le modèle de
+  la plateforme, payé par l'exploitant, sans limite de dépense. L'ADR-207 réserve donc
+  l'escalade aux entreprises qui ont leur propre clé. L'exploitant veut proposer trois
+  formules, au choix du client :
+  1. **clé du client** : il fournit sa clé et paie son fournisseur ;
+  2. **modèle fourni avec plafond** : la clé de l'exploitant, dans un plafond de
+     dépense mensuel ;
+  3. **crédit prépayé** : le client avance un montant, et sa consommation sur la clé de
+     l'exploitant en est déduite.
+
+  Dans les formules 2 et 3, la dépense est bornée : l'escalade et les mécanismes à venir
+  y deviennent possibles.
+
+- **Décision** :
+  - **formule de chaque entreprise** : une ligne par entreprise, `tenant_model_supply`,
+    sous RLS comme le reste : la formule (`client_key`, `capped`, `prepaid`), le plafond
+    mensuel ou le mode sans plafond, et le coefficient de refacturation. Sans ligne,
+    l'entreprise est en formule 1. Ce n'est pas un choix de l'entreprise :
+    - **seul l'exploitant écrit la formule**, le plafond, le coefficient et les crédits,
+      par des commandes de `mimorya-admin`, avec le rôle propriétaire de la base
+      (`DATABASE_URL`, le service `migrate`), comme `delete-company` (ADR-192). Le rôle
+      applicatif ne fait que lire ces tables : ni une route de l'API, ni une faille de
+      celle-ci ne peut attribuer la clé de l'exploitant à une entreprise ;
+    - chaque changement est tracé dans le journal d'audit de l'entreprise, avec l'acteur
+      `system`, dans la transaction qui le fait : `model_supply.configured`,
+      `model_supply.markup_set`, `model_supply.credit_added`, sans secret. La lecture
+      (`model-supply`) ne l'est pas ;
+    - un administrateur d'entreprise peut toujours choisir sa propre clé
+      (« Modèle d'IA ») : ses appels ne passent plus par la clé de l'exploitant, et la
+      formule de l'exploitant reste en attente. Il ne peut jamais s'attribuer la clé de
+      l'exploitant : sans formule 2 ou 3, retirer sa clé laisse l'entreprise sans modèle,
+      ce que l'écran « Modèle d'IA » dit (« Retirer ce fournisseur », et sa confirmation)
+      au lieu d'un retour au modèle de la plateforme, qu'il ne lui présente pas ;
+  - **aucune consommation sur la clé de l'exploitant sans règle explicite** : le modèle
+    de la plateforme ne sert qu'une entreprise en formule 2 ou 3. Une entreprise créée
+    par `create-company` est en formule 1 : l'exploitant lui attribue une autre formule,
+    ou elle choisit sa clé. La démonstration (`mimorya-seed`) met l'entreprise fictive en
+    formule 2, au plafond par défaut ;
+  - **ce qui est compté** : chaque ligne de `usage_records` dit sous quelle formule
+    l'appel a été fait (`supply_formula`) : `client_key` sur la clé de l'entreprise, la
+    formule de l'entreprise (`capped`, `prepaid`) sur celle de l'exploitant. Sur la clé de
+    l'exploitant, elle porte aussi le montant refacturé (`billed_micros`), à côté du coût
+    réel (`cost_micros`), inchangé. Tout ce qui y est enregistré compte : conversations,
+    escalade, classement, conseiller, contrôle des réponses, évaluations des compétences,
+    leçons et résumés, tests de connexion. Un appel est compté par les modèles avec
+    lesquels il est fait : une exécution de run, une évaluation, une leçon, un résumé
+    ou un test de connexion prend une seule fois les modèles de l'entreprise (sa
+    formule, son coefficient et ses fournisseurs), qui donnent à la fois le fournisseur
+    de chaque appel et ce qu'il est compté. Une clé ajoutée ou retirée, une formule
+    changée pendant ce temps ne valent que pour l'exécution suivante (un run repris
+    après une validation, par exemple) : un appel fait sur la clé de l'exploitant est
+    toujours compté comme tel. Un modèle de contrôle choisi à part est sur la clé de
+    l'entreprise (ADR-108) ;
+  - **coefficient de refacturation** : de 0 à 100 %, en points de base, 0 par défaut.
+    Il s'applique au montant refacturé de chaque appel, tel qu'il était quand
+    l'exécution a pris ses modèles : `cost × (1 + coefficient)`, arrondi au
+    micro-dollar, gardé avec l'appel. Il ne touche jamais le coût réel. Changer le
+    coefficient vaut pour les exécutions suivantes et ne réécrit jamais la consommation
+    passée ;
+  - **plafond (formule 2)** : un montant refacturé par mois civil, dans le fuseau de la
+    plateforme (`PLATFORM_TIME_ZONE`), de 1 à 100 000 USD, en USD comme tous les coûts
+    (ADR-207). Il compte les appels enregistrés sous la formule 2 dans le mois. Le
+    plafond par défaut est de 100 USD. Le mode sans plafond n'existe que sur demande
+    explicite de l'exploitant (`--cap unlimited`) : il est affiché par `model-supply` et
+    tracé ;
+  - **crédit (formule 3)** : un registre en ajout seul, `tenant_credit_entries` :
+    - chaque versement porte un montant non nul, en USD, et une référence (numéro de
+      facture), unique dans l'entreprise, qui empêche de saisir deux fois la même ;
+    - une ligne n'est jamais modifiée : une correction est une nouvelle ligne, d'un
+      montant négatif s'il le faut, avec sa propre référence (un avoir) ;
+    - le rôle applicatif ne peut que lire le registre ; une modification y est refusée,
+      même au rôle propriétaire, et une suppression aussi, sauf celle de l'entreprise
+      entière (ADR-192) ;
+    - le solde se recalcule à chaque lecture : la somme des versements moins les
+      montants refacturés des appels enregistrés sous la formule 3. Aucune valeur
+      stockée ne peut dériver ;
+  - **commandes de `mimorya-admin`** (rôle propriétaire) :
+    - `model-supply --slug <sigle>` : la formule, le plafond ou le mode sans plafond, le
+      coefficient, la consommation du mois sur la clé de l'exploitant, au coût réel et
+      au montant refacturé, les versements et le solde ;
+    - `set-model-supply --slug <sigle> --formula client-key|capped|prepaid
+[--cap <USD>|unlimited]` : 100 USD sans `--cap` en formule 2 ;
+    - `set-markup --slug <sigle> --percent <taux>` ;
+    - `add-credit --slug <sigle> --amount <USD> --reference <facture>`.
+
+    Un changement de formule ou de coefficient est annoncé aux processus, qui rechargent
+    les modèles de l'entreprise ; un versement n'a rien à leur faire recharger : le
+    solde est lu dans le registre ;
+
+  - **migration** : les entreprises sur le modèle de la plateforme passent en formule 2,
+    sans en couper aucune. Leur plafond est le plus grand de 100 USD et du double de leur
+    dépense du mois en cours, arrondi au dollar. L'exploitant l'ajuste ensuite. Leurs
+    appels passés sont comptés sous la formule 2, au coût réel (coefficient nul), sauf
+    ceux d'un modèle de contrôle qu'elles ont choisi à part. Les autres entreprises
+    restent en formule 1. Cette reprise du passé est une approximation : elle se fonde
+    sur les réglages du jour de la migration, si bien qu'une entreprise qui a retiré
+    sa clé depuis voit ses anciens appels comptés sur la clé de l'exploitant, et
+    l'inverse. Elle fixe les plafonds sans couper personne ; l'exploitant ne refacture
+    pas ce passé tel quel ;
+  - **limites (étape 1)** : plafond atteint ou crédit épuisé, aucun nouveau run n'est
+    lancé et un run en cours s'arrête proprement avant son prochain appel au modèle. Le
+    dépassement possible, dû aux appels déjà en vol, est borné et documenté, comme pour
+    le budget d'escalade ;
+  - **escalade (étape 2)** : une ADR complémentaire lève la restriction de l'ADR-207 pour
+    les formules 2 et 3. La dépense d'escalade compte à la fois dans son budget et dans
+    le plafond ou le crédit, sans être facturée deux fois ;
+  - **écrans et alertes (étape 3)** : la formule, le plafond ou le solde et l'historique
+    des versements dans « Modèle d'IA » ; les montants refacturés dans « Consommation » ;
+    les alertes aux administrateurs de l'entreprise par les avis existants, à des
+    seuils réglables par l'exploitant (par défaut 80 % et 95 % du plafond, ou un solde
+    passé sous 20 % puis 5 % du dernier versement) ;
+  - **hors de ce chantier** (ROADMAP) : paiement en ligne, facturation automatique,
+    expiration des crédits, remboursements, console web de l'exploitant ;
+  - **découpage** (une PR par étape, fusionnée la CI verte avant la suivante) :
+
+    | Étape | Contenu                                                                                                                                                 |
+    | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | 0     | Formule, plafond, coefficient, crédits ; commandes ; modèle de la plateforme réservé aux formules 2 et 3 ; formule et montant refacturé de chaque appel |
+    | 1     | Limites : refus au lancement, vérification avant chaque appel, message à l'utilisateur                                                                  |
+    | 2     | Escalade en formules 2 et 3, comptée dans son budget et dans le plafond ou le crédit                                                                    |
+    | 3     | Écrans, montants refacturés dans la consommation, alertes                                                                                               |
+
+- **Alternatives écartées** :
+  - un solde stocké, mis à jour à chaque appel : il dériverait de la consommation au
+    premier écart, et deux runs en même temps le mettraient en concurrence ;
+  - le coefficient appliqué à la lecture : un coefficient changé réécrirait les montants
+    déjà refacturés et les crédits déjà consommés ;
+  - les formules écrites par le rôle applicatif, sans route pour les changer : une
+    faille de l'API suffirait à s'attribuer la clé de l'exploitant ;
+  - les montants en euros : tous les prix et toutes les limites de la plateforme sont en
+    USD (ADR-207) ;
+  - une route d'administration réservée à l'exploitant : la plateforme n'a pas de compte
+    d'exploitant, et une console web est hors de ce chantier.
+- **Conséquences** :
+  - le rôle propriétaire sert aussi à ces commandes, en plus des migrations, du seed et
+    de la suppression d'une entreprise (CLAUDE.md) ;
+  - une entreprise sans formule 2 ou 3 et sans clé n'a plus de modèle : celles qui en
+    avaient un le gardent par la migration ;
+  - un modèle de la plateforme sans prix connu compterait pour rien : l'exploitant n'en
+    donne que d'Anthropic, dont la plateforme connaît les prix (ADR-207) ;
+  - tests : écriture refusée au rôle applicatif, registre en ajout seul, commandes tracées
+    avec l'acteur `system`, formule et montant refacturé de chaque appel, ce que le
+    plafond et le crédit comptent, coefficient jamais appliqué au coût réel, un run
+    compté par les modèles qu'il a pris quand la formule change pendant qu'il tourne
+    (`crates/api/tests/model_supply_charges.rs`), compte rendu de l'exploitant, migration
+    d'entreprises existantes, isolation, écran d'une entreprise non fournie
+    (`apps/web/e2e/model-supply.spec.ts`).

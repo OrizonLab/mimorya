@@ -10,6 +10,7 @@ use mimorya_core::authz::Sensitivity;
 use mimorya_core::autonomy::ToolRisk;
 use mimorya_core::documents::{DocumentKind, DocumentSpace};
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus};
+use mimorya_core::model_supply::SupplyFormula;
 use mimorya_core::retention::RetentionKind;
 use mimorya_core::second_factor::Requirement;
 use mimorya_db::repositories::access_policies::POLICY_EFFECTS;
@@ -89,6 +90,14 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
         ("audit_log_outcome_check", owned(AUDIT_OUTCOMES)),
         ("usage_records_kind_check", owned(USAGE_KINDS)),
         ("usage_records_role_check", owned(USAGE_ROLES)),
+        (
+            "usage_records_supply_formula",
+            owned(SupplyFormula::ALL.map(SupplyFormula::as_str)),
+        ),
+        (
+            "tenant_model_supply_formula",
+            owned(SupplyFormula::ALL.map(SupplyFormula::as_str)),
+        ),
         ("access_policies_effect_check", owned(POLICY_EFFECTS)),
         ("policy_proposals_status_check", owned(PROPOSAL_STATUSES)),
         (

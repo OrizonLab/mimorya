@@ -33,6 +33,7 @@ use super::ports::{CasePorts, CaseScope, EvaluatedVersion, Journal, ToolTrace, c
 use crate::app::Services;
 use crate::services::AccessContext;
 use crate::services::connectors::Served;
+use crate::services::llm::Models;
 use crate::services::runs::{run_tools, user_profile};
 
 /// What one case may spend at most, for one version.
@@ -76,6 +77,9 @@ pub struct CaseRequest<'a> {
     /// stays the one judge, a failing call leaving the case unjudged: two
     /// versions judged by two models would make no comparison.
     pub judge: Arc<dyn LlmProvider>,
+    /// The company's models `provider` and `judge` were taken from: what
+    /// each call is charged (ADR-208).
+    pub models: Arc<Models>,
     pub version: EvaluatedVersion,
     pub case: &'a StoredCase,
     /// Without the tools of the connectors that reach outside the platform,
@@ -109,7 +113,12 @@ pub async fn play_case(services: &Services, request: CaseRequest<'_>) -> Played 
         ports,
         journal,
         knowledge,
-    } = case_ports(services, request.scope, request.version.clone());
+    } = case_ports(
+        services,
+        request.scope,
+        request.version.clone(),
+        Arc::clone(&request.models),
+    );
     let judged = match answer_and_judge(services, &request, ports, &journal).await {
         Ok(judged) => judged,
         Err(error) => {

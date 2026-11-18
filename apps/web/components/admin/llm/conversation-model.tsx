@@ -6,7 +6,11 @@ import { api, useAction, type LlmTestResult, type LlmView } from '@/lib/api';
 import { LlmForm } from './llm-form';
 import { ModelSummary, TestOutcome, providerLabel } from './model-summary';
 
-/** The model the company's conversations use: the platform's or its own (ADR-024). */
+/**
+ * The model the company's conversations use: its own, or the platform's when
+ * the operator supplies it (ADR-024, ADR-208). Without the platform's, its own
+ * removed leaves it without any.
+ */
 export function ConversationModel({ data, onChanged }: { data: LlmView; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const [tested, setTested] = useState<LlmTestResult | null>(null);
@@ -17,9 +21,10 @@ export function ConversationModel({ data, onChanged }: { data: LlmView; onChange
   }
 
   async function reset() {
-    if (!window.confirm('Revenir au modèle de la plateforme ? La clé enregistrée sera effacée.')) {
-      return;
-    }
+    const question = data.platform
+      ? 'Revenir au modèle de la plateforme ? La clé enregistrée sera effacée.'
+      : 'Retirer le fournisseur de votre entreprise ? La clé enregistrée sera effacée, et vos conversations n’auront plus de modèle.';
+    if (!window.confirm(question)) return;
     if (await action.run(() => api.delete('/admin/llm'))) {
       setTested(null);
       onChanged();
@@ -46,7 +51,7 @@ export function ConversationModel({ data, onChanged }: { data: LlmView; onChange
           <p className="text-sm">
             {data.platform
               ? `Modèle de la plateforme : ${providerLabel(data.platform.provider)} · ${data.platform.model}`
-              : 'La plateforme ne fournit pas de modèle : configurez celui de votre entreprise.'}
+              : 'La plateforme ne fournit pas de modèle à votre entreprise : configurez le vôtre.'}
           </p>
         )}
         {tested && <TestOutcome tested={tested} />}
@@ -64,7 +69,7 @@ export function ConversationModel({ data, onChanged }: { data: LlmView; onChange
           )}
           {data.settings && (
             <Button variant="danger" onClick={reset}>
-              Revenir au modèle de la plateforme
+              {data.platform ? 'Revenir au modèle de la plateforme' : 'Retirer ce fournisseur'}
             </Button>
           )}
         </div>

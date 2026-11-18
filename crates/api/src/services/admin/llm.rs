@@ -19,10 +19,9 @@ use mimorya_db::repositories::llm_settings::{
 };
 use mimorya_db::repositories::usage::{NewUsage, append_usage};
 use serde_json::json;
-use uuid::Uuid;
 
 use super::{audit_entry, begin_change};
-use crate::services::llm::{Review, Unusable, api_key_secret};
+use crate::services::llm::{Models, Review, Unusable, api_key_secret};
 use crate::services::{AccessContext, LlmService};
 
 const PERMISSION: &str = "settings:manage";
@@ -138,11 +137,22 @@ pub async fn reset_llm(
         .delete(&mut tx, api_key_secret(purpose))
         .await?;
     if !removed && !key_removed {
-        return Err(DomainError::not_found(match purpose {
-            ModelPurpose::Conversations => {
+        // The platform's model only serves a company the operator supplies
+        // (ADR-208).
+        let supplied = llm
+            .resolve(tenant_id)
+            .await?
+            .supply
+            .formula
+            .on_operator_key();
+        return Err(DomainError::not_found(match (purpose, supplied) {
+            (ModelPurpose::Conversations, true) => {
                 "Votre entreprise utilise déjà le modèle de la plateforme"
             }
-            ModelPurpose::Verification => {
+            (ModelPurpose::Conversations, false) => {
+                "Votre entreprise n’a pas de fournisseur à retirer"
+            }
+            (ModelPurpose::Verification, _) => {
                 "Les réponses sont déjà relues par le modèle de vos conversations"
             }
         })
@@ -176,9 +186,11 @@ pub async fn test_llm(
 ) -> anyhow::Result<LlmTestOutcome> {
     access.require_tenant_wide(PERMISSION)?;
     let tenant_id = access.subject.tenant_id;
+    // Called and charged by the same models (ADR-208).
+    let models = llm.resolve(tenant_id).await?;
     let provider = match purpose {
-        ModelPurpose::Conversations => runs_provider(llm, tenant_id).await?,
-        ModelPurpose::Verification => match &llm.resolve(tenant_id).await?.review {
+        ModelPurpose::Conversations => runs_provider(&models)?,
+        ModelPurpose::Verification => match &models.review {
             Review::Company(provider) => provider.clone(),
             Review::Runs => {
                 return Err(DomainError::unavailable(
@@ -199,6 +211,18 @@ pub async fn test_llm(
         on_text_delta: None,
     };
     let outcome = provider.complete(&request).await;
+    let role = match purpose {
+        ModelPurpose::Conversations => ModelRole::Main,
+        ModelPurpose::Verification => ModelRole::Review,
+    };
+    // Charged as the company's other calls, on whose key (ADR-208).
+    let cost_micros = match &outcome {
+        Ok(response) => prices
+            .cost_micros(&response.model, &response.usage)
+            .unwrap_or(0),
+        Err(_) => 0,
+    };
+    let charge = models.charge(role, cost_micros);
     let mut tx = db.begin(tenant_id).await?;
     let result = match outcome {
         Ok(response) => {
@@ -209,14 +233,9 @@ pub async fn test_llm(
                     user_id: Some(access.subject.user_id),
                     run_id: None,
                     kind: "llm",
-                    role: match purpose {
-                        ModelPurpose::Conversations => ModelRole::Main,
-                        ModelPurpose::Verification => ModelRole::Review,
-                    }
-                    .as_str(),
-                    cost_micros: prices
-                        .cost_micros(&response.model, &response.usage)
-                        .unwrap_or(0),
+                    role: role.as_str(),
+                    cost_micros,
+                    charge,
                     provider: response.provider,
                     model: response.model.clone(),
                     // Counted as runs count them: cached tokens are input too.
@@ -251,14 +270,11 @@ pub async fn test_llm(
 }
 
 /// The provider of the company's runs, or why there is none to test.
-async fn runs_provider(llm: &LlmService, tenant_id: Uuid) -> anyhow::Result<Arc<dyn LlmProvider>> {
-    match llm.provider_for(tenant_id).await {
+fn runs_provider(models: &Models) -> Result<Arc<dyn LlmProvider>, DomainError> {
+    match models.runs_provider() {
         Ok(Some(provider)) => Ok(provider),
-        Ok(None) => Err(DomainError::unavailable("Aucun modèle n’est configuré").into()),
-        Err(error) => match error.downcast::<Unusable>() {
-            Ok(Unusable(reason)) => Err(unusable(&reason).into()),
-            Err(error) => Err(error),
-        },
+        Ok(None) => Err(DomainError::unavailable("Aucun modèle n’est configuré")),
+        Err(Unusable(reason)) => Err(unusable(&reason)),
     }
 }
 

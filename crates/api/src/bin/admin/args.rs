@@ -4,6 +4,8 @@
 use mimorya_api::services::audit_chain::Anchor;
 use mimorya_api::services::provisioning::CompanyStatusChange;
 
+use super::supply::{self, SupplyCommand};
+
 pub const USAGE: &str = "\
 Usage : mimorya-admin <commande> [options]
 
@@ -42,10 +44,29 @@ Commandes :
                    retirées de la fin d’une chaîne, ou des sceaux posés à nouveau
                      [--anchor <entreprise>:<place>:<sceau>]…   (autant que voulu ;
                      l’entreprise par son identifiant, tel que journalisé, ou son sigle)
+  model-supply     formule de fourniture du modèle d’une entreprise (ADR-208) : formule,
+                   plafond, coefficient, consommation du mois sur la clé de l’exploitant
+                   (coût réel et montant refacturé), versements du crédit et solde
+                     --slug <sigle>
+  set-model-supply choisit la formule : client-key (la clé de l’entreprise), capped (la
+                   clé de l’exploitant dans un plafond mensuel, 100 USD sans --cap, sans
+                   plafond seulement avec --cap unlimited), prepaid (la clé de
+                   l’exploitant contre un crédit prépayé)
+                     --slug <sigle>  --formula <formule>  [--cap <USD>|unlimited]
+  set-markup       coefficient de refacturation des appels sur la clé de l’exploitant,
+                   de 0 à 100 % ; le coût réel n’en est jamais changé
+                     --slug <sigle>  --percent <taux>
+  add-credit       ajoute un versement au crédit prépayé, avec sa référence (numéro de
+                   facture) ; une ligne n’est jamais modifiée : une correction est un
+                   versement de plus, négatif s’il le faut
+                     --slug <sigle>  --amount <USD>  --reference <facture>
   help             affiche cette aide
 
 create-company, invite, suspend-company, reactivate-company, release-company et
-verify-audit passent par DATABASE_APP_URL ; les liens mènent à WEB_ORIGIN.";
+verify-audit passent par DATABASE_APP_URL ; les liens mènent à WEB_ORIGIN.
+delete-company, model-supply, set-model-supply, set-markup et add-credit passent par
+DATABASE_URL (rôle propriétaire) : chaque changement est tracé dans le journal d’audit
+de l’entreprise.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -69,6 +90,8 @@ pub enum Command {
     VerifyAudit {
         anchors: Vec<Anchor>,
     },
+    /// How a company's model is supplied (ADR-208).
+    Supply(SupplyCommand),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -119,19 +142,22 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
                 .map(|anchor| Anchor::parse(anchor))
                 .collect::<Result<_, _>>()?,
         },
+        command if supply::COMMANDS.contains(&command) => {
+            Command::Supply(supply::parse(command, &mut options)?)
+        }
         other => return Err(format!("Commande inconnue : {other}")),
     };
     options.finish()?;
     Ok(parsed)
 }
 
-struct Options(Vec<(String, String)>);
+pub struct Options(Vec<(String, String)>);
 
 /// The only option given as many times as wanted.
 const REPEATED: &str = "--anchor";
 
 impl Options {
-    fn read(args: &[String]) -> Result<Self, String> {
+    pub fn read(args: &[String]) -> Result<Self, String> {
         let mut pairs: Vec<(String, String)> = Vec::new();
         let mut args = args.iter();
         while let Some(name) = args.next() {
@@ -149,7 +175,7 @@ impl Options {
         Ok(Self(pairs))
     }
 
-    fn take(&mut self, name: &str) -> Result<String, String> {
+    pub fn take(&mut self, name: &str) -> Result<String, String> {
         match self.0.iter().position(|(given, _)| given == name) {
             Some(index) => Ok(self.0.remove(index).1),
             None => Err(format!("Option obligatoire : {name}")),
@@ -157,7 +183,7 @@ impl Options {
     }
 
     /// The value given to `name`, if any.
-    fn take_optional(&mut self, name: &str) -> Option<String> {
+    pub fn take_optional(&mut self, name: &str) -> Option<String> {
         let index = self.0.iter().position(|(given, _)| given == name)?;
         Some(self.0.remove(index).1)
     }
@@ -172,7 +198,7 @@ impl Options {
     }
 
     /// Refuses the options the command does not know.
-    fn finish(self) -> Result<(), String> {
+    pub fn finish(self) -> Result<(), String> {
         match self.0.first() {
             Some((name, _)) => Err(format!("Option inconnue pour cette commande : {name}")),
             None => Ok(()),

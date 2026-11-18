@@ -15,6 +15,7 @@ use mimorya_core::gateways::slack::signature as sign;
 use mimorya_db::repositories::gateways::purge_gateway_events;
 use serde_json::json;
 use support::TestApi;
+use support::companies::supplied;
 use support::email;
 use support::gateways::{declare_slack, envelope, offered_code, post_signed};
 use support::slack_companies::{OTHER_SECRET, other_company, other_company_with_admin};
@@ -141,6 +142,8 @@ async fn each_company_is_answered_in_its_own_threads() {
     let neo = linked(&api, &slack, &paul, &marc, (MARC_SLACK, &address)).await;
     let slug = "acme-slack-replies";
     let (_, acme, jeanne) = other_company_with_admin(&api, slug).await;
+    // Created without a model of its own, Acme is supplied the platform's.
+    supplied(slug).await;
     // Jeanne links her Slack user to her account, at Acme.
     slack.add_person(JEANNE_SLACK, &format!("jeanne.martin@{slug}.example"));
     jeanne_writes(&api, acme, "Bonjour", "1700000100.000100").await;

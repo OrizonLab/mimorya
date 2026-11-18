@@ -19,6 +19,7 @@ pub mod gateways;
 pub mod identity_providers;
 pub mod knowledge_shares;
 pub mod memory;
+pub mod model_supply;
 pub mod plain_text;
 pub mod policy_rules;
 pub mod provisioning;

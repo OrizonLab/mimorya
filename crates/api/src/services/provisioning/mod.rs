@@ -6,17 +6,22 @@
 //! runs in the company's own transaction (row-level security applies) with
 //! its audit entries, by the `system` actor. The links are returned to the
 //! operator only: never stored in clear, logged nor audited. Deleting a
-//! suspended company (ADR-192) alone runs as the database's owner.
+//! suspended company (ADR-192) and supplying a company's model (ADR-208)
+//! run as the database's owner.
 
 mod company;
 mod deletion;
 mod invitation;
+mod model_supply;
 mod release;
 mod suspension;
 
 pub use company::{CreatedCompany, NewCompany, create_company};
 pub use deletion::{CompanyDeletion, CompanyRows, delete_company};
 pub use invitation::{OperatorInvitation, reinvite};
+pub use model_supply::{
+    CapChoice, SupplyChange, SupplyReport, change_model_supply, model_supply_report,
+};
 pub use release::{
     BotReleased, LinksReleased, Released, ServerReleased, release_company, release_company_with,
 };

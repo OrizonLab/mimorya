@@ -18,9 +18,12 @@ l'agent).
       `ON DELETE CASCADE`, pour suivre la suppression de son entreprise (ADR-192 ;
       `crates/db/tests/tenant_deletion.rs` échoue sinon).
 - [ ] Tout accès base au runtime passe par `Database::begin(tenant_id)` (`TenantTx`) avec
-      le rôle applicatif ; aucun usage du rôle propriétaire hors migrations, seed et
+      le rôle applicatif ; aucun usage du rôle propriétaire hors migrations, seed,
       suppression d'une entreprise suspendue par l'exploitant (ADR-192 :
-      `mimorya-admin delete-company`, dont chaque requête nomme l'entreprise).
+      `mimorya-admin delete-company`, dont chaque requête nomme l'entreprise) et
+      fourniture du modèle d'une entreprise par l'exploitant (ADR-208 :
+      `model-supply`, `set-model-supply`, `set-markup`, `add-credit`, dont chaque
+      requête nomme aussi l'entreprise).
 - [ ] Aucune nouvelle lecture inter-entreprises, sauf fonction `SECURITY DEFINER`
       minimale (`auth_*`, `system_*`) avec `search_path` figé et droits révoqués à
       `PUBLIC`.

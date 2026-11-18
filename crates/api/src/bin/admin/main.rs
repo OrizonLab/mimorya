@@ -3,13 +3,15 @@
 //! its first administrator, give an invited account a new link, suspend and
 //! reactivate a company (ADR-191), withdraw what a suspended one declared
 //! at other services (ADR-193) and delete it (ADR-192), verify the sealed
-//! audit log against the seals logged (ADR-178). The link is
-//! printed for the operator to transmit, and nowhere else.
+//! audit log against the seals logged (ADR-178), supply a company's model
+//! (ADR-208). The link is printed for the operator to transmit, and nowhere
+//! else.
 
 mod args;
 mod deletion;
 mod release;
 mod report;
+mod supply;
 mod verify;
 
 use std::process::ExitCode;
@@ -107,6 +109,7 @@ async fn run(command: Command) -> anyhow::Result<()> {
         Command::DeleteCompany { slug, confirm } => {
             deletion::delete(&slug, confirm.as_deref()).await?;
         }
+        Command::Supply(command) => supply::run(command).await?,
         Command::VerifyAudit { anchors } => {
             let (db, config) = connect().await?;
             let verified = verify::verify_audit(&config, &db, &anchors).await;

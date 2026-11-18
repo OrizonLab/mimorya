@@ -1,8 +1,10 @@
 //! Demo tenant, accounts and access model: users, org units, memberships,
-//! roles, scoped assignments and ABAC policies (FICTIONAL, core `demo`).
+//! roles, scoped assignments and ABAC policies (FICTIONAL, core `demo`); the
+//! platform's model supplying it, capped (ADR-208).
 
 use mimorya_core::authz::AssignmentScope;
 use mimorya_core::demo::{self, tenant, user};
+use mimorya_core::model_supply::DEFAULT_MONTHLY_CAP_MICROS;
 use serde_json::{Value, json};
 use sqlx::PgConnection;
 
@@ -17,6 +19,16 @@ pub(super) async fn insert(
         .bind(json!({ "demo": true, "defaultAutonomyLevel": "execute_with_approval" }))
         .execute(&mut *conn)
         .await?;
+    // Served by the platform's model, the operator supplying it within the
+    // default monthly cap (ADR-208).
+    sqlx::query(
+        "insert into tenant_model_supply (tenant_id, formula, monthly_cap_micros) \
+         values ($1, 'capped', $2)",
+    )
+    .bind(tenant::ID)
+    .bind(DEFAULT_MONTHLY_CAP_MICROS)
+    .execute(&mut *conn)
+    .await?;
 
     let users = demo::users();
     for u in &users {

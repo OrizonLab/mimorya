@@ -53,6 +53,7 @@ pub mod mission_end_notices;
 pub mod mission_settings;
 pub mod missions;
 pub mod model_escalation;
+pub mod model_supply;
 pub mod notification_settings;
 pub mod org;
 pub mod org_units;

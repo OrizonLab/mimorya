@@ -17,6 +17,7 @@ pub use knowledge::{EvaluatedVersion, Knowledge};
 pub use withheld::NO_LINKED_ACCOUNT;
 
 use crate::app::Services;
+use crate::services::llm::Models;
 use withheld::Withheld;
 
 /// Whose case it is, in which company and evaluation.
@@ -35,8 +36,13 @@ pub struct CasePorts {
     pub knowledge: Arc<Knowledge>,
 }
 
-pub fn case_ports(services: &Services, scope: CaseScope, evaluated: EvaluatedVersion) -> CasePorts {
-    let journal = Arc::new(Journal::new(services.db.clone(), scope));
+pub fn case_ports(
+    services: &Services,
+    scope: CaseScope,
+    evaluated: EvaluatedVersion,
+    models: Arc<Models>,
+) -> CasePorts {
+    let journal = Arc::new(Journal::new(services.db.clone(), models, scope));
     let knowledge = Arc::new(Knowledge::new(
         services.db.clone(),
         services.embeddings.clone(),
