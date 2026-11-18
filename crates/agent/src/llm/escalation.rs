@@ -6,7 +6,7 @@
 //! has a price the platform knows: unpriced, its calls would count for
 //! nothing, and the budget would never bound them.
 
-use super::pricing::PriceTable;
+use super::pricing::{PriceTable, model_alias};
 use super::router::ModelRole;
 use super::settings::{TenantLlmChoice, check_model_name};
 
@@ -95,7 +95,7 @@ pub fn check_escalation(
         return Err("Indiquez le modèle d’escalade".into());
     }
     check_model_name(model)?;
-    if model == conversations.model {
+    if model_alias(model) == model_alias(&conversations.model) {
         return Err(same_model(&conversations.model));
     }
     if !prices.has(model) {
@@ -151,7 +151,7 @@ pub fn escalation_problem(
                 .into(),
         );
     }
-    if conversations.model == stored.model {
+    if model_alias(&conversations.model) == model_alias(&stored.model) {
         return Some(same_model(&conversations.model));
     }
     (!prices.has(&stored.model)).then(|| {

@@ -39,8 +39,11 @@ pub fn review_criteria(explicit: &[String], loaded: &[String], skills_apply: boo
     criteria
 }
 
-/// The report, and the reviewer's response to account for (if a review ran).
-pub async fn review_answer(review: AnswerReview<'_>) -> (VerificationReport, Option<LlmResponse>) {
+/// The report, and the reviewer's response to account for (if a review
+/// ran), with the model it was asked of.
+pub async fn review_answer(
+    review: AnswerReview<'_>,
+) -> (VerificationReport, Option<(LlmResponse, String)>) {
     let mut issues = Vec::new();
     if review.answer.is_empty() {
         issues.push("La réponse est vide.".to_string());
@@ -77,7 +80,7 @@ pub async fn review_answer(review: AnswerReview<'_>) -> (VerificationReport, Opt
                 continue;
             }
         };
-        judge_response = Some(response);
+        judge_response = Some((response, judge.model().to_string()));
         if let Some(verdict) = verdict {
             judged = true;
             if !verdict.pass {

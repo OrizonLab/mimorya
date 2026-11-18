@@ -44,10 +44,10 @@ impl AgentRuntime {
             judges: &judges,
         })
         .await;
-        if let Some(judge_response) = judge_response {
+        if let Some((judge_response, requested)) = judge_response {
             let call = ModelCall {
                 role: ModelRole::Review,
-                requested: &judge_response.model,
+                requested: &requested,
             };
             record_model_usage(
                 &self.deps.ports,
@@ -62,7 +62,10 @@ impl AgentRuntime {
             .ports
             .events
             .emit(RunEvent::Verification {
-                attempt: state.correction_attempts + 1,
+                // The escalated answer is an attempt of its own (ADR-207).
+                attempt: state.correction_attempts
+                    + 1
+                    + u32::from(state.escalation.after_failure_used),
                 passed: report.passed,
                 issues: report.issues.clone(),
             })

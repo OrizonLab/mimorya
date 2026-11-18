@@ -3,9 +3,10 @@
 //! the escalation model, told what the review found, once a run; nothing
 //! done is done again. Past the month's budget or the run's escalations, or
 //! should the escalation model fail, the main model goes on and the event
-//! is journaled. A run taken up from its checkpoint stays escalated. An
-//! escalated call is priced as the model asked for when its answer names
-//! one the platform has no price for.
+//! is journaled. A run taken up from its checkpoint stays escalated, unless
+//! its company's escalation is gone by then: it goes on with its main
+//! model. An escalated call is priced as the model asked for when its
+//! answer names one the platform has no price for.
 
 mod support;
 
@@ -255,6 +256,51 @@ async fn a_run_taken_up_from_its_checkpoint_stays_on_the_escalation_model() {
     assert_eq!(stronger.requests().len(), 2);
     assert_eq!(h.provider.remaining(), 0);
     assert_eq!(*h.applied.lock().unwrap(), vec![json!({ "slots": 2 })]);
+}
+
+#[tokio::test]
+async fn a_run_taken_up_once_its_company_s_escalation_is_gone_goes_on_with_its_main_model() {
+    let (escalation, stronger) = escalation(
+        vec![ScriptedStep::calls(
+            "",
+            vec![call("planning_apply", json!({ "slots": 2 }))],
+        )],
+        5,
+        true,
+    );
+    let h = run_with(failing_main_model(), escalation);
+    let RunOutcome::AwaitingApproval {
+        approvals,
+        checkpoint,
+    } = h.start().await
+    else {
+        panic!("expected a pause for validation")
+    };
+    assert!(checkpoint.escalation.escalated);
+    // Taken up where the company's escalation was removed meanwhile.
+    let taken_up = setup(
+        vec![ScriptedStep::text("INT-0001 : deux créneaux réservés.")],
+        Options::default(),
+    );
+    let decisions = HashMap::from([(approvals[0].approval_id, ApprovalDecision::approved())]);
+    let RunOutcome::Completed {
+        answer, checkpoint, ..
+    } = taken_up
+        .runtime
+        .resume(checkpoint, &decisions)
+        .await
+        .unwrap()
+    else {
+        panic!("expected completion")
+    };
+    assert_eq!(answer, "INT-0001 : deux créneaux réservés.");
+    assert!(!checkpoint.escalation.escalated);
+    assert_eq!(stronger.requests().len(), 1);
+    assert_eq!(roles(&taken_up), [ModelRole::Main]);
+    assert_eq!(
+        *taken_up.applied.lock().unwrap(),
+        vec![json!({ "slots": 2 })]
+    );
 }
 
 #[tokio::test]

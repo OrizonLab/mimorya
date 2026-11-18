@@ -68,6 +68,29 @@ fn the_model_is_named_well_and_differs_from_the_main_one() {
 }
 
 #[test]
+fn a_dated_identifier_of_the_main_model_is_the_main_model() {
+    let prices = PriceTable::default();
+    let dated = "claude-haiku-5-5-20261101";
+    assert!(prices.has(dated));
+    let refused = check_escalation(Some(&haiku()), &request(dated), &prices).unwrap_err();
+    assert!(
+        refused.contains("doit différer du modèle principal"),
+        "{refused}"
+    );
+    // Stored before the conversations moved to a dated identifier of it.
+    let stored = check_escalation(Some(&haiku()), &request("claude-opus-5-5"), &prices).unwrap();
+    let opus = TenantLlmChoice {
+        model: "claude-opus-5-5-20261101".into(),
+        ..haiku()
+    };
+    let problem = escalation_problem(&stored, Some(&opus), &prices).unwrap();
+    assert!(
+        problem.contains("doit différer du modèle principal"),
+        "{problem}"
+    );
+}
+
+#[test]
 fn the_budget_and_the_escalations_per_run_keep_to_their_bounds() {
     for (budget, per_run, said) in [
         (999_999, 5, "1 à 10 000 USD"),

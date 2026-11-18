@@ -131,6 +131,12 @@ impl PriceTable {
     }
 }
 
+/// The model an identifier names, its date left out: two identifiers name
+/// the same model when their aliases are equal.
+pub fn model_alias(model: &str) -> &str {
+    undated(model).unwrap_or(model)
+}
+
 /// The alias of a dated model identifier: its name before an eight-digit
 /// date.
 fn undated(model: &str) -> Option<&str> {

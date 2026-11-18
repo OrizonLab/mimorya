@@ -1,7 +1,9 @@
 //! A company's runs escalate after a failed review (ADR-207): once its main
 //! model's corrections fail, the run goes on with its escalation model,
-//! recorded as such, its cost counted in the month's spending; past the month's budget, it does not, and says so
-//! in the audit log; removed, the escalation no longer serves its runs.
+//! recorded as such, its cost counted in the month's spending; past the
+//! month's budget, it does not, and says so in the audit log; removed, the
+//! escalation no longer serves its runs; once its conversations go to
+//! another provider, it is never built, with their key, at its old one.
 
 mod support;
 
@@ -155,5 +157,42 @@ async fn past_the_month_s_budget_a_run_keeps_its_main_model_and_it_is_audited() 
     let audit = entries_since(&api, since).await;
     assert!(audit.contains("model_escalation.limited"), "{audit}");
     assert!(audit.contains("monthly_budget"), "{audit}");
+    leave(&paul).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_escalation_whose_conversations_moved_elsewhere_is_never_built() {
+    let api = start().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    escalating(&paul, 50_000_000).await;
+    // The conversations go to another provider, with a key of their own:
+    // the escalation stays chosen, but its provider and endpoint are no
+    // longer theirs, and their key must never reach its old one.
+    let elsewhere = json!({
+        "provider": "openai_compatible",
+        "model": "llama3.3",
+        "baseUrl": ENDPOINT,
+        "apiKey": API_KEY,
+    });
+    assert_eq!(
+        paul.put("/admin/llm", elsewhere).await.status,
+        StatusCode::OK
+    );
+    let before = api.built.lock().unwrap().len();
+
+    empty_answers(&api);
+    let run = start_run(&marc).await;
+    api.idle().await;
+    assert_eq!(verification(&marc, run).await["issues"], json!([EMPTY]));
+    assert!(api.escalation_model.requests().is_empty());
+    let built: Vec<Option<String>> = api.built.lock().unwrap()[before..]
+        .iter()
+        .map(|config| config.model.clone())
+        .collect();
+    // The run's own provider was built; the escalation's, never.
+    assert!(built.contains(&Some("llama3.3".into())), "{built:?}");
+    assert!(!built.contains(&Some(ESCALATION_MODEL.into())), "{built:?}");
     leave(&paul).await;
 }
