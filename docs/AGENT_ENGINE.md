@@ -432,3 +432,10 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   passer le run avant son appel suivant, une fois par run, dans les mêmes bornes. La
   décision est gardée dans le point de reprise ; un run repris n'est pas routé de
   nouveau.
+- **Fourniture du modèle** (ADR-208) : un run est compté par les modèles de l'entreprise
+  que son exécution a prises. Sur la clé de l'exploitant, avant chaque appel au modèle,
+  le moteur demande si un appel de ce rôle peut encore partir (port `SupplyLimit`, relu en
+  base) : au-delà du plafond mensuel ou du crédit, ou la fourniture retirée, le run
+  s'arrête avant son appel suivant en disant pourquoi, un classement n'est pas demandé et
+  une réponse n'est pas jugée par un modèle ; un sous-agent y est tenu comme son parent.
+  L'arrêt est tracé une fois par run (`model_supply.limited`, `runtime/supply.rs`).

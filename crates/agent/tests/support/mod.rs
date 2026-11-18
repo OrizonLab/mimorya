@@ -13,7 +13,7 @@ use mimorya_agent::llm::{LlmProvider, ModelRouter, PriceTable};
 use mimorya_agent::runtime::UnavailableConnectors;
 use mimorya_agent::runtime::{
     AgentRuntime, BudgetLimits, DEFAULT_BUDGET, Escalation, NewMemory, RunConfig, RunOutcome,
-    RuntimeDeps, StartInput, VerificationConfig,
+    RuntimeDeps, StartInput, SupplyLimit, VerificationConfig,
 };
 use mimorya_agent::testing::{
     InMemoryPorts, ScriptedProvider, ScriptedStep, SkillFixture, TestAccess,
@@ -247,6 +247,8 @@ pub struct Options {
     pub skills: Vec<SkillFixture>,
     /// The company's model escalation (ADR-207).
     pub escalation: Option<Escalation>,
+    /// The operator's supply of the company's model (ADR-208).
+    pub supply: Option<Arc<dyn SupplyLimit>>,
 }
 
 pub struct Harness {
@@ -352,6 +354,7 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
     );
     deps.retry_delay = Duration::from_millis(1);
     deps.escalation = options.escalation;
+    deps.supply = options.supply;
     let mut actor = Actor::agent(Some(run_id));
     actor.allowed_permissions = options.allowed_permissions;
     let config = RunConfig {

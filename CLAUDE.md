@@ -34,7 +34,7 @@ Repères à l'intérieur des crates :
   sa proposition, `grants.rs`, ADR-168), `core/src/tools/`
   (contrat d'outil, outils typés, comptes reliés de la personne servie : `accounts.rs`,
   ADR-117, et son compte à la messagerie standard, ouvert pour un appel, le serveur qui le refuse nommé (`MailServerRole` : IMAP, SMTP ou CalDAV), ADR-205), `core/src/time_zone.rs` (fuseau de la plateforme : date donnée au modèle,
-  jours des outils, début du mois d'un budget mensuel, ADR-207), `core/src/model_supply/` (formules de fourniture du modèle, bornes du plafond, du coefficient et des crédits, montant refacturé, montants en USD lus et écrits, ADR-208), `core/src/skill_rules.rs` (ce qu'une compétence peut
+  jours des outils, début du mois d'un budget mensuel, ADR-207), `core/src/model_supply/` (formules de fourniture du modèle, bornes du plafond, du coefficient et des crédits, montant refacturé, montants en USD lus et écrits, quand la fourniture est épuisée et ce qui en est dit (`limits.rs`), ADR-208), `core/src/skill_rules.rs` (ce qu'une compétence peut
   contenir, ADR-052), `core/src/account_links/` (comptes que chacun relie :
   application Microsoft 365 ou client Google Workspace déclaré, permissions déléguées,
   identité qui prouve que le compte est le sien, `microsoft365.rs`, `google.rs` ; ce qui
@@ -124,7 +124,7 @@ Repères à l'intérieur des crates :
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
   (`lesson.rs`, ADR-076), résumé des messages anciens d'une conversation
   (`conversation_summary.rs`, ADR-145), point d'étape d'une mission dont le budget est atteint
-  (`handoff.rs`, ADR-089), revue d'une réponse candidate (`final_answer.rs`), modèle d'escalade appel par appel, après un échec du contrôle ou quand une compétence chargée le demande, ses bornes et son état dans le point de reprise (`escalation.rs`, ADR-207), modèle de départ décidé par le routeur, règle de l'entreprise ou classement de la demande en JSON strict (`routing.rs`, ADR-207), ports, dont les documents lus par un run
+  (`handoff.rs`, ADR-089), revue d'une réponse candidate (`final_answer.rs`), modèle d'escalade appel par appel, après un échec du contrôle ou quand une compétence chargée le demande, ses bornes et son état dans le point de reprise (`escalation.rs`, ADR-207), modèle de départ décidé par le routeur, règle de l'entreprise ou classement de la demande en JSON strict (`routing.rs`, ADR-207), fourniture de l'exploitant demandée avant chaque appel, le run arrêté au-delà (`supply.rs`, ADR-208), ports, dont les documents lus par un run
   (`document_store.rs`, ADR-096), sous-agents : profils, consignes, run enfant et
   sa part du budget (`delegation/`), délégations d'une étape en parallèle
   (`tool_calls/delegated.rs`), ADR-098),
@@ -351,7 +351,7 @@ Repères à l'intérieur des crates :
   ensemble : ce qu'un processus change annoncé aux autres par PostgreSQL, ADR-085),
   `api/src/services/llm/` (fournisseurs de modèle de
   chaque entreprise : celui de ses conversations et celui qui relit leurs réponses,
-  chargés ensemble, `load.rs`, ADR-108 ; formule de l'exploitant chargée avec eux, le modèle de la plateforme réservé aux formules 2 et 3, et ce que chaque appel est compté, `supply.rs`, ADR-208), `api/src/services/embeddings/` (modèle d'embeddings de chaque
+  chargés ensemble, `load.rs`, ADR-108 ; formule de l'exploitant chargée avec eux, le modèle de la plateforme réservé aux formules 2 et 3, et ce que chaque appel est compté, `supply.rs`, plafond ou crédit relu avant chaque appel sur la clé de l'exploitant, `limits.rs`, ADR-208), `api/src/services/embeddings/` (modèle d'embeddings de chaque
   entreprise, vecteur d'une demande, indexation de la mémoire et des passages des
   documents, `sources.rs`, ADR-074, ADR-096), `api/src/services/invitations/` (liens d'invitation, ADR-027),
   `api/src/services/password_reset/` (mot de passe oublié, ADR-028),

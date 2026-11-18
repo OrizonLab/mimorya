@@ -1,14 +1,15 @@
 //! The review of a run's answer candidate: deterministic checks, then a
 //! model's on the run's criteria and those of the skills it loaded
-//! (ADR-106), by the company's review model if it chose one (ADR-108). The
-//! reviewer's call is accounted as a review; the verdict is told to the
-//! run's listeners.
+//! (ADR-106), by the company's review model if it chose one (ADR-108), not
+//! past the operator's supply (ADR-208). The reviewer's call is accounted
+//! as a review; the verdict is told to the run's listeners.
 
 use super::answer_review::{AnswerReview, review_answer, review_criteria};
 use super::model_call::{ModelCall, record_model_usage};
 use super::ports::RunEvent;
 use super::runtime::AgentRuntime;
 use super::state::RunCheckpoint;
+use super::supply::supply_stopped;
 use super::verification::VerificationReport;
 use crate::llm::{LlmResponse, ModelRole, StopReason, TaskClass};
 
@@ -30,7 +31,12 @@ impl AgentRuntime {
         );
         let judged = verification.llm_judge
             || (verification.skill_criteria && !state.skill_criteria.is_empty());
-        let judges = match judged {
+        // Past the operator's supply, the answer is left unjudged (ADR-208).
+        let supplied = !judged
+            || supply_stopped(&self.deps, state, ModelRole::Review)
+                .await?
+                .is_none();
+        let judges = match judged && supplied {
             true => self.deps.router.providers_for(TaskClass::Verification),
             false => Vec::new(),
         };

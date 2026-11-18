@@ -12,6 +12,7 @@ use super::budget::BudgetLimits;
 use super::escalation::Escalation;
 use super::ports::{AccessSource, EnginePorts};
 use super::state::{PendingApproval, RunCheckpoint};
+use super::supply::SupplyLimit;
 use super::verification::VerificationReport;
 use crate::llm::{Effort, ModelRouter, PriceTable};
 use crate::tools::ToolRegistry;
@@ -30,6 +31,9 @@ pub struct RuntimeDeps {
     pub tool_timeout: Duration,
     /// The company's model escalation, if its runs have one (ADR-207).
     pub escalation: Option<Escalation>,
+    /// What the operator's supply of the company still allows, read before
+    /// each call to the model (ADR-208); none, no limit.
+    pub supply: Option<Arc<dyn SupplyLimit>>,
 }
 
 /// How long a tool call may take before the executor stops it: past a
@@ -55,6 +59,7 @@ impl RuntimeDeps {
             retry_delay: Duration::from_secs(1),
             tool_timeout: DEFAULT_TOOL_TIMEOUT,
             escalation: None,
+            supply: None,
         }
     }
 }

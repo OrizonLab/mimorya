@@ -21,12 +21,14 @@ use super::tenant_cache::TenantCache;
 use crate::secrets::SecretStore;
 
 mod escalation;
+mod limits;
 mod load;
 mod supply;
 
 pub use escalation::{
     EscalationModel, MonthSpending, conversations_choice, escalation_choice, month_spending,
 };
+pub use limits::{SupplyGuard, supply_stopped};
 pub use load::api_key_secret;
 pub use supply::Supply;
 
@@ -210,15 +212,6 @@ impl LlmService {
         tenant_id: Uuid,
     ) -> anyhow::Result<Option<Arc<dyn LlmProvider>>> {
         Ok(self.resolve(tenant_id).await?.runs_provider()?)
-    }
-
-    /// The provider the company chose apart to review its answers, if it
-    /// can be used: without it, its runs' model reviews them (ADR-108).
-    pub async fn reviewer_for(
-        &self,
-        tenant_id: Uuid,
-    ) -> anyhow::Result<Option<Arc<dyn LlmProvider>>> {
-        Ok(self.resolve(tenant_id).await?.reviewer())
     }
 
     /// Whether the company's runs have a provider they can use.

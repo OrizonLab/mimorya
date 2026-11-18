@@ -5,7 +5,7 @@
 //! not bound: every query names its company.
 
 use chrono::{DateTime, Utc};
-use mimorya_core::model_supply::SupplyFormula;
+use mimorya_core::model_supply::{SupplyFormula, SupplyState};
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -189,4 +189,58 @@ pub async fn supply_spending(
     .bind(since)
     .fetch_one(conn)
     .await
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct SupplyStateRow {
+    formula: Option<String>,
+    monthly_cap_micros: Option<i64>,
+    unlimited: Option<bool>,
+    capped_month_billed_micros: i64,
+    prepaid_balance_micros: i64,
+}
+
+/// What the company's supply stands at before a call (ADR-208, step 1),
+/// read as the application: its formula, cap and, for its formula alone,
+/// what its month was re-invoiced (by company and time) or its credit's
+/// balance (by the index of the prepaid calls).
+pub async fn supply_state(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    month_start: DateTime<Utc>,
+) -> sqlx::Result<SupplyState> {
+    let row: SupplyStateRow = sqlx::query_as(
+        "select s.formula, s.monthly_cap_micros, s.unlimited, \
+         case when s.formula = 'capped' then coalesce((select sum(u.billed_micros) \
+           from usage_records u where u.tenant_id = $1 and u.created_at >= $2 \
+           and u.supply_formula = 'capped'), 0) else 0 end::bigint \
+           as capped_month_billed_micros, \
+         case when s.formula = 'prepaid' then \
+           coalesce((select sum(c.amount_micros) from tenant_credit_entries c \
+             where c.tenant_id = $1), 0) \
+           - coalesce((select sum(u.billed_micros) from usage_records u \
+             where u.tenant_id = $1 and u.supply_formula = 'prepaid'), 0) \
+           - coalesce((select p.billed_micros from tenant_prepaid_purged p \
+             where p.tenant_id = $1), 0) \
+         else 0 end::bigint as prepaid_balance_micros \
+         from (select $1::uuid as tenant_id) t \
+         left join tenant_model_supply s on s.tenant_id = t.tenant_id",
+    )
+    .bind(tenant_id)
+    .bind(month_start)
+    .fetch_one(conn)
+    .await?;
+    // A formula the table does not know is none of the operator's.
+    let formula = row
+        .formula
+        .as_deref()
+        .and_then(SupplyFormula::parse)
+        .unwrap_or_default();
+    Ok(SupplyState {
+        formula,
+        monthly_cap_micros: row.monthly_cap_micros,
+        unlimited: row.unlimited.unwrap_or(false),
+        capped_month_billed_micros: row.capped_month_billed_micros,
+        prepaid_balance_micros: row.prepaid_balance_micros,
+    })
 }

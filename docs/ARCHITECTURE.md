@@ -469,8 +469,10 @@ qu'au-delà de ce que PostgreSQL tient.
   (formule 3). Le modèle de la plateforme ne sert que les formules 2 et 3 ; l'exploitant
   les attribue, avec le plafond, le coefficient de refacturation et les crédits, par
   `mimorya-admin` et le rôle propriétaire, l'application ne faisant que les lire
-  (`services/llm/supply.rs`, chargées avec les modèles de l'entreprise). Fait : les
-  formules, les commandes et le compte de chaque appel (étape 0) ; les limites,
+  (`services/llm/supply.rs`, chargées avec les modèles de l'entreprise). Au-delà du
+  plafond ou du crédit, aucun run n'est lancé et un run en cours s'arrête avant son appel
+  suivant (`services/llm/limits.rs`, port `SupplyLimit` du moteur). Fait : les formules,
+  les commandes et le compte de chaque appel (étape 0), les limites (étape 1) ;
   l'escalade en formules 2 et 3 et les écrans suivent.
 - **Escalade de modèle** (ADR-207) : un modèle plus puissant, chez le fournisseur propre
   de l'entreprise, appelé quand un mécanisme le demande, dans un budget mensuel et un

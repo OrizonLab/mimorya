@@ -8,9 +8,11 @@
 
 use std::sync::Arc;
 
+use mimorya_agent::llm::ModelRole;
 use mimorya_core::DomainError;
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_core::gateways::GatewayKind;
+use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::create_conversation;
 use mimorya_db::repositories::gateway_threads::{NewGatewayThread, insert_gateway_thread};
 use uuid::Uuid;
@@ -19,7 +21,7 @@ use super::conversation_turn::{BUSY, TurnSender, open_conversation_turn, tenant_
 use super::executor::ExecutionMode;
 use super::service::RunService;
 use crate::services::access::{AccessContext, AuthIdentity};
-use crate::services::llm::Unusable;
+use crate::services::llm::{Unusable, supply_stopped};
 
 pub const COMPANY_NOT_ACTIVE: &str =
     "Votre entreprise est suspendue : l’agent n’agit plus pour elle.";
@@ -189,17 +191,19 @@ impl RunService {
     }
 
     /// The rights of whom a run would serve, once their company is active, a
-    /// model can answer them and they may use the agent: refused otherwise,
-    /// saying why. A session of a suspended company is refused beforehand; a
-    /// scheduled task (ADR-080) or a hook (ADR-109) has none, and its
-    /// company's status is read before its model is loaded, which a
+    /// model can answer them within the operator's supply (ADR-208) and they
+    /// may use the agent: refused otherwise, saying why, a run past the
+    /// supply traced. A session of a suspended company is refused
+    /// beforehand; a scheduled task (ADR-080) or a hook (ADR-109) has none,
+    /// and its company's status is read before its model is loaded, which a
     /// suspension had every process let go of (ADR-191).
     pub async fn ready_to_run(&self, identity: AuthIdentity) -> anyhow::Result<AccessContext> {
         let access = self.access.context(identity).await?;
         if access.tenant.status != "active" {
             return Err(DomainError::forbidden(COMPANY_NOT_ACTIVE).into());
         }
-        match self.executor.llm.provider_for(identity.tenant_id).await {
+        let models = self.executor.llm.resolve(identity.tenant_id).await?;
+        match models.runs_provider() {
             Ok(Some(_)) => {}
             Ok(None) => {
                 return Err(DomainError::unavailable(
@@ -208,8 +212,7 @@ impl RunService {
                 )
                 .into());
             }
-            Err(error) if !error.is::<Unusable>() => return Err(error),
-            Err(_) => {
+            Err(Unusable(_)) => {
                 return Err(DomainError::unavailable(
                     "Le modèle choisi par votre entreprise ne peut pas être utilisé : un \
                      administrateur doit revoir sa configuration (Administration › Modèle d’IA).",
@@ -218,6 +221,19 @@ impl RunService {
             }
         }
         access.require("agent:use")?;
+        let db = &self.executor.db;
+        if let Some(stop) = supply_stopped(db, &models, identity.tenant_id, ModelRole::Main).await?
+        {
+            let refused =
+                AuditEntry::new(identity.tenant_id, "user", "model_supply.limited", "denied")
+                    .by_user(identity.user_id)
+                    .resource("tenant", identity.tenant_id)
+                    .reason(stop.reason());
+            let mut tx = db.begin(identity.tenant_id).await?;
+            append_audit(&mut tx, refused).await?;
+            tx.commit().await?;
+            return Err(DomainError::unavailable(stop.message()).into());
+        }
         Ok(access)
     }
 }

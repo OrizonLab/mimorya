@@ -20,6 +20,7 @@ use crate::runtime::budget::BudgetLimits;
 use crate::runtime::ports::AccessSource;
 use crate::runtime::runtime::{AgentRuntime, StartInput};
 use crate::runtime::state::RunUsageTotals;
+use crate::runtime::supply::SupplyLimit;
 use crate::runtime::types::{RunConfig, RunOutcome, RuntimeDeps, VerificationConfig};
 use crate::tools::ToolRegistry;
 use crate::tools::platform::{DelegateTaskInput, platform_tools};
@@ -38,6 +39,9 @@ pub struct SubAgents {
     max_provider_retries: u32,
     retry_delay: Duration,
     tool_timeout: Duration,
+    /// The parent's: a child is held to the operator's supply as well
+    /// (ADR-208).
+    supply: Option<Arc<dyn SupplyLimit>>,
     store: Arc<dyn SubRunStore>,
     /// The parent's: its ceiling is the child's.
     actor: Actor,
@@ -64,6 +68,7 @@ impl SubAgents {
             max_provider_retries: deps.max_provider_retries,
             retry_delay: deps.retry_delay,
             tool_timeout: deps.tool_timeout,
+            supply: deps.supply.clone(),
             store: deps.ports.sub_runs.clone(),
             actor: config.actor.clone(),
             effort: config.effort,
@@ -122,6 +127,7 @@ impl SubAgents {
         deps.max_provider_retries = self.max_provider_retries;
         deps.retry_delay = self.retry_delay;
         deps.tool_timeout = self.tool_timeout;
+        deps.supply = self.supply.clone();
         let runtime = AgentRuntime::new(deps, self.config(sub_run.run_id, input, budget));
         let start = StartInput {
             system: sub_agent_system(parent_system, input.profile),

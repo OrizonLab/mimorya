@@ -12,6 +12,7 @@ use serde::Deserialize;
 use super::escalation::{Reason, budget_spent, start_escalation};
 use super::model_call::{ModelCall, complete_with_retry, record_model_usage};
 use super::state::RunCheckpoint;
+use super::supply::supply_stopped;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{EscalationRoute, LlmMessage, LlmRequest, ModelRole, TaskClass};
 
@@ -76,6 +77,14 @@ async fn classified_hard(
     state: &mut RunCheckpoint,
 ) -> anyhow::Result<bool> {
     if budget_spent(deps, state).await? {
+        return Ok(false);
+    }
+    // Not asked past the operator's supply (ADR-208): the run's next call
+    // stops it.
+    if supply_stopped(deps, state, ModelRole::Classification)
+        .await?
+        .is_some()
+    {
         return Ok(false);
     }
     let provider = deps.router.provider_for(TaskClass::Agent);

@@ -6,8 +6,10 @@
 //! administration command and the platform apply them.
 
 mod amounts;
+mod limits;
 
 pub use amounts::{format_usd, parse_percent, parse_usd};
+pub use limits::{SupplyState, SupplyStop, supply_stop};
 
 /// A monthly cap from 1 to 100,000 USD, 100 USD by default.
 pub const MIN_MONTHLY_CAP_MICROS: i64 = 1_000_000;

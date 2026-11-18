@@ -12,16 +12,18 @@ use mimorya_agent::llm::{
     requires_api_key,
 };
 use mimorya_core::DomainError;
+use mimorya_core::model_supply::SupplyFormula;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::llm_settings::{
     ModelPurpose, NewLlmSettings, delete_llm_settings, get_llm_settings, put_llm_settings,
 };
+use mimorya_db::repositories::model_supply::model_supply;
 use mimorya_db::repositories::usage::{NewUsage, append_usage};
 use serde_json::json;
 
 use super::{audit_entry, begin_change};
-use crate::services::llm::{Models, Review, Unusable, api_key_secret};
+use crate::services::llm::{Models, Review, Unusable, api_key_secret, supply_stopped};
 use crate::services::{AccessContext, LlmService};
 
 const PERMISSION: &str = "settings:manage";
@@ -139,12 +141,10 @@ pub async fn reset_llm(
     if !removed && !key_removed {
         // The platform's model only serves a company the operator supplies
         // (ADR-208).
-        let supplied = llm
-            .resolve(tenant_id)
+        let supplied = model_supply(&mut tx, tenant_id)
             .await?
-            .supply
-            .formula
-            .on_operator_key();
+            .and_then(|row| SupplyFormula::parse(&row.formula))
+            .is_some_and(SupplyFormula::on_operator_key);
         return Err(DomainError::not_found(match (purpose, supplied) {
             (ModelPurpose::Conversations, true) => {
                 "Votre entreprise utilise déjà le modèle de la plateforme"
@@ -188,6 +188,14 @@ pub async fn test_llm(
     let tenant_id = access.subject.tenant_id;
     // Called and charged by the same models (ADR-208).
     let models = llm.resolve(tenant_id).await?;
+    let role = match purpose {
+        ModelPurpose::Conversations => ModelRole::Main,
+        ModelPurpose::Verification => ModelRole::Review,
+    };
+    // Nothing on the operator's key past its supply (ADR-208).
+    if let Some(stop) = supply_stopped(db, &models, tenant_id, role).await? {
+        return Err(DomainError::unavailable(stop.message()).into());
+    }
     let provider = match purpose {
         ModelPurpose::Conversations => runs_provider(&models)?,
         ModelPurpose::Verification => match &models.review {
@@ -211,10 +219,6 @@ pub async fn test_llm(
         on_text_delta: None,
     };
     let outcome = provider.complete(&request).await;
-    let role = match purpose {
-        ModelPurpose::Conversations => ModelRole::Main,
-        ModelPurpose::Verification => ModelRole::Review,
-    };
     // Charged as the company's other calls, on whose key (ADR-208).
     let cost_micros = match &outcome {
         Ok(response) => prices
