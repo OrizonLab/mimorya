@@ -13,6 +13,7 @@ import {
 import { dollarsOf, formatCost, formatDate, microsOf, PLATFORM_TIME_ZONE } from '@/lib/format';
 import { useSyncedState } from '@/lib/use-synced-state';
 import { CostField } from './cost-field';
+import { MAIN_ROUTES, RouterRoutesFields } from './router-routes';
 
 const ESCALATION = '/admin/model-escalation';
 
@@ -36,6 +37,7 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
   const [afterFailure, setAfterFailure] = useSyncedState(settings?.afterFailure ?? false);
   const [router, setRouter] = useSyncedState(settings?.router ?? false);
   const [advisor, setAdvisor] = useSyncedState(settings?.advisor ?? false);
+  const [routes, setRoutes] = useSyncedState(settings?.routes ?? MAIN_ROUTES);
   const action = useAction();
   const own = data.mainModel !== null;
   const turnedOn: Record<EscalationMechanism, [boolean, (on: boolean) => void]> = {
@@ -51,6 +53,7 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
       afterFailure,
       router,
       advisor,
+      routes,
       monthlyBudgetMicros: microsOf(dollars),
       maxPerRun: Number(perRun),
     } satisfies ModelEscalationUpdate;
@@ -75,7 +78,8 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
           (aujourd’hui, ceux d’Anthropic) : sans prix, le budget ne pourrait pas borner ses appels.
           Après un échec du contrôle des réponses, une fois les corrections du modèle principal
           épuisées, le modèle d’escalade reprend le run là où il en est, une fois par run ; les
-          actions déjà faites ne sont pas refaites, et les validations restent les mêmes.
+          actions déjà faites ne sont pas refaites, et les validations restent les mêmes. Le routeur
+          choisit le modèle au début du run, selon sa sorte.
         </p>
         {!own && (
           <p className="text-sm">
@@ -119,17 +123,22 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
             {data.mechanisms.map((mechanism) => {
               const [on, setOn] = turnedOn[mechanism.key];
               return (
-                <label key={mechanism.key} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={on}
-                    disabled={!mechanism.available && !on}
-                    onChange={(e) => setOn(e.target.checked)}
-                  />
-                  {mechanism.label}
-                  {mechanism.reason && (
-                    <span className="text-xs text-muted">({mechanism.reason})</span>
+                <div key={mechanism.key} className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={on}
+                      disabled={!mechanism.available && !on}
+                      onChange={(e) => setOn(e.target.checked)}
+                    />
+                    {mechanism.label}
+                    {mechanism.reason && (
+                      <span className="text-xs text-muted">({mechanism.reason})</span>
+                    )}
+                  </label>
+                  {mechanism.key === 'router' && on && (
+                    <RouterRoutesFields routes={routes} onChange={setRoutes} />
                   )}
-                </label>
+                </div>
               );
             })}
           </div>

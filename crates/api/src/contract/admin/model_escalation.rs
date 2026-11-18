@@ -1,7 +1,8 @@
 //! The company's model escalation (ADR-207), read and set by those who
 //! manage its settings: its stronger model, the mechanisms that call it,
-//! and what they may cost.
+//! the router's rule for each kind of run, and what they may cost.
 
+use mimorya_agent::llm::{EscalationRoute, EscalationRoutes};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use validator::Validate;
@@ -40,9 +41,77 @@ pub struct ModelEscalationSettings {
     pub after_failure: bool,
     pub router: bool,
     pub advisor: bool,
+    pub routes: RouterRoutes,
     pub monthly_budget_micros: i64,
     pub max_per_run: u32,
     pub updated_at: String,
+}
+
+/// The model a run of a kind starts with while the router is on (step 2):
+/// the main one, the escalation one, or the one a classification of its
+/// request by the main model names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum RouterRoute {
+    Main,
+    Escalation,
+    Classification,
+}
+
+/// The router's rule for each kind of run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RouterRoutes {
+    /// A person's turn of conversation, whatever its channel.
+    pub conversation: RouterRoute,
+    /// A stage of a mission.
+    pub mission: RouterRoute,
+    /// A run a scheduled task started.
+    pub scheduled_task: RouterRoute,
+    /// A run another system started through a hook.
+    pub hook: RouterRoute,
+}
+
+impl From<RouterRoute> for EscalationRoute {
+    fn from(route: RouterRoute) -> Self {
+        match route {
+            RouterRoute::Main => Self::Main,
+            RouterRoute::Escalation => Self::Escalation,
+            RouterRoute::Classification => Self::Classification,
+        }
+    }
+}
+
+impl From<EscalationRoute> for RouterRoute {
+    fn from(route: EscalationRoute) -> Self {
+        match route {
+            EscalationRoute::Main => Self::Main,
+            EscalationRoute::Escalation => Self::Escalation,
+            EscalationRoute::Classification => Self::Classification,
+        }
+    }
+}
+
+impl From<RouterRoutes> for EscalationRoutes {
+    fn from(routes: RouterRoutes) -> Self {
+        Self {
+            conversation: routes.conversation.into(),
+            mission: routes.mission.into(),
+            scheduled_task: routes.scheduled_task.into(),
+            hook: routes.hook.into(),
+        }
+    }
+}
+
+impl From<EscalationRoutes> for RouterRoutes {
+    fn from(routes: EscalationRoutes) -> Self {
+        Self {
+            conversation: routes.conversation.into(),
+            mission: routes.mission.into(),
+            scheduled_task: routes.scheduled_task.into(),
+            hook: routes.hook.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -72,6 +141,8 @@ pub struct ModelEscalationUpdate {
     pub after_failure: bool,
     pub router: bool,
     pub advisor: bool,
+    /// Read only while the router is on.
+    pub routes: RouterRoutes,
     pub monthly_budget_micros: i64,
     pub max_per_run: u32,
 }

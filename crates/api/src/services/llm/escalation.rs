@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::llm::{
-    ESCALATION_BUDGET_ROLES, EscalationChoice, LlmProvider, Mechanism, TenantLlmChoice,
-    company_provider_config, escalation_problem,
+    ESCALATION_BUDGET_ROLES, EscalationChoice, EscalationRoute, EscalationRoutes, LlmProvider,
+    Mechanism, TenantLlmChoice, company_provider_config, escalation_problem,
 };
 use mimorya_core::time_zone::month_start;
 use mimorya_db::TenantTx;
@@ -27,6 +27,9 @@ use super::{LlmService, Resolution, api_key_secret};
 pub struct EscalationModel {
     pub provider: Arc<dyn LlmProvider>,
     pub after_failure: bool,
+    /// Whether the router is on (step 2), and its rule for each kind of run.
+    pub router: bool,
+    pub routes: EscalationRoutes,
     pub max_per_run: u32,
     pub monthly_budget_micros: i64,
 }
@@ -54,7 +57,8 @@ impl LlmService {
             return Ok(None);
         };
         let after_failure = row.after_failure && Mechanism::AfterFailure.available();
-        if !after_failure {
+        let router = row.router && Mechanism::Router.available();
+        if !after_failure && !router {
             return Ok(None);
         }
         let stored = escalation_choice(row);
@@ -95,6 +99,8 @@ impl LlmService {
         Ok(Some(EscalationModel {
             provider,
             after_failure,
+            router,
+            routes: stored.routes,
             max_per_run: stored.max_per_run,
             monthly_budget_micros: stored.monthly_budget_micros,
         }))
@@ -138,8 +144,19 @@ pub fn escalation_choice(row: ModelEscalationRow) -> EscalationChoice {
         after_failure: row.after_failure,
         router: row.router,
         advisor: row.advisor,
+        // Kept to the routes' names by the table.
+        routes: EscalationRoutes {
+            conversation: stored_route(&row.route_conversation),
+            mission: stored_route(&row.route_mission),
+            scheduled_task: stored_route(&row.route_scheduled_task),
+            hook: stored_route(&row.route_hook),
+        },
         monthly_budget_micros: row.monthly_budget_micros,
         // Kept between 1 and 50 by the table.
         max_per_run: u32::try_from(row.max_per_run).unwrap_or(1),
     }
+}
+
+fn stored_route(stored: &str) -> EscalationRoute {
+    EscalationRoute::parse(stored).unwrap_or_default()
 }

@@ -6,7 +6,8 @@ import { SKILL_VERSION_STATUS } from '@/lib/labels';
 /**
  * One version of a skill: who wrote it (or for whom the agent proposed it,
  * ADR-100), its note, the quality criteria its answers are reviewed on
- * (ADR-106) and its content, unfolded while it awaits a decision; made
+ * (ADR-106), whether it asks for the escalation model (ADR-207) and its
+ * content, unfolded while it awaits a decision; made
  * active here, or, a proposal awaiting a decision, turned down (ADR-101).
  */
 export function VersionItem({
@@ -72,6 +73,14 @@ export function VersionItem({
             ))}
           </ul>
         </div>
+      )}
+      {version.modelEscalation && (
+        <p className="mt-2 text-xs">
+          {/* Nor does the agent choose it: a proposal keeps the version then active's. */}
+          {version.proposed
+            ? 'Demande le modèle d’escalade, comme la version alors active.'
+            : 'Demande le modèle d’escalade.'}
+        </p>
       )}
       <details className="mt-2" open={version.status === 'candidate'}>
         <summary className="cursor-pointer text-xs text-muted">Contenu</summary>

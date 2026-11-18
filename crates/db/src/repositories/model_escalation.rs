@@ -1,5 +1,6 @@
 //! A company's model escalation (ADR-207): its stronger model, the
-//! mechanisms that call it and their bounds; and what those mechanisms
+//! mechanisms that call it, the router's rule for each kind of run, and
+//! their bounds; and what those mechanisms
 //! have cost since a moment, read from the usage records of the roles the
 //! engine says its budget counts.
 
@@ -15,6 +16,12 @@ pub struct ModelEscalationRow {
     pub after_failure: bool,
     pub router: bool,
     pub advisor: bool,
+    /// The router's rules (`EscalationRoute::as_str`), for a conversation,
+    /// a mission's stage, a scheduled task's run and a hook's.
+    pub route_conversation: String,
+    pub route_mission: String,
+    pub route_scheduled_task: String,
+    pub route_hook: String,
     pub monthly_budget_micros: i64,
     pub max_per_run: i32,
     pub updated_at: DateTime<Utc>,
@@ -29,6 +36,10 @@ pub struct NewModelEscalation {
     pub after_failure: bool,
     pub router: bool,
     pub advisor: bool,
+    pub route_conversation: &'static str,
+    pub route_mission: &'static str,
+    pub route_scheduled_task: &'static str,
+    pub route_hook: &'static str,
     pub monthly_budget_micros: i64,
     pub max_per_run: i32,
     pub updated_by_user_id: Uuid,
@@ -38,6 +49,7 @@ pub struct NewModelEscalation {
 pub async fn model_escalation(conn: &mut PgConnection) -> sqlx::Result<Option<ModelEscalationRow>> {
     sqlx::query_as(
         "select provider, base_url, model, after_failure, router, advisor, \
+         route_conversation, route_mission, route_scheduled_task, route_hook, \
          monthly_budget_micros, max_per_run, updated_at from tenant_model_escalation",
     )
     .fetch_optional(conn)
@@ -50,12 +62,18 @@ pub async fn set_model_escalation(
 ) -> sqlx::Result<()> {
     sqlx::query(
         "insert into tenant_model_escalation (tenant_id, provider, base_url, model, \
-         after_failure, router, advisor, monthly_budget_micros, max_per_run, updated_by_user_id) \
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+         after_failure, router, advisor, route_conversation, route_mission, \
+         route_scheduled_task, route_hook, monthly_budget_micros, max_per_run, \
+         updated_by_user_id) \
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) \
          on conflict (tenant_id) do update set provider = excluded.provider, \
          base_url = excluded.base_url, model = excluded.model, \
          after_failure = excluded.after_failure, router = excluded.router, \
-         advisor = excluded.advisor, monthly_budget_micros = excluded.monthly_budget_micros, \
+         advisor = excluded.advisor, route_conversation = excluded.route_conversation, \
+         route_mission = excluded.route_mission, \
+         route_scheduled_task = excluded.route_scheduled_task, \
+         route_hook = excluded.route_hook, \
+         monthly_budget_micros = excluded.monthly_budget_micros, \
          max_per_run = excluded.max_per_run, updated_by_user_id = excluded.updated_by_user_id, \
          updated_at = now()",
     )
@@ -66,6 +84,10 @@ pub async fn set_model_escalation(
     .bind(escalation.after_failure)
     .bind(escalation.router)
     .bind(escalation.advisor)
+    .bind(escalation.route_conversation)
+    .bind(escalation.route_mission)
+    .bind(escalation.route_scheduled_task)
+    .bind(escalation.route_hook)
     .bind(escalation.monthly_budget_micros)
     .bind(escalation.max_per_run)
     .bind(escalation.updated_by_user_id)

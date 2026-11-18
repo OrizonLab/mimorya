@@ -132,6 +132,11 @@ pub struct ToolResult {
     /// `skill_read` alone.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub quality_criteria: Vec<String>,
+    /// The skill version loaded asks for the company's escalation model
+    /// (ADR-207): the run goes on with it while the company's router is on.
+    /// Honoured from the platform's `skill_read` alone.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub model_escalation: bool,
 }
 
 impl ToolResult {
@@ -163,6 +168,11 @@ impl ToolResult {
 
     pub fn with_quality_criteria(mut self, criteria: Vec<String>) -> Self {
         self.quality_criteria = criteria;
+        self
+    }
+
+    pub fn with_model_escalation(mut self, asked: bool) -> Self {
+        self.model_escalation = asked;
         self
     }
 }

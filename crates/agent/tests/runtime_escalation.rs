@@ -6,7 +6,7 @@
 //! is journaled. A run taken up from its checkpoint stays escalated, unless
 //! its company's escalation is gone by then: it goes on with its main
 //! model. An escalated call is priced as the model asked for when its
-//! answer names one the platform has no price for.
+//! answer names one the platform has no price for, and so is a review's.
 
 mod support;
 
@@ -14,12 +14,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mimorya_agent::llm::{LlmError, LlmMessage, LlmProvider, LlmRequest, LlmResponse, ModelRole};
+use mimorya_agent::llm::{LlmMessage, ModelRole};
 use mimorya_agent::runtime::{
     ApprovalDecision, Escalation, EscalationBudget, RunCheckpoint, RunOutcome,
 };
 use mimorya_agent::testing::{ScriptedProvider, ScriptedStep, call};
 use serde_json::json;
+use support::renamed::Renamed;
 use support::{Harness, Options, setup};
 
 struct Budget(bool);
@@ -40,6 +41,7 @@ fn escalation(
     let escalation = Escalation {
         provider: provider.clone(),
         after_failure: true,
+        router: None,
         max_per_run,
         budget: Arc::new(Budget(allows)),
     };
@@ -130,6 +132,13 @@ async fn a_failed_review_hands_the_run_to_the_escalation_model_from_where_it_sta
     );
     assert!(checkpoint.escalation.escalated && checkpoint.escalation.after_failure_used);
     assert_eq!(checkpoint.escalation.calls, 1);
+    // The escalated answer's review is an attempt of its own.
+    let attempts: Vec<_> = h
+        .events_of("verification")
+        .iter()
+        .map(|event| event["attempt"].as_u64().unwrap())
+        .collect();
+    assert_eq!(attempts, [1, 2, 3, 4]);
 }
 
 #[tokio::test]
@@ -321,25 +330,6 @@ async fn without_the_mechanism_turned_on_nothing_escalates() {
     );
 }
 
-/// A model whose responses name another model than the one it was asked
-/// for, as a provider may answer with a dated snapshot.
-struct Renamed(Arc<ScriptedProvider>);
-
-#[async_trait]
-impl LlmProvider for Renamed {
-    fn id(&self) -> &str {
-        "anthropic"
-    }
-
-    fn model(&self) -> &str {
-        "claude-opus-4-8"
-    }
-
-    async fn complete(&self, request: &LlmRequest) -> Result<LlmResponse, LlmError> {
-        self.0.complete(request).await
-    }
-}
-
 #[tokio::test]
 async fn an_escalated_call_is_priced_as_the_model_asked_for_when_its_answer_names_another() {
     let (mut escalation, stronger) = escalation(vec![ScriptedStep::text("INT-0001.")], 5, true);
@@ -360,4 +350,35 @@ async fn an_escalated_call_is_priced_as_the_model_asked_for_when_its_answer_name
             .filter(|r| r.role == ModelRole::Main)
             .all(|r| r.cost_micros == 0)
     );
+}
+
+#[tokio::test]
+async fn a_review_is_priced_as_the_model_asked_for_when_its_answer_names_another() {
+    let judge = Arc::new(ScriptedProvider::new(vec![ScriptedStep::calls(
+        "",
+        vec![call(
+            "submit_verdict",
+            json!({ "pass": true, "issues": [] }),
+        )],
+    )]));
+    let h = setup(
+        vec![ScriptedStep::text("Trois interventions cette semaine.")],
+        Options {
+            criteria: vec!["Dire combien.".into()],
+            judge_model: Some(Arc::new(Renamed(judge.clone()))),
+            llm_judge: Some(true),
+            ..Options::default()
+        },
+    );
+    let RunOutcome::Completed { verification, .. } = h.start().await else {
+        panic!("expected completion")
+    };
+    assert!(verification.judged, "{verification:?}");
+    let records = h.ports.usage_records();
+    let review = records
+        .iter()
+        .find(|r| r.role == ModelRole::Review)
+        .unwrap();
+    assert_eq!(review.model, "scripted-model");
+    assert!(review.cost_micros > 0, "{review:?}");
 }

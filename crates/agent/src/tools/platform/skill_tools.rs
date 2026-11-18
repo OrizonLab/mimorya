@@ -1,6 +1,7 @@
 //! Built-in skill tool: loads the full content of an active company skill,
 //! and the quality criteria its answer is reviewed on (ADR-106), told to the
-//! agent with the procedure so that it meets them from its first answer.
+//! agent with the procedure so that it meets them from its first answer;
+//! and whether it asks for the company's escalation model (ADR-207).
 
 use std::sync::Arc;
 
@@ -64,6 +65,7 @@ impl TypedTool for SkillRead {
         Ok(ToolResult::ok(Value::String(content))
             .with_summary(format!("Compétence {} v{}", skill.name, skill.version))
             .with_quality_criteria(skill.quality_criteria)
+            .with_model_escalation(skill.model_escalation)
             .with_citations(vec![Citation::new(
                 "skill",
                 format!("{}@{}", skill.name, skill.version),

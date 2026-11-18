@@ -1,7 +1,8 @@
 //! What becomes of a call that ran (or was meant to): logged, audited and
 //! streamed, counted in the run, its citations among the run's evidence, the
 //! quality criteria of a skill `skill_read` loaded among the run's (ADR-106),
-//! and its result turned into model input.
+//! and its asking for the escalation model kept (ADR-207), and its result
+//! turned into model input.
 
 use mimorya_core::tools::ToolResult;
 use serde_json::{Value, json};
@@ -49,6 +50,8 @@ impl ToolCallProcessor {
             // Tool names are unique: no other tool can raise the bar.
             if tool.info.name == SKILL_READ {
                 take_skill_criteria(state, &result.quality_criteria);
+                // Heeded before the next model call (`escalation::next_model`).
+                state.escalation.skill_asked |= result.model_escalation;
             }
         }
         let summary = result.summary.clone().unwrap_or_else(|| {

@@ -20,7 +20,7 @@ use serde_json::json;
 use sqlx::PgConnection;
 
 use super::{audit_entry, begin_change};
-use crate::contract::admin::ModelEscalationUpdate;
+use crate::contract::admin::{ModelEscalationUpdate, RouterRoutes};
 use crate::services::llm::{
     MonthSpending, conversations_choice, escalation_choice, month_spending,
 };
@@ -88,6 +88,7 @@ pub async fn set_company_model_escalation(
         after_failure: update.after_failure,
         router: update.router,
         advisor: update.advisor,
+        routes: update.routes.into(),
         monthly_budget_micros: update.monthly_budget_micros,
         max_per_run: update.max_per_run,
     };
@@ -105,6 +106,10 @@ pub async fn set_company_model_escalation(
             after_failure: choice.after_failure,
             router: choice.router,
             advisor: choice.advisor,
+            route_conversation: choice.routes.conversation.as_str(),
+            route_mission: choice.routes.mission.as_str(),
+            route_scheduled_task: choice.routes.scheduled_task.as_str(),
+            route_hook: choice.routes.hook.as_str(),
             monthly_budget_micros: choice.monthly_budget_micros,
             max_per_run,
             updated_by_user_id: access.subject.user_id,
@@ -118,6 +123,7 @@ pub async fn set_company_model_escalation(
             "afterFailure": choice.after_failure,
             "router": choice.router,
             "advisor": choice.advisor,
+            "routes": RouterRoutes::from(choice.routes),
             "monthlyBudgetMicros": choice.monthly_budget_micros,
             "maxPerRun": choice.max_per_run,
             "previousModel": previous.map(|row| row.model),

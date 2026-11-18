@@ -18,6 +18,8 @@ pub struct SkillFixture {
     pub content: String,
     /// What an answer that follows it must meet (ADR-106).
     pub quality_criteria: Vec<String>,
+    /// Whether it asks for the company's escalation model (ADR-207).
+    pub model_escalation: bool,
 }
 
 impl InMemoryPorts {
@@ -50,6 +52,7 @@ impl SkillStore for InMemoryPorts {
                 version: 1,
                 content: s.content.clone(),
                 quality_criteria: s.quality_criteria.clone(),
+                model_escalation: s.model_escalation,
             }))
     }
 

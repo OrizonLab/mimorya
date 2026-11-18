@@ -1,10 +1,10 @@
 // The company's model escalation (ADR-207): refused while the company is on
 // the platform's model; with its own provider, a stronger model of it is
 // chosen within a monthly budget and a number of escalations per run, read
-// back as the API recorded it, the escalation after a failed review turned
-// on, shown in the consumption with its budget beside what each role of the
-// model calls cost, then removed. The mechanisms not delivered yet cannot be
-// turned on.
+// back as the API recorded it, the escalation after a failed review and the
+// router turned on, the router's rule for each kind of run chosen, shown in
+// the consumption with its budget beside what each role of the model calls
+// cost, then removed. The mechanism not delivered yet cannot be turned on.
 // Whatever happens, the company is back on the platform's model, without
 // escalation, afterwards.
 import type { Page } from '@playwright/test';
@@ -49,14 +49,21 @@ test('a stronger model is chosen within a monthly budget, then removed', async (
   await page.reload();
   await page.getByRole('tab', { name: 'Modèle d’IA' }).click();
   await expect(form.getByLabel(`Modèle d’escalade (modèle principal : ${MAIN})`)).toBeVisible();
-  // The escalation after a failed review is delivered; the others not yet.
-  for (const label of ['Routeur en amont', 'Conseiller d’Anthropic (advisor)']) {
-    await expect(form.getByRole('checkbox', { name: label })).toBeDisabled();
-  }
+  // The escalation after a failed review and the router are delivered; the
+  // advisor not yet.
+  await expect(
+    form.getByRole('checkbox', { name: 'Conseiller d’Anthropic (advisor)' }),
+  ).toBeDisabled();
   await expect(form).toContainText('Bientôt disponible');
   const afterFailure = form.getByRole('checkbox', { name: 'Escalade après échec du contrôle' });
   await expect(afterFailure).toBeEnabled();
   await afterFailure.check();
+  // The router's rules show once it is on.
+  const router = form.getByRole('checkbox', { name: 'Routeur en amont' });
+  await expect(form.getByLabel('Conversations')).toHaveCount(0);
+  await router.check();
+  await form.getByLabel('Conversations').selectOption('Selon un classement de la demande');
+  await form.getByLabel('Déclencheurs').selectOption('Modèle d’escalade');
 
   await form.getByLabel(/^Modèle d’escalade/).fill(STRONGER);
   await form.getByLabel('Budget mensuel d’escalade (USD)').fill('25');
@@ -72,8 +79,16 @@ test('a stronger model is chosen within a monthly budget, then removed', async (
   expect(chosen.settings?.model).toBe(STRONGER);
   expect(chosen.settings?.monthlyBudgetMicros).toBe(25_000_000);
   expect(chosen.settings?.maxPerRun).toBe(3);
-  expect([chosen.settings?.afterFailure, chosen.settings?.router]).toEqual([true, false]);
+  expect([chosen.settings?.afterFailure, chosen.settings?.router]).toEqual([true, true]);
+  expect(chosen.settings?.routes).toEqual({
+    conversation: 'classification',
+    mission: 'main',
+    scheduledTask: 'main',
+    hook: 'escalation',
+  });
   await expect(afterFailure).toBeChecked();
+  await expect(form.getByLabel('Conversations')).toHaveValue('classification');
+  await expect(form.getByLabel('Missions')).toHaveValue('main');
 
   // The consumption shows the escalation's budget for the month, and what
   // each role cost: the server left a call of each at its start

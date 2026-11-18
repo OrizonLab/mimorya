@@ -417,6 +417,18 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   désactivés par défaut : après un échec du contrôle de la réponse, par un routeur en
   amont, par l'advisor d'Anthropic. Un budget mensuel (USD) et un nombre d'escalades par
   run le bornent ; au-delà, le run continue avec le modèle principal. Fait : les
-  réglages (étape 0) et l'escalade après échec (étape 1) ; le routeur et l'advisor
-  suivent. Seul un modèle tarifé sert (aujourd'hui, ceux d'Anthropic), et la table des
-  prix n'est remplacée que par les tests.
+  réglages (étape 0), l'escalade après échec (étape 1) et le routeur (étape 2) ;
+  l'advisor suit. Seul un modèle tarifé sert (aujourd'hui, ceux d'Anthropic), et la
+  table des prix n'est remplacée que par les tests.
+- **Routeur** (ADR-207, étape 2) : activé, il décide au début du run, une fois, le modèle
+  de départ selon la règle de l'entreprise pour sa sorte (conversation, mission, tâche
+  planifiée, déclencheur) : le principal, celui d'escalade, ou celui que nomme un
+  classement. Le classement est un court appel au modèle principal, sans outil, qui ne
+  lit que la demande (2 000 caractères au plus, en chaîne JSON) et doit répondre
+  `{"niveau": "principal"}` ou `{"niveau": "escalade"}` : toute autre réponse ou un échec
+  garde le modèle principal ; son coût entre dans le run et dans le budget d'escalade,
+  épuisé il n'est pas fait (`runtime/routing.rs`). Une version de compétence peut
+  demander le modèle d'escalade : chargée par `skill_read`, et lui seul, elle y fait
+  passer le run avant son appel suivant, une fois par run, dans les mêmes bornes. La
+  décision est gardée dans le point de reprise ; un run repris n'est pas routé de
+  nouveau.

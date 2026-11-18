@@ -14836,3 +14836,62 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       - une fois les conversations passées chez un autre fournisseur, le modèle
         d'escalade n'est jamais construit ;
     - le parcours de bout en bout active le mécanisme.
+- **Complément (étape 2, routeur en amont)** :
+  - **règles de l'entreprise** : quatre règles, une par sorte de run, gardées avec le
+    réglage d'escalade (`route_conversation`, `route_mission`, `route_scheduled_task`,
+    `route_hook`). Chacune dit le modèle de départ du run : le principal, celui
+    d'escalade, ou celui que nomme un classement de la demande. Une conversation est un
+    tour de conversation, quel que soit son canal (web, Slack, Telegram, Teams) ; une
+    mission, chacune de ses étapes ; une tâche planifiée et un déclencheur, le run
+    qu'ils lancent. Les règles ne sont lues que si le routeur est activé ; elles valent
+    toutes « principal » par défaut. Un sous-agent et une évaluation de compétence
+    restent sur le modèle principal : ils n'ont pas d'escalade ;
+  - **au début du run, une seule fois** : le moteur applique la règle avant le premier
+    appel au modèle, et garde la décision dans le point de reprise. Un run repris, après
+    une validation ou par un autre processus, n'est pas routé de nouveau. Un run qui
+    s'arrête entre la première sauvegarde et le classement repart sur le modèle
+    principal ;
+  - **classement** : un court appel au modèle principal, sans outil, qui ne lit que la
+    demande (l'objectif du run, 2 000 caractères au plus), passée comme chaîne JSON pour
+    ne pas pouvoir sortir de son cadre, sous une consigne stable. Il répond au plus 32
+    jetons. Seuls `{"niveau": "principal"}` et `{"niveau": "escalade"}` sont lus,
+    espaces autour admis : toute autre réponse (texte autour, bloc de code, champ en
+    plus, autre valeur) ou un appel en échec vaut « principal », avec un avertissement
+    journalisé sans contenu. Son coût est compté dans le run et dans le budget
+    d'escalade (rôle « classement ») ; le budget du mois épuisé, il n'est pas fait, et
+    c'est tracé comme toute borne atteinte. Une demande écrite pour obtenir le modèle
+    d'escalade ne peut coûter que ce budget ;
+  - **compétence** : une version peut demander le modèle d'escalade
+    (`skill_versions.model_escalation`), case cochée par ses administrateurs. Quand
+    `skill_read` la charge, et lui seul, le run passe au modèle d'escalade avant son
+    appel suivant, une fois par run, dans les mêmes bornes, si le routeur est activé.
+    Une version écrite sans le dire, comme une proposition de l'agent, reprend le choix
+    de la version active : l'agent ne le règle pas. La compétence ne change rien
+    d'autre : ni permission, ni politique, ni validation, ni autonomie ;
+  - **ordre** : la compétence prime, puisqu'elle fait passer au modèle d'escalade un run
+    que la règle ou le classement avaient laissé au principal ; la règle, quand elle
+    nomme un modèle, dispense du classement. Le routeur ne fait jamais revenir un run au
+    modèle principal : seules les bornes, un échec du modèle d'escalade ou son retrait
+    le font, comme à l'étape 1. L'escalade après échec ne sert pas à un run déjà
+    escaladé ;
+  - **traces** : `model_escalation.started` porte la raison, `rule`, `classification`,
+    `skill` ou `after_failure`, sans contenu ;
+  - **tests** :
+    - `crates/agent/tests/runtime_escalation_router.rs`, avec des modèles simulés :
+      - règle « escalade » et règle « principal » ;
+      - classement qui nomme l'escalade, puis toute autre réponse, puis un appel en
+        échec : le modèle principal reste ;
+      - budget épuisé : pas de classement, et c'est tracé ;
+      - compétence qui demande l'escalade ;
+      - rien sans le routeur, rien pour une compétence qui ne le demande pas ;
+      - seul `skill_read` peut le demander ;
+      - un run repris après une validation n'est pas classé de nouveau ;
+    - `crates/api/tests/model_escalation_router.rs`, sur PostgreSQL :
+      - règles gardées, relues et tracées ; une règle inconnue ou absente est refusée ;
+      - une conversation, une tâche planifiée, un déclencheur et une étape de mission
+        suivent chacun leur règle ;
+      - le classement est enregistré avec son rôle, et son coût compte dans la dépense
+        du mois ;
+      - une version demande l'escalade, la suivante écrite sans le dire le reprend, et
+        le run qui la charge passe au modèle d'escalade ;
+    - les parcours de bout en bout règlent le routeur et cochent la case d'une version.

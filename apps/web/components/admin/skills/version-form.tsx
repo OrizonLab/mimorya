@@ -13,8 +13,9 @@ import { SkillContentFields } from './skill-form';
 
 /**
  * Writes a new version, a draft: the active one stays until another is made
- * active. It starts from `from`, its content and its quality criteria
- * (ADR-106), empty without one.
+ * active. It starts from `from`, its content, its quality criteria
+ * (ADR-106) and whether it asks for the escalation model (ADR-207), empty
+ * without one.
  */
 export function VersionForm({
   skillId,
@@ -29,16 +30,23 @@ export function VersionForm({
   const initialCriteria = from?.qualityCriteria.join('\n') ?? '';
   const [content, setContent] = useState(initialContent);
   const [criteria, setCriteria] = useState(initialCriteria);
+  const initialEscalation = from?.modelEscalation ?? false;
+  const [escalation, setEscalation] = useState(initialEscalation);
   const [changelog, setChangelog] = useState('');
   const action = useAction();
-  const unchanged = content === initialContent && kept(criteria) === kept(initialCriteria);
+  const unchanged =
+    content === initialContent &&
+    kept(criteria) === kept(initialCriteria) &&
+    escalation === initialEscalation;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    // Sent as they stand, none included: a version keeps the criteria it is written with.
+    // Sent as they stand, none included: a version keeps the criteria it is
+    // written with, and asks for the escalation model or not, as shown.
     const body = {
       content,
       qualityCriteria: criteria.split('\n'),
+      modelEscalation: escalation,
       changelog,
     } satisfies NewSkillVersion;
     const created = await action.run(() =>
@@ -52,9 +60,11 @@ export function VersionForm({
       <SkillContentFields
         content={content}
         criteria={criteria}
+        escalation={escalation}
         changelog={changelog}
         onContent={setContent}
         onCriteria={setCriteria}
+        onEscalation={setEscalation}
         onChangelog={setChangelog}
       />
       {action.error && <ErrorNote message={action.error} />}

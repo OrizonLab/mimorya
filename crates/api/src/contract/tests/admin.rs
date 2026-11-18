@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use mimorya_agent::llm::EscalationRoute;
 use mimorya_agent::tools::ToolOverride;
 use mimorya_core::authz::Sensitivity as CoreSensitivity;
 use mimorya_core::autonomy::ToolRisk;
@@ -72,4 +73,13 @@ fn stored_tool_policies_match_the_contract() {
     // The listing returns them as stored: fields left out stay readable.
     let partial = json!({ "mcp_docs_search": { "enabled": false } });
     assert!(stored::<HashMap<String, admin::ToolPolicy>>("tool policies", &partial).is_ok());
+}
+
+#[test]
+fn the_router_s_routes_are_shown_as_they_are_stored() {
+    for route in EscalationRoute::ALL {
+        let shown = admin::RouterRoute::from(route);
+        assert_eq!(serde_json::to_value(shown).unwrap(), route.as_str());
+        assert_eq!(EscalationRoute::from(shown), route);
+    }
 }

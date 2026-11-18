@@ -10,20 +10,19 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use futures::FutureExt;
-use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable};
+use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable, RunKind};
 
 use mimorya_agent::runtime::{
     AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, Escalation, InterruptedCall,
     RunCheckpoint, RunConfig, RunEvent, RuntimeDeps, StartInput, UnavailableConnectors,
     VerificationConfig, build_user_turn,
 };
-use mimorya_core::authz::{Actor, HOOK_CHANNEL};
+use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
 use mimorya_core::tools::Citation;
 use mimorya_db::Database;
 use mimorya_db::repositories::missions::mission_evidence;
 use mimorya_db::repositories::runs::{RunRow, RunStatus};
-use mimorya_db::repositories::scheduled_tasks::started_by_a_task;
 
 use super::approval_notice::ApprovalNotifier;
 use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
@@ -34,6 +33,7 @@ use super::fence::{LeaseFence, lost};
 use super::lesson_capture::LessonCapture;
 use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
+use super::run_kind::run_kind;
 use super::summaries::ConversationSummaries;
 use crate::services::access::{AccessContext, AccessService};
 use crate::services::account_links::AccountLinkService;
@@ -43,6 +43,15 @@ use crate::services::event_bus::RunEventBus;
 use crate::services::llm::LlmService;
 
 const MAX_CORRECTION_ATTEMPTS: u32 = 2;
+
+/// What a run's runtime is built for.
+struct RunSetup {
+    actor: Actor,
+    /// As the company's model router tells runs apart (ADR-207).
+    kind: RunKind,
+    /// Whether a person awaits its first answer.
+    patient: bool,
+}
 
 pub struct RunExecutor {
     pub db: Database,
@@ -153,10 +162,18 @@ impl RunExecutor {
     ) -> anyhow::Result<()> {
         // A hook's run stays one when it resumes (ADR-109).
         let actor = Actor::agent(Some(run.id)).with_channel(run.channel.clone());
-        let patient = self.awaited(run, &mode).await?;
-        let (runtime, unavailable) = self
-            .runtime_for(access, run, ports, actor.clone(), fence, patient)
-            .await?;
+        let kind = run_kind(&self.db, run).await?;
+        // A person awaits the first answer of a turn of conversation only:
+        // then alone does it go without a connector still starting once its
+        // patience is over. Not a resumed run, which does the actions that
+        // were validated with every tool it had (ADR-177).
+        let patient = matches!(mode, ExecutionMode::Start { .. }) && kind == RunKind::Conversation;
+        let setup = RunSetup {
+            actor: actor.clone(),
+            kind,
+            patient,
+        };
+        let (runtime, unavailable) = self.runtime_for(access, run, ports, fence, setup).await?;
         match mode {
             ExecutionMode::Start { history, text } => {
                 let system = build_run_system_prompt(
@@ -228,10 +245,14 @@ impl RunExecutor {
         access: &AccessContext,
         run: &RunRow,
         ports: &EnginePorts,
-        actor: Actor,
         fence: &LeaseFence,
-        patient: bool,
+        setup: RunSetup,
     ) -> anyhow::Result<(AgentRuntime, UnavailableConnectors)> {
+        let RunSetup {
+            actor,
+            kind,
+            patient,
+        } = setup;
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
         let Some(provider) = self.llm.provider_for(access.subject.tenant_id).await? else {
@@ -267,6 +288,8 @@ impl RunExecutor {
             .map(|model| Escalation {
                 provider: model.provider,
                 after_failure: model.after_failure,
+                // The router's rule for this kind of run (step 2).
+                router: model.router.then(|| model.routes.of(kind)),
                 max_per_run: model.max_per_run,
                 budget: Arc::new(MonthlyBudget::new(
                     self.db.clone(),
@@ -295,23 +318,5 @@ impl RunExecutor {
             },
         );
         Ok((runtime, tools.unavailable))
-    }
-
-    /// Whether a person awaits the run's first answer: only then does it go
-    /// without a connector still starting once its patience is over. Not a
-    /// resumed run, which does the actions that were validated with every
-    /// tool it had, nor a hook's, a mission's stage or a scheduled task's
-    /// (ADR-177).
-    async fn awaited(&self, run: &RunRow, mode: &ExecutionMode) -> anyhow::Result<bool> {
-        if !matches!(mode, ExecutionMode::Start { .. })
-            || run.channel == HOOK_CHANNEL
-            || run.mission_id.is_some()
-        {
-            return Ok(false);
-        }
-        let mut tx = self.db.begin(run.tenant_id).await?;
-        let scheduled = started_by_a_task(&mut tx, run.id).await?;
-        tx.commit().await?;
-        Ok(!scheduled)
     }
 }
