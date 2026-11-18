@@ -100,6 +100,8 @@ async fn classified_hard(
     };
     let call = ModelCall {
         role: ModelRole::Classification,
+        // Asked of the run's model.
+        by_runs_model: true,
         requested: provider.model(),
     };
     record_model_usage(&deps.ports, &deps.prices, state, &response, call).await?;

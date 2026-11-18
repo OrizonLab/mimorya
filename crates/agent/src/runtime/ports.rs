@@ -194,6 +194,10 @@ pub struct UsageRecord {
     pub kind: &'static str,
     /// The role of a model call; other uses are the main model's.
     pub role: ModelRole,
+    /// Whether the run's own model made the call, whatever its role: a
+    /// review no model chosen apart gave (ADR-108), charged as the run's
+    /// calls are (ADR-208).
+    pub by_runs_model: bool,
     pub provider: String,
     pub model: String,
     pub input_tokens: u64,

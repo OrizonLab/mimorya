@@ -30,7 +30,7 @@ use super::spending::{count_spent, spending};
 use super::view::case_results;
 use crate::app::Services;
 use crate::services::AccessContext;
-use crate::services::llm::supply_stopped;
+use crate::services::llm::{supply_stopped, trace_held_back};
 use crate::services::runs::stopped_by;
 
 /// Why an evaluation fails, as its administrators read it.
@@ -126,6 +126,7 @@ async fn play_cases(
             // Nor past the operator's supply of the company (ADR-208).
             let supply = supply_stopped(&services.db, &models, tenant_id, ModelRole::Main).await?;
             if let Some(stop) = supply {
+                trace_held_back(&services.db, tenant_id, launcher, stop).await?;
                 return Ok(Some(stop.message().into()));
             }
             let played = play_case(

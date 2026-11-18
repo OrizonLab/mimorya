@@ -12,7 +12,6 @@ use mimorya_agent::llm::ModelRole;
 use mimorya_core::DomainError;
 use mimorya_core::autonomy::AutonomyLevel;
 use mimorya_core::gateways::GatewayKind;
-use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::conversations::create_conversation;
 use mimorya_db::repositories::gateway_threads::{NewGatewayThread, insert_gateway_thread};
 use uuid::Uuid;
@@ -21,7 +20,7 @@ use super::conversation_turn::{BUSY, TurnSender, open_conversation_turn, tenant_
 use super::executor::ExecutionMode;
 use super::service::RunService;
 use crate::services::access::{AccessContext, AuthIdentity};
-use crate::services::llm::{Unusable, supply_stopped};
+use crate::services::llm::{Unusable, supply_stopped, trace_held_back};
 
 pub const COMPANY_NOT_ACTIVE: &str =
     "Votre entreprise est suspendue : l’agent n’agit plus pour elle.";
@@ -224,14 +223,7 @@ impl RunService {
         let db = &self.executor.db;
         if let Some(stop) = supply_stopped(db, &models, identity.tenant_id, ModelRole::Main).await?
         {
-            let refused =
-                AuditEntry::new(identity.tenant_id, "user", "model_supply.limited", "denied")
-                    .by_user(identity.user_id)
-                    .resource("tenant", identity.tenant_id)
-                    .reason(stop.reason());
-            let mut tx = db.begin(identity.tenant_id).await?;
-            append_audit(&mut tx, refused).await?;
-            tx.commit().await?;
+            trace_held_back(db, identity.tenant_id, identity.user_id, stop).await?;
             return Err(DomainError::unavailable(stop.message()).into());
         }
         Ok(access)

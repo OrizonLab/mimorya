@@ -438,4 +438,6 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   base) : au-delà du plafond mensuel ou du crédit, ou la fourniture retirée, le run
   s'arrête avant son appel suivant en disant pourquoi, un classement n'est pas demandé et
   une réponse n'est pas jugée par un modèle ; un sous-agent y est tenu comme son parent.
+  Chaque juge est vérifié pour sa clé : le modèle des runs ne remplace pas au-delà un
+  modèle de contrôle qui échoue, et son jugement est compté sur la clé des runs.
   L'arrêt est tracé une fois par run (`model_supply.limited`, `runtime/supply.rs`).

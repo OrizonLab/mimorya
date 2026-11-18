@@ -23,7 +23,9 @@ use mimorya_db::repositories::usage::{NewUsage, append_usage};
 use serde_json::json;
 
 use super::{audit_entry, begin_change};
-use crate::services::llm::{Models, Review, Unusable, api_key_secret, supply_stopped};
+use crate::services::llm::{
+    Models, Review, Unusable, api_key_secret, supply_stopped, trace_held_back,
+};
 use crate::services::{AccessContext, LlmService};
 
 const PERMISSION: &str = "settings:manage";
@@ -194,6 +196,7 @@ pub async fn test_llm(
     };
     // Nothing on the operator's key past its supply (ADR-208).
     if let Some(stop) = supply_stopped(db, &models, tenant_id, role).await? {
+        trace_held_back(db, tenant_id, access.subject.user_id, stop).await?;
         return Err(DomainError::unavailable(stop.message()).into());
     }
     let provider = match purpose {

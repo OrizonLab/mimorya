@@ -10,7 +10,9 @@
 //! criteria, on the quality criteria of either version (the same bar for
 //! both), and on those of the other skills the agent loaded, as a run's
 //! answer is (ADR-106). The result keeps the answer, the issues the judge
-//! found, the tools called and whether the version was loaded.
+//! found, the tools called and whether the version was loaded. Each call,
+//! the agent's as the judge's, is made only while the operator's supply of
+//! the company allows it (ADR-208).
 
 use std::sync::Arc;
 
@@ -33,7 +35,7 @@ use super::ports::{CasePorts, CaseScope, EvaluatedVersion, Journal, ToolTrace, c
 use crate::app::Services;
 use crate::services::AccessContext;
 use crate::services::connectors::Served;
-use crate::services::llm::Models;
+use crate::services::llm::{Models, SupplyGuard, supply_stopped};
 use crate::services::runs::{run_tools, user_profile};
 
 /// What one case may spend at most, for one version.
@@ -180,7 +182,7 @@ async fn answer_and_judge(
     };
     let profile = user_profile(access, &services.config.assistant_name);
     let system = build_system_prompt(&profile, &skills, Utc::now());
-    let deps = RuntimeDeps::new(
+    let mut deps = RuntimeDeps::new(
         ModelRouter::new(provider.clone()),
         Arc::new(EvaluationAccess {
             access: services.access.clone(),
@@ -191,6 +193,11 @@ async fn answer_and_judge(
         ports,
         services.llm.prices().clone(),
     );
+    deps.supply = Some(Arc::new(SupplyGuard::new(
+        services.db.clone(),
+        scope.tenant_id,
+        Arc::clone(&request.models),
+    )));
     let runtime = AgentRuntime::new(
         deps,
         RunConfig {
@@ -238,6 +245,19 @@ async fn answer_and_judge(
         evidence: &evidence,
     };
     let answer = Some(bounded(&answer, MAX_ANSWER_CHARS));
+    // Not judged past the operator's supply (ADR-208).
+    let models = &request.models;
+    if let Some(stop) =
+        supply_stopped(&services.db, models, scope.tenant_id, ModelRole::Review).await?
+    {
+        return Ok(Judged {
+            outcome: CaseOutcome::Error,
+            issues: Vec::new(),
+            answer,
+            error: Some(stop.message().into()),
+            usage,
+        });
+    }
     let (verdict, response) = match judge_answer(judge.as_ref(), judging).await {
         Ok(judged) => judged,
         Err(error) => {
@@ -262,6 +282,7 @@ async fn answer_and_judge(
         .record(UsageRecord {
             kind: "llm",
             role: ModelRole::Review,
+            by_runs_model: Arc::ptr_eq(judge, provider),
             provider: response.provider.clone(),
             model: response.model.clone(),
             input_tokens: response.usage.input_tokens,

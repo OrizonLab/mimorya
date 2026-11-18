@@ -28,7 +28,7 @@ mod supply;
 pub use escalation::{
     EscalationModel, MonthSpending, conversations_choice, escalation_choice, month_spending,
 };
-pub use limits::{SupplyGuard, supply_stopped};
+pub use limits::{SupplyGuard, supply_stopped, trace_held_back};
 pub use load::api_key_secret;
 pub use supply::Supply;
 

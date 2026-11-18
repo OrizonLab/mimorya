@@ -2,8 +2,9 @@
 //! monthly cap or prepaid credit, no run is launched, its user told why,
 //! nor a connection test made, and the refusal is traced; once the cap is
 //! raised, runs go on. A run under way stops before its next call to the
-//! model, saying why. Two runs at once near the cap overrun it by their
-//! calls in flight at most. The company's own key is never held back.
+//! model, saying why, past its cap as past its credit. Two runs at once
+//! near the cap overrun it by their calls in flight at most. The company's
+//! own key is never held back.
 
 mod support;
 
@@ -11,73 +12,29 @@ use std::sync::{Arc, Barrier};
 
 use axum::http::StatusCode;
 use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
-use mimorya_api::services::provisioning::{
-    CapChoice, SupplyChange, change_model_supply, model_supply_report,
-};
+use mimorya_api::services::provisioning::{CapChoice, SupplyChange, model_supply_report};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::model_supply::{SupplyFormula, SupplyStop};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use support::llm::{API_KEY, MASTER_KEY, SCRIPTED_CALL_MICROS, ask};
+use support::model_supply::{CAP, capped, credit_left, spent, supply};
 use support::refusals::{entries_since, latest_entry};
 use support::runs::start_run;
 use support::{Client, TestApi, owner_url};
 use tokio::task::block_in_place;
 use uuid::Uuid;
 
-/// The smallest cap: 1 USD.
-const CAP: i64 = 1_000_000;
-
-async fn supply(owner: &PgPool, change: SupplyChange) {
-    change_model_supply(owner, tenant::SLUG, change)
-        .await
-        .unwrap();
-}
-
-fn capped(cap: CapChoice) -> SupplyChange {
-    SupplyChange::Formula {
-        formula: SupplyFormula::Capped,
-        cap,
-    }
-}
-
-/// What the company spent on the operator's key: `billed_micros` this
-/// month under `formula`, nothing else (what the binary's tests before
-/// spent forgotten; no credit is ever paid in them).
-async fn spent(owner: &PgPool, formula: SupplyFormula, billed_micros: i64) {
-    sqlx::query(
-        "delete from usage_records where tenant_id = $1 and supply_formula <> 'client_key'",
-    )
-    .bind(tenant::ID)
-    .execute(owner)
-    .await
-    .unwrap();
-    if billed_micros == 0 {
-        return;
-    }
-    sqlx::query(
-        "insert into usage_records (tenant_id, kind, role, provider, model, cost_micros, \
-         supply_formula, billed_micros) values ($1, 'llm', 'main', 'anthropic', \
-         'claude-haiku-5-5', $2, $3, $2)",
-    )
-    .bind(tenant::ID)
-    .bind(billed_micros)
-    .bind(formula.as_str())
-    .execute(owner)
-    .await
-    .unwrap();
-}
-
-/// Waits until this process loaded the operator's latest change.
-async fn reloaded(api: &TestApi, formula: SupplyFormula) {
+/// Waits until this process loaded the company's own key for its runs.
+async fn on_its_own_key(api: &TestApi) {
     for _ in 0..100 {
         let models = api.app.services.llm.resolve(tenant::ID).await.unwrap();
-        if models.supply.formula == formula {
+        if !models.runs_on_operator_key() {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    panic!("the company's supply was never loaded again");
+    panic!("the company's own key was never loaded");
 }
 
 async fn run_of(client: &Client<'_>, run: Uuid) -> Value {
@@ -107,6 +64,10 @@ async fn past_its_cap_or_its_credit_no_run_is_launched_and_the_refusal_is_traced
     let tested = paul.post("/admin/llm/test", json!({})).await;
     assert_eq!(tested.status, StatusCode::SERVICE_UNAVAILABLE);
     assert!(api.model.as_ref().unwrap().requests().is_empty());
+    // Each refusal traced, the test's by whom asked for it.
+    let audit = entries_since(&api, since).await;
+    assert_eq!(audit.matches("model_supply.limited").count(), 3, "{audit}");
+    assert!(audit.contains(&user::PAUL.to_string()), "{audit}");
 
     // A prepaid credit spent: the same.
     supply(
@@ -117,7 +78,7 @@ async fn past_its_cap_or_its_credit_no_run_is_launched_and_the_refusal_is_traced
         },
     )
     .await;
-    spent(&owner, SupplyFormula::Prepaid, 0).await;
+    credit_left(&owner, 0).await;
     let said = marc.post(&refused, json!({ "content": "Bonjour" })).await;
     assert_eq!(said.status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(said.error_message(), SupplyStop::CreditSpent.message());
@@ -169,6 +130,40 @@ async fn a_run_under_way_stops_before_its_next_call_saying_why() {
     supply(&owner, capped(CapChoice::Default)).await;
 }
 
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_run_on_a_spent_credit_stops_before_its_next_call() {
+    let api = TestApi::start_priced_with(&[("MIMORYA_MASTER_KEY", MASTER_KEY)]).await;
+    let owner = PgPool::connect(owner_url()).await.unwrap();
+    let marc = api.sign_in(user::MARC).await;
+    let prepaid = SupplyChange::Formula {
+        formula: SupplyFormula::Prepaid,
+        cap: CapChoice::Default,
+    };
+    supply(&owner, prepaid).await;
+    let paid = SupplyChange::Credit {
+        amount_micros: CAP,
+        reference: "FAC-2026-1118".into(),
+    };
+    supply(&owner, paid).await;
+    // Half a call left: the first is made, and spends the credit.
+    credit_left(&owner, SCRIPTED_CALL_MICROS / 2).await;
+    let since = latest_entry(&api).await;
+
+    api.script(vec![ScriptedStep::text(""), ScriptedStep::text("jamais")]);
+    let run = start_run(&marc).await;
+    api.idle().await;
+    let read = run_of(&marc, run).await;
+    assert_eq!(read["status"], "failed", "{read}");
+    assert_eq!(read["error"], SupplyStop::CreditSpent.message());
+    assert_eq!(api.model.as_ref().unwrap().requests().len(), 1);
+    let report = model_supply_report(&owner, tenant::SLUG).await.unwrap();
+    assert_eq!(report.spending.balance_micros(), -SCRIPTED_CALL_MICROS / 2);
+    let audit = entries_since(&api, since).await;
+    assert!(audit.contains("credit_spent"), "{audit}");
+    supply(&owner, capped(CapChoice::Default)).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires PostgreSQL"]
 async fn two_runs_at_once_near_the_cap_overrun_it_by_their_calls_in_flight_at_most() {
@@ -217,7 +212,7 @@ async fn the_company_s_own_key_is_never_held_back() {
     spent(&owner, SupplyFormula::Capped, CAP).await;
     let own = json!({ "provider": "anthropic", "model": "claude-haiku-5-5", "apiKey": API_KEY });
     assert_eq!(paul.put("/admin/llm", own).await.status, StatusCode::OK);
-    reloaded(&api, SupplyFormula::Capped).await;
+    on_its_own_key(&api).await;
 
     api.company_model
         .push([ScriptedStep::text("Sur la clé de l’entreprise.")]);

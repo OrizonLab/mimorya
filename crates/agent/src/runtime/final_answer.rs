@@ -1,10 +1,12 @@
 //! The review of a run's answer candidate: deterministic checks, then a
 //! model's on the run's criteria and those of the skills it loaded
-//! (ADR-106), by the company's review model if it chose one (ADR-108), not
-//! past the operator's supply (ADR-208). The reviewer's call is accounted
-//! as a review; the verdict is told to the run's listeners.
+//! (ADR-106), by the company's review model if it chose one, else or should
+//! it fail by the run's own (ADR-108), each only while the operator's supply
+//! allows its call (ADR-208). The reviewer's call is accounted as a review,
+//! on the key of the model that made it; the verdict is told to the run's
+//! listeners.
 
-use super::answer_review::{AnswerReview, review_answer, review_criteria};
+use super::answer_review::{AnswerReview, Judge, review_answer, review_criteria};
 use super::model_call::{ModelCall, record_model_usage};
 use super::ports::RunEvent;
 use super::runtime::AgentRuntime;
@@ -31,13 +33,8 @@ impl AgentRuntime {
         );
         let judged = verification.llm_judge
             || (verification.skill_criteria && !state.skill_criteria.is_empty());
-        // Past the operator's supply, the answer is left unjudged (ADR-208).
-        let supplied = !judged
-            || supply_stopped(&self.deps, state, ModelRole::Review)
-                .await?
-                .is_none();
-        let judges = match judged && supplied {
-            true => self.deps.router.providers_for(TaskClass::Verification),
+        let judges = match judged {
+            true => self.judges(state).await?,
             false => Vec::new(),
         };
         let (report, judge_response) = review_answer(AnswerReview {
@@ -50,10 +47,11 @@ impl AgentRuntime {
             judges: &judges,
         })
         .await;
-        if let Some((judge_response, requested)) = judge_response {
+        if let Some((judge_response, judge)) = judge_response {
             let call = ModelCall {
                 role: ModelRole::Review,
-                requested: &requested,
+                by_runs_model: judge.runs_model,
+                requested: judge.provider.model(),
             };
             record_model_usage(
                 &self.deps.ports,
@@ -77,5 +75,33 @@ impl AgentRuntime {
             })
             .await?;
         Ok((answer, report))
+    }
+
+    /// The models that may judge the answer, in order: the company's review
+    /// model, then the run's own (ADR-108), each only while the operator's
+    /// supply allows its call (ADR-208). Past it, the answer is left
+    /// unjudged; a review model on the company's own key is never held back.
+    async fn judges(&self, state: &mut RunCheckpoint) -> anyhow::Result<Vec<Judge>> {
+        let mut judges = Vec::new();
+        if let Some(reviewer) = self.deps.router.reviewer()
+            && supply_stopped(&self.deps, state, ModelRole::Review)
+                .await?
+                .is_none()
+        {
+            judges.push(Judge {
+                provider: reviewer,
+                runs_model: false,
+            });
+        }
+        if supply_stopped(&self.deps, state, ModelRole::Main)
+            .await?
+            .is_none()
+        {
+            judges.push(Judge {
+                provider: self.deps.router.provider_for(TaskClass::Agent),
+                runs_model: true,
+            });
+        }
+        Ok(judges)
     }
 }

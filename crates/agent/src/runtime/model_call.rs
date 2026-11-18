@@ -81,6 +81,7 @@ pub async fn call_model(
             state.usage.steps += 1;
             let call = ModelCall {
                 role,
+                by_runs_model: role == ModelRole::Main,
                 requested: provider.model(),
             };
             record_model_usage(&deps.ports, &deps.prices, state, &response, call).await?;
@@ -117,6 +118,8 @@ pub async fn complete_with_retry(
 #[derive(Debug, Clone, Copy)]
 pub struct ModelCall<'a> {
     pub role: ModelRole,
+    /// Whether the run's own model made it, whatever its role (ADR-208).
+    pub by_runs_model: bool,
     pub requested: &'a str,
 }
 
@@ -145,6 +148,7 @@ pub async fn record_model_usage(
         .record(UsageRecord {
             kind: "llm",
             role,
+            by_runs_model: call.by_runs_model,
             provider: response.provider.clone(),
             model: response.model.clone(),
             input_tokens,

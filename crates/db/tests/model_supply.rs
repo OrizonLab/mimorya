@@ -4,15 +4,18 @@
 //! credit's register is in append only, even for the owner, but a company
 //! deleted whole takes it along; the table keeps a formula's cap coherent;
 //! and the consumption purged after five years leaves a prepaid company's
-//! balance where it was.
+//! balance where it was, as its runs read it before a call.
 
 mod support;
 
 use chrono::{Duration, Utc};
 use mimorya_core::demo::tenant;
-use mimorya_core::model_supply::SupplyFormula;
+use mimorya_core::model_supply::{SupplyFormula, SupplyStop, supply_stop};
 use mimorya_db::Database;
-use mimorya_db::repositories::model_supply::{add_credit_entry, model_supply, supply_spending};
+use mimorya_db::repositories::model_supply::{
+    NewSupplyFormula, add_credit_entry, model_supply, set_supply_formula, supply_spending,
+    supply_state,
+};
 use mimorya_db::testing::OTHER_TENANT_ID;
 use sqlx::PgPool;
 use support::db_error;
@@ -245,6 +248,33 @@ async fn the_consumption_purged_after_five_years_leaves_the_balance_where_it_was
     let after = supply_spending(&mut conn, id, Utc::now()).await.unwrap();
     assert_eq!(after.balance_micros(), 55_000_000);
     assert_eq!(after.prepaid_billed_ever_micros, 45_000_000);
+
+    // As a run reads it before a call (ADR-208, step 1): the balance the
+    // same, spent once the consumption comes to the payments.
+    let prepaid = NewSupplyFormula {
+        formula: SupplyFormula::Prepaid,
+        monthly_cap_micros: None,
+        unlimited: false,
+    };
+    set_supply_formula(&mut conn, id, prepaid).await.unwrap();
+    let state = supply_state(&mut conn, id, Utc::now()).await.unwrap();
+    assert_eq!(
+        (state.formula, state.prepaid_balance_micros),
+        (SupplyFormula::Prepaid, 55_000_000)
+    );
+    assert_eq!(supply_stop(&state), None);
+    sqlx::query(
+        "insert into usage_records (tenant_id, kind, provider, model, cost_micros, \
+         supply_formula, billed_micros) \
+         values ($1, 'llm', 'anthropic', 'claude-haiku-5-5', 1, 'prepaid', 55000000)",
+    )
+    .bind(id)
+    .execute(&mut *conn)
+    .await
+    .unwrap();
+    let state = supply_state(&mut conn, id, Utc::now()).await.unwrap();
+    assert_eq!(state.prepaid_balance_micros, 0);
+    assert_eq!(supply_stop(&state), Some(SupplyStop::CreditSpent));
     sqlx::query("delete from tenants where id = $1")
         .bind(id)
         .execute(&mut *conn)

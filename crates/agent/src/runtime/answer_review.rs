@@ -3,6 +3,8 @@
 //! criteria exist — a model-based review, on the run's criteria and on the
 //! quality criteria of the skills it loaded (ADR-106). A failing reviewer
 //! leaves the answer to the next one (ADR-108), and the last never blocks it.
+//! Each judge says whether it is the run's own model, whose key its call is
+//! charged on (ADR-208).
 
 use std::sync::Arc;
 
@@ -22,7 +24,16 @@ pub struct AnswerReview<'a> {
     pub success_criteria: &'a [String],
     /// Reviewer models, tried in order until one answers; without any, the
     /// model-based review is skipped.
-    pub judges: &'a [Arc<dyn LlmProvider>],
+    pub judges: &'a [Judge],
+}
+
+/// A model that may review an answer.
+#[derive(Clone)]
+pub struct Judge {
+    pub provider: Arc<dyn LlmProvider>,
+    /// The run's own model, reviewing as no model chosen apart did: its
+    /// call is charged as the run's are (ADR-208).
+    pub runs_model: bool,
 }
 
 /// What the answer is reviewed on: the run's criteria, then, when they
@@ -40,10 +51,10 @@ pub fn review_criteria(explicit: &[String], loaded: &[String], skills_apply: boo
 }
 
 /// The report, and the reviewer's response to account for (if a review
-/// ran), with the model it was asked of.
+/// ran), with the judge it was asked of.
 pub async fn review_answer(
     review: AnswerReview<'_>,
-) -> (VerificationReport, Option<(LlmResponse, String)>) {
+) -> (VerificationReport, Option<(LlmResponse, Judge)>) {
     let mut issues = Vec::new();
     if review.answer.is_empty() {
         issues.push("La réponse est vide.".to_string());
@@ -72,15 +83,16 @@ pub async fn review_answer(
             answer: review.answer,
             evidence: review.evidence,
         };
-        let (verdict, response) = match judge_answer(judge.as_ref(), input).await {
+        let provider = judge.provider.as_ref();
+        let (verdict, response) = match judge_answer(provider, input).await {
             Ok(judged) => judged,
             Err(error) => {
                 // The next one reviews; after the last, the answer is unjudged.
-                tracing::warn!(model = judge.model(), error = %error.message, "Answer review failed");
+                tracing::warn!(model = provider.model(), error = %error.message, "Answer review failed");
                 continue;
             }
         };
-        judge_response = Some((response, judge.model().to_string()));
+        judge_response = Some((response, judge.clone()));
         if let Some(verdict) = verdict {
             judged = true;
             if !verdict.pass {

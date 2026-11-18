@@ -205,3 +205,64 @@ async fn a_sub_agent_is_held_to_the_supply_as_its_parent_is() {
     // after it.
     assert_eq!(h.provider.requests().len(), 1);
 }
+
+fn verdict() -> ScriptedStep {
+    ScriptedStep::calls(
+        "",
+        vec![call(
+            "submit_verdict",
+            json!({ "pass": true, "issues": [] }),
+        )],
+    )
+}
+
+/// The review model fails; the run's own model stands in, its call
+/// recorded as made by it.
+fn failing_review(supply: Option<Arc<Supply>>, steps: Vec<ScriptedStep>) -> Harness {
+    setup(
+        steps,
+        Options {
+            supply: supply.map(|supply| supply as Arc<dyn SupplyLimit>),
+            criteria: vec!["Dire combien.".into()],
+            judge: Some(vec![ScriptedStep::fails("Modèle inconnu.")]),
+            llm_judge: Some(true),
+            ..Options::default()
+        },
+    )
+}
+
+#[tokio::test]
+async fn the_run_s_model_reviews_in_place_of_a_failing_review_model_as_itself() {
+    let answer = ScriptedStep::text("Trois interventions cette semaine.");
+    let h = failing_review(None, vec![answer, verdict()]);
+    assert_eq!(h.start().await.status(), "completed");
+    let reviews: Vec<bool> = h
+        .ports
+        .usage_records()
+        .into_iter()
+        .filter(|record| record.role == ModelRole::Review)
+        .map(|record| record.by_runs_model)
+        .collect();
+    // Charged as the run's calls are (ADR-208).
+    assert_eq!(reviews, [true]);
+}
+
+#[tokio::test]
+async fn past_the_supply_the_run_s_model_does_not_stand_in_for_the_review_model() {
+    // The run's key alone is spent once its answer is made: the review
+    // model, on the company's own, is still asked.
+    let supply = Arc::new(Supply {
+        checks: AtomicU32::new(1),
+        roles: vec![ModelRole::Main],
+        stop: SupplyStop::MonthlyCap,
+    });
+    let answer = ScriptedStep::text("Trois interventions cette semaine.");
+    let h = failing_review(Some(supply), vec![answer, verdict()]);
+    let RunOutcome::Completed { verification, .. } = h.start().await else {
+        panic!("expected completion")
+    };
+    assert!(!verification.judged);
+    assert_eq!(h.judge.as_ref().unwrap().requests().len(), 1);
+    assert_eq!(h.provider.requests().len(), 1);
+    assert_eq!(limited(&h), [Some("monthly_cap".into())]);
+}
