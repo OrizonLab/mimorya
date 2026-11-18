@@ -50,10 +50,11 @@ fn a_model_of_the_conversations_provider_is_kept_with_its_provider_and_endpoint(
 }
 
 #[test]
-fn a_company_on_the_platform_s_model_may_not_choose_one() {
+fn a_company_without_a_model_for_its_runs_may_not_choose_one() {
     let refused =
         check_escalation(None, &request("claude-opus-5-5"), &PriceTable::default()).unwrap_err();
     assert!(refused.contains("fournisseur propre"), "{refused}");
+    assert!(refused.contains("modèle de la plateforme"), "{refused}");
 }
 
 #[test]

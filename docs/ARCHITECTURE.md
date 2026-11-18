@@ -474,8 +474,10 @@ qu'au-delà de ce que PostgreSQL tient.
   suivant (`services/llm/limits.rs`, port `SupplyLimit` du moteur). Fait : les formules,
   les commandes et le compte de chaque appel (étape 0), les limites (étape 1) ;
   l'escalade en formules 2 et 3 et les écrans suivent.
-- **Escalade de modèle** (ADR-207) : un modèle plus puissant, chez le fournisseur propre
-  de l'entreprise, appelé quand un mécanisme le demande, dans un budget mensuel et un
+- **Escalade de modèle** (ADR-207) : un modèle plus puissant, chez le fournisseur des
+  runs de l'entreprise (le sien, ou celui de la plateforme sur la clé de l'exploitant en
+  formule 2 ou 3, ADR-209, compté aussi dans le plafond ou le crédit), appelé quand un
+  mécanisme le demande, dans un budget mensuel et un
   nombre d'escalades par run (réglages, escalade après échec du contrôle et routeur en
   amont faits, ce dernier selon la sorte du run, un classement de la demande ou une
   compétence chargée ; advisor à venir).

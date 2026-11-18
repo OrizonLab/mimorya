@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use mimorya_agent::llm::{LlmProvider, ModelRole};
 use mimorya_agent::runtime::answer_review::review_criteria;
-use mimorya_core::skill_evaluations::summarize;
+use mimorya_core::skill_evaluations::{CaseOutcome, summarize};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::skill_evaluations::{
     EvaluationRow, NewResult, VersionText, claim_evaluation, finish_evaluation, get_evaluation,
@@ -30,7 +30,7 @@ use super::spending::{count_spent, spending};
 use super::view::case_results;
 use crate::app::Services;
 use crate::services::AccessContext;
-use crate::services::llm::{supply_stopped, trace_held_back};
+use crate::services::llm::{Models, supply_stopped, trace_held_back};
 use crate::services::runs::stopped_by;
 
 /// Why an evaluation fails, as its administrators read it.
@@ -124,10 +124,8 @@ async fn play_cases(
                 return Ok(Some(why));
             }
             // Nor past the operator's supply of the company (ADR-208).
-            let supply = supply_stopped(&services.db, &models, tenant_id, ModelRole::Main).await?;
-            if let Some(stop) = supply {
-                trace_held_back(&services.db, tenant_id, launcher, stop).await?;
-                return Ok(Some(stop.message().into()));
+            if let Some(why) = held_back(services, &models, scope).await? {
+                return Ok(Some(why));
             }
             let played = play_case(
                 services,
@@ -155,9 +153,31 @@ async fn play_cases(
                 // the lock (its session lost): it is played no further.
                 return Ok(Some(INTERRUPTED.into()));
             }
+            // A case the supply left unjudged ends the evaluation, the last
+            // one's as the others'.
+            if played.outcome == CaseOutcome::Error
+                && let Some(why) = held_back(services, &models, scope).await?
+            {
+                return Ok(Some(why));
+            }
         }
     }
     Ok(None)
+}
+
+/// Why the operator's supply of the company holds the evaluation back, if
+/// it does, traced for whom launched it (ADR-208).
+async fn held_back(
+    services: &Services,
+    models: &Models,
+    scope: CaseScope,
+) -> anyhow::Result<Option<String>> {
+    let (db, tenant_id) = (&services.db, scope.tenant_id);
+    let Some(stop) = supply_stopped(db, models, tenant_id, ModelRole::Main).await? else {
+        return Ok(None);
+    };
+    trace_held_back(db, tenant_id, scope.user_id, stop).await?;
+    Ok(Some(stop.message().into()))
 }
 
 fn played_as(text: VersionText, version: i32) -> EvaluatedVersion {

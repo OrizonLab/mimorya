@@ -31,7 +31,8 @@ pub const REVIEW_MODEL: &str = "modele-de-controle";
 pub const SCRIPTED_CALL_MICROS: i64 = 200_000;
 
 /// The prices that make each call of the scripted model cost
-/// `SCRIPTED_CALL_MICROS`.
+/// `SCRIPTED_CALL_MICROS`, the escalation model the tests choose priced
+/// alike (ADR-207: unpriced, it may not be chosen).
 pub fn scripted_prices() -> PriceTable {
     let price = ModelPrice {
         input_per_mtok: 1500.0,
@@ -40,7 +41,10 @@ pub fn scripted_prices() -> PriceTable {
         cache_write_per_mtok: None,
         long_prompt: None,
     };
-    PriceTable::new(HashMap::from([("scripted-model".to_string(), price)]))
+    PriceTable::new(HashMap::from([
+        ("scripted-model".to_string(), price),
+        (ESCALATION_MODEL.to_string(), price),
+    ]))
 }
 
 /// The escalation model the tests choose (ADR-207): priced, and served by

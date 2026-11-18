@@ -26,7 +26,7 @@ mod load;
 mod supply;
 
 pub use escalation::{
-    EscalationModel, MonthSpending, conversations_choice, escalation_choice, month_spending,
+    EscalationModel, MonthSpending, RunsModel, escalation_choice, month_spending,
 };
 pub use limits::{SupplyGuard, supply_stopped, trace_held_back};
 pub use load::api_key_secret;
@@ -110,6 +110,10 @@ impl std::error::Error for Unusable {}
 pub struct LlmService {
     db: Database,
     platform: Option<Arc<dyn LlmProvider>>,
+    /// What the platform's provider was configured with (`LLM_*`, the
+    /// operator's key included): the escalation of a company it supplies is
+    /// built from it (ADR-209).
+    platform_config: Option<ProviderConfig>,
     secrets: SecretStore,
     listed_endpoints: Vec<String>,
     factory: ProviderFactory,
@@ -120,6 +124,7 @@ pub struct LlmService {
 
 pub struct LlmServiceOptions {
     pub platform: Option<Arc<dyn LlmProvider>>,
+    pub platform_config: Option<ProviderConfig>,
     pub secrets: SecretStore,
     /// `MIMORYA_TENANT_LLM_ENDPOINTS` (read at startup), checked again at
     /// each load.
@@ -134,6 +139,7 @@ impl LlmService {
         Self {
             db,
             platform: options.platform,
+            platform_config: options.platform_config,
             secrets: options.secrets,
             listed_endpoints: options.listed_endpoints,
             factory: options.factory,

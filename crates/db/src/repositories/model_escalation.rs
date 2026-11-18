@@ -104,16 +104,18 @@ pub async fn remove_model_escalation(conn: &mut PgConnection) -> sqlx::Result<bo
     Ok(removed.rows_affected() > 0)
 }
 
-/// What the model calls of `roles` have cost since `since`, in
-/// micro-dollars.
+/// What the model calls of `roles` have cost the company since `since`, in
+/// micro-dollars: their cost on its own key, the amount re-invoiced on the
+/// operator's (ADR-209). The same call counts there and in the cap or the
+/// credit, recorded once, charged once.
 pub async fn escalation_spent(
     conn: &mut PgConnection,
     since: DateTime<Utc>,
     roles: &[&str],
 ) -> sqlx::Result<i64> {
     sqlx::query_scalar(
-        "select coalesce(sum(cost_micros), 0)::bigint from usage_records \
-         where created_at >= $1 and role = any($2)",
+        "select coalesce(sum(coalesce(billed_micros, cost_micros)), 0)::bigint \
+         from usage_records where created_at >= $1 and role = any($2)",
     )
     .bind(since)
     .bind(roles)

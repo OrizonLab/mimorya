@@ -1,22 +1,27 @@
 //! A company's model escalation as its runs use it (ADR-207): the stronger
-//! model of its own conversations' provider, built with the same key and
-//! endpoint, loaded with its other models while a mechanism the platform
-//! delivers is turned on and the stored choice still serves; and what its
-//! mechanisms spent this month, against which each escalation is weighed.
+//! model of its runs' provider, built with the same key and endpoint (its
+//! own provider's, or, in the formulas the operator gives it, the
+//! platform's, ADR-209), loaded with its other models while a mechanism the
+//! platform delivers is turned on and the stored choice still serves; and
+//! what its mechanisms spent this month, against which each escalation is
+//! weighed: what the company pays for them, the amount re-invoiced on the
+//! operator's key.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::llm::{
     ESCALATION_BUDGET_ROLES, EscalationChoice, EscalationRoute, EscalationRoutes, LlmProvider,
-    Mechanism, TenantLlmChoice, company_provider_config, escalation_problem,
+    Mechanism, ProviderConfig, TenantLlmChoice, company_provider_config, escalation_problem,
 };
+use mimorya_core::model_supply::SupplyFormula;
 use mimorya_core::time_zone::month_start;
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::llm_settings::{ModelPurpose, get_llm_settings};
 use mimorya_db::repositories::model_escalation::{
     ModelEscalationRow, escalation_spent, model_escalation,
 };
+use mimorya_db::repositories::model_supply::model_supply;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -34,6 +39,14 @@ pub struct EscalationModel {
     pub monthly_budget_micros: i64,
 }
 
+/// The model of a company's runs, beside which an escalation is chosen.
+pub struct RunsModel {
+    pub choice: TenantLlmChoice,
+    /// The platform's, on the operator's key (ADR-209): what the escalation
+    /// spends counts in the company's cap or credit too.
+    pub on_operator_key: bool,
+}
+
 /// What the escalation mechanisms spent since the start of the month.
 pub struct MonthSpending {
     pub spent_micros: i64,
@@ -41,18 +54,59 @@ pub struct MonthSpending {
 }
 
 impl LlmService {
-    /// The company's escalation, if its runs go to its own provider, a
-    /// delivered mechanism is turned on and the stored choice still serves
-    /// (else why not is logged, and its runs keep their main model).
+    /// The model of the company's runs: its own provider's, else the
+    /// platform's while the operator supplies it (ADR-209); none otherwise.
+    pub async fn runs_model(
+        &self,
+        conn: &mut PgConnection,
+        tenant_id: Uuid,
+    ) -> anyhow::Result<Option<RunsModel>> {
+        if let Some(choice) = conversations_choice(conn).await? {
+            return Ok(Some(RunsModel {
+                choice,
+                on_operator_key: false,
+            }));
+        }
+        let supplied = model_supply(conn, tenant_id)
+            .await?
+            .and_then(|row| SupplyFormula::parse(&row.formula))
+            .is_some_and(SupplyFormula::on_operator_key);
+        Ok(self
+            .platform_choice()
+            .filter(|_| supplied)
+            .map(|choice| RunsModel {
+                choice,
+                on_operator_key: true,
+            }))
+    }
+
+    /// The platform's model as an escalation is chosen beside it: its
+    /// provider, without its endpoint, which the operator alone knows.
+    fn platform_choice(&self) -> Option<TenantLlmChoice> {
+        let (config, provider) = (self.platform_config.as_ref()?, self.platform.as_ref()?);
+        Some(TenantLlmChoice {
+            provider: config.kind.clone(),
+            model: provider.model().to_string(),
+            base_url: None,
+        })
+    }
+
+    /// The company's escalation, if its runs have a model (its own
+    /// provider's or the platform's, ADR-209), a delivered mechanism is
+    /// turned on and the stored choice still serves (else why not is
+    /// logged, and its runs keep their main model).
     pub(super) async fn company_escalation(
         &self,
         tx: &mut TenantTx,
         tenant_id: Uuid,
         runs: &Resolution,
     ) -> anyhow::Result<Option<EscalationModel>> {
-        if !matches!(runs, Resolution::Company(_)) {
-            return Ok(None);
-        }
+        // The platform's model serves only a company the operator supplies.
+        let on_operator_key = match runs {
+            Resolution::Company(_) => false,
+            Resolution::Platform(Some(_)) => true,
+            Resolution::Platform(None) | Resolution::Refused(_) => return Ok(None),
+        };
         let Some(row) = model_escalation(tx).await? else {
             return Ok(None);
         };
@@ -62,33 +116,18 @@ impl LlmService {
             return Ok(None);
         }
         let stored = escalation_choice(row);
-        let conversations = conversations_choice(tx).await?;
-        if let Some(problem) = escalation_problem(&stored, conversations.as_ref(), &self.prices) {
+        let runs_choice = match on_operator_key {
+            true => self.platform_choice(),
+            false => conversations_choice(tx).await?,
+        };
+        if let Some(problem) = escalation_problem(&stored, runs_choice.as_ref(), &self.prices) {
             tracing::warn!(%tenant_id, problem = %problem, "Company escalation unusable");
             return Ok(None);
         }
-        let api_key = match self
-            .secrets
-            .read(tx, tenant_id, api_key_secret(ModelPurpose::Conversations))
-            .await?
-            .into_key()
-        {
-            Ok(key) => key,
-            Err(problem) => {
-                tracing::warn!(%tenant_id, problem = %problem, "Company escalation unusable");
-                return Ok(None);
-            }
+        let built = match on_operator_key {
+            true => self.platform_escalation(&stored.model),
+            false => self.own_escalation(tx, tenant_id, &stored).await?,
         };
-        let built = company_provider_config(
-            &stored.provider,
-            &stored.model,
-            stored.base_url.as_deref(),
-            api_key,
-            &self.listed_endpoints,
-        )
-        .and_then(|config| {
-            (self.factory)(&config).map_err(|_| "the provider cannot be built".to_string())
-        });
         let provider = match built {
             Ok(provider) => provider,
             Err(problem) => {
@@ -105,6 +144,49 @@ impl LlmService {
             monthly_budget_micros: stored.monthly_budget_micros,
         }))
     }
+
+    /// The escalation model on the operator's key: the platform's provider,
+    /// its key and endpoint, with the model chosen (ADR-209). The company's
+    /// own key is never given to it.
+    fn platform_escalation(&self, model: &str) -> Result<Arc<dyn LlmProvider>, String> {
+        let config = self
+            .platform_config
+            .as_ref()
+            .ok_or_else(|| "the platform's provider is not configured".to_string())?;
+        let config = ProviderConfig {
+            model: Some(model.to_string()),
+            ..config.clone()
+        };
+        (self.factory)(&config).map_err(|_| "the provider cannot be built".to_string())
+    }
+
+    /// The escalation model on the company's own key and endpoint.
+    async fn own_escalation(
+        &self,
+        tx: &mut TenantTx,
+        tenant_id: Uuid,
+        stored: &EscalationChoice,
+    ) -> anyhow::Result<Result<Arc<dyn LlmProvider>, String>> {
+        let api_key = match self
+            .secrets
+            .read(tx, tenant_id, api_key_secret(ModelPurpose::Conversations))
+            .await?
+            .into_key()
+        {
+            Ok(key) => key,
+            Err(problem) => return Ok(Err(problem.to_string())),
+        };
+        Ok(company_provider_config(
+            &stored.provider,
+            &stored.model,
+            stored.base_url.as_deref(),
+            api_key,
+            &self.listed_endpoints,
+        )
+        .and_then(|config| {
+            (self.factory)(&config).map_err(|_| "the provider cannot be built".to_string())
+        }))
+    }
 }
 
 /// What the company's escalation mechanisms spent this month.
@@ -118,9 +200,7 @@ pub async fn month_spending(conn: &mut PgConnection) -> anyhow::Result<MonthSpen
 }
 
 /// The model of the company's conversations, if it has its own provider.
-pub async fn conversations_choice(
-    conn: &mut PgConnection,
-) -> anyhow::Result<Option<TenantLlmChoice>> {
+async fn conversations_choice(conn: &mut PgConnection) -> anyhow::Result<Option<TenantLlmChoice>> {
     Ok(get_llm_settings(conn, ModelPurpose::Conversations)
         .await?
         .map(|row| TenantLlmChoice {

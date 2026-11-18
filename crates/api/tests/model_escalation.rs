@@ -1,69 +1,21 @@
-//! The company's model escalation (ADR-207): a model of its conversations'
+//! The company's model escalation (ADR-207): a model of its runs'
 //! provider, chosen by an administrator of its settings on the whole
 //! company only, within a monthly budget and a number of escalations per
-//! run; audited, removed. A company on the platform's model may not choose
-//! one, and one chosen stops serving once the conversations' provider
-//! changes. What its mechanisms cost this month is read from the usage by
-//! role, shown with the usage, and kept to the company: another neither
-//! reads nor writes it. The table keeps to the bounds the rules check.
+//! run; audited, removed. One chosen stops serving once the conversations'
+//! provider changes. (On the platform's model: `model_supply_escalation.rs`;
+//! what the mechanisms spend: `model_escalation_spending.rs`.)
 
 mod support;
 
 use axum::http::StatusCode;
-use chrono::{Duration, Utc};
-use mimorya_agent::llm::{
-    MAX_ESCALATION_BUDGET_MICROS, MAX_ESCALATIONS_PER_RUN, MIN_ESCALATION_BUDGET_MICROS,
-};
-use mimorya_core::demo::{tenant, user};
-use mimorya_core::time_zone::month_start;
-use mimorya_db::testing::OTHER_TENANT_ID;
+use mimorya_core::demo::user;
 use serde_json::{Value, json};
 use support::accounts::{activate, create_partial_admin};
-use support::llm::{API_KEY, ENDPOINT, MASTER_KEY};
+use support::llm::{API_KEY, ENDPOINT};
+use support::model_escalation::{
+    ESCALATION, MAIN, STRONGER, escalation, own_provider, refused, start,
+};
 use support::refusals::{entries_since, latest_entry};
-use support::{Client, TestApi};
-
-const ESCALATION: &str = "/admin/model-escalation";
-const MAIN: &str = "claude-haiku-5-5";
-const STRONGER: &str = "claude-opus-5-5";
-
-async fn start() -> TestApi {
-    TestApi::start_with(&[
-        ("MIMORYA_MASTER_KEY", MASTER_KEY),
-        ("MIMORYA_TENANT_LLM_ENDPOINTS", ENDPOINT),
-    ])
-    .await
-}
-
-/// Gives the company its own provider for its conversations.
-async fn own_provider(paul: &Client<'_>, model: &str) {
-    let body = json!({ "provider": "anthropic", "model": model, "apiKey": API_KEY });
-    let chosen = paul.put("/admin/llm", body).await;
-    assert_eq!(chosen.status, StatusCode::OK, "{}", chosen.text());
-}
-
-fn escalation(model: &str) -> Value {
-    json!({
-        "model": model,
-        "afterFailure": false,
-        "router": false,
-        "advisor": false,
-        "routes": { "conversation": "main", "mission": "main",
-                    "scheduledTask": "main", "hook": "main" },
-        "monthlyBudgetMicros": 50_000_000,
-        "maxPerRun": 5,
-    })
-}
-
-async fn refused(paul: &Client<'_>, body: Value, said: &str) {
-    let refused = paul.put(ESCALATION, body.clone()).await;
-    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(
-        refused.error_message().contains(said),
-        "{body}: {}",
-        refused.text()
-    );
-}
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
@@ -172,16 +124,6 @@ async fn a_company_chooses_its_escalation_model_within_its_bounds() {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn a_company_on_the_platform_s_model_may_not_choose_one() {
-    let api = start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    let shown = paul.get(ESCALATION).await.json();
-    assert_eq!(shown["mainModel"], Value::Null);
-    refused(&paul, escalation(STRONGER), "fournisseur propre").await;
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
 async fn the_escalation_stops_serving_once_the_conversations_provider_changes() {
     let api = start().await;
     let paul = api.sign_in(user::PAUL).await;
@@ -239,159 +181,4 @@ async fn only_company_wide_administrators_of_its_settings_see_or_set_it() {
     }
     assert_eq!(paul.get(ESCALATION).await.json()["settings"], Value::Null);
     assert_eq!(paul.delete("/admin/llm").await.status, StatusCode::OK);
-}
-
-/// Records a model call of `role` that cost `micros`, `at` that time, for
-/// the company `tenant_id`.
-async fn spent(
-    api: &TestApi,
-    tenant_id: uuid::Uuid,
-    role: &str,
-    micros: i64,
-    at: chrono::DateTime<Utc>,
-) {
-    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
-    sqlx::query(
-        "insert into usage_records (tenant_id, kind, role, provider, model, input_tokens, \
-         output_tokens, cost_micros, created_at) \
-         values ($1, 'llm', $2, 'anthropic', 'claude-opus-5-5', 10, 10, $3, $4)",
-    )
-    .bind(tenant_id)
-    .bind(role)
-    .bind(micros)
-    .bind(at)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn the_month_s_spending_counts_the_mechanisms_alone_and_stays_with_the_company() {
-    let api = start().await;
-    let paul = api.sign_in(user::PAUL).await;
-    own_provider(&paul, MAIN).await;
-    assert_eq!(
-        paul.put(ESCALATION, escalation(STRONGER)).await.status,
-        StatusCode::OK
-    );
-    let before = paul.get(ESCALATION).await.json()["spentMicros"]
-        .as_i64()
-        .unwrap();
-    let now = Utc::now();
-    let last_month = month_start(now) - Duration::hours(1);
-    for (role, micros, at) in [
-        ("escalation", 2_000_000, now),
-        ("classification", 500_000, now),
-        ("advisor", 250_000, now),
-        ("main", 10_000_000, now),
-        ("review", 1_000_000, now),
-        ("escalation", 5_000_000, last_month),
-    ] {
-        spent(&api, tenant::ID, role, micros, at).await;
-    }
-    // Another company's escalation is none of this one's.
-    spent(&api, OTHER_TENANT_ID, "escalation", 7_000_000, now).await;
-    let shown = paul.get(ESCALATION).await.json();
-    assert_eq!(
-        shown["spentMicros"].as_i64().unwrap() - before,
-        2_750_000,
-        "{shown}"
-    );
-    let usage = paul.get("/admin/usage").await.json();
-    let escalation_spent = &usage["escalation"];
-    assert_eq!(escalation_spent["budgetMicros"], 50_000_000, "{usage}");
-    assert_eq!(escalation_spent["spentMicros"], shown["spentMicros"]);
-    let roles: Vec<&str> = usage["rows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|row| row["role"].as_str())
-        .collect();
-    for role in ["escalation", "classification", "advisor", "main", "review"] {
-        assert!(roles.contains(&role), "{role}: {usage}");
-    }
-
-    // Another company neither reads nor writes this one's escalation.
-    let mut other = api.app.services.db.begin(OTHER_TENANT_ID).await.unwrap();
-    let seen: i64 = sqlx::query_scalar("select count(*) from tenant_model_escalation")
-        .fetch_one(&mut *other)
-        .await
-        .unwrap();
-    assert_eq!(seen, 0);
-    let written = sqlx::query(
-        "insert into tenant_model_escalation (tenant_id, provider, model, \
-         monthly_budget_micros, max_per_run) values ($1, 'anthropic', 'claude-opus-5-5', \
-         1000000, 1)",
-    )
-    .bind(tenant::ID)
-    .execute(&mut *other)
-    .await;
-    assert!(written.is_err(), "a row was written for another company");
-    drop(other);
-
-    assert_eq!(paul.delete(ESCALATION).await.status, StatusCode::OK);
-    assert!(paul.get("/admin/usage").await.json()["escalation"].is_null());
-    assert_eq!(paul.delete("/admin/llm").await.status, StatusCode::OK);
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn the_table_keeps_to_the_bounds_the_rules_check() {
-    let api = start().await;
-    let insert = |budget: i64, per_run: u32| {
-        let db = api.app.services.db.clone();
-        async move {
-            let mut tx = db.begin(tenant::ID).await.unwrap();
-            let written = sqlx::query(
-                "insert into tenant_model_escalation (tenant_id, provider, model, \
-                 monthly_budget_micros, max_per_run) values ($1, 'anthropic', $2, $3, $4)",
-            )
-            .bind(tenant::ID)
-            .bind(STRONGER)
-            .bind(budget)
-            .bind(i32::try_from(per_run).unwrap())
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| error.to_string());
-            // Rolled back: nothing is left for the other tests.
-            drop(tx);
-            written
-        }
-    };
-    for (budget, per_run, constraint) in [
-        (
-            MIN_ESCALATION_BUDGET_MICROS - 1,
-            1,
-            "tenant_model_escalation_budget",
-        ),
-        (
-            MAX_ESCALATION_BUDGET_MICROS + 1,
-            1,
-            "tenant_model_escalation_budget",
-        ),
-        (
-            MIN_ESCALATION_BUDGET_MICROS,
-            0,
-            "tenant_model_escalation_per_run",
-        ),
-        (
-            MIN_ESCALATION_BUDGET_MICROS,
-            MAX_ESCALATIONS_PER_RUN + 1,
-            "tenant_model_escalation_per_run",
-        ),
-    ] {
-        let refused = insert(budget, per_run).await.unwrap_err();
-        assert!(
-            refused.contains(constraint),
-            "{budget}, {per_run}: {refused}"
-        );
-    }
-    for (budget, per_run) in [
-        (MIN_ESCALATION_BUDGET_MICROS, 1),
-        (MAX_ESCALATION_BUDGET_MICROS, MAX_ESCALATIONS_PER_RUN),
-    ] {
-        insert(budget, per_run).await.unwrap();
-    }
 }

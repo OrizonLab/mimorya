@@ -1,8 +1,9 @@
 //! What the operator's supply holds back besides runs (ADR-208, step 1):
 //! past the company's monthly cap, no lesson is drawn from a run nor a
 //! conversation's summary written, and a skill's evaluation makes no more
-//! call, its judge's included: it ends saying why, and the next one is
-//! refused. Each time, the call that went past the cap was the last made.
+//! call, its judge's included: it ends saying why, its last case's as the
+//! others', and the next one is refused. Each time, the call that went past
+//! the cap was the last made.
 
 mod support;
 
@@ -113,5 +114,37 @@ async fn past_the_cap_an_evaluation_makes_no_more_call_and_says_why() {
     assert_eq!(audit.matches("model_supply.limited").count(), 2, "{audit}");
     forget(&api, DEMO_SKILL_ID).await;
     restore_the_report(&api).await;
+    leave(&owner).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_evaluation_whose_last_case_the_cap_leaves_unjudged_ends_saying_why() {
+    let api = TestApi::start_priced().await;
+    let owner = PgPool::connect(owner_url()).await.unwrap();
+    let paul = api.sign_in(user::PAUL).await;
+    // The active version alone, on one case: its answer goes past the cap.
+    write_case(
+        &paul,
+        DEMO_SKILL_ID,
+        "Retards",
+        "Quels retards cette semaine ?",
+    )
+    .await;
+    room_for(&owner, 1).await;
+    api.script(played(false, "Trois retards cette semaine.", true));
+
+    let since = latest_entry(&api).await;
+    let id = launched(&paul, DEMO_SKILL_ID, 1).await;
+    play(&api).await;
+    assert_eq!(api.model.as_ref().unwrap().requests().len(), 1);
+    let (status, failure, results) = status_of(&api, &id).await;
+    assert_eq!(
+        (status.as_str(), failure.as_deref(), results),
+        ("failed", Some(SupplyStop::MonthlyCap.message()), 1)
+    );
+    let audit = entries_since(&api, since).await;
+    assert_eq!(audit.matches("model_supply.limited").count(), 1, "{audit}");
+    forget(&api, DEMO_SKILL_ID).await;
     leave(&owner).await;
 }

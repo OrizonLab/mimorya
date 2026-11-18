@@ -71,19 +71,11 @@ impl ModelRouter {
         }
     }
 
-    /// The providers to try for `task`, in order: for verification, the one
-    /// routed apart, then the agent's should it fail (ADR-108).
     /// The model the company chose apart to review answers, if any
-    /// (ADR-108).
+    /// (ADR-108): the run's own reviews should it fail, each within the
+    /// operator's supply (`runtime/final_answer.rs`, ADR-208).
     pub fn reviewer(&self) -> Option<Arc<dyn LlmProvider>> {
         self.verification.clone()
-    }
-
-    pub fn providers_for(&self, task: TaskClass) -> Vec<Arc<dyn LlmProvider>> {
-        match (task, &self.verification) {
-            (TaskClass::Verification, Some(provider)) => vec![provider.clone(), self.agent.clone()],
-            _ => vec![self.agent.clone()],
-        }
     }
 }
 
@@ -92,24 +84,18 @@ mod tests {
     use super::*;
     use crate::testing::ScriptedProvider;
 
-    fn ids(providers: &[Arc<dyn LlmProvider>], agent: &Arc<dyn LlmProvider>) -> Vec<bool> {
-        providers.iter().map(|p| Arc::ptr_eq(p, agent)).collect()
-    }
-
     #[test]
-    fn verification_falls_back_to_the_agent_provider() {
+    fn the_review_model_is_the_one_routed_apart_if_any() {
         let agent: Arc<dyn LlmProvider> = Arc::new(ScriptedProvider::new(Vec::new()));
         let judge: Arc<dyn LlmProvider> = Arc::new(ScriptedProvider::new(Vec::new()));
         let alone = ModelRouter::new(agent.clone());
-        assert_eq!(
-            ids(&alone.providers_for(TaskClass::Verification), &agent),
-            [true]
-        );
-        let routed = alone.with_verification(judge);
-        assert_eq!(
-            ids(&routed.providers_for(TaskClass::Verification), &agent),
-            [false, true]
-        );
-        assert_eq!(ids(&routed.providers_for(TaskClass::Agent), &agent), [true]);
+        assert!(alone.reviewer().is_none());
+        let routed = alone.with_verification(judge.clone());
+        assert!(Arc::ptr_eq(&routed.reviewer().unwrap(), &judge));
+        assert!(Arc::ptr_eq(&routed.provider_for(TaskClass::Agent), &agent));
+        assert!(Arc::ptr_eq(
+            &routed.provider_for(TaskClass::Verification),
+            &judge
+        ));
     }
 }

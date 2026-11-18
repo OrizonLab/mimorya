@@ -14654,7 +14654,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     entreprise qui a son propre fournisseur (ADR-024), donc sa clé et sa facture. Une
     entreprise sur le modèle de la plateforme ne peut pas les activer : ils dépenseraient
     l'argent de l'exploitant à la discrétion de l'entreprise. L'option est grisée, avec
-    l'explication ;
+    l'explication. (Levé par l'ADR-209 pour les formules 2 et 3 de l'ADR-208, où la
+    dépense sur la clé de l'exploitant est bornée.) ;
   - **une escalade est un appel au modèle d'escalade.** Deux bornes la limitent :
     - un budget mensuel par entreprise, en USD comme tous les coûts de la plateforme
       (prix des modèles, limites des missions, ADR-093, et des évaluations, ADR-154), de
@@ -15127,3 +15128,78 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       arrêté avant son appel suivant, son premier appel compté comme l'exécution l'a
       pris ; le coefficient changé ou un crédit donné pendant un run, ses appels comptés
       à la formule et au coefficient de son départ.
+
+## ADR-209 — Escalade de modèle sur la clé de l'exploitant, en formules 2 et 3 (chantier 6, étape 2)
+
+- **Statut** : accepté (2026-11-18) · lève, pour les formules 2 et 3, la restriction
+  « fournisseur propre seulement » de l'ADR-207 ; s'appuie sur l'ADR-208 (formules,
+  limites, compte de chaque appel).
+- **Contexte** : l'ADR-207 réservait l'escalade aux entreprises qui ont leur propre
+  fournisseur, parce que, sur le modèle de la plateforme, elle dépenserait l'argent de
+  l'exploitant sans borne. L'ADR-208 borne cette dépense : plafond mensuel (formule 2)
+  ou crédit prépayé (formule 3), vérifiés avant chaque appel. L'escalade et les
+  mécanismes à venir doivent donc y être possibles.
+- **Décision** :
+  - **modèle des runs** : une escalade se choisit à côté du modèle des runs de
+    l'entreprise. C'est celui de son fournisseur propre, s'il en a un ; sinon, celui de
+    la plateforme tant que l'exploitant la fournit (formule 2 ou 3,
+    `LlmService::runs_model`). Une entreprise qui n'a ni l'un ni l'autre ne peut pas en
+    choisir. Le refus le dit : « L'escalade demande un modèle pour les conversations de
+    l'entreprise : son fournisseur propre, ou le modèle de la plateforme que
+    l'exploitant lui fournit » ;
+  - **sur la clé de l'exploitant** : le modèle d'escalade est construit avec la
+    configuration du fournisseur de la plateforme (`LLM_*`, gardée par `LlmService`) :
+    même fournisseur, même clé, même adresse, seul le nom du modèle change. Il obéit aux
+    mêmes règles que sur une clé propre : nom vérifié, différent du modèle principal, prix
+    connu. L'adresse de l'exploitant n'est pas gardée avec le réglage : seul l'exploitant
+    la connaît. La clé de l'entreprise n'est jamais donnée à ce modèle, et celle de
+    l'exploitant jamais au modèle d'une clé propre ;
+  - **le réglage suit la clé des runs** : le fournisseur gardé avec le réglage est celui
+    de la plateforme, sans adresse. Il reste valable si l'entreprise passe de la clé de
+    l'exploitant à une clé propre du même fournisseur sans adresse, ou l'inverse : dans
+    les deux cas, la dépense est bornée, par le budget et, sur la clé de l'exploitant,
+    par le plafond ou le crédit. Si l'exploitant retire sa fourniture, l'escalade n'est
+    plus chargée et l'écran dit pourquoi ; elle sert de nouveau si la fourniture revient ;
+  - **compté une fois, dans les deux limites** : chaque appel d'escalade, de classement
+    ou du conseiller est enregistré une seule fois dans `usage_records`, avec sa formule
+    et son montant refacturé (ADR-208). Ce même enregistrement compte :
+    - dans le budget d'escalade, pour ce que l'entreprise en paie : le coût réel sur sa
+      clé, le montant refacturé sur celle de l'exploitant (`escalation_spent`) ;
+    - dans le plafond ou le crédit, comme tout appel sur la clé de l'exploitant.
+
+    Il n'est jamais facturé deux fois : les deux limites lisent le même montant. Le
+    budget reste une sous-limite, choisie par l'entreprise ; le plafond ou le crédit,
+    fixé par l'exploitant, borne l'ensemble ;
+
+  - **avant chaque appel** : le modèle d'escalade est sur la même clé que le modèle
+    principal. La vérification de la fourniture avant chaque appel (ADR-208, étape 1)
+    le retient donc au-delà du plafond ou du crédit, comme le modèle principal ;
+  - **écran** : l'onglet « Modèle d'IA » ouvre l'escalade à une entreprise fournie,
+    nomme le modèle de la plateforme comme modèle principal et précise que chaque appel
+    d'escalade compte aussi dans le plafond ou le crédit, à son montant refacturé
+    (`onOperatorKey`). Les montants refacturés de la consommation et les alertes restent
+    à l'étape 3.
+- **Conséquences** :
+  - une entreprise en formule 2 ou 3 active l'escalade sans fournir de clé. Sa dépense
+    est bornée deux fois : par son budget, qu'elle règle, et par la fourniture, que
+    l'exploitant règle ;
+  - le budget d'escalade se lit en montant payé par l'entreprise. Sur une clé propre,
+    rien ne change : le montant refacturé y est vide, et le coût réel est compté ;
+  - un serveur dont le modèle de la plateforme n'a pas de configuration (`LLM_PROVIDER`
+    absent) n'offre pas l'escalade aux entreprises qu'il fournit. C'est le cas des tests
+    qui injectent le modèle sans configurer de fournisseur.
+- **Tests** :
+  - `crates/agent/src/llm/escalation/tests.rs` : refus sans modèle pour les runs, qui
+    nomme les deux voies ;
+  - `crates/api/tests/model_supply_escalation.rs` :
+    - en formule 2 puis 3, l'escalade est choisie à côté du modèle de la plateforme ;
+    - elle est construite avec la clé de l'exploitant seule ;
+    - chaque appel est enregistré une fois, sur la clé de l'exploitant, et compte dans
+      le budget au montant refacturé et dans le plafond ou le crédit ;
+    - au-delà du plafond, le modèle d'escalade n'est pas appelé ;
+    - la fourniture retirée, l'escalade ne sert plus, aucune ne peut être choisie, et
+      elle sert de nouveau une fois la fourniture rendue ;
+  - `crates/api/tests/model_escalation_spending.rs` : un appel sur la clé de
+    l'exploitant compte dans le budget à son montant refacturé ;
+  - `apps/web/e2e/model-escalation.spec.ts` : une escalade choisie sur le modèle de la
+    plateforme, avec la mention du plafond ou du crédit.

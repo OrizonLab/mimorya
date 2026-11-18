@@ -27,7 +27,11 @@ pub async fn show(
     let access = state.access.context(identity).await?;
     let overview = company_model_escalation(&state.db, &state.llm, &access).await?;
     Ok(Json(ModelEscalationView {
-        main_model: overview.main.map(|main| main.model),
+        on_operator_key: overview
+            .runs
+            .as_ref()
+            .is_some_and(|runs| runs.on_operator_key),
+        main_model: overview.runs.map(|runs| runs.choice.model),
         settings: overview.stored.map(|stored| ModelEscalationSettings {
             model: stored.choice.model,
             after_failure: stored.choice.after_failure,

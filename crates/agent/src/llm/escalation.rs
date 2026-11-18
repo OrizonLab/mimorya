@@ -1,10 +1,12 @@
 //! What a company may choose as its model escalation (ADR-207): a model of
-//! the same provider as its conversations, with the same key and endpoint,
-//! called when its mechanisms ask for it, within a monthly budget (USD, as
-//! every cost of the platform) and a number of escalations per run. Only a
-//! company with its own provider may choose one: it pays for it. The model
-//! has a price the platform knows: unpriced, its calls would count for
-//! nothing, and the budget would never bound them.
+//! the same provider as its runs', with the same key and endpoint, called
+//! when its mechanisms ask for it, within a monthly budget (USD, as every
+//! cost of the platform) and a number of escalations per run. Its runs'
+//! model is its own provider's, which it pays for, or the platform's in the
+//! formulas the operator gives it, whose cap or credit bounds it as well
+//! (ADR-209); a company without either may choose none. The model has a
+//! price the platform knows: unpriced, its calls would count for nothing,
+//! and the budget would never bound them.
 
 mod routes;
 
@@ -62,8 +64,8 @@ pub struct EscalationRequest<'a> {
     pub max_per_run: u32,
 }
 
-/// A choice, once checked: the conversations' provider and endpoint it was
-/// made with are kept beside it.
+/// A choice, once checked: the provider and endpoint of the runs' model it
+/// was made with are kept beside it (none for the platform's, ADR-209).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EscalationChoice {
     pub provider: String,
@@ -89,8 +91,9 @@ impl EscalationRequest<'_> {
     }
 }
 
-/// The request checked against the company's conversations model, or why
-/// it is refused (in French).
+/// The request checked against the model of the company's runs (its own
+/// provider's, or the platform's, ADR-209), or why it is refused (in
+/// French).
 pub fn check_escalation(
     conversations: Option<&TenantLlmChoice>,
     request: &EscalationRequest<'_>,
@@ -140,7 +143,7 @@ pub fn check_escalation(
     })
 }
 
-/// Why a stored choice no longer serves, the company's conversations model
+/// Why a stored choice no longer serves, the model of the company's runs
 /// and the platform's prices being what they are now; `None` while it
 /// does. Runs then keep the main model, and the screen says why (in
 /// French).
@@ -179,8 +182,9 @@ pub const ESCALATION_BUDGET_ROLES: [ModelRole; 3] = [
     ModelRole::Advisor,
 ];
 
-const NO_OWN_PROVIDER: &str = "L’escalade demande le fournisseur propre de l’entreprise, \
-     qui en paie les appels : choisissez d’abord celui de ses conversations";
+const NO_OWN_PROVIDER: &str = "L’escalade demande un modèle pour les conversations de \
+     l’entreprise : son fournisseur propre, ou le modèle de la plateforme que l’exploitant lui \
+     fournit";
 
 fn same_model(model: &str) -> String {
     format!("Le modèle d’escalade doit différer du modèle principal (« {model} »)")
