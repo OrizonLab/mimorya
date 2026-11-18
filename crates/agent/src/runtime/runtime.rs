@@ -23,6 +23,7 @@ use super::budget::check_budget;
 use super::escalation::escalate_after_failure;
 use super::model_call::{ModelTurn, call_model};
 use super::ports::{CurrentAccess, RunEvent, StepAccess};
+use super::routing::route_at_start;
 use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
 use super::tool_refusals::{Since, since, why_not_run};
@@ -76,6 +77,10 @@ impl AgentRuntime {
         // Saved before the first model call: a run the service stops from
         // here on can be taken up again (ADR-053).
         self.deps.ports.runs.checkpoint(&state).await?;
+        // The model the run starts with, kept once decided (ADR-207).
+        if route_at_start(&self.deps, &self.config, &mut state).await? {
+            self.deps.ports.runs.checkpoint(&state).await?;
+        }
         self.run_loop(state).await
     }
 

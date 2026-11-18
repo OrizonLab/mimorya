@@ -258,6 +258,8 @@ pub struct SkillContent {
     pub content: String,
     /// What an answer that follows it must meet (ADR-106).
     pub quality_criteria: Vec<String>,
+    /// Whether it asks for the company's escalation model (ADR-207).
+    pub model_escalation: bool,
 }
 
 #[async_trait]

@@ -2050,13 +2050,17 @@ maxCostCeilingMicros: number, };
 
 export type MissionStatus = "in_progress" | "awaiting_approval" | "done" | "failed" | "cancelled";
 
-export type ModelEscalationSettings = { model: string, afterFailure: boolean, router: boolean, advisor: boolean, monthlyBudgetMicros: number, maxPerRun: number, updatedAt: string, };
+export type ModelEscalationSettings = { model: string, afterFailure: boolean, router: boolean, advisor: boolean, routes: RouterRoutes, monthlyBudgetMicros: number, maxPerRun: number, updatedAt: string, };
 
 /**
  * Body of `PUT /admin/model-escalation`: checked by the service, which
  * says its bounds in its refusal.
  */
-export type ModelEscalationUpdate = { model: string, afterFailure: boolean, router: boolean, advisor: boolean, monthlyBudgetMicros: number, maxPerRun: number, };
+export type ModelEscalationUpdate = { model: string, afterFailure: boolean, router: boolean, advisor: boolean,
+/**
+ * Read only while the router is on.
+ */
+routes: RouterRoutes, monthlyBudgetMicros: number, maxPerRun: number, };
 
 /**
  * `GET /admin/model-escalation`.
@@ -2346,7 +2350,12 @@ export type NewSkill = { name: string, description: string, content: string, cha
  * (ADR-106): blank ones are left out, and 8 at most may remain, of 300
  * characters at most (`skill_quality::criteria_problem`).
  */
-qualityCriteria?: Array<string>, };
+qualityCriteria?: Array<string>,
+/**
+ * Whether the version asks for the company's escalation model
+ * (ADR-207); absent: it does not.
+ */
+modelEscalation?: boolean, };
 
 /**
  * Body of `POST /admin/skills/{id}/versions`: a new draft version.
@@ -2358,7 +2367,12 @@ export type NewSkillVersion = { content: string, changelog?: string,
  * characters at most (`skill_quality::criteria_problem`); `[]` for
  * none. Absent: those of the version active.
  */
-qualityCriteria?: Array<string>, };
+qualityCriteria?: Array<string>,
+/**
+ * Whether the version asks for the company's escalation model
+ * (ADR-207). Absent: as the version active does.
+ */
+modelEscalation?: boolean, };
 
 /**
  * Body of `POST /admin/gateways/slack`: the company's Slack application,
@@ -2864,6 +2878,34 @@ assignments: number, heldByYou: boolean, };
 export type Roles = { roles: Array<RoleView>, catalog: Array<PermissionView>, };
 
 /**
+ * The model a run of a kind starts with while the router is on (step 2):
+ * the main one, the escalation one, or the one a classification of its
+ * request by the main model names.
+ */
+export type RouterRoute = "main" | "escalation" | "classification";
+
+/**
+ * The router's rule for each kind of run.
+ */
+export type RouterRoutes = {
+/**
+ * A person's turn of conversation, whatever its channel.
+ */
+conversation: RouterRoute,
+/**
+ * A stage of a mission.
+ */
+mission: RouterRoute,
+/**
+ * A run a scheduled task started.
+ */
+scheduledTask: RouterRoute,
+/**
+ * A run another system started through a hook.
+ */
+hook: RouterRoute, };
+
+/**
  * The limits a run stops at (`agent_runs.budget`).
  */
 export type RunBudget = { maxSteps: number, maxInputTokens: number, maxOutputTokens: number, maxCostMicros: number, maxDurationMs: number, };
@@ -3259,6 +3301,11 @@ content: string, changelog: string,
  * What an answer that follows it must meet (ADR-106).
  */
 qualityCriteria: Array<string>,
+/**
+ * Whether a run that loads it goes on with the company's escalation
+ * model, while its router is on (ADR-207).
+ */
+modelEscalation: boolean,
 /**
  * Proposed by the agent for its author, who validated it (ADR-100).
  */

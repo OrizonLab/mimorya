@@ -25,6 +25,7 @@ mod queue;
 mod reads;
 mod recovery;
 mod run_access;
+mod run_kind;
 mod service;
 mod sub_runs;
 mod summaries;

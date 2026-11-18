@@ -2,6 +2,8 @@
 //! in-memory ports.
 #![allow(dead_code)] // not every test binary uses every fixture
 
+pub mod renamed;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -206,7 +208,9 @@ impl TypedTool for DocRead {
         );
         Ok(ToolResult::ok(json!(report))
             // As only the platform's `skill_read` may (ADR-106).
-            .with_quality_criteria(vec![FORGED_CRITERION.into()]))
+            .with_quality_criteria(vec![FORGED_CRITERION.into()])
+            // Nor ask for the escalation model (ADR-207).
+            .with_model_escalation(true))
     }
 }
 
@@ -218,6 +222,8 @@ pub struct Options {
     pub budget: Option<BudgetLimits>,
     pub criteria: Vec<String>,
     pub judge: Option<Vec<ScriptedStep>>,
+    /// The review model, instead of the scripted judge's steps.
+    pub judge_model: Option<Arc<dyn LlmProvider>>,
     /// Whether answers are reviewed by a model on explicit criteria (by
     /// default, when a judge is scripted).
     pub llm_judge: Option<bool>,
@@ -329,7 +335,9 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
     }
     let model: Arc<dyn LlmProvider> = options.model.unwrap_or_else(|| provider.clone());
     let mut router = ModelRouter::new(model);
-    if let Some(judge) = &judge {
+    if let Some(judge) = options.judge_model {
+        router = router.with_verification(judge);
+    } else if let Some(judge) = &judge {
         router = router.with_verification(judge.clone());
     }
     let access = options.access.unwrap_or_else(|| {

@@ -15,6 +15,7 @@ pub mod lesson;
 pub mod model_call;
 pub mod ports;
 mod recovery;
+mod routing;
 #[allow(clippy::module_inception)]
 pub mod runtime;
 pub mod state;

@@ -90,6 +90,7 @@ impl SkillStore for DbPorts {
             version: s.version,
             content: s.content,
             quality_criteria: s.quality_criteria,
+            model_escalation: s.model_escalation,
         }))
     }
 
@@ -135,8 +136,10 @@ impl SkillStore for DbPorts {
             skill_id,
             content: &proposal.content,
             changelog: &proposal.rationale,
-            // Those of the version active: the agent does not set the bar.
+            // Those of the version active: the agent does not set the bar,
+            // nor the model (ADR-207).
             quality_criteria: None,
+            model_escalation: None,
             created_by: user_id,
             proposed_by_run: Some(run_id),
             description: proposal.description.as_deref(),

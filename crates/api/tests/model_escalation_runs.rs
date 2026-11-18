@@ -42,6 +42,12 @@ async fn escalating(paul: &Client<'_>, budget_micros: i64) {
                 "afterFailure": true,
                 "router": false,
                 "advisor": false,
+                "routes": {
+                    "conversation": "main",
+                    "mission": "main",
+                    "scheduledTask": "main",
+                    "hook": "main",
+                },
                 "monthlyBudgetMicros": budget_micros,
                 "maxPerRun": 5,
             }),

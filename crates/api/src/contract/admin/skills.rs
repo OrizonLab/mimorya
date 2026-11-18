@@ -85,6 +85,9 @@ pub struct SkillVersionView {
     pub changelog: String,
     /// What an answer that follows it must meet (ADR-106).
     pub quality_criteria: Vec<String>,
+    /// Whether a run that loads it goes on with the company's escalation
+    /// model, while its router is on (ADR-207).
+    pub model_escalation: bool,
     /// Proposed by the agent for its author, who validated it (ADR-100).
     pub proposed: bool,
     /// What a proposal of a new skill said the skill covers.
@@ -104,6 +107,7 @@ impl SkillVersionView {
             content: v.content.clone(),
             changelog: v.changelog.clone(),
             quality_criteria: v.quality_criteria.clone(),
+            model_escalation: v.model_escalation,
             proposed: v.proposed,
             proposed_description: v.proposed_description.clone(),
             created_by: v.created_by.clone(),
@@ -151,6 +155,11 @@ pub struct NewSkill {
     #[validate(length(max = MAX_CRITERIA_LINES))]
     #[ts(optional)]
     pub quality_criteria: Option<Vec<String>>,
+    /// Whether the version asks for the company's escalation model
+    /// (ADR-207); absent: it does not.
+    #[serde(default)]
+    #[ts(optional)]
+    pub model_escalation: Option<bool>,
 }
 
 /// Body of `PATCH /admin/skills/{id}`.
@@ -180,6 +189,11 @@ pub struct NewSkillVersion {
     #[validate(length(max = MAX_CRITERIA_LINES))]
     #[ts(optional)]
     pub quality_criteria: Option<Vec<String>>,
+    /// Whether the version asks for the company's escalation model
+    /// (ADR-207). Absent: as the version active does.
+    #[serde(default)]
+    #[ts(optional)]
+    pub model_escalation: Option<bool>,
 }
 
 /// Body of `PUT /admin/skills/{id}/activation`: the version made active.

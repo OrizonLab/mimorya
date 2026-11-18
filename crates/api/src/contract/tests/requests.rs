@@ -254,6 +254,22 @@ fn nested_administration_values_refuse_unknown_fields() {
             "{scope}"
         );
     }
+    // The router's rules of the model escalation (ADR-207).
+    let routes = json!({
+        "conversation": "classification", "mission": "main",
+        "scheduledTask": "main", "hook": "escalation",
+    });
+    let escalation = json!({
+        "model": "claude-opus-5-5", "afterFailure": true, "router": true, "advisor": false,
+        "routes": routes, "monthlyBudgetMicros": 25_000_000, "maxPerRun": 3,
+    });
+    strict::<ModelEscalationUpdate>(escalation.clone(), escalation.clone());
+    let mut unknown = escalation.clone();
+    unknown["routes"]["inconnu"] = json!("main");
+    assert!(serde_json::from_value::<ModelEscalationUpdate>(unknown).is_err());
+    let mut unknown = escalation;
+    unknown["routes"]["hook"] = json!("haut");
+    assert!(serde_json::from_value::<ModelEscalationUpdate>(unknown).is_err());
     // The standard mail's servers (ADR-205).
     let imap = json!({ "host": "imap.example.com", "port": 993, "password": "secret" });
     assert!(serde_json::from_value::<MailImapServer>(imap).is_err());

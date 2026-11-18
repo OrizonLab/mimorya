@@ -15,6 +15,7 @@ fn request(model: &str) -> EscalationRequest<'_> {
         after_failure: false,
         router: false,
         advisor: false,
+        routes: EscalationRoutes::default(),
         monthly_budget_micros: 50_000_000,
         max_per_run: 5,
     }
@@ -37,6 +38,7 @@ fn a_model_of_the_conversations_provider_is_kept_with_its_provider_and_endpoint(
             after_failure: false,
             router: false,
             advisor: false,
+            routes: EscalationRoutes::default(),
             monthly_budget_micros: 50_000_000,
             max_per_run: 5,
         }

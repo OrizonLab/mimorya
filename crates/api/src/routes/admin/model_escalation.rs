@@ -33,6 +33,7 @@ pub async fn show(
             after_failure: stored.choice.after_failure,
             router: stored.choice.router,
             advisor: stored.choice.advisor,
+            routes: stored.choice.routes.into(),
             monthly_budget_micros: stored.choice.monthly_budget_micros,
             max_per_run: stored.choice.max_per_run,
             updated_at: iso(&stored.updated_at),

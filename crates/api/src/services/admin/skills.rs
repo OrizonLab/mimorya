@@ -36,6 +36,8 @@ pub struct SkillInput {
     pub changelog: String,
     /// One per line, blank ones left out (ADR-106).
     pub quality_criteria: Option<Vec<String>>,
+    /// Whether the version asks for the company's escalation model (ADR-207).
+    pub model_escalation: bool,
 }
 
 /// A version as an administrator writes it.
@@ -45,6 +47,9 @@ pub struct VersionInput {
     /// One per line, blank ones left out (ADR-106); when not given, those
     /// of the version active.
     pub quality_criteria: Option<Vec<String>>,
+    /// Whether it asks for the company's escalation model (ADR-207); when
+    /// not given, as the version active does.
+    pub model_escalation: Option<bool>,
 }
 
 /// A skill and its first version, both drafts: nothing reaches the agent
@@ -77,6 +82,7 @@ pub async fn create_skill(
         content: &content,
         changelog: &input.changelog,
         quality_criteria: criteria.as_deref(),
+        model_escalation: Some(input.model_escalation),
     };
     let version = add_version(&mut tx, access, id, version).await?;
     append_audit(
@@ -86,6 +92,7 @@ pub async fn create_skill(
             "description": input.description,
             "version": version,
             "qualityCriteria": criteria.as_ref().map_or(0, Vec::len),
+            "modelEscalation": input.model_escalation,
         })),
     )
     .await?;
@@ -133,6 +140,7 @@ pub async fn add_skill_version(
         content: &content,
         changelog: &input.changelog,
         quality_criteria: criteria.as_deref(),
+        model_escalation: input.model_escalation,
     };
     let version = add_version(&mut tx, access, id, version).await?;
     // How many were written, or that those of the version active were kept.
@@ -147,6 +155,8 @@ pub async fn add_skill_version(
             "version": version,
             "changelog": input.changelog,
             "qualityCriteria": criteria,
+            // Said, or kept from the version active.
+            "modelEscalation": input.model_escalation.map_or(json!("kept"), |asked| json!(asked)),
         })),
     )
     .await?;
@@ -269,6 +279,8 @@ struct Version<'a> {
     changelog: &'a str,
     /// When not given, those of the version active.
     quality_criteria: Option<&'a [String]>,
+    /// When not given, as the version active does.
+    model_escalation: Option<bool>,
 }
 
 async fn add_version(
@@ -283,6 +295,7 @@ async fn add_version(
         content: version.content,
         changelog: version.changelog,
         quality_criteria: version.quality_criteria,
+        model_escalation: version.model_escalation,
         created_by: access.subject.user_id,
         proposed_by_run: None,
         description: None,

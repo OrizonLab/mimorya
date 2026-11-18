@@ -81,6 +81,12 @@ pub struct EscalationState {
     /// Whether a bound (the month's budget, the run's escalations) stopped
     /// an escalation: said once a run.
     pub limited: bool,
+    /// Whether a skill the run loaded asks for the escalation model.
+    #[serde(default)]
+    pub skill_asked: bool,
+    /// Whether that was heeded: once a run.
+    #[serde(default)]
+    pub skill_heeded: bool,
 }
 
 impl EscalationState {

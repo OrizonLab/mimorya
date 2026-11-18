@@ -12,6 +12,8 @@ import type {
   OrgUnitType,
   ProposalStatus,
   RetentionUnitName,
+  RouterRoute,
+  RouterRoutes,
   Sensitivity,
   SkillStatus,
   SkillVersionStatus,
@@ -260,6 +262,21 @@ export const USAGE_ROLE_LABELS: Record<UsageRole, string> = {
   classification: 'Classement',
   advisor: 'Conseiller',
   review: 'Contrôle des réponses',
+};
+
+/** The model a run of a kind starts with, while the router is on (ADR-207). */
+export const ROUTER_ROUTE_LABELS: Record<RouterRoute, string> = {
+  main: 'Modèle principal',
+  escalation: 'Modèle d’escalade',
+  classification: 'Selon un classement de la demande',
+};
+
+/** The kinds of run the router's rules tell apart. */
+export const RUN_KIND_LABELS: Record<keyof RouterRoutes, string> = {
+  conversation: 'Conversations',
+  mission: 'Missions',
+  scheduledTask: 'Tâches planifiées',
+  hook: 'Déclencheurs',
 };
 
 /** What a use that is not a model call was. */

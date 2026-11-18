@@ -81,7 +81,7 @@ pub use microsoft365::{Microsoft365App, NewMicrosoft365Connector};
 pub use mission_settings::{MissionSettingsUpdate, MissionSettingsView};
 pub use model_escalation::{
     EscalationMechanism, EscalationSpending, MechanismView, ModelEscalationSettings,
-    ModelEscalationUpdate, ModelEscalationView,
+    ModelEscalationUpdate, ModelEscalationView, RouterRoute, RouterRoutes,
 };
 pub use policies::{
     ConditionAttribute, NewPolicy, Policies, PolicyEffect, PolicyUpdate, PolicyView,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Button, ErrorNote, Field, Input, Textarea } from '@/components/ui';
+import { Button, Checkbox, ErrorNote, Field, Input, Textarea } from '@/components/ui';
 import { api, useAction, type NewSkill } from '@/lib/api';
 
 /** Writes a skill and its first version, both drafts. */
@@ -10,6 +10,7 @@ export function SkillForm({ onDone }: { onDone: (changed: boolean) => void }) {
   const [description, setDescription] = useState('');
   const [content, setContent] = useState('');
   const [criteria, setCriteria] = useState('');
+  const [escalation, setEscalation] = useState(false);
   const [changelog, setChangelog] = useState('');
   const action = useAction();
 
@@ -20,6 +21,7 @@ export function SkillForm({ onDone }: { onDone: (changed: boolean) => void }) {
       description,
       content,
       qualityCriteria: criteria.split('\n'),
+      modelEscalation: escalation,
       changelog,
     } satisfies NewSkill;
     if (await action.run(() => api.post('/admin/skills', body))) onDone(true);
@@ -52,9 +54,11 @@ export function SkillForm({ onDone }: { onDone: (changed: boolean) => void }) {
       <SkillContentFields
         content={content}
         criteria={criteria}
+        escalation={escalation}
         changelog={changelog}
         onContent={setContent}
         onCriteria={setCriteria}
+        onEscalation={setEscalation}
         onChangelog={setChangelog}
       />
       {action.error && <ErrorNote message={action.error} />}
@@ -77,22 +81,27 @@ export function SkillForm({ onDone }: { onDone: (changed: boolean) => void }) {
 
 /**
  * A version's content, the quality criteria any answer that follows it is
- * reviewed on (ADR-106), one per line, and its note: shared by the two forms
- * that write one.
+ * reviewed on (ADR-106), one per line, whether it asks for the company's
+ * escalation model (ADR-207), and its note: shared by the two forms that
+ * write one.
  */
 export function SkillContentFields({
   content,
   criteria,
+  escalation,
   changelog,
   onContent,
   onCriteria,
+  onEscalation,
   onChangelog,
 }: {
   content: string;
   criteria: string;
+  escalation: boolean;
   changelog: string;
   onContent: (content: string) => void;
   onCriteria: (criteria: string) => void;
+  onEscalation: (asked: boolean) => void;
   onChangelog: (changelog: string) => void;
 }) {
   return (
@@ -114,6 +123,15 @@ export function SkillContentFields({
         Chaque réponse de l’assistant qui a suivi cette version est relue par un modèle sur ces
         critères, comme lors d’une évaluation : un manquement est corrigé, sinon signalé sous la
         réponse.
+      </p>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={escalation} onChange={(e) => onEscalation(e.target.checked)} />
+        Demande le modèle d’escalade
+      </label>
+      <p className="text-xs text-muted">
+        Quand l’agent charge cette version, le run passe au modèle d’escalade de l’entreprise, si
+        son routeur est activé (« Modèle d’IA »), dans le budget et le nombre d’escalades réglés.
+        Rien d’autre ne change : ni permission, ni validation.
       </p>
       <Field label="Note de version (facultative)">
         <Input maxLength={300} value={changelog} onChange={(e) => onChangelog(e.target.value)} />

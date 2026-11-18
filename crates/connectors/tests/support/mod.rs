@@ -175,6 +175,7 @@ impl Scenario {
                 description: "Synthèse hebdomadaire des interventions et planning de suivi".into(),
                 content: "# Synthèse hebdomadaire\n1. Rechercher… 6. Présenter…".into(),
                 quality_criteria: Vec::new(),
+                model_escalation: false,
             }],
         );
         let engine = Arc::new(demo::authorization_engine());

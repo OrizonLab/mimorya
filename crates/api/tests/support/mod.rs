@@ -201,7 +201,13 @@ impl TestApi {
     /// App backed by the scripted model, priced: each call costs
     /// `llm::SCRIPTED_CALL_MICROS`.
     pub async fn start_priced() -> Self {
+        Self::start_priced_with(&[]).await
+    }
+
+    /// Same, with configuration variables overridden.
+    pub async fn start_priced_with(env: &[(&str, &str)]) -> Self {
         Self::scripted(Setup {
+            env,
             priced: true,
             ..Setup::default()
         })

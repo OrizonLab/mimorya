@@ -26,6 +26,7 @@ fn skill(criteria: &[&str]) -> SkillFixture {
         description: "Synthèse datée des interventions".into(),
         content: "1. Lister les interventions et leur date.".into(),
         quality_criteria: criteria.iter().map(|c| (*c).to_owned()).collect(),
+        model_escalation: false,
     }
 }
 

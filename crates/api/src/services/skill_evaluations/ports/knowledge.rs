@@ -159,6 +159,9 @@ impl SkillStore for Knowledge {
                 version: evaluated.version,
                 content: evaluated.content.clone(),
                 quality_criteria: evaluated.quality_criteria.clone(),
+                // An evaluation plays on the company's main model alone
+                // (ADR-207): its runs have no escalation.
+                model_escalation: false,
             }));
         }
         let mut tx = self.db.begin(self.scope.tenant_id).await?;
@@ -169,6 +172,7 @@ impl SkillStore for Knowledge {
             version: s.version,
             content: s.content,
             quality_criteria: s.quality_criteria,
+            model_escalation: false,
         }))
     }
 

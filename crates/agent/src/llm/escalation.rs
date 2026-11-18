@@ -6,6 +6,10 @@
 //! has a price the platform knows: unpriced, its calls would count for
 //! nothing, and the budget would never bound them.
 
+mod routes;
+
+pub use routes::{EscalationRoute, EscalationRoutes, RunKind};
+
 use super::pricing::{PriceTable, model_alias};
 use super::router::ModelRole;
 use super::settings::{TenantLlmChoice, check_model_name};
@@ -29,7 +33,7 @@ pub enum Mechanism {
 
 /// The mechanisms delivered so far: the others are refused, never accepted
 /// without effect.
-pub const AVAILABLE_MECHANISMS: &[Mechanism] = &[Mechanism::AfterFailure];
+pub const AVAILABLE_MECHANISMS: &[Mechanism] = &[Mechanism::AfterFailure, Mechanism::Router];
 
 impl Mechanism {
     pub fn label(self) -> &'static str {
@@ -52,6 +56,8 @@ pub struct EscalationRequest<'a> {
     pub after_failure: bool,
     pub router: bool,
     pub advisor: bool,
+    /// The router's rule for each kind of run (step 2).
+    pub routes: EscalationRoutes,
     pub monthly_budget_micros: i64,
     pub max_per_run: u32,
 }
@@ -66,6 +72,7 @@ pub struct EscalationChoice {
     pub after_failure: bool,
     pub router: bool,
     pub advisor: bool,
+    pub routes: EscalationRoutes,
     pub monthly_budget_micros: i64,
     pub max_per_run: u32,
 }
@@ -127,6 +134,7 @@ pub fn check_escalation(
         after_failure: request.after_failure,
         router: request.router,
         advisor: request.advisor,
+        routes: request.routes,
         monthly_budget_micros: request.monthly_budget_micros,
         max_per_run: request.max_per_run,
     })

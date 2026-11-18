@@ -118,13 +118,13 @@ Repères à l'intérieur des crates :
   connecteurs, mémoires, documents, compétences de démonstration), `db/src/testing.rs`.
 - `agent/src/llm/<fournisseur>/`, `agent/src/llm/escalation.rs` (ce qu'une entreprise peut
   choisir comme escalade de modèle : modèle de son fournisseur propre, budget mensuel en USD,
-  escalades par run, mécanismes livrés, ADR-207), `agent/src/llm/pricing.rs` (prix datés,
+  escalades par run, mécanismes livrés, règles du routeur par sorte de run (`escalation/routes.rs`), ADR-207), `agent/src/llm/pricing.rs` (prix datés,
   palier de Claude Haiku 5.5), rôle de chaque appel (`ModelRole`, `router.rs`), `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
   (`lesson.rs`, ADR-076), résumé des messages anciens d'une conversation
   (`conversation_summary.rs`, ADR-145), point d'étape d'une mission dont le budget est atteint
-  (`handoff.rs`, ADR-089), revue d'une réponse candidate (`final_answer.rs`), modèle d'escalade appel par appel et après un échec du contrôle, ses bornes et son état dans le point de reprise (`escalation.rs`, ADR-207), ports, dont les documents lus par un run
+  (`handoff.rs`, ADR-089), revue d'une réponse candidate (`final_answer.rs`), modèle d'escalade appel par appel, après un échec du contrôle ou quand une compétence chargée le demande, ses bornes et son état dans le point de reprise (`escalation.rs`, ADR-207), modèle de départ décidé par le routeur, règle de l'entreprise ou classement de la demande en JSON strict (`routing.rs`, ADR-207), ports, dont les documents lus par un run
   (`document_store.rs`, ADR-096), sous-agents : profils, consignes, run enfant et
   sa part du budget (`delegation/`), délégations d'une étape en parallèle
   (`tool_calls/delegated.rs`), ADR-098),
@@ -301,7 +301,7 @@ Repères à l'intérieur des crates :
   `api/src/services/skill_evaluations/` (évaluations des compétences : une passe par
   entreprise, quatre à la fois par processus (`pass.rs`, ADR-157), cas joués et jugés (`play.rs`, `case.rs`) avec leurs propres ports
   (`ports/`), lecture (`view.rs`), ADR-104 ; ce qu'elles peuvent coûter sur trente jours
-  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; escalade de modèle de l'entreprise, choisie et lue avec la dépense du mois par `services/admin/model_escalation.rs`, chargée pour ses runs avec ses autres modèles (`services/llm/escalation.rs`) et bornée par la dépense du mois (`services/runs/escalation_budget.rs`), ADR-207 ; une
+  (`spending.rs`), réglé par `services/admin/evaluation_settings.rs`, ADR-154 ; escalade de modèle de l'entreprise, choisie et lue avec la dépense du mois par `services/admin/model_escalation.rs`, chargée pour ses runs avec ses autres modèles (`services/llm/escalation.rs`) et bornée par la dépense du mois (`services/runs/escalation_budget.rs`), la règle du routeur prise selon la sorte du run (`services/runs/run_kind.rs`), ADR-207 ; une
   proposition de l'agent jouée sans les connecteurs qui joignent l'extérieur, retirés par
   `services/connectors/tenant_tools.rs`, ADR-153),
   `api/src/services/connectors/` (instances des connecteurs gardées par processus,
@@ -399,7 +399,7 @@ Repères à l'intérieur des crates :
   vérifiées, ADR-132, le bot Telegram, ADR-134, le bot Teams, ADR-139,
   et l'OAuth d'un serveur MCP : déclaration, autorisation, état et retraits, ADR-171, client saisi ou enregistré par la plateforme, ADR-173, qui l'autorise, l'entreprise ou chacun, et combien l'ont fait (`mcp-oauth-holder.tsx`), ADR-174, et si le compte de chacun est vérifié, ADR-175, une déclaration refusée si elle a changé depuis l'ouverture de son formulaire, ADR-176,
   `admin/retention/` : durées de rétention de l'entreprise, un raccourcissement demandé d'abord, sa date montrée, l'onglet ouvert à qui détient `retention:manage`, une page restée ouverte refusée si elles ont changé, ADR-196, `admin/knowledge-shares/` : partages de connaissances entre unités, ADR-144, `admin/policies/` : refus écrits aussitôt et autorisations proposées, approuvées par un autre administrateur, ADR-169, `admin/audit-chain/` : vérification du journal d'audit à la demande et ancres gardées, ADR-179, `admin/audit-export/` : jetons de l'export du journal vers le SIEM de l'entreprise, secret montré une fois, l'onglet ouvert à qui lit ou exporte le journal (`lib/admin-sections.ts`), ADR-182, `admin/bearer-tokens/` : section commune aux jetons qu'un autre système détient de l'entreprise, ADR-184, `admin/llm/` : modèle des conversations et modèle de contrôle des réponses, ADR-108, recherche dans la mémoire, leçons et limites des missions, ADR-075,
-  ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, escalade de modèle, son budget et ses mécanismes (`escalation-section.tsx`), ADR-207, `admin/users/` :
+  ADR-077, ADR-093, limite de coût des évaluations des compétences, ADR-155, escalade de modèle, son budget et ses mécanismes (`escalation-section.tsx`), et les règles du routeur par sorte de run (`router-routes.tsx`), ADR-207, `admin/users/` :
   comptes, dont l'absence d'un collaborateur empêché, ADR-079, et les jetons SCIM du fournisseur d'identité (`scim-tokens.tsx`), ADR-184, et l'effacement d'un compte désactivé (`erasure-form.tsx`, ce qui est parti : `erased-notice.tsx`), ADR-190, et le second facteur actif et sa réinitialisation (`second-factor-reset.tsx`), ADR-204, `admin/identity-providers/` : onglet « Connexion », dont le second facteur exigé par l'entreprise (`second-factor-policy.tsx`), ADR-204, et `admin/skills/` :
   compétences, propositions de l'agent, ADR-101, cas d'évaluation et évaluations,
   ADR-105, critères de qualité, ADR-107, dépense et limite des évaluations, ADR-155 —, approvals — dont la

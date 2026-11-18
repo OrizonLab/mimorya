@@ -2,9 +2,11 @@
 //! provider, called while the run is escalated, within the company's
 //! monthly budget and the escalations a run may have. Past either bound, or
 //! should a call to it fail, the run goes on with its main model, and the
-//! event is journaled once. Escalating after a failed review happens once a
-//! run, from where the run stands: one message is appended, nothing done is
-//! done again.
+//! event is journaled once. A run escalates after a failed review, once,
+//! from where it stands: one message is appended, nothing done is done
+//! again; or, while the company's router is on, from its start (by the
+//! company's rule or a classification, `routing`) or once it loads a skill
+//! that asks for the escalation model.
 
 use std::sync::Arc;
 
@@ -15,7 +17,7 @@ use super::ports::EngineAuditEntry;
 use super::state::RunCheckpoint;
 use super::types::RuntimeDeps;
 use super::verification::correction_message;
-use crate::llm::{LlmProvider, ModelRole, TaskClass};
+use crate::llm::{EscalationRoute, LlmProvider, ModelRole, TaskClass};
 
 /// The company's escalation, as its runs use it.
 #[derive(Clone)]
@@ -23,6 +25,9 @@ pub struct Escalation {
     pub provider: Arc<dyn LlmProvider>,
     /// Whether a failed review escalates the run (step 1).
     pub after_failure: bool,
+    /// While the router is on (step 2), its rule for this kind of run: the
+    /// model the run starts with. A skill loaded may then switch the run.
+    pub router: Option<EscalationRoute>,
     pub max_per_run: u32,
     pub budget: Arc<dyn EscalationBudget>,
 }
@@ -50,6 +55,29 @@ impl Bound {
     }
 }
 
+/// Why a run escalated, as journaled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Reason {
+    AfterFailure,
+    /// The company's rule for its kind of run.
+    Rule,
+    /// The main model's classification of its request.
+    Classification,
+    /// A skill it loaded asks for the escalation model.
+    Skill,
+}
+
+impl Reason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Reason::AfterFailure => "after_failure",
+            Reason::Rule => "rule",
+            Reason::Classification => "classification",
+            Reason::Skill => "skill",
+        }
+    }
+}
+
 /// The provider of the run's next model call, and the role it plays: the
 /// escalation model while the run is escalated and within its bounds, else
 /// the main one. A run escalated whose company no longer has an escalation
@@ -59,14 +87,24 @@ pub(super) async fn next_model(
     state: &mut RunCheckpoint,
 ) -> anyhow::Result<(Arc<dyn LlmProvider>, ModelRole)> {
     let main = deps.router.provider_for(TaskClass::Agent);
+    let Some(escalation) = &deps.escalation else {
+        if state.escalation.escalated {
+            tracing::warn!("Run escalated without an escalation any more: back to the main model");
+            state.escalation.escalated = false;
+        }
+        return Ok((main, ModelRole::Main));
+    };
+    // A skill loaded since the last call asks for the escalation model:
+    // heeded once a run, while the router is on.
+    if state.escalation.skill_asked && !state.escalation.skill_heeded {
+        state.escalation.skill_heeded = true;
+        if escalation.router.is_some() {
+            start_escalation(deps, state, Reason::Skill).await?;
+        }
+    }
     if !state.escalation.escalated {
         return Ok((main, ModelRole::Main));
     }
-    let Some(escalation) = &deps.escalation else {
-        tracing::warn!("Run escalated without an escalation any more: back to the main model");
-        state.escalation.escalated = false;
-        return Ok((main, ModelRole::Main));
-    };
     if let Some(bound) = bound_reached(escalation, state).await? {
         state.escalation.escalated = false;
         limited(deps, state, bound).await?;
@@ -106,6 +144,28 @@ pub(super) async fn escalate_after_failure(
         return Ok(false);
     }
     state.escalation.after_failure_used = true;
+    if !start_escalation(deps, state, Reason::AfterFailure).await? {
+        return Ok(false);
+    }
+    state
+        .messages
+        .push(crate::llm::LlmMessage::user(escalation_message(issues)));
+    Ok(true)
+}
+
+/// Escalates the run for `reason`, within its bounds: whether it did. A
+/// run already escalated stays so.
+pub(super) async fn start_escalation(
+    deps: &RuntimeDeps,
+    state: &mut RunCheckpoint,
+    reason: Reason,
+) -> anyhow::Result<bool> {
+    let Some(escalation) = &deps.escalation else {
+        return Ok(false);
+    };
+    if state.escalation.escalated {
+        return Ok(false);
+    }
     if let Some(bound) = bound_reached(escalation, state).await? {
         limited(deps, state, bound).await?;
         return Ok(false);
@@ -115,12 +175,25 @@ pub(super) async fn escalate_after_failure(
         deps,
         "model_escalation.started",
         "success",
-        Some("after_failure"),
+        Some(reason.as_str()),
     )
     .await?;
-    state
-        .messages
-        .push(crate::llm::LlmMessage::user(escalation_message(issues)));
+    Ok(true)
+}
+
+/// Whether the month's budget is spent, said once a run if so: then no
+/// call counted in it is made, a classification included.
+pub(super) async fn budget_spent(
+    deps: &RuntimeDeps,
+    state: &mut RunCheckpoint,
+) -> anyhow::Result<bool> {
+    let Some(escalation) = &deps.escalation else {
+        return Ok(true);
+    };
+    if escalation.budget.allows().await? {
+        return Ok(false);
+    }
+    limited(deps, state, Bound::MonthlyBudget).await?;
     Ok(true)
 }
 
