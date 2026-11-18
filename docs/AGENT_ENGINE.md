@@ -407,5 +407,14 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
 - Configuration par entreprise : fournisseur et modèle par classe de tâche (`chat`,
   `planning`, `verification`, `summarize`, `embedding`), contraintes (régions,
   modèles autorisés, « local uniquement » pour certaines sensibilités).
-- Coûts : table de prix par modèle (configurable) → `cost_micros` par appel ; budgets
-  par run et quotas mensuels par entreprise (phase 3 pour la facturation).
+- Coûts : table de prix par modèle (configurable, prix d'Anthropic relevés et datés, dont
+  le palier de Claude Haiku 5.5 au-delà de 100 000 jetons de demande) → `cost_micros` par
+  appel, enregistré avec le rôle de l'appel (principal, escalade, classement, conseiller,
+  contrôle) ; budgets par run et quotas mensuels par entreprise (phase 3 pour la
+  facturation).
+- **Escalade de modèle** (ADR-207) : un modèle plus puissant du fournisseur propre de
+  l'entreprise (même clé, même adresse), appelé par trois mécanismes indépendants,
+  désactivés par défaut : après un échec du contrôle de la réponse, par un routeur en
+  amont, par l'advisor d'Anthropic. Un budget mensuel (USD) et un nombre d'escalades par
+  run le bornent ; au-delà, le run continue avec le modèle principal. Fait : les
+  réglages (étape 0) ; les mécanismes suivent, étape par étape.

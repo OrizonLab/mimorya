@@ -45,6 +45,7 @@ mod mcp_config;
 mod memory_settings;
 mod microsoft365;
 mod mission_settings;
+mod model_escalation;
 mod oauth_client;
 mod oauth_version;
 mod org_units;
@@ -119,6 +120,10 @@ pub use memory_settings::{lesson_capture, set_lesson_capture};
 pub use microsoft365::{NewMicrosoft365, create_microsoft365_connector};
 pub use mission_settings::{
     company_mission_limits, reset_company_mission_limits, set_company_mission_limits,
+};
+pub use model_escalation::{
+    EscalationOverview, MonthSpending, StoredEscalation, company_model_escalation,
+    escalation_budget, reset_company_model_escalation, set_company_model_escalation,
 };
 pub use oauth_version::OAuthSeen;
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};

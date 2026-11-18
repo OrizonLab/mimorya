@@ -12,6 +12,39 @@ pub enum TaskClass {
     Verification,
 }
 
+/// The role a model call plays, recorded with what it cost (ADR-207): the
+/// main model, the escalation model, a classification of the run, the
+/// advisor it consulted, or the review of an answer (ADR-108).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelRole {
+    Main,
+    Escalation,
+    Classification,
+    Advisor,
+    Review,
+}
+
+impl ModelRole {
+    pub const ALL: [ModelRole; 5] = [
+        ModelRole::Main,
+        ModelRole::Escalation,
+        ModelRole::Classification,
+        ModelRole::Advisor,
+        ModelRole::Review,
+    ];
+
+    /// As recorded (`usage_records_role_check`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ModelRole::Main => "main",
+            ModelRole::Escalation => "escalation",
+            ModelRole::Classification => "classification",
+            ModelRole::Advisor => "advisor",
+            ModelRole::Review => "review",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ModelRouter {
     agent: Arc<dyn LlmProvider>,

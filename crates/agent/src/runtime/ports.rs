@@ -18,6 +18,7 @@ use super::delegation::SubRunStore;
 use super::document_store::DocumentStore;
 use super::state::RunCheckpoint;
 use super::types::RunOutcome;
+use crate::llm::ModelRole;
 
 /// What a run reports while it progresses (persisted, then streamed to clients).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -191,6 +192,8 @@ pub trait ApprovalStore: Send + Sync {
 pub struct UsageRecord {
     /// `llm`, `embedding` or `tool`.
     pub kind: &'static str,
+    /// The role of a model call; other uses are the main model's.
+    pub role: ModelRole,
     pub provider: String,
     pub model: String,
     pub input_tokens: u64,

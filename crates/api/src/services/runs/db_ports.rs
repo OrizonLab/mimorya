@@ -310,6 +310,7 @@ impl UsageSink for DbPorts {
                 user_id: Some(self.scope.user_id),
                 run_id: Some(self.scope.run_id),
                 kind: record.kind,
+                role: record.role.as_str(),
                 provider: record.provider,
                 model: record.model,
                 input_tokens: saturating_i32(record.input_tokens),

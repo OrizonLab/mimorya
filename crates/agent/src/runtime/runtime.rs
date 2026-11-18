@@ -26,7 +26,9 @@ use super::tool_refusals::{Since, since, why_not_run};
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
 use super::unavailable::UnavailableConnectors;
 use super::verification::correction_message;
-use crate::llm::{LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, StopReason, TaskClass};
+use crate::llm::{
+    LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, ModelRole, StopReason, TaskClass,
+};
 
 /// Why a run stops when its user's account is no longer active.
 pub const ACCOUNT_INACTIVE: &str = "Arrêt : le compte de l’utilisateur n’est plus actif";
@@ -259,6 +261,7 @@ impl AgentRuntime {
                     &self.deps.prices,
                     &mut state,
                     &judge_response,
+                    ModelRole::Review,
                 )
                 .await?;
             }

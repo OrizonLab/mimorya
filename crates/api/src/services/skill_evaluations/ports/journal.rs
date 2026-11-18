@@ -107,6 +107,7 @@ impl UsageSink for Journal {
                 user_id: Some(self.scope.user_id),
                 run_id: None,
                 kind: record.kind,
+                role: record.role.as_str(),
                 provider: record.provider,
                 model: record.model,
                 input_tokens: i32::try_from(record.input_tokens).unwrap_or(i32::MAX),

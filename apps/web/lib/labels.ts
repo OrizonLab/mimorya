@@ -16,6 +16,8 @@ import type {
   SkillStatus,
   SkillVersionStatus,
   ToolRisk,
+  UsageKind,
+  UsageRole,
 } from '@/lib/api';
 
 export const RISK_LABELS: Record<ToolRisk, ToneLabel> = {
@@ -249,4 +251,19 @@ export function gatewayLabel(gateway: string): string {
 export const RETENTION_UNITS: Record<RetentionUnitName, { one: string; many: string }> = {
   months: { one: 'mois', many: 'mois' },
   days: { one: 'jour', many: 'jours' },
+};
+
+/** The role of a model call in the consumption (ADR-207). */
+export const USAGE_ROLE_LABELS: Record<UsageRole, string> = {
+  main: 'Modèle principal',
+  escalation: 'Escalade',
+  classification: 'Classement',
+  advisor: 'Conseiller',
+  review: 'Contrôle des réponses',
+};
+
+/** What a use that is not a model call was. */
+export const USAGE_KIND_LABELS: Record<Exclude<UsageKind, 'llm'>, string> = {
+  embedding: 'Recherche par le sens',
+  tool: 'Outil',
 };

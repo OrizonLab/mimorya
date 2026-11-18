@@ -22,7 +22,7 @@ use mimorya_db::repositories::policy_proposals::PROPOSAL_STATUSES;
 use mimorya_db::repositories::runs::RunStatus;
 use mimorya_db::repositories::skills::{SKILL_STATUSES, SKILL_VERSION_STATUSES};
 use mimorya_db::repositories::tool_invocations::TOOL_DECISIONS;
-use mimorya_db::repositories::usage::USAGE_KINDS;
+use mimorya_db::repositories::usage::{USAGE_KINDS, USAGE_ROLES};
 use mimorya_db::repositories::users::USER_STATUSES;
 use regex::Regex;
 
@@ -88,6 +88,7 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
         ("audit_log_actor_check", owned(AUDIT_ACTORS)),
         ("audit_log_outcome_check", owned(AUDIT_OUTCOMES)),
         ("usage_records_kind_check", owned(USAGE_KINDS)),
+        ("usage_records_role_check", owned(USAGE_ROLES)),
         ("access_policies_effect_check", owned(POLICY_EFFECTS)),
         ("policy_proposals_status_check", owned(PROPOSAL_STATUSES)),
         (

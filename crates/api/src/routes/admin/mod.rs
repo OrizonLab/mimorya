@@ -22,6 +22,7 @@ mod knowledge_shares;
 mod llm;
 mod memory_settings;
 mod mission_settings;
+mod model_escalation;
 mod organization;
 mod policies;
 mod policy_proposals;
@@ -140,6 +141,12 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             get(evaluation_settings::show)
                 .put(evaluation_settings::update)
                 .delete(evaluation_settings::reset),
+        )
+        .route(
+            "/admin/model-escalation",
+            get(model_escalation::show)
+                .put(model_escalation::update)
+                .delete(model_escalation::reset),
         )
         .route(
             "/admin/retention",

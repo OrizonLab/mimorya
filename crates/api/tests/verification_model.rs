@@ -11,7 +11,7 @@ mod support;
 use axum::http::StatusCode;
 use mimorya_agent::llm::LlmMessage;
 use mimorya_agent::testing::{ScriptedProvider, ScriptedStep, call};
-use mimorya_core::demo::user;
+use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::accounts::{activate, create_partial_admin};
 use support::llm::{API_KEY, MASTER_KEY, OTHER_MASTER_KEY, REVIEW_MODEL};
@@ -75,6 +75,18 @@ fn judged_by(model: &ScriptedProvider) -> (usize, usize) {
     (judged, requests.len() - judged)
 }
 
+/// The roles of the model calls `run` recorded, in order (ADR-207).
+async fn recorded_roles(api: &TestApi, run: Uuid) -> Vec<String> {
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    sqlx::query_scalar(
+        "select role from usage_records where run_id = $1 and kind = 'llm' order by id",
+    )
+    .bind(run)
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap()
+}
+
 fn first_text(model: &ScriptedProvider) -> String {
     match &model.requests()[0].messages[0] {
         LlmMessage::User { content } => content.clone(),
@@ -128,6 +140,10 @@ async fn the_review_model_judges_the_answers_until_it_is_removed() {
     assert_eq!(judged_by(platform), (0, 3));
     assert_eq!(judged_by(&api.review_model), (2, 0));
     assert!(first_text(&api.review_model).contains(CRITERION));
+    // Each call recorded with its role: the reviews apart from the answers.
+    let roles = recorded_roles(&api, run).await;
+    let count = |role: &str| roles.iter().filter(|recorded| recorded == &role).count();
+    assert_eq!((count("review"), count("main")), (2, 3), "{roles:?}");
 
     // Tested, then removed: the runs' model judges again.
     api.review_model.push([ScriptedStep::text("OK")]);

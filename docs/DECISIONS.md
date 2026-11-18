@@ -14624,3 +14624,146 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     le dossier de l'archive. Un montage qui accepte `chown` mais pas les liens physiques
     (certains CIFS ou FUSE) fait échouer chaque archivage pendant qu'elle tourne, ce que
     montre `pg_stat_archiver`.
+
+## ADR-207 — Escalade de modèle : un modèle économique par défaut, un plus puissant quand il le faut (chantier 5)
+
+- **Statut** : accepté (2026-11-17) · s'appuie sur ADR-024 (modèle par entreprise), ADR-108
+  (modèle de contrôle des réponses), ADR-052 et ADR-106 (compétences et leurs critères),
+  ADR-053 et ADR-083 (reprise d'un run par un autre processus).
+- **Contexte** : une entreprise n'a qu'un modèle pour son agent (`ModelRouter`, classes
+  « agent » et « vérification »). Le plus capable coûte cher pour des demandes simples ;
+  le plus économique, ou un modèle local, se trompe sur des demandes difficiles. Elle veut
+  un modèle économique par défaut (Claude Haiku 5.5, par exemple) et un plus puissant
+  (Claude Sonnet 5.5 ou Claude Opus 5.5) seulement quand c'est nécessaire, sans perdre la
+  maîtrise de ce que cela coûte.
+- **Décision** :
+  - **trois mécanismes indépendants et combinables**, tous désactivés par défaut, si
+    bien que rien ne change pour une entreprise qui ne les active pas :
+    1. l'escalade après un échec du contrôle de la réponse (étape 1) ;
+    2. le routeur en amont, qui choisit le niveau du modèle au début du run (étape 2) ;
+    3. l'advisor d'Anthropic, un conseiller plus puissant que le modèle consulte en
+       cours de génération (étape 3) ;
+  - **le modèle d'escalade** est choisi chez le même fournisseur que le modèle des
+    conversations de l'entreprise, avec la même clé et la même adresse : seul le nom du
+    modèle change, vérifié par les règles des noms de modèle (`check_model_name`,
+    ADR-024). Il diffère du modèle principal. Le fournisseur et l'adresse du moment
+    sont gardés avec lui : si l'entreprise change de fournisseur ou d'adresse, ou retire
+    son fournisseur, le réglage reste, mais il est dit inutilisable, avec la raison, et
+    aucun mécanisme ne s'applique. Un run n'échoue jamais pour autant : il garde le
+    modèle principal, et l'écart est journalisé ;
+  - **fournisseur propre seulement** : ces mécanismes ne sont offerts qu'à une
+    entreprise qui a son propre fournisseur (ADR-024), donc sa clé et sa facture. Une
+    entreprise sur le modèle de la plateforme ne peut pas les activer : ils dépenseraient
+    l'argent de l'exploitant à la discrétion de l'entreprise. L'option est grisée, avec
+    l'explication ;
+  - **une escalade est un appel au modèle d'escalade.** Deux bornes la limitent :
+    - un budget mensuel par entreprise, en USD comme tous les coûts de la plateforme
+      (prix des modèles, limites des missions, ADR-093, et des évaluations, ADR-154), de
+      1 à 10 000 USD. Il porte sur le mois civil dans le fuseau de la plateforme
+      (`PLATFORM_TIME_ZONE`) et compte tout ce que les mécanismes ajoutent : appels au
+      modèle d'escalade, appels de classement et consultations du conseiller ;
+    - un nombre maximal d'escalades par run, de 1 à 50. Au-delà de l'une ou de l'autre,
+      plus d'escalade : le run continue avec le modèle principal, et l'événement est
+      journalisé une fois par run (journal d'audit `model_escalation.limited`, avec la
+      raison, sans aucun contenu). Plusieurs runs en cours peuvent dépasser un peu le
+      budget, chacun ne voyant pas les appels encore en vol des autres : le dépassement est
+      borné par ces appels ;
+  - **comptage** : chaque appel de modèle est enregistré avec son rôle dans
+    `usage_records` : principal, escalade, classement, conseiller, ou contrôle (le juge
+    des réponses, ADR-108). L'écran « Consommation » de l'administration montre la
+    répartition par rôle et le budget d'escalade consommé dans le mois ;
+  - **prix** (`pricing.rs`) : ceux qui manquent sont ajoutés, relevés sur la page des
+    prix d'Anthropic et datés. Claude Haiku 5.5 a deux paliers : au-delà de 100 000
+    jetons de demande (entrée, lectures et écritures du cache comprises), toute la
+    requête est facturée au palier haut. Les consultations du conseiller
+    (`usage.iterations`) sont facturées au prix de leur modèle ;
+  - **réglages (étape 0)** : une ligne par entreprise, `tenant_model_escalation`,
+    sous RLS comme le reste ; `GET`, `PUT` et `DELETE /admin/model-escalation`,
+    réservés aux administrateurs des réglages de toute l'entreprise (`settings:manage`),
+    sous le verrou d'administration ; chaque changement est tracé
+    (`model_escalation.configured`, `.reset`) ; une section « Escalade de modèle » dans
+    « Modèle d'IA ». Les messages sont en français. Un mécanisme dont l'étape n'est pas
+    encore livrée est refusé par le serveur et grisé dans l'écran, « bientôt
+    disponible », plutôt que d'être accepté sans effet ;
+  - **escalade après échec (étape 1)** : quand la réponse échoue au contrôle
+    (`answer_review`, contrôles déterministes ou verdict du juge) et que les corrections
+    par le modèle principal sont épuisées, au lieu de présenter la réponse avec ses
+    avertissements, le run continue depuis son état courant avec le modèle d'escalade,
+    qui reçoit les problèmes relevés dans le message de correction de la plateforme :
+    - rien n'est repris de zéro : l'historique est en ajout seul (seul un message est
+      ajouté), et un appel d'outil déjà exécuté n'est jamais rejoué. Le message dit que
+      les actions déjà faites l'ont été. Un nouvel appel qu'il choisirait passe par le
+      PEP et ses validations, identiques ;
+    - une seule escalade de ce type par run. Si la nouvelle réponse échoue encore, elle
+      est présentée avec ses avertissements, comme aujourd'hui ;
+    - l'état de l'escalade (niveau du modèle, escalades faites, escalade après échec
+      employée, borne atteinte) est gardé dans le `RunCheckpoint`, si bien qu'un run
+      repris par un autre processus reste cohérent. Les réglages sont relus à la
+      reprise : retirés ou devenus inutilisables, le run continue avec le modèle
+      principal ;
+    - les blocs de raisonnement d'un modèle sont renvoyés tels quels à l'autre, qui
+      ignore ceux qu'il ne peut pas lire (Anthropic les retire sans les facturer) ; le
+      cache d'un modèle ne sert pas à l'autre ;
+  - **routeur en amont (étape 2)** : le niveau du modèle, principal ou escalade, est
+    décidé au début du run et gardé dans le `RunCheckpoint`. Les sources, dans cet
+    ordre :
+    - une compétence : les compétences ne se chargent qu'en cours de run (`skill_read`,
+      ADR-052). Une version de compétence peut déclarer qu'elle demande le modèle
+      d'escalade (un champ de la version, écrit par ses administrateurs) : quand
+      `skill_read` la charge, les appels suivants passent au modèle d'escalade, dans
+      les mêmes bornes. Une compétence ne change ni permission, ni politique, ni
+      autonomie : seulement le modèle, et dans les bornes de l'entreprise ;
+    - les règles de l'entreprise (par exemple selon la sorte de run : conversation,
+      mission, tâche planifiée, déclencheur) ;
+    - en option, un court appel de classement au modèle principal, qui répond en JSON
+      strict ; toute réponse invalide vaut « principal ». Son coût est compté (rôle
+      « classement ») et entre dans le budget. Le service de décision (ADR suivante) le
+      remplacera par son moteur, ce modèle restant le repli ;
+  - **advisor d'Anthropic (étape 3)** : l'outil serveur `advisor_20260301`, sous l'en-tête
+    bêta `advisor-tool-2026-03-01`, avec `model` (le modèle d'escalade), `max_uses`
+    réglable et `caching` :
+    - disponible seulement si le fournisseur est `anthropic` à son adresse officielle,
+      si la paire (modèle principal, modèle conseiller) figure dans la table de
+      compatibilité, encodée comme une constante datée avec le lien de sa source, et si
+      l'exploitant l'autorise (variable d'environnement, comme les adresses listées) :
+      la fonction est en bêta et sa couverture par un accord ZDR n'est pas garantie
+      (exclue pour les modèles « couverts ») ; SECURITY.md le dit. Sinon, l'option est
+      grisée avec l'explication et le serveur la refuse ;
+    - les blocs `server_tool_use` et `advisor_tool_result` (`advisor_result`,
+      `advisor_redacted_result`, `advisor_tool_result_error`) et `pause_turn` sont lus,
+      et rejoués tels quels aux tours suivants (chemin « natif » d'Anthropic) ;
+    - une configuration devenue invalide (fournisseur changé) n'envoie plus l'outil,
+      avec un avertissement journalisé, sans faire échouer le run ;
+  - **découpage** (une PR par étape, fusionnée la CI verte avant la suivante) :
+
+    | Étape | Contenu                                                                                |
+    | ----- | -------------------------------------------------------------------------------------- |
+    | 0     | Réglages, stockage, API, écran, audit ; rôle des appels ; prix ; écran de consommation |
+    | 1     | Escalade après échec du contrôle                                                       |
+    | 2     | Routeur en amont : compétence, règles, classement                                      |
+    | 3     | Advisor d'Anthropic                                                                    |
+- **Alternatives écartées** :
+  - un budget en euros : tous les prix et toutes les limites de la plateforme sont en
+    USD ; un budget en euros demanderait un taux de change que personne ne tient ;
+  - l'escalade sur le modèle de la plateforme : l'exploitant paierait ce que chaque
+    entreprise choisit de dépenser ;
+  - décider le niveau au début du run d'après les compétences : aucune n'est chargée à
+    ce moment-là ; deviner celles qui le seront revient au choix des compétences en
+    amont, prévu par le service de décision ;
+  - escalader dès le premier échec, avant les corrections du modèle principal : elles
+    coûtent bien moins et suffisent souvent ;
+  - l'escalade vers un autre fournisseur (un modèle local par défaut, un modèle en ligne
+    pour les cas difficiles) : hors de ce chantier. Elle demanderait une clé et une
+    adresse à part, comme le modèle de contrôle (ADR-108), et ferait partir les données
+    d'un run chez un second sous-traitant ; c'est une évolution possible.
+- **Conséquences** :
+  - le modèle d'escalade lit tout ce que lit le modèle principal : même fournisseur, même
+    clé, aucune donnée ne part ailleurs. Le conseiller d'Anthropic lit la conversation
+    chez le même fournisseur ;
+  - un run escaladé coûte plus cher, dans les bornes de l'entreprise ; l'écran de
+    consommation le montre par rôle ;
+  - les tests de chaque étape simulent les modèles (`ScriptedProvider`) : budget atteint,
+    une seule escalade après échec par run, aucun outil rejoué, reprise depuis le
+    checkpoint, JSON de classement invalide, configuration de l'advisor invalide, lecture
+    du flux de l'advisor ; tests PostgreSQL des réglages et de leur isolation ; test de
+    bout en bout de l'écran.

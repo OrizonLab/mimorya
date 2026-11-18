@@ -2,7 +2,7 @@
 //! drawn from it, ADR-076; its conversation summarised, ADR-145): counted in
 //! that run, as its own calls are.
 
-use mimorya_agent::llm::{LlmUsage, PriceTable};
+use mimorya_agent::llm::{LlmUsage, ModelRole, PriceTable};
 use mimorya_db::Database;
 use mimorya_db::repositories::usage::{NewUsage, append_usage};
 
@@ -30,6 +30,7 @@ pub async fn record_background_usage(
             user_id: Some(scope.user_id),
             run_id: Some(scope.run_id),
             kind: "llm",
+            role: ModelRole::Main.as_str(),
             provider: call.provider.to_owned(),
             model: call.model.to_owned(),
             // Counted as runs count them: cached tokens are input too.

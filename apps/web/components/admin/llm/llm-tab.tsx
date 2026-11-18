@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { Loaded } from '@/components/ui';
 import { useApiData, type LlmView } from '@/lib/api';
 import { ConversationModel } from './conversation-model';
 import { EmbeddingSection } from './embedding-section';
+import { EscalationSection } from './escalation-section';
 import { EvaluationLimitSection } from './evaluation-limit-section';
 import { LessonSection } from './lesson-section';
 import { MissionSection } from './mission-section';
@@ -13,12 +15,16 @@ import { ReviewModel } from './review-model';
  * platform's or its own, and for reviewing their answers, one apart if it
  * chooses (ADR-108); for searching its memory by meaning, its own if any
  * (ADR-074); whether the first rereads finished conversations for a lesson
- * (ADR-076); how far a mission may go (ADR-093); and what the skill
- * evaluations may cost over thirty days (ADR-154). */
+ * (ADR-076); how far a mission may go (ADR-093); what the skill
+ * evaluations may cost over thirty days (ADR-154); and the stronger model
+ * called when needed (ADR-207), read again whenever the conversations'
+ * model changes. */
 export function LlmTab() {
+  const [conversations, setConversations] = useState(0);
   return (
     <div className="flex flex-col gap-6">
-      <Models />
+      <Models onConversationsChanged={() => setConversations((n) => n + 1)} />
+      <EscalationSection key={conversations} />
       <EmbeddingSection />
       <LessonSection />
       <MissionSection />
@@ -28,13 +34,19 @@ export function LlmTab() {
 }
 
 /** The model of the conversations and the one reviewing their answers, read together. */
-function Models() {
+function Models({ onConversationsChanged }: { onConversationsChanged: () => void }) {
   const state = useApiData<LlmView>('/admin/llm');
   return (
     <Loaded state={state}>
       {(data) => (
         <div className="flex flex-col gap-6">
-          <ConversationModel data={data} onChanged={state.reload} />
+          <ConversationModel
+            data={data}
+            onChanged={() => {
+              state.reload();
+              onConversationsChanged();
+            }}
+          />
           <ReviewModel data={data} onChanged={state.reload} />
           {!data.secretsAvailable && (
             <p className="text-xs text-muted">

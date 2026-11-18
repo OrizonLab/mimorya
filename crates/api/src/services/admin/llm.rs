@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use mimorya_agent::llm::{
-    LlmMessage, LlmProvider, LlmRequest, PriceTable, api_key_problem, check_tenant_llm,
+    LlmMessage, LlmProvider, LlmRequest, ModelRole, PriceTable, api_key_problem, check_tenant_llm,
     requires_api_key,
 };
 use mimorya_core::DomainError;
@@ -209,6 +209,11 @@ pub async fn test_llm(
                     user_id: Some(access.subject.user_id),
                     run_id: None,
                     kind: "llm",
+                    role: match purpose {
+                        ModelPurpose::Conversations => ModelRole::Main,
+                        ModelPurpose::Verification => ModelRole::Review,
+                    }
+                    .as_str(),
                     cost_micros: prices
                         .cost_micros(&response.model, &response.usage)
                         .unwrap_or(0),

@@ -8,6 +8,7 @@ use serde_json::Value;
 use ts_rs::TS;
 use uuid::Uuid;
 
+use super::EscalationSpending;
 use crate::contract::stored_text;
 use crate::http::iso;
 
@@ -80,6 +81,17 @@ pub enum UsageKind {
     Tool,
 }
 
+/// The role of a model call (ADR-207); other uses are the main model's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageRole {
+    Main,
+    Escalation,
+    Classification,
+    Advisor,
+    Review,
+}
+
 /// Usage of one model, summed over the period.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -87,6 +99,7 @@ pub struct UsageRow {
     pub provider: String,
     pub model: String,
     pub kind: UsageKind,
+    pub role: UsageRole,
     pub calls: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
@@ -100,6 +113,7 @@ impl UsageRow {
             provider: r.provider.clone(),
             model: r.model.clone(),
             kind: stored_text("usage kind", &r.kind)?,
+            role: stored_text("usage role", &r.role)?,
             calls: r.calls,
             input_tokens: r.input_tokens,
             output_tokens: r.output_tokens,
@@ -114,4 +128,25 @@ pub struct UsageSummary {
     /// Start of the period.
     pub since: String,
     pub rows: Vec<UsageRow>,
+    /// What the company's model escalation spent this month, against its
+    /// budget, if it chose one (ADR-207).
+    pub escalation: Option<EscalationSpending>,
+}
+
+#[cfg(test)]
+mod tests {
+    use mimorya_agent::llm::ModelRole;
+    use mimorya_db::repositories::usage::USAGE_ROLES;
+
+    use super::UsageRole;
+    use crate::contract::stored_text;
+
+    #[test]
+    fn every_role_the_engine_records_is_stored_and_read_back() {
+        let recorded: Vec<&str> = ModelRole::ALL.iter().map(|role| role.as_str()).collect();
+        assert_eq!(recorded, USAGE_ROLES);
+        for role in USAGE_ROLES {
+            stored_text::<UsageRole>("usage role", role).unwrap();
+        }
+    }
 }

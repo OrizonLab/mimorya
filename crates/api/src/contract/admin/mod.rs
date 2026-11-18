@@ -22,6 +22,7 @@ mod mcp_oauth;
 mod memory_settings;
 mod microsoft365;
 mod mission_settings;
+mod model_escalation;
 mod organization;
 mod policies;
 mod policy_proposals;
@@ -39,7 +40,7 @@ mod users;
 pub use absences::{AbsenceRecorded, CollaboratorAbsence};
 pub use account_erasure::{AccountErasure, ErasedAccount};
 pub use activity::{
-    AuditActor, AuditEntry, AuditLog, AuditOutcome, UsageKind, UsageRow, UsageSummary,
+    AuditActor, AuditEntry, AuditLog, AuditOutcome, UsageKind, UsageRole, UsageRow, UsageSummary,
 };
 pub use approval_routing::{ApprovalRoutingUpdate, ApprovalRoutingView};
 pub use assignments::{Assignment, AssignmentScope, RoleGrant};
@@ -78,6 +79,10 @@ pub use mcp_oauth::{
 pub use memory_settings::{MemorySettingsUpdate, MemorySettingsView};
 pub use microsoft365::{Microsoft365App, NewMicrosoft365Connector};
 pub use mission_settings::{MissionSettingsUpdate, MissionSettingsView};
+pub use model_escalation::{
+    EscalationMechanism, EscalationSpending, MechanismView, ModelEscalationSettings,
+    ModelEscalationUpdate, ModelEscalationView,
+};
 pub use policies::{
     ConditionAttribute, NewPolicy, Policies, PolicyEffect, PolicyUpdate, PolicyView,
     RestrictablePermission,
