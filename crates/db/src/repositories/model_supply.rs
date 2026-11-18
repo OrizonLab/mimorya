@@ -5,6 +5,7 @@
 //! not bound: every query names its company.
 
 use chrono::{DateTime, Utc};
+use mimorya_core::model_supply::SupplyFormula;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -16,6 +17,18 @@ pub struct ModelSupplyRow {
     pub unlimited: bool,
     pub markup_bps: i32,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Locks the company for the operator's change of its supply, so that two
+/// changes at once are traced each after the other; the references to the
+/// company, which only share its key, are not held.
+pub async fn lock_supply(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Result<bool> {
+    let locked: Option<i32> =
+        sqlx::query_scalar("select 1 from tenants where id = $1 for no key update")
+            .bind(tenant_id)
+            .fetch_optional(conn)
+            .await?;
+    Ok(locked.is_some())
 }
 
 /// The company's formula, if the operator set one (else its own key).
@@ -36,7 +49,7 @@ pub async fn model_supply(
 /// capped one alone.
 #[derive(Debug, Clone, Copy)]
 pub struct NewSupplyFormula {
-    pub formula: &'static str,
+    pub formula: SupplyFormula,
     pub monthly_cap_micros: Option<i64>,
     pub unlimited: bool,
 }
@@ -55,7 +68,7 @@ pub async fn set_supply_formula(
          updated_at = now()",
     )
     .bind(tenant_id)
-    .bind(formula.formula)
+    .bind(formula.formula.as_str())
     .bind(formula.monthly_cap_micros)
     .bind(formula.unlimited)
     .execute(conn)
@@ -146,6 +159,8 @@ impl SupplySpending {
     }
 }
 
+/// Each part read through its own index: the month's calls by company and
+/// time, the prepaid ones ever by the index of the prepaid calls.
 pub async fn supply_spending(
     conn: &mut PgConnection,
     tenant_id: Uuid,
@@ -153,20 +168,22 @@ pub async fn supply_spending(
 ) -> sqlx::Result<SupplySpending> {
     sqlx::query_as(
         "select \
-         coalesce(sum(cost_micros) filter (where supply_formula = 'capped' \
-           and created_at >= $2), 0)::bigint as capped_cost_micros, \
-         coalesce(sum(billed_micros) filter (where supply_formula = 'capped' \
-           and created_at >= $2), 0)::bigint as capped_billed_micros, \
-         coalesce(sum(cost_micros) filter (where supply_formula = 'prepaid' \
-           and created_at >= $2), 0)::bigint as prepaid_cost_micros, \
-         coalesce(sum(billed_micros) filter (where supply_formula = 'prepaid' \
-           and created_at >= $2), 0)::bigint as prepaid_billed_micros, \
-         (coalesce(sum(billed_micros) filter (where supply_formula = 'prepaid'), 0) \
+         coalesce(sum(m.cost_micros) filter (where m.supply_formula = 'capped'), 0)::bigint \
+           as capped_cost_micros, \
+         coalesce(sum(m.billed_micros) filter (where m.supply_formula = 'capped'), 0)::bigint \
+           as capped_billed_micros, \
+         coalesce(sum(m.cost_micros) filter (where m.supply_formula = 'prepaid'), 0)::bigint \
+           as prepaid_cost_micros, \
+         coalesce(sum(m.billed_micros) filter (where m.supply_formula = 'prepaid'), 0)::bigint \
+           as prepaid_billed_micros, \
+         (coalesce((select sum(u.billed_micros) from usage_records u \
+                    where u.tenant_id = $1 and u.supply_formula = 'prepaid'), 0) \
            + coalesce((select p.billed_micros from tenant_prepaid_purged p \
                        where p.tenant_id = $1), 0))::bigint as prepaid_billed_ever_micros, \
          coalesce((select sum(c.amount_micros) from tenant_credit_entries c \
                    where c.tenant_id = $1), 0)::bigint as credited_micros \
-         from usage_records where tenant_id = $1 and supply_formula <> 'client_key'",
+         from usage_records m where m.tenant_id = $1 and m.created_at >= $2 \
+         and m.supply_formula <> 'client_key'",
     )
     .bind(tenant_id)
     .bind(since)

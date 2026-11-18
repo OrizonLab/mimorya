@@ -1,7 +1,9 @@
 //! How a company's model is supplied (ADR-208), loaded with its models: the
 //! formula the operator set, without which the platform's model does not
 //! serve it, and the markup of what its calls on the operator's key are
-//! re-invoiced; and what each call recorded is charged.
+//! re-invoiced; and what each call is charged, by the models it was made
+//! with: whoever takes them for a run, a review or a test calls and records
+//! by the same, whatever changes meanwhile.
 
 use mimorya_agent::llm::ModelRole;
 use mimorya_core::model_supply::{SupplyFormula, billed_micros};
@@ -10,7 +12,7 @@ use mimorya_db::repositories::model_supply::model_supply;
 use mimorya_db::repositories::usage::UsageCharge;
 use uuid::Uuid;
 
-use super::{LlmService, Models, Resolution, Review};
+use super::{Models, Resolution, Review};
 
 /// The formula of a company and its markup.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -53,22 +55,9 @@ impl Models {
             return UsageCharge::CLIENT_KEY;
         }
         UsageCharge {
-            formula: self.supply.formula.as_str(),
+            formula: self.supply.formula,
             billed_micros: Some(billed_micros(cost_micros, self.supply.markup_bps)),
         }
-    }
-}
-
-impl LlmService {
-    /// What a call of `role` the company made, that cost `cost_micros`, is
-    /// charged, as its models are loaded now.
-    pub async fn charge(
-        &self,
-        tenant_id: Uuid,
-        role: ModelRole,
-        cost_micros: i64,
-    ) -> anyhow::Result<UsageCharge> {
-        Ok(self.resolve(tenant_id).await?.charge(role, cost_micros))
     }
 }
 
@@ -109,7 +98,7 @@ mod tests {
                 assert_eq!(
                     supplied.charge(role, 200_000),
                     UsageCharge {
-                        formula: formula.as_str(),
+                        formula,
                         billed_micros: Some(230_000),
                     },
                     "{role:?}"
@@ -125,10 +114,7 @@ mod tests {
                 apart.charge(ModelRole::Review, 200_000),
                 UsageCharge::CLIENT_KEY
             );
-            assert_eq!(
-                apart.charge(ModelRole::Main, 200_000).formula,
-                formula.as_str()
-            );
+            assert_eq!(apart.charge(ModelRole::Main, 200_000).formula, formula);
         }
     }
 

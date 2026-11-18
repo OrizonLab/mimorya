@@ -40,7 +40,7 @@ use crate::services::account_links::AccountLinkService;
 use crate::services::connectors::ConnectorService;
 use crate::services::embeddings::EmbeddingService;
 use crate::services::event_bus::RunEventBus;
-use crate::services::llm::LlmService;
+use crate::services::llm::{LlmService, Models};
 
 const MAX_CORRECTION_ATTEMPTS: u32 = 2;
 
@@ -51,6 +51,8 @@ struct RunSetup {
     kind: RunKind,
     /// Whether a person awaits its first answer.
     patient: bool,
+    /// The company's models, taken once for the execution (ADR-208).
+    models: Arc<Models>,
 }
 
 pub struct RunExecutor {
@@ -114,13 +116,12 @@ impl RunExecutor {
             conversation_id: run.conversation_id,
             mission_id: run.mission_id,
         };
-        let ports = engine_ports(self, scope, fence.clone());
         // A run taken up that crashes says which actions to check.
         let message = match &mode {
             ExecutionMode::Recover { crash_message, .. } => crash_message.clone(),
             _ => CRASH_MESSAGE.to_owned(),
         };
-        let attempt = AssertUnwindSafe(self.run(&access, &run, &ports, mode, &fence));
+        let attempt = AssertUnwindSafe(self.run(&access, &run, scope, mode, &fence));
         let error = match attempt.catch_unwind().await {
             Ok(Ok(())) => return,
             Ok(Err(error)) if lost(&error) => {
@@ -156,10 +157,15 @@ impl RunExecutor {
         &self,
         access: &AccessContext,
         run: &RunRow,
-        ports: &EnginePorts,
+        scope: RunScope,
         mode: ExecutionMode,
         fence: &LeaseFence,
     ) -> anyhow::Result<()> {
+        // The company's models, taken once for this execution: its calls go
+        // to them and are charged as they say, whatever changes meanwhile
+        // (ADR-208).
+        let models = self.llm.resolve(access.subject.tenant_id).await?;
+        let ports = &engine_ports(self, scope, fence.clone(), models.clone());
         // A hook's run stays one when it resumes (ADR-109).
         let actor = Actor::agent(Some(run.id)).with_channel(run.channel.clone());
         let kind = run_kind(&self.db, run).await?;
@@ -172,6 +178,7 @@ impl RunExecutor {
             actor: actor.clone(),
             kind,
             patient,
+            models,
         };
         let (runtime, unavailable) = self.runtime_for(access, run, ports, fence, setup).await?;
         match mode {
@@ -252,14 +259,15 @@ impl RunExecutor {
             actor,
             kind,
             patient,
+            models,
         } = setup;
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
-        let Some(provider) = self.llm.provider_for(access.subject.tenant_id).await? else {
+        let Some(provider) = models.runs_provider()? else {
             anyhow::bail!("no model provider configured");
         };
         // Answers reviewed by the model the company chose for it, if any (ADR-108).
-        let router = match self.llm.reviewer_for(access.subject.tenant_id).await? {
+        let router = match models.reviewer() {
             Some(reviewer) => ModelRouter::new(provider).with_verification(reviewer),
             None => ModelRouter::new(provider),
         };
@@ -281,22 +289,18 @@ impl RunExecutor {
         );
         // The company's stronger model, if its runs may escalate (ADR-207).
         let tenant_id = access.subject.tenant_id;
-        deps.escalation = self
-            .llm
-            .escalation_for(tenant_id)
-            .await?
-            .map(|model| Escalation {
-                provider: model.provider,
-                after_failure: model.after_failure,
-                // The router's rule for this kind of run (step 2).
-                router: model.router.then(|| model.routes.of(kind)),
-                max_per_run: model.max_per_run,
-                budget: Arc::new(MonthlyBudget::new(
-                    self.db.clone(),
-                    tenant_id,
-                    model.monthly_budget_micros,
-                )),
-            });
+        deps.escalation = models.escalation.clone().map(|model| Escalation {
+            provider: model.provider,
+            after_failure: model.after_failure,
+            // The router's rule for this kind of run (step 2).
+            router: model.router.then(|| model.routes.of(kind)),
+            max_per_run: model.max_per_run,
+            budget: Arc::new(MonthlyBudget::new(
+                self.db.clone(),
+                tenant_id,
+                model.monthly_budget_micros,
+            )),
+        });
         let runtime = AgentRuntime::new(
             deps,
             RunConfig {

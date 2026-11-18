@@ -153,6 +153,9 @@ fn percent(bps: u32) -> String {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{TimeZone, Utc};
+    use mimorya_db::repositories::model_supply::{CreditEntryRow, SupplySpending};
+
     use super::*;
 
     fn parsed(line: &[&str]) -> Result<SupplyCommand, String> {
@@ -254,6 +257,70 @@ mod tests {
         for line in refused {
             assert!(parsed(line).is_err(), "{line:?}");
         }
+    }
+
+    fn report(formula: SupplyFormula, cap: Option<i64>, unlimited: bool) -> SupplyReport {
+        let at = |day: u32| Utc.with_ymd_and_hms(2026, 11, day, 9, 0, 0).unwrap();
+        SupplyReport {
+            tenant_id: uuid::Uuid::nil(),
+            formula,
+            monthly_cap_micros: cap,
+            unlimited,
+            markup_bps: 1_250,
+            month_start: at(1) - chrono::Duration::hours(10),
+            spending: SupplySpending {
+                capped_cost_micros: 40_000_000,
+                capped_billed_micros: 45_000_000,
+                prepaid_cost_micros: 8_000_000,
+                prepaid_billed_micros: 9_000_000,
+                prepaid_billed_ever_micros: 120_000_000,
+                credited_micros: 480_000_000,
+            },
+            entries: vec![
+                CreditEntryRow {
+                    amount_micros: 500_000_000,
+                    reference: "FAC-2026-0042".into(),
+                    recorded_at: at(3),
+                },
+                CreditEntryRow {
+                    amount_micros: -20_000_000,
+                    reference: "AV-2026-1".into(),
+                    recorded_at: at(4),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn the_report_tells_the_real_cost_the_re_invoiced_amount_and_the_balance() {
+        let prepaid = told("acme", &report(SupplyFormula::Prepaid, None, false));
+        for said in [
+            "Entreprise de sigle acme (identifiant 00000000-0000-0000-0000-000000000000) : \
+             crédit prépayé (prepaid).",
+            "Coefficient de refacturation : 12,5 %.",
+            "Depuis le 01/11/2026, sur la clé de l’exploitant :",
+            "  formule capped : coût réel 40,00 USD, refacturé 45,00 USD",
+            "  formule prepaid : coût réel 8,00 USD, refacturé 9,00 USD",
+            "Crédit : 2 versement(s), 480,00 USD ; consommé 120,00 USD ; solde 360,00 USD.",
+            "  03/11/2026  FAC-2026-0042  500,00 USD",
+            "  04/11/2026  AV-2026-1  -20,00 USD",
+        ] {
+            assert!(prepaid.contains(said), "{said}\n{prepaid}");
+        }
+        assert!(!prepaid.contains("Plafond"), "{prepaid}");
+        let capped = told(
+            "acme",
+            &report(SupplyFormula::Capped, Some(250_000_000), false),
+        );
+        assert!(
+            capped.contains("Plafond : 250,00 USD par mois."),
+            "{capped}"
+        );
+        let unlimited = told("acme", &report(SupplyFormula::Capped, None, true));
+        assert!(
+            unlimited.contains("Plafond : aucun, à la demande explicite de l’exploitant."),
+            "{unlimited}"
+        );
     }
 
     #[test]

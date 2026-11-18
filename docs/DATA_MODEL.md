@@ -231,10 +231,17 @@ utilisateur).
 ## 4. Isolation et rôles PostgreSQL
 
 - Rôle **propriétaire** (`DATABASE_URL`) : exécute les migrations (`mimorya-admin migrate`,
-  ADR-033), le seed de démonstration et la suppression d'une entreprise suspendue par
-  l'exploitant (`mimorya-admin delete-company`, ADR-192).
+  ADR-033), le seed de démonstration, la suppression d'une entreprise suspendue par
+  l'exploitant (`mimorya-admin delete-company`, ADR-192) et la fourniture du modèle d'une
+  entreprise par l'exploitant (`model-supply`, `set-model-supply`, `set-markup`,
+  `add-credit`, ADR-208).
 - Rôle **applicatif** `mimorya_app` (`DATABASE_APP_URL`) : `NOSUPERUSER NOBYPASSRLS`,
   non propriétaire ; droits DML sur les tables, avec ces restrictions :
+  - `tenant_model_supply`, `tenant_credit_entries`, `tenant_prepaid_purged` : **`SELECT`
+    seulement** (ADR-208). La formule, le plafond, le coefficient et les crédits sont
+    écrits par le rôle propriétaire, et la consommation purgée par
+    `system_purge_old_usage` : ni une route ni une faille de l'API ne peut attribuer la
+    clé de l'exploitant à une entreprise ;
   - `audit_log` : **`INSERT`/`SELECT` seulement**, l'`INSERT` limité aux colonnes du
     contenu d'une entrée : jamais `chain_seq` ni `chain_hash`, que seule
     `system_seal_audit_entries` pose (ADR-178) ;

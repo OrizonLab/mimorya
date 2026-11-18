@@ -2,12 +2,12 @@
 //! drawn from it, ADR-076; its conversation summarised, ADR-145): counted in
 //! that run, as its own calls are, on its runs' model and key (ADR-208).
 
-use mimorya_agent::llm::{LlmUsage, ModelRole};
+use mimorya_agent::llm::{LlmUsage, ModelRole, PriceTable};
 use mimorya_db::Database;
 use mimorya_db::repositories::usage::{NewUsage, append_usage};
 
 use super::db_ports::RunScope;
-use crate::services::llm::LlmService;
+use crate::services::llm::Models;
 
 /// The call `model` of `provider` answered, at the cost of `usage`.
 pub struct BackgroundCall<'a> {
@@ -16,17 +16,17 @@ pub struct BackgroundCall<'a> {
     pub usage: &'a LlmUsage,
 }
 
+/// Records the call, charged by the `models` it was made with (ADR-208).
 pub async fn record_background_usage(
     db: &Database,
-    llm: &LlmService,
+    prices: &PriceTable,
+    models: &Models,
     scope: RunScope,
     call: BackgroundCall<'_>,
 ) -> anyhow::Result<()> {
     let usage = call.usage;
-    let cost_micros = llm.prices().cost_micros(call.model, usage).unwrap_or(0);
-    let charge = llm
-        .charge(scope.tenant_id, ModelRole::Main, cost_micros)
-        .await?;
+    let cost_micros = prices.cost_micros(call.model, usage).unwrap_or(0);
+    let charge = models.charge(ModelRole::Main, cost_micros);
     let mut tx = db.begin(scope.tenant_id).await?;
     append_usage(
         &mut tx,

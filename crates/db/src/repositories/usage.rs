@@ -1,6 +1,7 @@
 //! Usage metering (model calls, embeddings, tools) and summaries.
 
 use chrono::{DateTime, Utc};
+use mimorya_core::model_supply::SupplyFormula;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
@@ -36,15 +37,14 @@ pub struct NewUsage {
 /// operator's, its formula and the amount re-invoiced beside the real cost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UsageCharge {
-    /// `client_key`, `capped` or `prepaid`.
-    pub formula: &'static str,
+    pub formula: SupplyFormula,
     pub billed_micros: Option<i64>,
 }
 
 impl UsageCharge {
     /// On the company's own key.
     pub const CLIENT_KEY: UsageCharge = UsageCharge {
-        formula: "client_key",
+        formula: SupplyFormula::ClientKey,
         billed_micros: None,
     };
 }
@@ -65,7 +65,7 @@ pub async fn append_usage(conn: &mut PgConnection, entry: NewUsage) -> sqlx::Res
     .bind(entry.input_tokens)
     .bind(entry.output_tokens)
     .bind(entry.cost_micros)
-    .bind(entry.charge.formula)
+    .bind(entry.charge.formula.as_str())
     .bind(entry.charge.billed_micros)
     .execute(conn)
     .await?;

@@ -70,6 +70,28 @@ pub struct Models {
     pub supply: Supply,
 }
 
+impl Models {
+    /// The provider of the company's runs, if any; `Unusable` when the
+    /// company's own cannot be used. Its calls are charged as these models
+    /// say (`charge`, ADR-208): whoever holds them calls and records alike.
+    pub fn runs_provider(&self) -> Result<Option<Arc<dyn LlmProvider>>, Unusable> {
+        match &self.runs {
+            Resolution::Platform(provider) => Ok(provider.clone()),
+            Resolution::Company(provider) => Ok(Some(provider.clone())),
+            Resolution::Refused(reason) => Err(Unusable(reason.clone())),
+        }
+    }
+
+    /// The provider the company chose apart to review its answers, if it
+    /// can be used: without it, its runs' model reviews them (ADR-108).
+    pub fn reviewer(&self) -> Option<Arc<dyn LlmProvider>> {
+        match &self.review {
+            Review::Company(provider) => Some(provider.clone()),
+            Review::Runs | Review::Refused(_) => None,
+        }
+    }
+}
+
 /// The company chose its own provider and it cannot be used (as opposed to
 /// a passing failure of the server).
 #[derive(Debug)]
@@ -187,11 +209,7 @@ impl LlmService {
         &self,
         tenant_id: Uuid,
     ) -> anyhow::Result<Option<Arc<dyn LlmProvider>>> {
-        match &self.resolve(tenant_id).await?.runs {
-            Resolution::Platform(provider) => Ok(provider.clone()),
-            Resolution::Company(provider) => Ok(Some(provider.clone())),
-            Resolution::Refused(reason) => Err(Unusable(reason.clone()).into()),
-        }
+        Ok(self.resolve(tenant_id).await?.runs_provider()?)
     }
 
     /// The provider the company chose apart to review its answers, if it
@@ -200,10 +218,7 @@ impl LlmService {
         &self,
         tenant_id: Uuid,
     ) -> anyhow::Result<Option<Arc<dyn LlmProvider>>> {
-        Ok(match &self.resolve(tenant_id).await?.review {
-            Review::Company(provider) => Some(provider.clone()),
-            Review::Runs | Review::Refused(_) => None,
-        })
+        Ok(self.resolve(tenant_id).await?.reviewer())
     }
 
     /// Whether the company's runs have a provider they can use.

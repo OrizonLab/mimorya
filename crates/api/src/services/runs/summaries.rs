@@ -136,7 +136,11 @@ impl ConversationSummaries {
         }
         // The model of the company's runs: a company that cannot use its own
         // has none summarised either.
-        let Ok(Some(provider)) = self.llm.provider_for(scope.tenant_id).await else {
+        // Called and charged by the same models (ADR-208).
+        let Ok(models) = self.llm.resolve(scope.tenant_id).await else {
+            return Ok(false);
+        };
+        let Ok(Some(provider)) = models.runs_provider() else {
             return Ok(false);
         };
         let folded: Vec<FoldedMessage<'_>> = unfolded[..count]
@@ -154,7 +158,7 @@ impl ConversationSummaries {
             model: &answer.model,
             usage: &answer.usage,
         };
-        record_background_usage(&self.db, &self.llm, scope, call).await?;
+        record_background_usage(&self.db, self.llm.prices(), &models, scope, call).await?;
         let Some(content) = answer.summary else {
             return Ok(false);
         };

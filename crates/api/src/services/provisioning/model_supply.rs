@@ -18,7 +18,7 @@ use mimorya_db::notifications::notify_invalidation;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::model_supply::{
     CreditEntryRow, NewSupplyFormula, SupplySpending, add_credit_entry, credit_entries,
-    model_supply, set_supply_formula, set_supply_markup, supply_spending,
+    lock_supply, model_supply, set_supply_formula, set_supply_markup, supply_spending,
 };
 use mimorya_db::repositories::tenants::find_tenant_by_slug;
 use serde_json::json;
@@ -89,6 +89,10 @@ pub async fn change_model_supply(
 ) -> anyhow::Result<SupplyReport> {
     let tenant_id = company(owner, slug).await?;
     let mut tx = owner.begin().await?;
+    // Two changes at once: each traced after the other, with what it found.
+    if !lock_supply(&mut tx, tenant_id).await? {
+        return Err(DomainError::not_found("Aucune entreprise ne porte ce sigle").into());
+    }
     let previous = model_supply(&mut tx, tenant_id).await?;
     let entry = match &change {
         SupplyChange::Formula { formula, cap } => {
@@ -164,7 +168,7 @@ fn chosen_formula(formula: SupplyFormula, cap: CapChoice) -> anyhow::Result<NewS
         }
     };
     Ok(NewSupplyFormula {
-        formula: formula.as_str(),
+        formula,
         monthly_cap_micros,
         unlimited,
     })

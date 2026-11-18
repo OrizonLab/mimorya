@@ -213,6 +213,16 @@ async fn a_company_the_operator_does_not_supply_has_no_platform_model() {
     assistant(&marc, true).await;
     assert_eq!(paul.delete("/admin/llm").await.status, StatusCode::OK);
     assistant(&marc, false).await;
+    // Nothing else to remove, and no platform's model to go back to.
+    let again = paul.delete("/admin/llm").await;
+    assert_eq!(again.status, StatusCode::NOT_FOUND);
+    assert!(
+        again
+            .error_message()
+            .contains("pas de fournisseur à retirer"),
+        "{}",
+        again.text()
+    );
 
     supply(&owner, formula(SupplyFormula::Capped, CapChoice::Default))
         .await
@@ -266,12 +276,23 @@ async fn each_call_carries_its_formula_and_on_the_operator_s_key_its_re_invoiced
         .unwrap();
     reloaded(&api, SupplyFormula::Capped, 1_500).await;
     let billed = SCRIPTED_CALL_MICROS * 115 / 100;
+    let before = model_supply_report(&owner, tenant::SLUG).await.unwrap();
 
     api.script(vec![ScriptedStep::text("Sur le plafond.")]);
     ask(&api, &marc, "Bonjour").await;
     assert_eq!(
         charged(&api).await,
         [("capped".into(), SCRIPTED_CALL_MICROS, Some(billed))]
+    );
+    // What the cap counts: the re-invoiced amount, the real cost beside it.
+    let after = model_supply_report(&owner, tenant::SLUG).await.unwrap();
+    let (spent, was) = (after.spending, before.spending);
+    assert_eq!(
+        (
+            spent.capped_cost_micros - was.capped_cost_micros,
+            spent.capped_billed_micros - was.capped_billed_micros
+        ),
+        (SCRIPTED_CALL_MICROS, billed)
     );
 
     supply(&owner, formula(SupplyFormula::Prepaid, CapChoice::Default))
