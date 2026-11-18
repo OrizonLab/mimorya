@@ -14881,6 +14881,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       - règle « escalade » et règle « principal » ;
       - classement qui nomme l'escalade, puis toute autre réponse, puis un appel en
         échec, relances comprises : le modèle principal reste ;
+      - un classement surchargé une fois est relancé, et sa relance compte ;
       - une compétence chargée dans la même étape qu'une action à valider fait passer
         le run au modèle d'escalade à sa reprise ;
       - budget épuisé : pas de classement, et c'est tracé ;

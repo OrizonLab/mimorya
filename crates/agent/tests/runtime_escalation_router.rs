@@ -1,8 +1,9 @@
 //! The router of the model escalation (ADR-207, step 2): while it is on, a
 //! run starts on the model its company's rule names for its kind, or the
 //! one a classification of its request by the main model names, in strict
-//! JSON: any other answer, a failed classification, or the month's budget
-//! spent keep the main model, and the classification is counted as such. A
+//! JSON, retried as other model calls are: any other answer, a failed
+//! classification, or the month's budget spent keep the main model, and
+//! the classification is counted as such. A
 //! skill loaded that asks for the escalation model switches the run, once,
 //! even once it resumes after a validation asked in the same step, and only
 //! the platform's `skill_read` may ask; nothing switches without the
@@ -174,6 +175,25 @@ async fn a_failed_classification_keeps_the_main_model() {
     assert_eq!(answer(&h).await, ANSWER);
     assert!(stronger.requests().is_empty());
     assert_eq!(roles(&h), [ModelRole::Main]);
+}
+
+#[tokio::test]
+async fn a_classification_is_retried_as_other_model_calls_are() {
+    let route = Some(EscalationRoute::Classification);
+    let (escalation, stronger) = routed(route, vec![ScriptedStep::text(ANSWER)], true);
+    // Overloaded once, then the retry names the escalation model.
+    let main = vec![
+        ScriptedStep::fails("surchargé"),
+        ScriptedStep::text(r#"{"niveau": "escalade"}"#),
+    ];
+    let h = run_with(main, escalation);
+    assert_eq!(answer(&h).await, ANSWER);
+    assert_eq!(
+        roles(&h),
+        [ModelRole::Classification, ModelRole::Escalation]
+    );
+    assert_eq!(started(&h), [Some("classification".into())]);
+    assert_eq!(stronger.requests().len(), 1);
 }
 
 #[tokio::test]
