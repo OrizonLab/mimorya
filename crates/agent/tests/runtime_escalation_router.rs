@@ -4,8 +4,9 @@
 //! JSON: any other answer, a failed classification, or the month's budget
 //! spent keep the main model, and the classification is counted as such. A
 //! skill loaded that asks for the escalation model switches the run, once,
-//! and only the platform's `skill_read` may ask; nothing switches without
-//! the router. A run taken up is not routed again.
+//! even once it resumes after a validation asked in the same step, and only
+//! the platform's `skill_read` may ask; nothing switches without the
+//! router. A run taken up is not routed again.
 
 mod support;
 
@@ -14,8 +15,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use mimorya_agent::llm::{EscalationRoute, LlmMessage, ModelRole};
-use mimorya_agent::runtime::{ApprovalDecision, Escalation, EscalationBudget, RunOutcome};
-use mimorya_agent::testing::{ScriptedProvider, ScriptedStep, SkillFixture, call};
+use mimorya_agent::runtime::{
+    ApprovalDecision, Escalation, EscalationBudget, RunCheckpoint, RunOutcome,
+};
+use mimorya_agent::testing::{ScriptedCall, ScriptedProvider, ScriptedStep, SkillFixture, call};
 use serde_json::json;
 use support::{Harness, Options, setup};
 
@@ -164,7 +167,9 @@ async fn any_other_classification_keeps_the_main_model() {
 async fn a_failed_classification_keeps_the_main_model() {
     let route = Some(EscalationRoute::Classification);
     let (escalation, stronger) = routed(route, Vec::new(), true);
-    let main = vec![ScriptedStep::fails("surchargé"), ScriptedStep::text(ANSWER)];
+    // The call and its two retries fail.
+    let mut main: Vec<_> = (0..3).map(|_| ScriptedStep::fails("surchargé")).collect();
+    main.push(ScriptedStep::text(ANSWER));
     let h = run_with(main, escalation);
     assert_eq!(answer(&h).await, ANSWER);
     assert!(stronger.requests().is_empty());
@@ -189,9 +194,9 @@ async fn past_the_month_s_budget_no_classification_is_asked() {
     assert_eq!(limited, [Some("monthly_budget".into())]);
 }
 
-/// The company's skill that asks for the escalation model, or not.
-fn skill_run(asks: bool, route: Option<EscalationRoute>) -> (Harness, Arc<ScriptedProvider>) {
-    let (escalation, stronger) = routed(route, vec![ScriptedStep::text(ANSWER)], true);
+/// A run whose company's skill asks for the escalation model, or not, and
+/// whose main model takes `steps`.
+fn with_skill(asks: bool, escalation: Escalation, steps: Vec<ScriptedStep>) -> Harness {
     let skill = SkillFixture {
         name: SKILL.into(),
         description: "Analyse approfondie des interventions".into(),
@@ -199,17 +204,29 @@ fn skill_run(asks: bool, route: Option<EscalationRoute>) -> (Harness, Arc<Script
         quality_criteria: Vec::new(),
         model_escalation: asks,
     };
-    let load = ScriptedStep::calls("", vec![call("skill_read", json!({ "name": SKILL }))]);
-    let h = setup(
-        vec![load, ScriptedStep::text(ANSWER)],
+    setup(
+        steps,
         Options {
             platform: Some(Vec::new()),
             skills: vec![skill],
             escalation: Some(escalation),
             ..Options::default()
         },
-    );
-    (h, stronger)
+    )
+}
+
+fn load() -> ScriptedCall {
+    call("skill_read", json!({ "name": SKILL }))
+}
+
+/// The run loads the skill, then answers.
+fn skill_run(asks: bool, route: Option<EscalationRoute>) -> (Harness, Arc<ScriptedProvider>) {
+    let (escalation, stronger) = routed(route, vec![ScriptedStep::text(ANSWER)], true);
+    let steps = vec![
+        ScriptedStep::calls("", vec![load()]),
+        ScriptedStep::text(ANSWER),
+    ];
+    (with_skill(asks, escalation, steps), stronger)
 }
 
 #[tokio::test]
@@ -226,6 +243,36 @@ async fn a_skill_that_asks_for_the_escalation_model_switches_the_run_once_loaded
     assert_eq!(roles(&h), [ModelRole::Main, ModelRole::Escalation]);
     assert_eq!(started(&h), [Some("skill".into())]);
     assert!(checkpoint.escalation.escalated && checkpoint.escalation.skill_heeded);
+}
+
+#[tokio::test]
+async fn a_skill_loaded_beside_an_action_to_validate_switches_the_run_once_it_resumes() {
+    let route = Some(EscalationRoute::Main);
+    let (escalation, stronger) = routed(route, vec![ScriptedStep::text(ANSWER)], true);
+    let apply = call("planning_apply", json!({ "slots": 2 }));
+    let h = with_skill(
+        true,
+        escalation,
+        vec![ScriptedStep::calls("", vec![load(), apply])],
+    );
+    let RunOutcome::AwaitingApproval {
+        approvals,
+        checkpoint,
+    } = h.start().await
+    else {
+        panic!("expected a pause for validation")
+    };
+    // As another process reads it back: asked, not heeded yet.
+    let stored = serde_json::to_value(&checkpoint).unwrap();
+    let checkpoint: RunCheckpoint = serde_json::from_value(stored).unwrap();
+    assert!(checkpoint.escalation.skill_asked && !checkpoint.escalation.skill_heeded);
+    let decisions = HashMap::from([(approvals[0].approval_id, ApprovalDecision::approved())]);
+    let outcome = h.runtime.resume(checkpoint, &decisions).await.unwrap();
+    assert_eq!(outcome.status(), "completed");
+    assert_eq!(roles(&h), [ModelRole::Main, ModelRole::Escalation]);
+    assert_eq!(stronger.requests().len(), 1);
+    assert_eq!(started(&h), [Some("skill".into())]);
+    assert_eq!(*h.applied.lock().unwrap(), vec![json!({ "slots": 2 })]);
 }
 
 #[tokio::test]

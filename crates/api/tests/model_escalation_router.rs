@@ -6,7 +6,7 @@
 //! the main model is recorded as such, its cost counted in the month's
 //! escalation spending; a skill version asks for the escalation model, the
 //! next one written without saying keeps that, and a run that loads it
-//! goes on with that model.
+//! goes on with that model. The table keeps each rule to the routes.
 
 mod support;
 
@@ -313,4 +313,33 @@ async fn a_skill_version_that_asks_for_the_escalation_model_switches_the_run_loa
     let deleted = paul.delete(&format!("{SKILLS}/{id}")).await;
     assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.text());
     leave(&paul).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn the_table_keeps_each_rule_to_the_routes() {
+    let api = start().await;
+    for column in [
+        "route_conversation",
+        "route_mission",
+        "route_scheduled_task",
+        "route_hook",
+    ] {
+        let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+        let refused = sqlx::query(&format!(
+            "insert into tenant_model_escalation (tenant_id, provider, model, \
+             monthly_budget_micros, max_per_run, {column}) \
+             values ($1, 'anthropic', $2, 1000000, 1, 'haut')"
+        ))
+        .bind(tenant::ID)
+        .bind(ESCALATION_MODEL)
+        .execute(&mut *tx)
+        .await
+        .unwrap_err()
+        .to_string();
+        // Rolled back: nothing is left for the other tests.
+        drop(tx);
+        let constraint = format!("tenant_model_escalation_{column}");
+        assert!(refused.contains(&constraint), "{column}: {refused}");
+    }
 }

@@ -14856,7 +14856,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     ne pas pouvoir sortir de son cadre, sous une consigne stable. Il répond au plus 32
     jetons. Seuls `{"niveau": "principal"}` et `{"niveau": "escalade"}` sont lus,
     espaces autour admis : toute autre réponse (texte autour, bloc de code, champ en
-    plus, autre valeur) ou un appel en échec vaut « principal », avec un avertissement
+    plus, autre valeur) ou un appel en échec, relances comprises, vaut « principal », avec un avertissement
     journalisé sans contenu. Son coût est compté dans le run et dans le budget
     d'escalade (rôle « classement ») ; le budget du mois épuisé, il n'est pas fait, et
     c'est tracé comme toute borne atteinte. Une demande écrite pour obtenir le modèle
@@ -14880,7 +14880,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `crates/agent/tests/runtime_escalation_router.rs`, avec des modèles simulés :
       - règle « escalade » et règle « principal » ;
       - classement qui nomme l'escalade, puis toute autre réponse, puis un appel en
-        échec : le modèle principal reste ;
+        échec, relances comprises : le modèle principal reste ;
+      - une compétence chargée dans la même étape qu'une action à valider fait passer
+        le run au modèle d'escalade à sa reprise ;
       - budget épuisé : pas de classement, et c'est tracé ;
       - compétence qui demande l'escalade ;
       - rien sans le routeur, rien pour une compétence qui ne le demande pas ;
@@ -14894,4 +14896,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         du mois ;
       - une version demande l'escalade, la suivante écrite sans le dire le reprend, et
         le run qui la charge passe au modèle d'escalade ;
+      - une proposition de l'agent reprend le choix de la version active, dans un sens
+        comme dans l'autre (`skill_proposal_escalation.rs`) ;
+      - la table refuse une règle inconnue ;
     - les parcours de bout en bout règlent le routeur et cochent la case d'une version.

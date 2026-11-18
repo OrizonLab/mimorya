@@ -1,7 +1,8 @@
 //! The router (ADR-207, step 2): the level of a run's model, main or
 //! escalation, decided at its start from the company's rule for its kind of
 //! run, or by a short classification of its request by the main model, in
-//! strict JSON: any other answer, or none, stands for the main model. The
+//! strict JSON: any other answer, or none once its retries are spent,
+//! stands for the main model. The
 //! classification's cost is counted in the run and in the escalation's
 //! budget, past which it is not made. A skill loaded later may still switch
 //! the run (`escalation::next_model`).
@@ -9,7 +10,7 @@
 use serde::Deserialize;
 
 use super::escalation::{Reason, budget_spent, start_escalation};
-use super::model_call::{ModelCall, record_model_usage};
+use super::model_call::{ModelCall, complete_with_retry, record_model_usage};
 use super::state::RunCheckpoint;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::llm::{EscalationRoute, LlmMessage, LlmRequest, ModelRole, TaskClass};
@@ -79,7 +80,9 @@ async fn classified_hard(
     }
     let provider = deps.router.provider_for(TaskClass::Agent);
     let request = classification_request(&config.objective);
-    let response = match provider.complete(&request).await {
+    let (retries, delay) = (deps.max_provider_retries, deps.retry_delay);
+    let answered = complete_with_retry(provider.as_ref(), &request, retries, delay).await;
+    let response = match answered {
         Ok(response) => response,
         Err(error) => {
             tracing::warn!(error = %error, "Classification failed: the run keeps its main model");

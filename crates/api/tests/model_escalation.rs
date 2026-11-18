@@ -48,12 +48,8 @@ fn escalation(model: &str) -> Value {
         "afterFailure": false,
         "router": false,
         "advisor": false,
-        "routes": {
-            "conversation": "main",
-            "mission": "main",
-            "scheduledTask": "main",
-            "hook": "main",
-        },
+        "routes": { "conversation": "main", "mission": "main",
+                    "scheduledTask": "main", "hook": "main" },
         "monthlyBudgetMicros": 50_000_000,
         "maxPerRun": 5,
     })
