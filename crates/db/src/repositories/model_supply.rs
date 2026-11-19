@@ -16,7 +16,31 @@ pub struct ModelSupplyRow {
     pub monthly_cap_micros: Option<i64>,
     pub unlimited: bool,
     pub markup_bps: i32,
+    /// The shares of the cap and of the last payment its administrators
+    /// are alerted at, in percent (ADR-211).
+    pub cap_alert_percents: Vec<i16>,
+    pub credit_alert_percents: Vec<i16>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl ModelSupplyRow {
+    /// The shares of the cap its administrators are alerted at.
+    pub fn cap_alerts(&self) -> Vec<u8> {
+        shares(&self.cap_alert_percents)
+    }
+
+    /// The shares of the last payment its administrators are alerted at.
+    pub fn credit_alerts(&self) -> Vec<u8> {
+        shares(&self.credit_alert_percents)
+    }
+}
+
+/// Shares as stored, kept within 0 and 100 by the table.
+fn shares(stored: &[i16]) -> Vec<u8> {
+    stored
+        .iter()
+        .filter_map(|percent| u8::try_from(*percent).ok())
+        .collect()
 }
 
 /// Locks the company for the operator's change of its supply, so that two
@@ -37,8 +61,8 @@ pub async fn model_supply(
     tenant_id: Uuid,
 ) -> sqlx::Result<Option<ModelSupplyRow>> {
     sqlx::query_as(
-        "select formula, monthly_cap_micros, unlimited, markup_bps, updated_at \
-         from tenant_model_supply where tenant_id = $1",
+        "select formula, monthly_cap_micros, unlimited, markup_bps, cap_alert_percents, \
+         credit_alert_percents, updated_at from tenant_model_supply where tenant_id = $1",
     )
     .bind(tenant_id)
     .fetch_optional(conn)
@@ -91,6 +115,32 @@ pub async fn set_supply_markup(
     )
     .bind(tenant_id)
     .bind(markup_bps)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+/// Sets the shares the company's administrators are alerted at, those
+/// given alone, its formula kept, its own key without one (owner role).
+pub async fn set_supply_alerts(
+    conn: &mut PgConnection,
+    tenant_id: Uuid,
+    cap_percents: Option<&[i16]>,
+    credit_percents: Option<&[i16]>,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "insert into tenant_model_supply (tenant_id, formula, cap_alert_percents, \
+         credit_alert_percents) \
+         values ($1, 'client_key', coalesce($2, '{80,95}'::smallint[]), \
+         coalesce($3, '{20,5}'::smallint[])) \
+         on conflict (tenant_id) do update set \
+         cap_alert_percents = coalesce($2, tenant_model_supply.cap_alert_percents), \
+         credit_alert_percents = coalesce($3, tenant_model_supply.credit_alert_percents), \
+         updated_at = now()",
+    )
+    .bind(tenant_id)
+    .bind(cap_percents)
+    .bind(credit_percents)
     .execute(conn)
     .await?;
     Ok(())

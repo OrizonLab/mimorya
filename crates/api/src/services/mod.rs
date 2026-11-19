@@ -33,6 +33,7 @@ pub mod second_factor;
 pub mod skill_evaluations;
 pub mod skill_proposal_notice;
 pub mod sso;
+pub mod supply_alerts;
 pub mod tenant_cache;
 
 pub use access::{AccessContext, AccessService, AuthIdentity};

@@ -128,6 +128,7 @@ mimorya-admin set-model-supply --slug acme --formula capped --cap 250   # clé d
 mimorya-admin set-model-supply --slug acme --formula prepaid            # clé de l'exploitant contre un crédit prépayé
 mimorya-admin set-markup --slug acme --percent 15                       # coefficient de refacturation
 mimorya-admin add-credit --slug acme --amount 500 --reference FAC-2026-0042   # versement ; négatif pour une correction
+mimorya-admin set-supply-alerts --slug acme --cap 80,95 --credit 20,5    # parts qui alertent les administrateurs (ADR-211)
 ```
 
 `create-company`, `invite`, `suspend-company`, `reactivate-company`, `release-company` et
@@ -147,7 +148,12 @@ plafond mensuel (`--formula capped`, 100 USD sans `--cap`, sans plafond seulemen
 l'exploitant, au coût réel et au montant refacturé, les versements et le solde, recalculé à
 chaque fois. Chaque changement est tracé dans le journal d'audit de l'entreprise (acteur
 `system`) ; un versement n'est jamais modifié : une correction est un versement de plus,
-avec sa propre référence.
+avec sa propre référence. Les administrateurs des réglages de l'entreprise sont prévenus
+par e-mail quand le mois atteint une part du plafond, ou que le solde passe sous une part
+du dernier versement : par défaut 80 et 95 % du plafond, 20 puis 5 % du versement, réglés
+par `set-supply-alerts` (`--cap`, `--credit` ou les deux ; `aucun` pour n'en garder
+aucune ; `100` pour le plafond atteint, `0` pour le crédit épuisé). Chaque alerte part une
+fois pour son mois ou son versement (ADR-211).
 Gardez sa sortie : le journal d'audit de l'entreprise part avec elle, et ses sauvegardes la
 gardent jusqu'à leur retrait (après une restauration, supprimez-la de nouveau). Avant elle,
 `release-company`, dans le service `api` qui a la clé maître

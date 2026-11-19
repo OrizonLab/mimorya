@@ -47,5 +47,7 @@ pub async fn show(
             })
             .collect(),
         stopped: overview.stopped.map(|stop| stop.message().to_string()),
+        cap_alert_percents: overview.cap_alerts,
+        credit_alert_percents: overview.credit_alerts,
     }))
 }

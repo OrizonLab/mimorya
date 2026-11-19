@@ -60,6 +60,7 @@ use crate::services::policy_proposal_notice::announce_policy_proposals;
 use crate::services::runs::record_run_event;
 use crate::services::skill_evaluations::wake as play_skill_evaluations;
 use crate::services::skill_proposal_notice::announce_skill_proposals;
+use crate::services::supply_alerts::send_supply_alerts;
 
 const STALE_AFTER: chrono::Duration = chrono::Duration::minutes(15);
 const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
@@ -108,6 +109,12 @@ pub fn spawn_maintenance(services: AppState) -> JoinHandle<()> {
                 Ok(0) => {}
                 Ok(announced) => tracing::info!(announced, "Policy proposals announced"),
                 Err(error) => tracing::warn!(error = %error, "Policy proposal notice sweep failed"),
+            }
+            // The operator's supply near its end, told (ADR-211).
+            match send_supply_alerts(&services).await {
+                Ok(0) => {}
+                Ok(alerted) => tracing::info!(alerted, "Supply alerts sent"),
+                Err(error) => tracing::warn!(error = %error, "Supply alert sweep failed"),
             }
             // Played apart, for as long as they take (ADR-104).
             play_skill_evaluations(&services);

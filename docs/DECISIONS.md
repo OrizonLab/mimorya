@@ -15212,8 +15212,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 ## ADR-210 — Écrans de la fourniture du modèle : formule, plafond ou crédit, montants refacturés (chantier 6, étape 3)
 
 - **Statut** : accepté (2026-11-18) · complète l'ADR-208 (formules, limites) et
-  l'ADR-209 (escalade sur la clé de l'exploitant). Les alertes font l'objet d'une
-  décision suivante.
+  l'ADR-209 (escalade sur la clé de l'exploitant). Les alertes font l'objet de
+  l'ADR-211.
 - **Contexte** : l'exploitant règle la formule, le plafond, le coefficient et les crédits
   par `mimorya-admin` (ADR-208), et la plateforme les applique. L'entreprise doit voir ce
   qu'elle paie : sa formule, son plafond ou son crédit, ses versements, et des montants
@@ -15269,3 +15269,75 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     démonstration lus dans l'onglet, fournisseur propre signalé ; solde, refus et
     versements d'un crédit prépayé ; un appel sur la clé de l'exploitant montré dans la
     consommation au montant que donne l'API.
+
+## ADR-211 — Alertes de la fourniture du modèle aux administrateurs (chantier 6, étape 3)
+
+- **Statut** : accepté (2026-11-19) · complète l'ADR-208 (formules, limites) et
+  l'ADR-210 (écrans) ; s'appuie sur l'ADR-086 (un balayage à la fois) et l'ADR-170
+  (avis par e-mail aux administrateurs d'une permission).
+- **Contexte** : au-delà du plafond ou du crédit, plus aucun run ne part sur le modèle de
+  la plateforme (ADR-208). Les administrateurs de l'entreprise doivent le voir venir, par
+  les avis existants, à des seuils réglables par l'exploitant. Par défaut : 80 % et 95 %
+  du plafond, ou un solde passé sous 20 % puis 5 % du dernier versement.
+- **Décision** :
+  - **parts** :
+    - deux listes par entreprise, dans `tenant_model_supply` : `cap_alert_percents`, de
+      1 à 100 % du plafond, et `credit_alert_percents`, de 0 à 99 % du dernier
+      versement ;
+    - au plus cinq parts par liste, sans doublon ;
+    - par défaut 80 et 95, puis 20 et 5 ;
+    - 100 % alerte au plafond atteint, 0 % au crédit épuisé, quand l'exploitant les
+      ajoute ;
+    - la table garde ces bornes. Seul l'exploitant les écrit, par
+      `mimorya-admin set-supply-alerts` (`--cap`, `--credit`, `aucun` pour vider), avec
+      le rôle propriétaire, et le changement est tracé (`model_supply.alerts_set`, acteur
+      `system`). Le rôle applicatif ne fait que les lire ;
+  - **quand** :
+    - en formule 2, une part est atteinte quand ce que le mois a refacturé en atteint
+      autant du plafond, sauf en mode sans plafond ;
+    - en formule 3, quand le solde du crédit tombe à cette part du dernier versement
+      positif, une correction n'en étant pas un. Sans versement, aucune alerte ;
+  - **une fois** : chaque part est dite une fois pour son mois (`AAAA-MM`, dans le fuseau
+    de la plateforme) ou pour son versement (sa référence). Le mois suivant ou un nouveau
+    versement la réarme. Les parts envoyées sont gardées dans `tenant_supply_alerts`, sous
+    RLS, que l'application écrit en les envoyant, une ligne par part, jamais modifiée.
+    Elle est supprimée avec l'entreprise ;
+  - **qui et comment** :
+    - chaque minute, un processus qui exécute les runs fait la passe, un à la fois
+      (verrou de balayage). Il lit les entreprises actives sur la clé de l'exploitant par
+      une fonction `SECURITY DEFINER` minimale (`system_supplied_companies`), puis
+      chacune dans sa propre entreprise ;
+    - si plusieurs parts sont atteintes à la fois, seule la plus pressante est dite : la
+      plus haute du plafond, la plus basse du versement. Toutes sont enregistrées ;
+    - l'e-mail part à chaque compte qui gère les réglages de toute l'entreprise
+      (`settings:manage`, ceux qui voient « Modèle d'IA »), en français et en texte
+      simple. Il donne la part, le montant du mois et le plafond, ou le solde et le
+      dernier versement, ce qui suit au-delà, à qui demander plus (l'exploitant), et le
+      lien vers l'administration ;
+    - il part toujours, comme une invitation : il dit ce qui arrêtera les runs, et aucun
+      choix de « Mon compte » (ADR-094) ne le retient ;
+    - chaque envoi est tracé (`model_supply.alerted`, acteur `system`, pour le compte de
+      l'administrateur, avec la sorte et la part, sans l'adresse ni la réponse du relais) ;
+    - un message refusé par le relais est tracé et n'est pas renvoyé ;
+    - sans relais, rien n'est envoyé ni enregistré ;
+    - une entreprise sans un tel administrateur n'enregistre rien, pour le suivant ;
+  - **écran** : la section « Fourniture du modèle » (ADR-210) dit à quelles parts les
+    administrateurs sont prévenus.
+- **Conséquences** :
+  - un arrêt du service entre l'envoi et l'enregistrement peut
+    faire dire une part deux fois ; jamais aucune n'est perdue ;
+  - l'alerte suit la passe de chaque minute : un appel qui franchit une part est dit au
+    plus une minute après, et le dépassement reste celui de l'ADR-208.
+- **Tests** :
+  - `crates/core/src/model_supply/alerts.rs` : parts lues et bornées, parts atteintes du
+    plafond et du versement, la plus pressante ;
+  - `crates/api/tests/model_supply_alerts.rs` : 80 puis 95 % dits une fois chacun pour le
+    mois, la plus pressante seule quand deux sont franchies d'un coup, 100 % ajouté par
+    l'exploitant, jamais à un compte sans les réglages, tracés sans adresse ; 20 puis 5 %
+    du versement, réarmés par un nouveau versement ; rien sans relais ; parts refusées
+    hors bornes, rangées, lues par l'entreprise ;
+  - `crates/db/tests/supply_alerts.rs` : bornes gardées par la table, parts que
+    l'application ne peut pas écrire, alertes de chaque entreprise à elle seule, passe sur
+    les seules entreprises actives sur la clé de l'exploitant ;
+  - `crates/api/src/services/supply_alerts/mail.rs` : objet et texte de chaque alerte ;
+  - `apps/web/e2e/model-supply.spec.ts` : parts du plafond dites dans l'onglet.

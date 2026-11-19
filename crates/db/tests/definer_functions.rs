@@ -5,7 +5,7 @@
 
 mod support;
 
-const EXPECTED: [&str; 50] = [
+const EXPECTED: [&str; 51] = [
     "auth_audit_export_token",
     "auth_domain_held_elsewhere",
     "auth_find_identity_provider",
@@ -47,6 +47,7 @@ const EXPECTED: [&str; 50] = [
     "system_rate_limit_hit",
     "system_rate_limit_release",
     "system_seal_audit_entries",
+    "system_supplied_companies",
     "system_tenants_awaiting_embeddings",
     "system_unannounced_policy_proposals",
     "system_unannounced_skill_proposals",
