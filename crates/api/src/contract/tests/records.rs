@@ -23,12 +23,19 @@ use crate::contract::*;
 
 #[test]
 fn run_records_read_back_as_their_contract_types() {
-    reads_back::<_, RunUsage>(&RunUsageTotals {
+    let usage = RunUsageTotals {
         steps: 3,
         tool_calls: 2,
         input_tokens: 1_200,
         output_tokens: 300,
         cost_micros: 4_500,
+        charged_micros: None,
+    };
+    reads_back::<_, RunUsage>(&usage);
+    // Charged at what the company pays (ADR-212).
+    reads_back::<_, RunUsage>(&RunUsageTotals {
+        charged_micros: Some(4_950),
+        ..usage
     });
     reads_back::<BudgetLimits, RunBudget>(&DEFAULT_BUDGET);
     reads_back::<_, Verification>(&VerificationReport {

@@ -50,7 +50,8 @@ pub fn check_budget(
     {
         return Err("budget de tokens atteint".into());
     }
-    if usage.cost_micros >= limits.max_cost_micros {
+    // What the calls cost the company (ADR-212).
+    if usage.charged() >= limits.max_cost_micros {
         return Err("budget de coût atteint".into());
     }
     if elapsed_ms >= limits.max_duration_ms {
@@ -73,7 +74,7 @@ pub fn share_left(
     let parts = parts.max(1);
     let input = limits.max_input_tokens.saturating_sub(usage.input_tokens) / u64::from(parts);
     let output = limits.max_output_tokens.saturating_sub(usage.output_tokens) / u64::from(parts);
-    let cost = (limits.max_cost_micros - usage.cost_micros) / i64::from(parts);
+    let cost = (limits.max_cost_micros - usage.charged()) / i64::from(parts);
     let duration = limits.max_duration_ms.saturating_sub(elapsed_ms);
     if input == 0 || output == 0 || cost <= 0 || duration == 0 {
         return None;
@@ -107,6 +108,7 @@ mod tests {
             input_tokens: 300_000,
             output_tokens: 30_000,
             cost_micros: 2_400_000,
+            charged_micros: None,
         };
         let share = share_left(&DEFAULT_BUDGET, &usage, 9 * 60_000, 3, &CAP).unwrap();
         assert_eq!(
@@ -122,6 +124,13 @@ mod tests {
         // Plenty left: the cap holds.
         let fresh = share_left(&DEFAULT_BUDGET, &RunUsageTotals::default(), 0, 1, &CAP);
         assert_eq!(fresh, Some(CAP));
+        // What is left is what the company was not charged yet (ADR-212).
+        let charged = RunUsageTotals {
+            charged_micros: Some(2_700_000),
+            ..usage
+        };
+        let share = share_left(&DEFAULT_BUDGET, &charged, 9 * 60_000, 3, &CAP).unwrap();
+        assert_eq!(share.max_cost_micros, 100_000);
     }
 
     #[test]
@@ -134,5 +143,24 @@ mod tests {
         let late = DEFAULT_BUDGET.max_duration_ms;
         let none = RunUsageTotals::default();
         assert_eq!(share_left(&DEFAULT_BUDGET, &none, late, 1, &CAP), None);
+    }
+
+    #[test]
+    fn the_cost_budget_weighs_what_the_company_was_charged() {
+        let mut usage = RunUsageTotals::default();
+        // On the operator's key at a 10 % markup: charged past the budget
+        // before the calls' own cost reaches it.
+        usage.add_cost(2_800_000, 3_080_000);
+        assert_eq!((usage.cost_micros, usage.charged()), (2_800_000, 3_080_000));
+        let stopped = check_budget(&DEFAULT_BUDGET, &usage, 0);
+        assert_eq!(stopped, Err("budget de coût atteint".into()));
+        // A run checkpointed before charges its earlier calls at their cost.
+        let earlier = RunUsageTotals {
+            cost_micros: 1_000_000,
+            ..RunUsageTotals::default()
+        };
+        let mut resumed = earlier;
+        resumed.add_cost(100_000, 110_000);
+        assert_eq!(resumed.charged(), 1_110_000);
     }
 }

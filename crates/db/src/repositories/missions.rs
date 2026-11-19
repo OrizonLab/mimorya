@@ -56,7 +56,8 @@ pub struct MissionView {
 
 const VIEW: &str = "select {COLUMNS}, s.id as stage_run_id, s.status as stage_status, \
      s.error as stage_error, \
-     (select coalesce(sum((r.usage->>'costMicros')::bigint), 0) from agent_runs r \
+     (select coalesce(sum(coalesce((r.usage->>'chargedMicros')::bigint, \
+       (r.usage->>'costMicros')::bigint)), 0) from agent_runs r \
        where r.mission_id = m.id)::bigint as cost_micros \
      from missions m \
      left join lateral (select r.id, r.status, r.error from agent_runs r \
@@ -217,11 +218,13 @@ pub async fn end_mission(
     Ok(ended.rows_affected() == 1)
 }
 
-/// What the mission's stages cost so far.
+/// What the mission's stages cost the company so far (ADR-212): its own
+/// key's cost, the operator's re-invoiced amount; a stage checkpointed
+/// before, its cost.
 pub async fn mission_cost(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<i64> {
     sqlx::query_scalar(
-        "select coalesce(sum((usage->>'costMicros')::bigint), 0)::bigint from agent_runs \
-         where mission_id = $1",
+        "select coalesce(sum(coalesce((usage->>'chargedMicros')::bigint, \
+         (usage->>'costMicros')::bigint)), 0)::bigint from agent_runs where mission_id = $1",
     )
     .bind(id)
     .fetch_one(conn)

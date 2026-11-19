@@ -47,8 +47,14 @@ pub struct RunUsage {
     pub tool_calls: u32,
     pub input_tokens: u64,
     pub output_tokens: u64,
-    /// Estimated cost, in millionths of the currency unit.
+    /// What its calls cost at the platform's prices, in micro-dollars.
     pub cost_micros: i64,
+    /// What they cost the company (ADR-212): their cost on its own key, the
+    /// amount re-invoiced on the operator's. Absent for a run checkpointed
+    /// before: then its cost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub charged_micros: Option<i64>,
 }
 
 /// The limits a run stops at (`agent_runs.budget`).

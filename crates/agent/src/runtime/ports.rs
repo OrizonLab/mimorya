@@ -83,7 +83,8 @@ pub enum RunEvent {
     Usage {
         input_tokens: u64,
         output_tokens: u64,
-        /// `None` when the model is not priced.
+        /// What the call cost the company (ADR-212); `None` when the model
+        /// is not priced.
         cost_micros: Option<i64>,
     },
     /// Taken up again from its last saved step after the service stopped
@@ -207,7 +208,9 @@ pub struct UsageRecord {
 
 #[async_trait]
 pub trait UsageSink: Send + Sync {
-    async fn record(&self, usage: UsageRecord) -> anyhow::Result<()>;
+    /// Records `usage`; what it cost the company (ADR-212): its cost on the
+    /// company's own key, the amount re-invoiced on the operator's.
+    async fn record(&self, usage: UsageRecord) -> anyhow::Result<i64>;
 }
 
 #[derive(Debug, Clone, PartialEq)]

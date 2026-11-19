@@ -15,7 +15,28 @@ pub struct RunUsageTotals {
     pub tool_calls: u32,
     pub input_tokens: u64,
     pub output_tokens: u64,
+    /// What the calls cost at the platform's prices.
     pub cost_micros: i64,
+    /// What they cost the company (ADR-212): their cost on its own key, the
+    /// amount re-invoiced on the operator's (ADR-208). A run checkpointed
+    /// before counts its earlier calls at their cost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub charged_micros: Option<i64>,
+}
+
+impl RunUsageTotals {
+    /// What the calls cost the company: what budgets and limits weigh.
+    pub fn charged(&self) -> i64 {
+        self.charged_micros.unwrap_or(self.cost_micros)
+    }
+
+    /// Adds a call, or calls, that cost `cost_micros` and were charged
+    /// `charged_micros`.
+    pub fn add_cost(&mut self, cost_micros: i64, charged_micros: i64) {
+        let charged = self.charged();
+        self.cost_micros += cost_micros;
+        self.charged_micros = Some(charged + charged_micros);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

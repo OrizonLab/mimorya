@@ -123,15 +123,26 @@ pub async fn cost_budget(run: Uuid) -> i64 {
 
 /// Adds to the mission a stage over that spent `cost_micros`, an hour ago.
 pub async fn spend(mission: Uuid, cost_micros: i64) {
+    stage_over(mission, json!({ "costMicros": cost_micros })).await;
+}
+
+/// The same, a stage that cost `cost_micros` and was charged
+/// `charged_micros` on the operator's key (ADR-212).
+pub async fn spend_charged(mission: Uuid, cost_micros: i64, charged_micros: i64) {
+    let usage = json!({ "costMicros": cost_micros, "chargedMicros": charged_micros });
+    stage_over(mission, usage).await;
+}
+
+async fn stage_over(mission: Uuid, usage: Value) {
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
     sqlx::query(
         "insert into agent_runs (tenant_id, conversation_id, on_behalf_of_user_id, objective, \
          budget, usage, status, mission_id, created_at) select tenant_id, conversation_id, \
-         owner_user_id, description, '{}'::jsonb, jsonb_build_object('costMicros', $2::bigint), \
-         'completed', id, now() - interval '1 hour' from missions where id = $1",
+         owner_user_id, description, '{}'::jsonb, $2, 'completed', id, \
+         now() - interval '1 hour' from missions where id = $1",
     )
     .bind(mission)
-    .bind(cost_micros)
+    .bind(usage)
     .execute(&owner)
     .await
     .unwrap();

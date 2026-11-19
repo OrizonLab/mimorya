@@ -102,7 +102,7 @@ impl AuditSink for Journal {
 
 #[async_trait]
 impl UsageSink for Journal {
-    async fn record(&self, record: UsageRecord) -> anyhow::Result<()> {
+    async fn record(&self, record: UsageRecord) -> anyhow::Result<i64> {
         let charge = self.models.usage_charge(&record);
         let mut tx = self.db.begin(self.scope.tenant_id).await?;
         usage::append_usage(
@@ -122,7 +122,9 @@ impl UsageSink for Journal {
             },
         )
         .await?;
-        Ok(tx.commit().await?)
+        tx.commit().await?;
+        // What it cost the company (ADR-212).
+        Ok(charge.billed_micros.unwrap_or(record.cost_micros))
     }
 }
 

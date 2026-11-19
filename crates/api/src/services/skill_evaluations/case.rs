@@ -277,8 +277,7 @@ async fn answer_and_judge(
         .cost_micros(&response.model, &response.usage);
     usage.input_tokens += response.usage.input_tokens;
     usage.output_tokens += response.usage.output_tokens;
-    usage.cost_micros += cost.unwrap_or(0);
-    journal
+    let charged = journal
         .record(UsageRecord {
             kind: "llm",
             role: ModelRole::Review,
@@ -290,6 +289,7 @@ async fn answer_and_judge(
             cost_micros: cost.unwrap_or(0),
         })
         .await?;
+    usage.add_cost(cost.unwrap_or(0), charged);
     Ok(match verdict {
         Some(verdict) => Judged {
             outcome: if verdict.pass {

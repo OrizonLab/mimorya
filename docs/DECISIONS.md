@@ -15253,11 +15253,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     montant qu'elle paie. Sur sa propre clé, c'est toujours une estimation au prix public ;
   - une entreprise passée d'une formule à l'autre voit le solde d'un ancien crédit tant
     qu'elle a des versements ;
-  - les autres coûts montrés à l'entreprise restent au prix public estimé, y compris sur
-    la clé de l'exploitant : le coût d'un run (« Opérations » et flux d'usage), d'une
-    mission, d'une évaluation, et l'export personnel. Sur la clé de l'exploitant, ils
-    diffèrent du montant refacturé. Les montrer au montant payé est une suite inscrite
-    à la feuille de route.
+  - les autres coûts montrés à l'entreprise (run, flux d'usage, mission, évaluation,
+    export personnel) sont passés au montant payé par l'ADR-212.
 - **Tests** :
   - `crates/api/tests/model_supply_view.rs` : formule, plafond, mois refacturé (et non le
     coût réel), refus au plafond, rien de retenu sur le fournisseur propre, aucun modèle
@@ -15299,8 +15296,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       positif, une correction n'en étant pas un. Sans versement, aucune alerte ;
   - **une fois** : chaque part est dite une fois pour son mois et son plafond
     (`AAAA-MM:` dans le fuseau de la plateforme, puis le plafond en micro-dollars) ou pour
-    son versement (sa référence). Le mois suivant, un plafond relevé (ce que l'e-mail
-    invite à demander) ou un nouveau versement la réarme. Les parts envoyées sont gardées dans `tenant_supply_alerts`, sous
+    son versement (sa référence). Le mois suivant, un plafond changé (relevé, comme
+    l'e-mail invite à le demander, ou abaissé) ou un nouveau versement la réarme. Revenir
+    dans le mois à un plafond déjà tenu ne redit pas les parts déjà dites pour lui. Les parts envoyées sont gardées dans `tenant_supply_alerts`, sous
     RLS, que l'application écrit en les envoyant, une ligne par part, jamais modifiée.
     Elle est supprimée avec l'entreprise ;
   - **qui et comment** :
@@ -15350,4 +15348,59 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     l'application ne peut pas écrire, alertes de chaque entreprise à elle seule, passe sur
     les seules entreprises actives sur la clé de l'exploitant ;
   - `crates/api/src/services/supply_alerts/mail.rs` : objet et texte de chaque alerte ;
-  - `apps/web/e2e/model-supply.spec.ts` : parts du plafond dites dans l'onglet.
+  - `apps/web/e2e/model-supply.spec.ts` : parts du plafond et du crédit prépayé dites
+    dans l'onglet.
+
+## ADR-212 — Ce que l'entreprise paie, montré et pesé partout (chantier 6, suite)
+
+- **Statut** : accepté (2026-11-19) · complète l'ADR-208 (montant refacturé de chaque
+  appel) et l'ADR-210 (écrans « Modèle d'IA » et « Consommation »).
+- **Contexte** : sur la clé de l'exploitant, chaque appel est enregistré avec son coût réel
+  et le montant refacturé à l'entreprise (ADR-208). La consommation, l'escalade, le
+  plafond et le crédit lisent déjà ce dernier. Mais le moteur ne connaissait que le coût
+  réel. Le coût d'un run (« Opérations », flux d'usage), celui d'une mission et ce qu'il
+  lui reste, celui d'une évaluation et sa limite sur trente jours, et l'export personnel
+  montraient ou pesaient donc ce coût. Avec un coefficient, une même dépense se lisait
+  ainsi de deux façons, et les limites que l'entreprise règle en USD ne bornaient pas ce
+  qu'elle paie.
+- **Décision** :
+  - **le port d'usage dit ce que l'appel a coûté à l'entreprise** :
+    `UsageSink::record` renvoie le montant de l'appel pour l'entreprise. C'est le montant
+    refacturé sur la clé de l'exploitant, et son coût sur sa propre clé, calculé par
+    l'API avec les modèles que l'exécution a pris (`Models::usage_charge`). Le moteur ne
+    connaît toujours ni la formule ni le coefficient ;
+  - **deux totaux par run** : `RunUsageTotals` garde le coût réel (`costMicros`) et ajoute
+    ce que l'entreprise a payé (`chargedMicros`). Un sous-agent apporte les deux à son
+    parent. Un run dont le point de reprise est antérieur compte ses appels d'avant à
+    leur coût ;
+  - **les budgets pèsent ce que l'entreprise paie** : le budget de coût d'un run, la part
+    laissée à un sous-agent, le coût d'une mission et ce qui reste à sa prochaine étape
+    (sa limite en USD, ADR-093), le coût d'une évaluation et la dépense de ses trente
+    jours (ADR-154) se comptent au montant payé. Sur la propre clé de l'entreprise, rien
+    ne change ;
+  - **montré au montant payé** :
+    - le coût d'un run (`usage.chargedMicros`), libellé « Coût » dans « Opérations » ;
+    - celui d'une mission ;
+    - l'événement d'usage de chaque appel ;
+    - le coût d'une évaluation ;
+    - l'export personnel (`coalesce(billed_micros, cost_micros)`).
+
+    Le coût réel reste enregistré, et seul le compte rendu de `mimorya-admin` le montre
+    à côté du montant refacturé.
+- **Conséquences** :
+  - avec un coefficient, un run ou une mission sur la clé de l'exploitant atteint son
+    budget un peu plus tôt : la limite que l'entreprise règle borne ce qu'elle paie ;
+  - les appels faits seuls après un run (leçon, résumé) restent hors du total du run,
+    comme avant, mais dans la consommation.
+- **Tests** :
+  - `crates/agent/src/runtime/budget.rs` : le budget de coût et la part d'un sous-agent
+    pèsent le montant payé, et un run d'avant compte ses appels à leur coût ;
+  - `crates/agent/tests/model_usage.rs` : coût et montant payé d'un appel comptés à part,
+    et l'événement d'usage au montant payé ;
+  - `crates/api/tests/model_supply_charged.rs` :
+    - un run garde son coût et montre le montant refacturé, son événement d'usage aussi ;
+    - une mission pèse ce que ses étapes ont coûté à l'entreprise, sa prochaine étape
+      recevant ce qui en reste ;
+    - une évaluation et sa dépense sur trente jours au montant refacturé ;
+    - l'export personnel au montant refacturé ;
+  - `crates/api/src/contract/tests/records.rs` : un run relu avec ou sans montant payé.

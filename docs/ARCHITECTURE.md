@@ -474,7 +474,9 @@ qu'au-delà de ce que PostgreSQL tient.
   suivant (`services/llm/limits.rs`, port `SupplyLimit` du moteur). L'entreprise lit sa
   formule, son plafond ou son crédit et ses versements dans « Modèle d'IA »
   (`services/admin/model_supply.rs`), et sa consommation au montant refacturé, ces deux
-  écrans sans le coût réel ni le coefficient (ADR-210). Fait : les formules, les commandes et le compte
+  écrans sans le coût réel ni le coefficient (ADR-210). Le moteur compte pour chaque run
+  ce que l'entreprise a payé, que lui renvoie le port d'usage : budgets, missions,
+  évaluations et export le pèsent et le montrent (ADR-212). Fait : les formules, les commandes et le compte
   de chaque appel (étape 0), les limites (étape 1), l'escalade en formules 2 et 3
   (étape 2, ADR-209), les écrans et les alertes aux administrateurs, chaque minute par la
   maintenance (`services/supply_alerts/`, étape 3, ADR-211).

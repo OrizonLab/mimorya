@@ -311,7 +311,7 @@ impl ApprovalStore for DbPorts {
 
 #[async_trait]
 impl UsageSink for DbPorts {
-    async fn record(&self, record: UsageRecord) -> anyhow::Result<()> {
+    async fn record(&self, record: UsageRecord) -> anyhow::Result<i64> {
         // A model call is charged by the models it was made with (ADR-208).
         let charge = self.models.usage_charge(&record);
         let mut tx = self.tx().await?;
@@ -332,7 +332,9 @@ impl UsageSink for DbPorts {
             },
         )
         .await?;
-        Ok(tx.commit().await?)
+        tx.commit().await?;
+        // What it cost the company (ADR-212).
+        Ok(charge.billed_micros.unwrap_or(record.cost_micros))
     }
 }
 

@@ -166,7 +166,9 @@ pub struct VerificationEvent {
 pub struct UsageEvent {
     pub input_tokens: u64,
     pub output_tokens: u64,
-    /// `null` when the model is not priced.
+    /// What the call cost the company (ADR-212): its cost on its own key,
+    /// the amount re-invoiced on the operator's; `null` when the model is
+    /// not priced.
     pub cost_micros: Option<i64>,
 }
 

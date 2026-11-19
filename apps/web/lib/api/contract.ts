@@ -1136,7 +1136,12 @@ month: string,
 /**
  * `llm`, `embedding` or `tool`.
  */
-kind: string, inputTokens: number, outputTokens: number, costMicros: number, };
+kind: string, inputTokens: number, outputTokens: number,
+/**
+ * What it cost the company (ADR-212): the cost on its own key, the
+ * amount re-invoiced on the operator's.
+ */
+costMicros: number, };
 
 /**
  * An entry as exported: its place and seal in the company's chain, then
@@ -3039,9 +3044,15 @@ export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "
  */
 export type RunUsage = { steps: number, toolCalls: number, inputTokens: number, outputTokens: number,
 /**
- * Estimated cost, in millionths of the currency unit.
+ * What its calls cost at the platform's prices, in micro-dollars.
  */
-costMicros: number, };
+costMicros: number,
+/**
+ * What they cost the company (ADR-212): their cost on its own key, the
+ * amount re-invoiced on the operator's. Absent for a run checkpointed
+ * before: then its cost.
+ */
+chargedMicros?: number, };
 
 export type RunView = { id: string, conversationId: string | null,
 /**
@@ -3536,7 +3547,9 @@ export type ToolRisk = "read" | "draft" | "write" | "external" | "irreversible";
  */
 export type UsageEvent = { inputTokens: number, outputTokens: number,
 /**
- * `null` when the model is not priced.
+ * What the call cost the company (ADR-212): its cost on its own key,
+ * the amount re-invoiced on the operator's; `null` when the model is
+ * not priced.
  */
 costMicros: number | null, };
 

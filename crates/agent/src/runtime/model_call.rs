@@ -140,10 +140,7 @@ pub async fn record_model_usage(
     let role = call.role;
     let usage = response.usage;
     let input_tokens = usage.input_total();
-    state.usage.input_tokens += input_tokens;
-    state.usage.output_tokens += usage.output_tokens;
-    state.usage.cost_micros += cost.unwrap_or(0);
-    ports
+    let charged = ports
         .usage
         .record(UsageRecord {
             kind: "llm",
@@ -156,12 +153,15 @@ pub async fn record_model_usage(
             cost_micros: cost.unwrap_or(0),
         })
         .await?;
+    state.usage.input_tokens += input_tokens;
+    state.usage.output_tokens += usage.output_tokens;
+    state.usage.add_cost(cost.unwrap_or(0), charged);
     ports
         .events
         .emit(RunEvent::Usage {
             input_tokens,
             output_tokens: usage.output_tokens,
-            cost_micros: cost,
+            cost_micros: cost.map(|_| charged),
         })
         .await
 }
