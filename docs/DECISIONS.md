@@ -14943,11 +14943,26 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **pause** : un tour mis en pause pendant une consultation reprend tel quel, sans
     message ajouté. Le texte déjà écrit est montré comme message intermédiaire ;
   - **comptage** : chaque consultation (entrée `advisor_message` de `usage.iterations`)
-    est enregistrée avec le rôle « conseiller », au prix de son modèle (à défaut, du
-    modèle demandé), sur la clé des runs. Elle compte dans les escalades du run, dans
-    le budget du mois, et dans le coût et les jetons du run. Les blocs du conseiller
-    (`server_tool_use`, `advisor_tool_result`, dont le conseil chiffré) sont rejoués
-    tels quels, et la bêta est envoyée tant que l'historique en contient ;
+    est enregistrée une fois, avec le rôle « conseiller », au prix de son modèle (à
+    défaut, du modèle demandé), sur la clé des runs. Elle compte dans les escalades du
+    run, dans le budget du mois, et dans le coût et les jetons du run. Les blocs du
+    conseiller (`server_tool_use`, `advisor_tool_result`, dont le conseil chiffré) sont
+    rejoués tels quels, et la bêta est envoyée tant que l'historique en contient ;
+  - **formules de fourniture** (ADR-208 à ADR-212) : sur la clé de l'exploitant, en
+    formule 2 ou 3, une consultation est enregistrée avec la formule et le montant
+    refacturé, comme tout appel des runs (ADR-208). Ce montant, celui que l'entreprise
+    paie, compte :
+    - dans le budget d'escalade, qui pèse les montants refacturés (ADR-209) ;
+    - dans le plafond du mois ou le crédit, avec les autres appels du run (ADR-208) ;
+    - dans le coût du run et son budget de coût (ADR-212).
+
+    La limite de la fourniture est relue avant chaque appel du run, comme avant : une
+    consultation qui fait dépasser le plafond, ou épuise le crédit, arrête l'appel
+    suivant, et le run s'arrête en le disant. Le dépassement est borné par les
+    consultations d'un appel, comme pour tout appel déjà parti. Le conseiller n'est
+    offert sur la clé de l'exploitant qu'aux conditions de l'escalade elle-même (formule
+    2 ou 3, ADR-209), en plus de celles de l'offre ;
+
   - **écran** : la case du conseiller, ouverte ou grisée avec la raison, et, cochée, ce
     que compte une consultation. Les sous-agents restent sans escalade, donc sans
     conseiller ;
@@ -14965,6 +14980,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       consultation comptée comme escalade et tarifée, tour en pause repris, retrait aux
       escalades du run, pause gardée au-delà, budget du mois épuisé dès le départ, run
       parti sur le modèle d'escalade, run repris une fois le conseiller retiré ;
+    - `crates/api/tests/model_supply_advisor.rs`, sur PostgreSQL : en formules 2 et 3,
+      le modèle de la plateforme consulte le conseiller ; chaque consultation est
+      enregistrée une fois sur la clé de l'exploitant, au montant refacturé, compté dans
+      le budget d'escalade et dans le plafond ou le crédit ; une consultation qui fait
+      dépasser le plafond arrête l'appel suivant du run ;
     - `crates/api/tests/model_escalation_advisor.rs`, sur PostgreSQL : sans l'accord de
       l'exploitant, refusé ; avec, gardé pour une paire acceptée, et dit hors service
       quand le modèle principal change ; sur la clé de l'exploitant, offert à l'adresse

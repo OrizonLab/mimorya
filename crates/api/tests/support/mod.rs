@@ -232,6 +232,19 @@ impl TestApi {
         .await
     }
 
+    /// App backed by the scripted model, priced, that the platform names
+    /// `named` (an Anthropic model its advisor may advise, ADR-207).
+    pub async fn start_named_priced_with(named: &'static str, env: &[(&str, &str)]) -> Self {
+        let model = Arc::new(ScriptedProvider::new(Vec::new()));
+        let provider: Arc<dyn LlmProvider> = Arc::new(llm::Named::new(model.clone(), named));
+        let setup = Setup {
+            env,
+            priced: true,
+            ..Setup::default()
+        };
+        Self::build(Some(provider), Some(model), setup).await
+    }
+
     /// App without any model provider configured.
     pub async fn without_llm() -> Self {
         Self::build(None, None, Setup::default()).await
