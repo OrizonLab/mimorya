@@ -120,6 +120,8 @@ pub struct LlmService {
     prices: Arc<PriceTable>,
     cache: TenantCache<Models>,
     invalidations: Invalidations,
+    /// The operator opened Anthropic's advisor (ADR-207).
+    advisor_allowed: bool,
 }
 
 pub struct LlmServiceOptions {
@@ -132,6 +134,8 @@ pub struct LlmServiceOptions {
     pub factory: ProviderFactory,
     pub prices: Arc<PriceTable>,
     pub invalidations: Invalidations,
+    /// `MIMORYA_ANTHROPIC_ADVISOR`.
+    pub advisor_allowed: bool,
 }
 
 impl LlmService {
@@ -146,6 +150,7 @@ impl LlmService {
             prices: options.prices,
             cache: TenantCache::new(Duration::from_secs(60)),
             invalidations: options.invalidations,
+            advisor_allowed: options.advisor_allowed,
         }
     }
 

@@ -200,6 +200,21 @@ impl AgentRuntime {
                 native: response.native.clone(),
             });
 
+            // Paused, its advisor still consulted (ADR-207): the same call
+            // goes on from the paused answer, nothing added.
+            if response.stop_reason == StopReason::PauseTurn {
+                if !response.text.is_empty() {
+                    let text = response.text.clone();
+                    let message = RunEvent::AssistantMessage {
+                        text,
+                        is_final: false,
+                    };
+                    self.deps.ports.events.emit(message).await?;
+                }
+                self.deps.ports.runs.checkpoint(&state).await?;
+                continue;
+            }
+
             if response.stop_reason == StopReason::Refusal {
                 let error = "Le modèle a refusé de traiter cette demande.".to_string();
                 return self

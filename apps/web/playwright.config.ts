@@ -60,6 +60,8 @@ export default defineConfig({
         // this configuration (ADR-209), by a scripted factory too.
         LLM_PROVIDER: 'anthropic',
         ANTHROPIC_API_KEY: 'cle-exploitant-e2e',
+        // The operator opens Anthropic's advisor to its companies (ADR-207).
+        MIMORYA_ANTHROPIC_ADVISOR: 'true',
         // A public test key (`PUBLIC_TEST_MASTER_KEYS`, refused in production),
         // so that the administration can store secrets (a token, an API key).
         MIMORYA_MASTER_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',

@@ -12,6 +12,7 @@ mod routes;
 
 pub use routes::{EscalationRoute, EscalationRoutes, RunKind};
 
+use super::advisor::AdvisorOffer;
 use super::pricing::{PriceTable, model_alias};
 use super::router::ModelRole;
 use super::settings::{TenantLlmChoice, check_model_name};
@@ -33,9 +34,13 @@ pub enum Mechanism {
     Advisor,
 }
 
-/// The mechanisms delivered so far: the others are refused, never accepted
-/// without effect.
-pub const AVAILABLE_MECHANISMS: &[Mechanism] = &[Mechanism::AfterFailure, Mechanism::Router];
+/// The mechanisms delivered: one not delivered would be refused, never
+/// accepted without effect.
+pub const AVAILABLE_MECHANISMS: &[Mechanism] = &[
+    Mechanism::AfterFailure,
+    Mechanism::Router,
+    Mechanism::Advisor,
+];
 
 impl Mechanism {
     pub fn label(self) -> &'static str {
@@ -93,11 +98,13 @@ impl EscalationRequest<'_> {
 
 /// The request checked against the model of the company's runs (its own
 /// provider's, or the platform's, ADR-209), or why it is refused (in
-/// French).
+/// French): the advisor, where the platform offers it and Anthropic accepts
+/// the pair.
 pub fn check_escalation(
     conversations: Option<&TenantLlmChoice>,
     request: &EscalationRequest<'_>,
     prices: &PriceTable,
+    advisor: AdvisorOffer,
 ) -> Result<EscalationChoice, String> {
     let conversations = conversations.ok_or_else(|| NO_OWN_PROVIDER.to_string())?;
     let model = request.model.trim();
@@ -129,6 +136,11 @@ pub fn check_escalation(
             "« {} » n’est pas encore disponible",
             mechanism.label()
         ));
+    }
+    if request.advisor
+        && let Some(problem) = advisor.pair_problem(&conversations.model, model)
+    {
+        return Err(problem);
     }
     Ok(EscalationChoice {
         provider: conversations.provider.clone(),

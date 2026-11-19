@@ -133,6 +133,7 @@ impl LlmProvider for WithQueued {
             provider: self.others.id().into(),
             model: self.others.model().into(),
             native: None,
+            consultations: Vec::new(),
         })
     }
 }

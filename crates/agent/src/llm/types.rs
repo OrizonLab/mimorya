@@ -93,6 +93,28 @@ pub enum Effort {
 /// Receives streamed text as it is generated.
 pub type TextSink = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// Anthropic's advisor (ADR-207, step 3): a stronger model the model may
+/// consult while it answers, a server tool of that provider alone; no other
+/// is ever given one. Kept unchanged for a whole run: changing it would
+/// edit the tools its reasoning is bound to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvisorTool {
+    pub model: String,
+    /// The consultations a turn may have.
+    pub max_uses: u32,
+    /// Whether the advisor's own prompt is cached between consultations.
+    pub cache: bool,
+}
+
+/// A consultation of the advisor during a call: its model and its tokens,
+/// billed at that model's prices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Consultation {
+    pub model: String,
+    pub usage: LlmUsage,
+}
+
 #[derive(Clone)]
 pub struct LlmRequest {
     /// Stable instructions. Keep volatile data out of it to preserve prompt caching.
@@ -102,6 +124,11 @@ pub struct LlmRequest {
     pub max_output_tokens: Option<u32>,
     pub effort: Option<Effort>,
     pub on_text_delta: Option<TextSink>,
+    /// The advisor the model may consult (Anthropic only).
+    pub advisor: Option<AdvisorTool>,
+    /// The tools changed since reasoning in the history was produced (the
+    /// advisor withdrawn): that reasoning is dropped rather than refused.
+    pub drop_unbound_thinking: bool,
 }
 
 impl fmt::Debug for LlmRequest {
@@ -110,6 +137,7 @@ impl fmt::Debug for LlmRequest {
             .field("messages", &self.messages.len())
             .field("tools", &self.tools.len())
             .field("effort", &self.effort)
+            .field("advisor", &self.advisor)
             .finish_non_exhaustive()
     }
 }
@@ -123,6 +151,8 @@ impl LlmRequest {
             max_output_tokens: None,
             effort: None,
             on_text_delta: None,
+            advisor: None,
+            drop_unbound_thinking: false,
         }
     }
 
@@ -140,6 +170,9 @@ pub enum StopReason {
     ToolUse,
     MaxTokens,
     Refusal,
+    /// The provider paused the turn, a server tool (the advisor) still
+    /// running: the same request goes on from the paused answer.
+    PauseTurn,
     Other,
 }
 
@@ -171,6 +204,8 @@ pub struct LlmResponse {
     /// Model that actually served the request (may differ after a server-side fallback).
     pub model: String,
     pub native: Option<NativeContent>,
+    /// The advisor's consultations during the call, apart from its usage.
+    pub consultations: Vec<Consultation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

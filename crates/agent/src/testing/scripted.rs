@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::llm::{
-    LlmError, LlmErrorKind, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall,
-    LlmToolResult, LlmToolSpec, LlmUsage, StopReason,
+    AdvisorTool, Consultation, LlmError, LlmErrorKind, LlmMessage, LlmProvider, LlmRequest,
+    LlmResponse, LlmToolCall, LlmToolResult, LlmToolSpec, LlmUsage, StopReason,
 };
 
 /// What the model was given (the text callback left aside).
@@ -19,6 +19,9 @@ pub struct RecordedRequest {
     pub system: String,
     pub messages: Vec<LlmMessage>,
     pub tools: Vec<LlmToolSpec>,
+    /// The advisor the model was given (ADR-207).
+    pub advisor: Option<AdvisorTool>,
+    pub drop_unbound_thinking: bool,
 }
 
 impl RecordedRequest {
@@ -60,6 +63,10 @@ pub struct ScriptedReply {
     pub tool_calls: Vec<ScriptedCall>,
     /// 100 input and 20 output tokens when unset.
     pub usage: Option<LlmUsage>,
+    /// The advisor's consultations during the call.
+    pub consultations: Vec<Consultation>,
+    /// Whether the turn paused, a consultation still running.
+    pub paused: bool,
 }
 
 impl ScriptedReply {
@@ -80,6 +87,26 @@ impl ScriptedReply {
 
     pub fn with_usage(mut self, usage: LlmUsage) -> Self {
         self.usage = Some(usage);
+        self
+    }
+
+    /// The model consulted its advisor `model` once in the call, which read
+    /// 1,000 tokens and wrote 400.
+    pub fn consulting(mut self, model: &str) -> Self {
+        self.consultations.push(Consultation {
+            model: model.into(),
+            usage: LlmUsage {
+                input_tokens: 1_000,
+                output_tokens: 400,
+                ..LlmUsage::default()
+            },
+        });
+        self
+    }
+
+    /// The turn paused, the advisor still consulted.
+    pub fn paused(mut self) -> Self {
+        self.paused = true;
         self
     }
 }
@@ -160,6 +187,8 @@ impl LlmProvider for ScriptedProvider {
             system: request.system.clone(),
             messages: request.messages.clone(),
             tools: request.tools.clone(),
+            advisor: request.advisor.clone(),
+            drop_unbound_thinking: request.drop_unbound_thinking,
         };
         let index = {
             let mut requests = self.requests.lock().expect("requests");
@@ -190,10 +219,10 @@ impl LlmProvider for ScriptedProvider {
         }
         Ok(LlmResponse {
             text: reply.text,
-            stop_reason: if tool_calls.is_empty() {
-                StopReason::EndTurn
-            } else {
-                StopReason::ToolUse
+            stop_reason: match (reply.paused, tool_calls.is_empty()) {
+                (true, _) => StopReason::PauseTurn,
+                (false, true) => StopReason::EndTurn,
+                (false, false) => StopReason::ToolUse,
             },
             tool_calls,
             usage: reply.usage.unwrap_or(LlmUsage {
@@ -204,6 +233,7 @@ impl LlmProvider for ScriptedProvider {
             provider: "scripted".into(),
             model: "scripted-model".into(),
             native: None,
+            consultations: reply.consultations,
         })
     }
 }

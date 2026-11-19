@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::llm::{LlmMessage, LlmToolResult};
+use crate::llm::{AdvisorTool, LlmMessage, LlmToolResult};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,6 +112,31 @@ pub struct EscalationState {
     /// Whether that was heeded: once a run.
     #[serde(default)]
     pub skill_heeded: bool,
+    /// Anthropic's advisor in the run's calls (step 3).
+    #[serde(default)]
+    pub advisor: AdvisorState,
+    /// Whether the last call paused, a consultation still running: the next
+    /// one carries the advisor whatever the bounds.
+    #[serde(default)]
+    pub advisor_pending: bool,
+}
+
+/// Anthropic's advisor in a run's calls: decided at its first call, kept
+/// unchanged after, and withdrawn once for good.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "state", content = "tool")]
+pub enum AdvisorState {
+    /// The run has made no call yet.
+    #[default]
+    Undecided,
+    /// Not given: the company does not have it, the run started on the
+    /// escalation model, or a bound was reached.
+    Off,
+    /// Given to every call, unchanged.
+    Given(AdvisorTool),
+    /// Withdrawn after it was given: a bound reached, or the company's
+    /// escalation changed.
+    Withdrawn,
 }
 
 impl EscalationState {

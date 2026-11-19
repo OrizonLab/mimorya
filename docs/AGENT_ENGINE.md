@@ -418,9 +418,18 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   désactivés par défaut : après un échec du contrôle de la réponse, par un routeur en
   amont, par l'advisor d'Anthropic. Un budget mensuel (USD) et un nombre d'escalades par
   run le bornent ; au-delà, le run continue avec le modèle principal. Fait : les
-  réglages (étape 0), l'escalade après échec (étape 1) et le routeur (étape 2) ;
-  l'advisor suit. Seul un modèle tarifé sert (aujourd'hui, ceux d'Anthropic), et la
+  réglages (étape 0), l'escalade après échec (étape 1), le routeur (étape 2) et
+  l'advisor (étape 3). Seul un modèle tarifé sert (aujourd'hui, ceux d'Anthropic), et la
   table des prix n'est remplacée que par les tests.
+- **Advisor d'Anthropic** (ADR-207, étape 3) : outil serveur d'Anthropic
+  (`advisor_20260301`) par lequel le modèle principal consulte le modèle d'escalade en
+  cours de réponse. Offert si l'exploitant l'ouvre, chez Anthropic à son adresse
+  officielle et pour une paire qu'Anthropic accepte (`llm/advisor.rs`). Décidé au
+  premier appel du run et gardé inchangé, car changer les outils invaliderait le
+  raisonnement du run ; retiré pour de bon à une borne, le raisonnement qui lui était
+  lié abandonné plutôt que refusé, jamais pendant une consultation (`pause_turn`, dont
+  le tour reprend tel quel). Chaque consultation est une escalade, enregistrée avec le
+  rôle « conseiller » au prix de son modèle (`runtime/advisor.rs`).
 - **Routeur** (ADR-207, étape 2) : activé, il décide au début du run, une fois, le modèle
   de départ selon la règle de l'entreprise pour sa sorte (conversation, mission, tâche
   planifiée, déclencheur) : le principal, celui d'escalade, ou celui que nomme un

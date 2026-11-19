@@ -149,6 +149,13 @@ function EscalationForm({ data, onSaved }: { data: ModelEscalationView; onSaved:
                   {mechanism.key === 'router' && on && (
                     <RouterRoutesFields routes={routes} onChange={setRoutes} />
                   )}
+                  {mechanism.key === 'advisor' && on && (
+                    <p className="text-xs text-muted">
+                      Le modèle principal consulte le modèle d’escalade en cours de réponse, chez
+                      Anthropic : chaque consultation compte comme une escalade, dans le budget du
+                      mois et les escalades permises par run.
+                    </p>
+                  )}
                 </div>
               );
             })}

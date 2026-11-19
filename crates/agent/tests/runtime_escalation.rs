@@ -42,6 +42,7 @@ fn escalation(
         provider: provider.clone(),
         after_failure: true,
         router: None,
+        advisor: None,
         max_per_run,
         budget: Arc::new(Budget(allows)),
     };

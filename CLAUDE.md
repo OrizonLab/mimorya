@@ -118,13 +118,13 @@ Repères à l'intérieur des crates :
   connecteurs, mémoires, documents, compétences de démonstration), `db/src/testing.rs`.
 - `agent/src/llm/<fournisseur>/`, `agent/src/llm/escalation.rs` (ce qu'une entreprise peut
   choisir comme escalade de modèle : modèle de son fournisseur propre, budget mensuel en USD,
-  escalades par run, mécanismes livrés, règles du routeur par sorte de run (`escalation/routes.rs`), ADR-207), `agent/src/llm/pricing.rs` (prix datés,
+  escalades par run, mécanismes livrés, règles du routeur par sorte de run (`escalation/routes.rs`), ADR-207), `agent/src/llm/advisor.rs` (advisor d'Anthropic : paires de modèles qu'Anthropic accepte, table datée, ce qui l'offre et l'outil donné à un run, ADR-207 ; son outil serveur, ses bêtas et ses consultations lues : `llm/anthropic/advisor.rs`), `agent/src/llm/pricing.rs` (prix datés,
   palier de Claude Haiku 5.5), rôle de chaque appel (`ModelRole`, `router.rs`), `agent/src/llm/embedding/` (modèles d'embeddings de la
   mémoire sémantique, ADR-074), `agent/src/runtime/` (boucle, appels modèle, appels
   d'outils, revue de réponse, reprise après un arrêt du service, leçon tirée d'un run
   (`lesson.rs`, ADR-076), résumé des messages anciens d'une conversation
   (`conversation_summary.rs`, ADR-145), point d'étape d'une mission dont le budget est atteint
-  (`handoff.rs`, ADR-089), revue d'une réponse candidate (`final_answer.rs`), modèle d'escalade appel par appel, après un échec du contrôle ou quand une compétence chargée le demande, ses bornes et son état dans le point de reprise (`escalation.rs`, ADR-207), modèle de départ décidé par le routeur, règle de l'entreprise ou classement de la demande en JSON strict (`routing.rs`, ADR-207), fourniture de l'exploitant demandée avant chaque appel, le run arrêté au-delà (`supply.rs`, ADR-208), ports, dont les documents lus par un run
+  (`handoff.rs`, ADR-089), revue d'une réponse candidate (`final_answer.rs`), modèle d'escalade appel par appel, après un échec du contrôle ou quand une compétence chargée le demande, ses bornes et son état dans le point de reprise (`escalation.rs`, ADR-207), modèle de départ décidé par le routeur, règle de l'entreprise ou classement de la demande en JSON strict (`routing.rs`, ADR-207), advisor d'Anthropic décidé au premier appel du run et gardé inchangé, retiré pour de bon à une borne, jamais pendant une consultation, chaque consultation comptée comme une escalade (`advisor.rs`, ADR-207), fourniture de l'exploitant demandée avant chaque appel, le run arrêté au-delà (`supply.rs`, ADR-208), ports, dont les documents lus par un run
   (`document_store.rs`, ADR-096), sous-agents : profils, consignes, run enfant et
   sa part du budget (`delegation/`), délégations d'une étape en parallèle
   (`tool_calls/delegated.rs`), ADR-098),

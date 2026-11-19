@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use serde_json::{Value, json};
 
+use super::advisor::consultations;
 use super::errors::{from_stream_error, malformed, network};
 use super::sse::SseEvent;
 use crate::llm::types::{LlmError, LlmResponse, LlmToolCall, LlmUsage, NativeContent, StopReason};
@@ -18,6 +19,8 @@ pub struct MessageAccumulator {
     blocks: Vec<Value>,
     /// Tool inputs being streamed, by block index.
     partial_json: HashMap<usize, String>,
+    /// The latest iterations of the usage: the model's and its advisor's.
+    iterations: Vec<Value>,
     complete: bool,
 }
 
@@ -136,6 +139,9 @@ impl MessageAccumulator {
             usage,
             "cache_creation_input_tokens",
         );
+        if let Some(iterations) = usage["iterations"].as_array() {
+            self.iterations = iterations.clone();
+        }
     }
 
     pub fn finish(self) -> Result<LlmResponse, LlmError> {
@@ -169,6 +175,7 @@ impl MessageAccumulator {
                 provider: "anthropic".into(),
                 content: Value::Array(blocks),
             }),
+            consultations: consultations(&self.iterations),
         })
     }
 }
@@ -184,6 +191,7 @@ pub fn map_stop_reason(reason: Option<&str>) -> StopReason {
         Some("tool_use") => StopReason::ToolUse,
         Some("max_tokens" | "model_context_window_exceeded") => StopReason::MaxTokens,
         Some("refusal") => StopReason::Refusal,
+        Some("pause_turn") => StopReason::PauseTurn,
         _ => StopReason::Other,
     }
 }

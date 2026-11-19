@@ -2,6 +2,7 @@
 //! uses to persist and report its progress, the lesson drawn from it and the
 //! summary of its conversation's older messages.
 
+mod advisor;
 pub mod answer_review;
 pub mod budget;
 pub mod context;
@@ -48,7 +49,9 @@ pub use ports::{
 };
 pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
-pub use state::{EscalationState, PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals};
+pub use state::{
+    AdvisorState, EscalationState, PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals,
+};
 pub use supply::SupplyLimit;
 pub use types::{
     ApprovalDecision, ApprovalDecisions, DEFAULT_TOOL_TIMEOUT, RunConfig, RunOutcome, RuntimeDeps,

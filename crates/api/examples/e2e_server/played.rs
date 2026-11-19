@@ -24,6 +24,7 @@ pub fn reply(model: &dyn LlmProvider, text: &str, tool_calls: Vec<LlmToolCall>) 
         provider: model.id().into(),
         model: model.model().into(),
         native: None,
+        consultations: Vec::new(),
     }
 }
 

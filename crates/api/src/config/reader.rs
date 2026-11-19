@@ -155,7 +155,14 @@ impl Reader<'_> {
             self.issue("LLM_PROVIDER", &expected);
             return None;
         }
-        let base_url = self.value("LLM_BASE_URL");
+        // Written out: the Anthropic provider would otherwise read it from
+        // the environment, and whether the platform's model is at Anthropic's
+        // official address decides its advisor (ADR-207).
+        let base_url = self.value("LLM_BASE_URL").or_else(|| {
+            (kind == "anthropic")
+                .then(|| self.value("ANTHROPIC_BASE_URL"))
+                .flatten()
+        });
         if base_url.as_deref().is_some_and(|url| !is_http_url(url)) {
             self.issue("LLM_BASE_URL", "URL http(s) attendue");
         }

@@ -4,8 +4,9 @@
 // stronger model of it is chosen within a monthly budget and a number of
 // escalations per run, read back as the API recorded it, the escalation
 // after a failed review and the router turned on, the router's rule for each
-// kind of run chosen, shown in the consumption with its budget beside what
-// each role of the model calls cost, then removed. The mechanism not delivered yet cannot be turned on.
+// kind of run chosen, Anthropic's advisor turned on where the operator opens
+// it, shown in the consumption with its budget beside what each role of the
+// model calls cost, then removed.
 // Whatever happens, the company is back on the platform's model, without
 // escalation, afterwards.
 import type { Page } from '@playwright/test';
@@ -74,12 +75,13 @@ test('a stronger model is chosen within a monthly budget, then removed', async (
   // On its own key: nothing counts in the operator's formula.
   expect((await shown(page)).onOperatorKey).toBe(false);
   await expect(form).not.toContainText('Votre entreprise utilise le modèle de la plateforme');
-  // The escalation after a failed review and the router are delivered; the
-  // advisor not yet.
-  await expect(
-    form.getByRole('checkbox', { name: 'Conseiller d’Anthropic (advisor)' }),
-  ).toBeDisabled();
-  await expect(form).toContainText('Bientôt disponible');
+  // Every mechanism is delivered; the advisor, as the operator opens it, on
+  // Anthropic at its official address.
+  const advisor = form.getByRole('checkbox', { name: 'Conseiller d’Anthropic (advisor)' });
+  await expect(advisor).toBeEnabled();
+  await expect(form).not.toContainText('Bientôt disponible');
+  await advisor.check();
+  await expect(form).toContainText('chaque consultation compte comme une escalade');
   const afterFailure = form.getByRole('checkbox', { name: 'Escalade après échec du contrôle' });
   await expect(afterFailure).toBeEnabled();
   await afterFailure.check();
@@ -104,7 +106,11 @@ test('a stronger model is chosen within a monthly budget, then removed', async (
   expect(chosen.settings?.model).toBe(STRONGER);
   expect(chosen.settings?.monthlyBudgetMicros).toBe(25_000_000);
   expect(chosen.settings?.maxPerRun).toBe(3);
-  expect([chosen.settings?.afterFailure, chosen.settings?.router]).toEqual([true, true]);
+  expect([
+    chosen.settings?.afterFailure,
+    chosen.settings?.router,
+    chosen.settings?.advisor,
+  ]).toEqual([true, true, true]);
   expect(chosen.settings?.routes).toEqual({
     conversation: 'classification',
     mission: 'main',
@@ -112,6 +118,7 @@ test('a stronger model is chosen within a monthly budget, then removed', async (
     hook: 'escalation',
   });
   await expect(afterFailure).toBeChecked();
+  await expect(advisor).toBeChecked();
   await expect(form.getByLabel('Conversations')).toHaveValue('classification');
   await expect(form.getByLabel('Missions')).toHaveValue('main');
 

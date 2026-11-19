@@ -45,6 +45,7 @@ fn routed(
         provider: provider.clone(),
         after_failure: false,
         router: route,
+        advisor: None,
         max_per_run: 5,
         budget: Arc::new(Budget(allows)),
     };

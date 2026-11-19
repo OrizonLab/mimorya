@@ -294,6 +294,7 @@ impl RunExecutor {
             after_failure: model.after_failure,
             // The router's rule for this kind of run (step 2).
             router: model.router.then(|| model.routes.of(kind)),
+            advisor: model.advisor.clone(),
             max_per_run: model.max_per_run,
             budget: Arc::new(MonthlyBudget::new(
                 self.db.clone(),

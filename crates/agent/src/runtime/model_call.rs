@@ -1,13 +1,15 @@
 //! Model calls with the tools the user may use at this step, bounded
 //! retries, and the accounting of what they cost, with the role each call
 //! played: the main model's, or the escalation model's while the run is
-//! escalated (ADR-207), which hands back to the main one should it fail.
+//! escalated (ADR-207), which hands back to the main one should it fail,
+//! and the consultations of its advisor.
 //! None is made once the operator's supply of the company is spent
 //! (ADR-208): the run then stops, saying why.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::advisor::{advisor_for_call, after_call, record_consultations};
 use super::escalation::{escalation_failed, next_model};
 use super::ports::{CurrentAccess, EnginePorts, RunEvent, UsageRecord};
 use super::state::RunCheckpoint;
@@ -42,6 +44,12 @@ pub async fn call_model(
         .into_iter()
         .map(to_tool_spec)
         .collect();
+    // The escalation model is on the same key as the main one.
+    if let Some(stop) = supply_stopped(deps, state, ModelRole::Main).await? {
+        return Ok(ModelTurn::Failed(stop.message().into()));
+    }
+    let (mut provider, mut role) = next_model(deps, state).await?;
+    let advisor = advisor_for_call(deps, state).await?;
     let events = deps.ports.events.clone();
     let request = LlmRequest {
         system: state.system.clone(),
@@ -50,12 +58,9 @@ pub async fn call_model(
         max_output_tokens: None,
         effort: config.effort,
         on_text_delta: Some(Arc::new(move |text: &str| events.publish_delta(text))),
+        advisor: advisor.tool,
+        drop_unbound_thinking: advisor.drop_unbound_thinking,
     };
-    // The escalation model is on the same key as the main one.
-    if let Some(stop) = supply_stopped(deps, state, ModelRole::Main).await? {
-        return Ok(ModelTurn::Failed(stop.message().into()));
-    }
-    let (mut provider, mut role) = next_model(deps, state).await?;
     let complete = |provider: Arc<dyn LlmProvider>| {
         let request = &request;
         async move {
@@ -85,6 +90,9 @@ pub async fn call_model(
                 requested: provider.model(),
             };
             record_model_usage(&deps.ports, &deps.prices, state, &response, call).await?;
+            let asked = request.advisor.as_ref().map(|tool| tool.model.as_str());
+            record_consultations(&deps.ports, &deps.prices, state, &response, asked).await?;
+            after_call(state, &response);
             Ok(ModelTurn::Response(Box::new(response)))
         }
         Err(error) if error.kind == LlmErrorKind::Aborted => {

@@ -14902,6 +14902,75 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         comme dans l'autre (`skill_proposal_escalation.rs`) ;
       - la table refuse une règle inconnue ;
     - les parcours de bout en bout règlent le routeur et cochent la case d'une version.
+- **Complément (étape 3, advisor d'Anthropic)** :
+  - **offert** à trois conditions, sinon l'option est grisée avec la raison et le serveur
+    la refuse :
+    - l'exploitant l'ouvre (`MIMORYA_ANTHROPIC_ADVISOR`, faux par défaut) : la fonction
+      est en bêta, et un accord de non-conservation des données ne couvre pas tous les
+      modèles ;
+    - les runs vont chez Anthropic à son adresse officielle : la propre clé de
+      l'entreprise, toujours à cette adresse, ou celle de l'exploitant, sans
+      `LLM_BASE_URL` ni `ANTHROPIC_BASE_URL` vers un autre serveur (la seconde est
+      désormais lue avec la configuration) ;
+    - Anthropic accepte la paire (modèle principal, modèle d'escalade) : la table de
+      compatibilité est une constante datée du 2026-11-19, avec le lien de sa source
+      (`crates/agent/src/llm/advisor.rs`).
+
+    Un réglage gardé dont la paire n'est plus acceptée, le modèle principal ayant changé,
+    ne sert plus, et l'écran le dit ; les autres mécanismes continuent ;
+
+  - **l'outil** : `advisor_20260301`, sous la bêta `advisor-tool-2026-03-01`, avec le
+    modèle d'escalade. `max_uses` vaut les escalades permises par run, que
+    l'administrateur règle déjà : une consultation est une escalade, et `max_uses` borne
+    un tour, ce qu'est un run. Le prompt du conseiller est mis en cache (5 minutes) à
+    partir de trois consultations permises, là où le cache commence à rapporter ;
+  - **décidé au premier appel du run, puis inchangé** : l'outil est donné si
+    l'entreprise a le conseiller, que le run part sur son modèle principal et que ses
+    bornes le permettent. Un run que le routeur fait partir sur le modèle d'escalade ne
+    l'a pas. L'outil n'est ensuite ni ajouté ni modifié : changer les outils d'un run
+    invalide le raisonnement qui leur est lié, et Anthropic refuse alors la requête sur
+    les comptes où ce contrôle s'applique. Un run escaladé plus tard le garde tel quel,
+    le modèle d'escalade se conseillant lui-même : toute paire de la table l'accepte, et
+    c'est testé ;
+  - **retiré pour de bon** quand une borne est atteinte (budget du mois ou escalades du
+    run, journalisé une fois comme `model_escalation.limited`), ou quand l'escalade de
+    l'entreprise a changé (réglages relus à la reprise). Dès lors, pour les modèles qui
+    raisonnent par défaut, le raisonnement lié à l'ancien outil est abandonné plutôt que
+    refusé : `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`, sous la
+    bêta `thinking-binding-controls-2026-08-01`. Le retrait n'a jamais lieu pendant
+    qu'une consultation est en cours (`pause_turn`) : la requête qui reprend le tour
+    garde l'outil, et le dépassement est borné par cette consultation ;
+  - **pause** : un tour mis en pause pendant une consultation reprend tel quel, sans
+    message ajouté. Le texte déjà écrit est montré comme message intermédiaire ;
+  - **comptage** : chaque consultation (entrée `advisor_message` de `usage.iterations`)
+    est enregistrée avec le rôle « conseiller », au prix de son modèle (à défaut, du
+    modèle demandé), sur la clé des runs. Elle compte dans les escalades du run, dans
+    le budget du mois, et dans le coût et les jetons du run. Les blocs du conseiller
+    (`server_tool_use`, `advisor_tool_result`, dont le conseil chiffré) sont rejoués
+    tels quels, et la bêta est envoyée tant que l'historique en contient ;
+  - **écran** : la case du conseiller, ouverte ou grisée avec la raison, et, cochée, ce
+    que compte une consultation. Les sous-agents restent sans escalade, donc sans
+    conseiller ;
+  - **tests** :
+    - `crates/agent/src/llm/advisor/tests.rs` : paires acceptées, refusées et datées,
+      tout conseiller acceptant de se conseiller, raisons en français, cache à partir
+      de trois ;
+    - `crates/agent/src/llm/escalation/tests.rs` : conseiller refusé sans l'exploitant,
+      hors de l'adresse officielle ou pour une paire refusée, les autres mécanismes non ;
+    - `crates/agent/tests/llm_anthropic_advisor.rs`, contre un serveur local : outil
+      après ceux de la plateforme, bêtas dans l'en-tête, bêta gardée pour un historique
+      qui contient ses blocs, raisonnement abandonné selon le modèle, consultations lues
+      à part, blocs gardés, pause lue ;
+    - `crates/agent/tests/runtime_escalation_advisor.rs`, avec des modèles simulés :
+      consultation comptée comme escalade et tarifée, tour en pause repris, retrait aux
+      escalades du run, pause gardée au-delà, budget du mois épuisé dès le départ, run
+      parti sur le modèle d'escalade, run repris une fois le conseiller retiré ;
+    - `crates/api/tests/model_escalation_advisor.rs`, sur PostgreSQL : sans l'accord de
+      l'exploitant, refusé ; avec, gardé pour une paire acceptée, et dit hors service
+      quand le modèle principal change ; sur la clé de l'exploitant, offert à l'adresse
+      officielle seule ; consultations d'un run enregistrées et comptées dans la dépense
+      du mois ;
+    - le parcours de bout en bout coche le conseiller.
 
 ## ADR-208 — Formules de fourniture du modèle : clé du client, modèle fourni avec plafond, crédit prépayé (chantier 6)
 
