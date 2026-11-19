@@ -158,14 +158,18 @@ impl Reader<'_> {
         // Written out: the Anthropic provider would otherwise read it from
         // the environment, and whether the platform's model is at Anthropic's
         // official address decides its advisor (ADR-207).
-        let base_url = self.value("LLM_BASE_URL").or_else(|| {
+        let read = |key: &'static str| self.value(key).map(|url| (key, url));
+        let endpoint = read("LLM_BASE_URL").or_else(|| {
             (kind == "anthropic")
-                .then(|| self.value("ANTHROPIC_BASE_URL"))
+                .then(|| read("ANTHROPIC_BASE_URL"))
                 .flatten()
         });
-        if base_url.as_deref().is_some_and(|url| !is_http_url(url)) {
-            self.issue("LLM_BASE_URL", "URL http(s) attendue");
+        if let Some((key, url)) = &endpoint
+            && !is_http_url(url)
+        {
+            self.issue(key, "URL http(s) attendue");
         }
+        let base_url = endpoint.map(|(_, url)| url);
         let api_key = self
             .value("LLM_API_KEY")
             .or_else(|| (kind == "anthropic").then_some(anthropic_key).flatten());

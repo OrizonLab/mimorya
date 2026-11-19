@@ -12,7 +12,7 @@ mod support;
 
 use axum::http::StatusCode;
 use mimorya_agent::llm::AdvisorTool;
-use mimorya_agent::testing::{ScriptedReply, ScriptedStep};
+use mimorya_agent::testing::{ScriptedProvider, ScriptedReply, ScriptedStep};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::llm::{ENDPOINT, ESCALATION_MODEL, MASTER_KEY, OPERATOR_KEY};
@@ -105,13 +105,18 @@ async fn with_the_operator_s_consent_an_advisor_anthropic_accepts_is_kept() {
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn on_the_operator_s_key_it_is_offered_at_anthropic_s_official_address_alone() {
-    for (endpoint, offered) in [(None, true), (Some("https://passerelle.exemple/v1"), false)] {
+    let gateway = "https://passerelle.exemple/v1";
+    for (endpoint, offered) in [
+        (None, true),
+        (Some(("LLM_BASE_URL", gateway)), false),
+        (Some(("ANTHROPIC_BASE_URL", gateway)), false),
+    ] {
         let mut env = vec![
             ("LLM_PROVIDER", "anthropic"),
             ("ANTHROPIC_API_KEY", OPERATOR_KEY),
             CONSENT,
         ];
-        env.extend(endpoint.map(|url| ("LLM_BASE_URL", url)));
+        env.extend(endpoint);
         let api = TestApi::start_with(&env).await;
         let paul = api.sign_in(user::PAUL).await;
         let view = paul.get(ESCALATION).await.json();
@@ -167,5 +172,56 @@ async fn a_run_s_consultations_count_in_the_month_s_escalation_spending() {
     };
     assert_eq!(consulted, (ESCALATION_MODEL.to_string(), 2_500_000));
     assert_eq!(spent(paul.get(ESCALATION).await.json()) - before, 2_500_000);
+    leave(&paul).await;
+}
+
+/// The advisor `model` was given in a run of Marc's, answered at once.
+async fn advisor_of_a_run(api: &TestApi, model: &ScriptedProvider) -> Option<AdvisorTool> {
+    let marc = api.sign_in(user::MARC).await;
+    model.push([ScriptedStep::text("Trois interventions cette semaine.")]);
+    start_run(&marc).await;
+    api.idle().await;
+    model.requests().last().unwrap().advisor.clone()
+}
+
+/// Whether the company's escalation still serves its runs, and with which
+/// advisor.
+async fn serving(api: &TestApi) -> (bool, Option<String>) {
+    let models = api.app.services.llm.resolve(tenant::ID).await.unwrap();
+    let escalation = models.escalation.as_ref();
+    (
+        escalation.is_some(),
+        escalation.and_then(|e| e.advisor.clone()),
+    )
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn once_the_offer_no_longer_holds_its_runs_go_on_without_the_advisor() {
+    let consenting = TestApi::start_with(&[KEPT[0], KEPT[1], CONSENT]).await;
+    let paul = consenting.sign_in(user::PAUL).await;
+    own_provider(&paul, MAIN).await;
+    // The advisor beside the escalation after a failed review.
+    let mut chosen = advising();
+    chosen["afterFailure"] = json!(true);
+    let kept = paul.put(ESCALATION, chosen).await;
+    assert_eq!(kept.status, StatusCode::OK, "{}", kept.text());
+    let given = advisor_of_a_run(&consenting, &consenting.company_model).await;
+    assert_eq!(given.map(|tool| tool.model), Some(ESCALATION_MODEL.into()));
+
+    // The operator closes it: the process started without its consent
+    // gives it to no run, the rest serving.
+    let closed = TestApi::start_with(&KEPT).await;
+    assert_eq!(advisor_of_a_run(&closed, &closed.company_model).await, None);
+    assert_eq!(serving(&closed).await, (true, None));
+
+    // The main model changed for one Anthropic does not let it advise.
+    own_provider(&paul, "claude-sonnet-5-5").await;
+    let consenting = TestApi::start_with(&[KEPT[0], KEPT[1], CONSENT]).await;
+    assert_eq!(
+        advisor_of_a_run(&consenting, &consenting.company_model).await,
+        None
+    );
+    assert_eq!(serving(&consenting).await, (true, None));
     leave(&paul).await;
 }

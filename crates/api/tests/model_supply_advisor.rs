@@ -33,15 +33,19 @@ const CONSULTED_BILLED: i64 = CONSULTED + CONSULTED / 10;
 /// The platform's model, named as an Anthropic model the escalation model
 /// may advise, on the operator's key, the operator opening the advisor.
 async fn start() -> TestApi {
-    TestApi::start_named_priced_with(
-        MAIN,
-        &[
-            ("LLM_PROVIDER", "anthropic"),
-            ("ANTHROPIC_API_KEY", OPERATOR_KEY),
-            ("MIMORYA_ANTHROPIC_ADVISOR", "true"),
-        ],
-    )
-    .await
+    start_reaching(None).await
+}
+
+/// The same, the platform's model reached at `endpoint` (a variable and
+/// its address) if any.
+async fn start_reaching(endpoint: Option<(&str, &str)>) -> TestApi {
+    let mut env = vec![
+        ("LLM_PROVIDER", "anthropic"),
+        ("ANTHROPIC_API_KEY", OPERATOR_KEY),
+        ("MIMORYA_ANTHROPIC_ADVISOR", "true"),
+    ];
+    env.extend(endpoint);
+    TestApi::start_named_priced_with(MAIN, &env).await
 }
 
 fn formula(formula: SupplyFormula) -> SupplyChange {
@@ -173,5 +177,44 @@ async fn a_consultation_that_takes_the_month_past_the_cap_stops_the_run_s_next_c
     let roles: Vec<String> = charged(&api, run).await.into_iter().map(|c| c.0).collect();
     assert_eq!(roles, ["main", "advisor"]);
     spent(&owner, SupplyFormula::Capped, 0).await;
+    leave(&api, &owner).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn once_the_operator_reaches_its_model_elsewhere_runs_go_on_without_it() {
+    let api = start().await;
+    let owner = PgPool::connect(owner_url()).await.unwrap();
+    let paul = api.sign_in(user::PAUL).await;
+    supply(&owner, capped(CapChoice::Default)).await;
+    // The advisor beside the escalation after a failed review.
+    let mut chosen = advising();
+    chosen["afterFailure"] = json!(true);
+    let set = paul.put(ESCALATION, chosen).await;
+    assert_eq!(set.status, StatusCode::OK, "{}", set.text());
+    loaded(&api, SupplyFormula::Capped, true).await;
+
+    // Past an address of the operator's choosing: no run is given it, the
+    // rest serving.
+    let gateway = "https://passerelle.exemple/v1";
+    for variable in ["LLM_BASE_URL", "ANTHROPIC_BASE_URL"] {
+        let elsewhere = start_reaching(Some((variable, gateway))).await;
+        let model = elsewhere.model.clone().unwrap();
+        let marc = elsewhere.sign_in(user::MARC).await;
+        model.push([ScriptedStep::text("Trois interventions cette semaine.")]);
+        start_run(&marc).await;
+        elsewhere.idle().await;
+        let asked = model.requests().last().unwrap().advisor.clone();
+        assert_eq!(asked, None, "{variable}");
+        let models = elsewhere
+            .app
+            .services
+            .llm
+            .resolve(tenant::ID)
+            .await
+            .unwrap();
+        let escalation = models.escalation.as_ref().expect("the rest serves");
+        assert_eq!(escalation.advisor, None, "{variable}");
+    }
     leave(&api, &owner).await;
 }

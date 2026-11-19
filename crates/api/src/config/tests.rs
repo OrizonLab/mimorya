@@ -291,3 +291,40 @@ fn a_proxy_is_an_http_s_address_and_its_bypass_needs_it() {
     assert!(error.contains("- MIMORYA_OUTBOUND_NO_PROXY:"), "{error}");
     assert!(!error.contains("- MIMORYA_OUTBOUND_PROXY:"), "{error}");
 }
+
+/// Whether the platform's model is at Anthropic's official address decides
+/// its advisor (ADR-207): its endpoint is read as its provider reads it.
+#[test]
+fn the_platform_s_anthropic_endpoint_and_its_advisor_are_read() {
+    let key = ("ANTHROPIC_API_KEY", "sk-test");
+    let plain = load(&[DB, key]).unwrap();
+    assert_eq!(plain.llm.unwrap().base_url, None);
+    assert!(!plain.anthropic_advisor);
+    let gateway = ("ANTHROPIC_BASE_URL", "https://passerelle.exemple");
+    let config = load(&[DB, key, gateway, ("MIMORYA_ANTHROPIC_ADVISOR", "true")]).unwrap();
+    assert_eq!(
+        config.llm.unwrap().base_url.as_deref(),
+        Some("https://passerelle.exemple")
+    );
+    assert!(config.anthropic_advisor);
+    let first = ("LLM_BASE_URL", "https://autre.exemple");
+    let config = load(&[DB, key, gateway, first]).unwrap();
+    assert_eq!(
+        config.llm.unwrap().base_url.as_deref(),
+        Some("https://autre.exemple")
+    );
+    // Another provider does not read Anthropic's.
+    let other = load(&[
+        DB,
+        ("LLM_PROVIDER", "openai"),
+        ("LLM_API_KEY", "k"),
+        gateway,
+    ])
+    .unwrap();
+    assert_eq!(other.llm.unwrap().base_url, None);
+    // A wrong address is said under the variable read.
+    let error = load(&[DB, key, ("ANTHROPIC_BASE_URL", "ftp://x")])
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("ANTHROPIC_BASE_URL"), "{error}");
+}

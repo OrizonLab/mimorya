@@ -29,17 +29,6 @@ fn a_model_advises_the_models_anthropic_lists_for_it() {
     assert!(advisors_for("mistral-large").is_empty());
 }
 
-/// A run that escalates keeps its tools unchanged: the escalation model then
-/// calls with the same advisor, itself, which Anthropic must accept.
-#[test]
-fn every_advisor_may_advise_itself() {
-    for (_, advisors) in ADVISOR_PAIRS {
-        for advisor in *advisors {
-            assert!(advisor_pair_accepted(advisor, advisor), "{advisor}");
-        }
-    }
-}
-
 #[test]
 fn the_offer_says_why_not_in_french() {
     let open = AdvisorOffer {

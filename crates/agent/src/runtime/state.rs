@@ -119,6 +119,13 @@ pub struct EscalationState {
     /// one carries the advisor whatever the bounds.
     #[serde(default)]
     pub advisor_pending: bool,
+    /// The consultations of the current turn, which Anthropic bounds: the
+    /// platform's message opens a turn.
+    #[serde(default)]
+    pub turn_consultations: u32,
+    /// Whether a paused turn went on past the run's budget: once a run.
+    #[serde(default)]
+    pub paused_past_budget: bool,
 }
 
 /// Anthropic's advisor in a run's calls: decided at its first call, kept

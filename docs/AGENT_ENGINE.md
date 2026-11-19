@@ -426,9 +426,12 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   cours de réponse. Offert si l'exploitant l'ouvre, chez Anthropic à son adresse
   officielle et pour une paire qu'Anthropic accepte (`llm/advisor.rs`). Décidé au
   premier appel du run et gardé inchangé, car changer les outils invaliderait le
-  raisonnement du run ; retiré pour de bon à une borne, le raisonnement qui lui était
-  lié abandonné plutôt que refusé, jamais pendant une consultation (`pause_turn`, dont
-  le tour reprend tel quel). Chaque consultation est une escalade, enregistrée avec le
+  raisonnement du run ; retiré pour de bon à une borne, ou dès que le run a une
+  escalade que le compte du tour d'Anthropic ignore (une consultation d'un tour
+  précédent, un appel au modèle d'escalade), pour que la borne du run tienne ; le
+  raisonnement qui lui était lié est alors abandonné plutôt que refusé ; jamais retiré
+  pendant une consultation (`pause_turn`, dont le tour reprend tel quel, une fois par
+  run au-delà du budget). Chaque consultation est une escalade, enregistrée avec le
   rôle « conseiller » au prix de son modèle (`runtime/advisor.rs`).
 - **Routeur** (ADR-207, étape 2) : activé, il décide au début du run, une fois, le modèle
   de départ selon la règle de l'entreprise pour sa sorte (conversation, mission, tâche

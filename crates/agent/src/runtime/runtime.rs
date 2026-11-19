@@ -166,7 +166,14 @@ impl AgentRuntime {
 
         loop {
             state.elapsed_ms = elapsed(&started);
-            if let Err(reason) = check_budget(&self.config.budget, &state.usage, state.elapsed_ms) {
+            let spent = check_budget(&self.config.budget, &state.usage, state.elapsed_ms);
+            // A turn paused while its advisor is consulted goes on first,
+            // once a run past the budget: nothing else may be asked meanwhile
+            // (ADR-207).
+            let paused = state.escalation.advisor_pending && !state.escalation.paused_past_budget;
+            if spent.is_err() && paused {
+                state.escalation.paused_past_budget = true;
+            } else if let Err(reason) = spent {
                 if self.config.handoff {
                     return self.hand_over(state, &reason).await;
                 }
