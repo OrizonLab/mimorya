@@ -155,7 +155,11 @@ test('the consumption shows a call on the operator’s key at what the company p
   const usage = (await (await page.request.get('/api/admin/usage?days=30')).json()) as UsageSummary;
   const supplied = usage.rows.find((row) => row.onOperatorKey && row.role === 'classification');
   expect(supplied).toBeDefined();
-  const row = page.getByRole('row').filter({ hasText: 'modèle de la plateforme' });
+  // Its row, among those of the run the server resumes at start, on the same key.
+  const row = page
+    .getByRole('row')
+    .filter({ hasText: `${supplied?.model} (anthropic, modèle de la plateforme)` })
+    .filter({ hasText: 'Classement' });
   await expect(row).toHaveCount(1);
   await expect(row).toContainText(cost(supplied?.costMicros ?? 0));
   await expect(page.getByText('montants refacturés par l’exploitant')).toBeVisible();
