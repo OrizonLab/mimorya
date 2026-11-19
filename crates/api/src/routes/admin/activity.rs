@@ -3,13 +3,17 @@
 use axum::Json;
 use axum::extract::State;
 use chrono::{Duration, Utc};
+use mimorya_agent::decision::JEV_PROVIDER;
+use mimorya_agent::llm::{JEV_PRICES, JEV_PRICES_READ_ON, JEV_PRICES_SOURCE};
 use mimorya_db::repositories::audit::{AuditQuery, list_audit};
 use mimorya_db::repositories::usage::usage_summary;
 use serde::Deserialize;
 use validator::Validate;
 
 use crate::app::AppState;
-use crate::contract::admin::{AuditEntry, AuditLog, EscalationSpending, UsageRow, UsageSummary};
+use crate::contract::admin::{
+    AuditEntry, AuditLog, EscalationSpending, JevPrice, UsageRow, UsageSummary,
+};
 use crate::http::{ApiResult, Query, iso};
 use crate::plugins::Auth;
 use crate::services::admin::escalation_budget;
@@ -66,6 +70,21 @@ pub async fn usage(
     let rows = usage_summary(&mut tx, since).await?;
     let escalation = escalation_budget(&mut tx).await?;
     tx.commit().await?;
+    let jev_used = rows.iter().any(|row| row.provider == JEV_PROVIDER);
+    let jev_prices = if jev_used || state.llm.decision_config().jev_allowed {
+        JEV_PRICES
+            .iter()
+            .map(|(model, price)| JevPrice {
+                model: (*model).to_string(),
+                input_per_mtok: price.input_per_mtok,
+                output_per_mtok: price.output_per_mtok,
+                read_on: JEV_PRICES_READ_ON.to_string(),
+                source: JEV_PRICES_SOURCE.to_string(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     Ok(Json(UsageSummary {
         since: iso(&since),
         rows: rows
@@ -77,5 +96,6 @@ pub async fn usage(
             spent_micros: spending.spent_micros,
             month_start: iso(&spending.month_start),
         }),
+        jev_prices,
     }))
 }

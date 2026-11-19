@@ -27,6 +27,7 @@ mod connector_rules;
 mod connector_test;
 mod connector_trial;
 mod connectors;
+mod decisions;
 mod domain_proofs;
 mod embedding;
 mod evaluation_settings;
@@ -93,6 +94,10 @@ pub use connector_trial::{McpTrial, TrialServices, try_mcp_connector};
 pub use connectors::{
     ConnectorAdmin, ConnectorChanges, NewMcpConnector, TokenChange, create_mcp_connector,
     delete_connector, update_connector,
+};
+pub use decisions::{
+    DEFAULT_THRESHOLD, DecisionTested, DecisionsOverview, company_decisions,
+    reset_company_decisions, set_company_decisions, test_company_decisions,
 };
 pub use domain_proofs::prove_domain;
 pub use embedding::{

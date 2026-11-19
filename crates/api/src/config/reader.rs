@@ -2,7 +2,9 @@
 //! instead of stopping at the first.
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use mimorya_agent::decision::{DEFAULT_JEV_MODEL, is_versioned_jev};
 use mimorya_agent::llm::{PROVIDER_KINDS, ProviderConfig};
 use mimorya_connectors::outbound::OutboundProxy;
 
@@ -136,6 +138,29 @@ impl Reader<'_> {
             (Some(_), None) => self.invalid("MAIL_FROM", "obligatoire avec SMTP_URL"),
             (None, Some(_)) => self.invalid("SMTP_URL", "obligatoire avec MAIL_FROM"),
         }
+    }
+
+    /// Whether Jev may decide, its pinned version and how long it may take
+    /// (ADR-213).
+    pub(super) fn decisions(&mut self) -> (bool, String, Duration) {
+        let allowed = self.boolean("MIMORYA_TYPESAFE_JEV", false);
+        let model = self
+            .value("MIMORYA_JEV_MODEL")
+            .unwrap_or_else(|| DEFAULT_JEV_MODEL.to_string());
+        if !is_versioned_jev(&model) {
+            self.issue(
+                "MIMORYA_JEV_MODEL",
+                "version de Jev attendue (jev-1.14.0), jamais un alias",
+            );
+        }
+        let millis = self.parsed("MIMORYA_DECISION_TIMEOUT_MS", 2_000_u64);
+        if !(100..=30_000).contains(&millis) {
+            self.issue(
+                "MIMORYA_DECISION_TIMEOUT_MS",
+                "entre 100 et 30000 millisecondes",
+            );
+        }
+        (allowed, model, Duration::from_millis(millis))
     }
 
     pub(super) fn llm(&mut self) -> Option<ProviderConfig> {

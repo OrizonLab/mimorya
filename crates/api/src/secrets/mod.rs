@@ -6,7 +6,9 @@ mod cipher;
 mod store;
 
 pub use cipher::{KEY_VERSION, MASTER_KEY_LEN, SecretCipher};
-pub use store::{EMBEDDING_API_KEY, LLM_API_KEY, SecretRead, SecretStore, VERIFICATION_API_KEY};
+pub use store::{
+    EMBEDDING_API_KEY, LLM_API_KEY, SecretRead, SecretStore, TYPESAFE_API_KEY, VERIFICATION_API_KEY,
+};
 
 impl crate::app::Services {
     /// The company secrets, sealed under the master key.

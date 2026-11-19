@@ -15,6 +15,7 @@ pub mod companies;
 pub mod connector_oauth;
 pub mod connector_sessions;
 pub mod conversation_links;
+pub mod decisions;
 pub mod delegations;
 pub mod dns;
 pub mod document_search;
@@ -127,6 +128,8 @@ struct Setup<'a> {
     telegram_api: Option<String>,
     /// Microsoft as the Teams bots reach it, a local one (ADR-138).
     teams_api: Option<String>,
+    /// TypeSafe's API, which Jev is asked at, a local one (ADR-213).
+    typesafe_api: Option<String>,
     /// The scripted model priced (`llm::SCRIPTED_CALL_MICROS` a call).
     priced: bool,
     /// The roots of the simulated mail servers' authority (ADR-205).
@@ -271,6 +274,7 @@ impl TestApi {
             slack_api,
             telegram_api,
             teams_api,
+            typesafe_api,
             priced,
             connector_test_roots,
         } = setup;
@@ -328,6 +332,7 @@ impl TestApi {
             slack_api,
             telegram_api,
             teams_api,
+            typesafe_api,
             prices: priced.then(llm::scripted_prices),
             connector_test_servers: Vec::new(),
             connector_test_roots,

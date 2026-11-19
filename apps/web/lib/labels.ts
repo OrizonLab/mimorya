@@ -262,6 +262,7 @@ export const USAGE_ROLE_LABELS: Record<UsageRole, string> = {
   classification: 'Classement',
   advisor: 'Conseiller',
   review: 'Contrôle des réponses',
+  decision: 'Décision',
 };
 
 /** The model a run of a kind starts with, while the router is on (ADR-207). */

@@ -62,6 +62,8 @@ export default defineConfig({
         ANTHROPIC_API_KEY: 'cle-exploitant-e2e',
         // The operator opens Anthropic's advisor to its companies (ADR-207).
         MIMORYA_ANTHROPIC_ADVISOR: 'true',
+        // …and TypeSafe's Jev, asked at a local TypeSafe (ADR-213).
+        MIMORYA_TYPESAFE_JEV: 'true',
         // A public test key (`PUBLIC_TEST_MASTER_KEYS`, refused in production),
         // so that the administration can store secrets (a token, an API key).
         MIMORYA_MASTER_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',

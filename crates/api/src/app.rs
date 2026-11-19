@@ -42,7 +42,7 @@ use crate::services::documents::{DocumentService, Extractor};
 use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
 use crate::services::gateways::{GatewayService, GatewaySettings};
 use crate::services::invalidations::{Invalidations, share_invalidations};
-use crate::services::llm::{LlmServiceOptions, default_factory};
+use crate::services::llm::{DecisionConfig, LlmServiceOptions, default_factory};
 use crate::services::personal_export::Exports;
 use crate::services::runs::{ApprovalNotifier, ConversationSummaries, LessonCapture, RunExecutor};
 use crate::services::skill_evaluations::EvaluationSlots;
@@ -149,6 +149,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             prices: Arc::new(options.prices.unwrap_or_default()),
             invalidations: invalidations.clone(),
             advisor_allowed: config.anthropic_advisor,
+            decisions: DecisionConfig::new(&config, options.typesafe_api),
         },
     ));
     let embeddings = Arc::new(EmbeddingService::new(

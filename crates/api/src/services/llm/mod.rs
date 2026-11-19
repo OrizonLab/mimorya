@@ -20,11 +20,13 @@ use super::invalidations::{Invalidation, Invalidations};
 use super::tenant_cache::TenantCache;
 use crate::secrets::SecretStore;
 
+mod decisions;
 mod escalation;
 mod limits;
 mod load;
 mod supply;
 
+pub use decisions::{DecisionConfig, DecisionEngines, DecisionScope, JEV_CLOSED};
 pub use escalation::{
     EscalationModel, MonthSpending, RunsModel, escalation_choice, month_spending,
 };
@@ -122,6 +124,8 @@ pub struct LlmService {
     invalidations: Invalidations,
     /// The operator opened Anthropic's advisor (ADR-207).
     advisor_allowed: bool,
+    /// What the operator set of decisions (ADR-213).
+    decisions: DecisionConfig,
 }
 
 pub struct LlmServiceOptions {
@@ -136,6 +140,7 @@ pub struct LlmServiceOptions {
     pub invalidations: Invalidations,
     /// `MIMORYA_ANTHROPIC_ADVISOR`.
     pub advisor_allowed: bool,
+    pub decisions: DecisionConfig,
 }
 
 impl LlmService {
@@ -151,6 +156,7 @@ impl LlmService {
             cache: TenantCache::new(Duration::from_secs(60)),
             invalidations: options.invalidations,
             advisor_allowed: options.advisor_allowed,
+            decisions: options.decisions,
         }
     }
 

@@ -51,6 +51,11 @@ x-backend-environment: &backend-environment
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   # Anthropic's advisor, in beta: off unless the operator opens it (ADR-207).
   MIMORYA_ANTHROPIC_ADVISOR: ${MIMORYA_ANTHROPIC_ADVISOR:-false}
+  # TypeSafe's Jev, a subprocessor outside the EU: off unless the operator
+  # opens it (ADR-213).
+  MIMORYA_TYPESAFE_JEV: ${MIMORYA_TYPESAFE_JEV:-false}
+  MIMORYA_JEV_MODEL: ${MIMORYA_JEV_MODEL:-jev-1.14.0}
+  MIMORYA_DECISION_TIMEOUT_MS: ${MIMORYA_DECISION_TIMEOUT_MS:-2000}
   MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:-}
   SMTP_URL: ${SMTP_URL:-}
   MAIL_FROM: ${MAIL_FROM:-}

@@ -23,7 +23,10 @@ pub use escalation::{
     MIN_ESCALATION_BUDGET_MICROS, Mechanism, RunKind, check_escalation, escalation_problem,
 };
 pub use factory::{PROVIDER_KINDS, ProviderConfig, create_provider};
-pub use pricing::{LongPromptPrice, ModelPrice, PriceTable, TierPrice};
+pub use pricing::{
+    JEV_PRICES, JEV_PRICES_READ_ON, JEV_PRICES_SOURCE, LongPromptPrice, ModelPrice, PriceTable,
+    TierPrice,
+};
 pub use router::{ModelRole, ModelRouter, TaskClass};
 pub use settings::{
     TenantLlmChoice, api_key_problem, check_tenant_llm, company_provider_config, default_model,

@@ -328,3 +328,32 @@ fn the_platform_s_anthropic_endpoint_and_its_advisor_are_read() {
         .to_string();
     assert!(error.contains("ANTHROPIC_BASE_URL"), "{error}");
 }
+
+/// Jev is closed unless the operator opens it, a version pinned, never an
+/// alias, and an engine given up on within bounds (ADR-213).
+#[test]
+fn jev_is_closed_by_default_its_version_pinned_and_its_delay_bounded() {
+    let plain = load(&[DB]).unwrap();
+    assert!(!plain.typesafe_jev);
+    assert_eq!(plain.jev_model, "jev-1.14.0");
+    assert_eq!(plain.decision_timeout.as_millis(), 2_000);
+    let opened = load(&[
+        DB,
+        ("MIMORYA_TYPESAFE_JEV", "true"),
+        ("MIMORYA_JEV_MODEL", "jev-1.13.0"),
+        ("MIMORYA_DECISION_TIMEOUT_MS", "500"),
+    ])
+    .unwrap();
+    assert!(opened.typesafe_jev);
+    assert_eq!(opened.jev_model, "jev-1.13.0");
+    assert_eq!(opened.decision_timeout.as_millis(), 500);
+    for (variable, value) in [
+        ("MIMORYA_JEV_MODEL", "jev-latest"),
+        ("MIMORYA_JEV_MODEL", "jev-preview"),
+        ("MIMORYA_DECISION_TIMEOUT_MS", "99"),
+        ("MIMORYA_DECISION_TIMEOUT_MS", "30001"),
+    ] {
+        let error = load(&[DB, (variable, value)]).unwrap_err().to_string();
+        assert!(error.contains(variable), "{value}: {error}");
+    }
+}

@@ -1,0 +1,81 @@
+'use client';
+
+import { Field, Input, Select } from '@/components/ui';
+import type { DecisionModeChoice, DecisionUsageUpdate, DecisionUsageView } from '@/lib/api';
+
+const MODES: { mode: DecisionModeChoice; label: string }[] = [
+  { mode: 'off', label: 'Désactivé' },
+  { mode: 'observe', label: 'Observation (sans effet)' },
+  { mode: 'active', label: 'Actif' },
+];
+
+/** The usages as the administrator sets them, from those read. */
+export function usagesOf(usages: DecisionUsageView[]): DecisionUsageUpdate[] {
+  return usages.map((usage) => ({
+    key: usage.key,
+    mode: usage.mode,
+    threshold: usage.threshold,
+  }));
+}
+
+/** Each usage of the decision service (ADR-213), its mode and threshold:
+ * one whose step is not delivered stays off. */
+export function DecisionUsagesFields({
+  usages,
+  values,
+  onChange,
+}: {
+  usages: DecisionUsageView[];
+  values: DecisionUsageUpdate[];
+  onChange: (values: DecisionUsageUpdate[]) => void;
+}) {
+  function update(index: number, changed: Partial<DecisionUsageUpdate>) {
+    onChange(values.map((value, at) => (at === index ? { ...value, ...changed } : value)));
+  }
+  return (
+    <fieldset className="flex flex-col gap-3">
+      <legend className="mb-2 text-sm font-medium">Usages</legend>
+      {usages.map((usage, index) => {
+        const value = values[index];
+        if (!value) return null;
+        return (
+          <div key={usage.key} className="grid gap-2 sm:grid-cols-[1fr_14rem_8rem] sm:items-end">
+            <p className="text-sm">
+              {usage.label}
+              {!usage.available && (
+                <span className="text-xs text-muted"> (bientôt disponible)</span>
+              )}
+            </p>
+            <Field label="Mode">
+              <Select
+                aria-label={`Mode : ${usage.label}`}
+                value={value.mode}
+                disabled={!usage.available}
+                onChange={(e) => update(index, { mode: e.target.value as DecisionModeChoice })}
+              >
+                {MODES.map(({ mode, label }) => (
+                  <option key={mode} value={mode}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Seuil">
+              <Input
+                aria-label={`Seuil : ${usage.label}`}
+                type="number"
+                required
+                min={0}
+                max={1}
+                step={0.05}
+                disabled={!usage.available}
+                value={String(value.threshold)}
+                onChange={(e) => update(index, { threshold: Number(e.target.value) })}
+              />
+            </Field>
+          </div>
+        );
+      })}
+    </fieldset>
+  );
+}

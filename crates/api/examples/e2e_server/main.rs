@@ -31,7 +31,8 @@
 //! ADR-140).
 //! The company's standard mail reaches simulated IMAP, SMTP and CalDAV
 //! servers on 127.0.0.1:4112 to 4114, which know Léa's account
-//! (`mail_servers`, ADR-205).
+//! (`mail_servers`, ADR-205). Jev is asked at a local TypeSafe, which opens
+//! to its test key alone (`JEV_KEY`, ADR-213).
 //! A company's embedding model is a test one, whatever it chooses: no
 //! provider is ever reached (ADR-074). A finished run reread for a lesson
 //! always yields the same one (`lessons`, ADR-076). A mission is played
@@ -107,7 +108,7 @@ use mimorya_api::mail::Mailer;
 use mimorya_api::services::{EmbeddingFactory, ProviderFactory};
 use mimorya_api::{AppConfig, BuildOptions, build_app, init_logs};
 use mimorya_connectors::outbound::NetworkPolicy;
-use mimorya_connectors::testing::{FakeSlack, FakeTeams, FakeTelegram};
+use mimorya_connectors::testing::{FakeJev, FakeSlack, FakeTeams, FakeTelegram};
 
 /// Where the identity provider listens: `single-sign-on.spec.ts` declares it.
 const IDP_ADDRESS: &str = "127.0.0.1:4100";
@@ -200,6 +201,7 @@ async fn main() -> anyhow::Result<()> {
     let teams = FakeTeams::start_on(TEAMS_ADDRESS).await;
     teams.add_person(LEA_TEAMS, LEA_NAME, LEA_ADDRESS);
     tracing::info!(url = teams.url, "End-to-end Microsoft listening");
+    let jev = FakeJev::serve().await;
     let address = format!("{}:{}", config.host, config.port);
     let app = build_app(
         config,
@@ -231,6 +233,8 @@ async fn main() -> anyhow::Result<()> {
             telegram_api: Some(telegram.url.clone()),
             // Its Teams bot reaches the local Microsoft (ADR-139).
             teams_api: Some(teams.url.clone()),
+            // Jev is asked at the local TypeSafe (ADR-213).
+            typesafe_api: Some(jev.url.clone()),
             prices: None,
             connector_test_servers,
             connector_test_roots: mail.roots,

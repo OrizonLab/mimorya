@@ -10,7 +10,8 @@
 //! (`telegram`); Microsoft as a Teams bot reaches it: Entra, the Bot
 //! Framework's keys and a Teams service (`teams`); an authority of the tests
 //! and a server speaking TLS with its certificate, the proxy reached over
-//! TLS too (`tls`, ADR-205); a company's IMAP and SMTP servers (`mail`).
+//! TLS too (`tls`, ADR-205); a company's IMAP and SMTP servers (`mail`);
+//! TypeSafe's Jev (`jev`, ADR-213).
 
 mod endless;
 mod google;
@@ -19,6 +20,7 @@ mod graph;
 mod graph_writes;
 mod hold;
 mod https;
+mod jev;
 mod mail;
 mod oauth;
 mod proxy;
@@ -48,6 +50,7 @@ pub use google_writes::SentMail;
 pub use graph::{FORBIDDEN_MESSAGE, FakeGraph, GRAPH_DETAIL, GraphRequest, OVERSIZED_MESSAGE};
 pub use hold::Hold;
 pub use https::serve_https;
+pub use jev::{FakeJev, JEV_KEY, JEV_YES, JevAsked, JevBehaviour};
 pub use mail::{
     AGENDA_PATH, Accounts, AfterData, CalDavBehaviour, Created, CreatedObject, Deliveries,
     Delivery, FakeCalDav, FakeImap, FakeSmtp, FetchBehaviour, Heard, INBOX_PATH, ImapBehaviour,

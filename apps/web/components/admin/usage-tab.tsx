@@ -1,13 +1,14 @@
 'use client';
 
 import { Card, Cell, DataTable, EmptyState, Loaded } from '@/components/ui';
-import { useApiData, type UsageRow, type UsageSummary } from '@/lib/api';
+import { useApiData, type JevPrice, type UsageRow, type UsageSummary } from '@/lib/api';
 import { formatCost, formatDate, formatNumber, PLATFORM_TIME_ZONE } from '@/lib/format';
 import { USAGE_KIND_LABELS, USAGE_ROLE_LABELS } from '@/lib/labels';
 
 /** What the company's use of models cost it: per model, with the role each
  * call played and the escalation's budget for the month (ADR-207); on the
- * platform's model, the amounts the operator re-invoices (ADR-210). */
+ * platform's model, the amounts the operator re-invoices (ADR-210); and
+ * Jev's dated price, where the operator opens it (ADR-213). */
 export function UsageTab() {
   const state = useApiData<UsageSummary>('/admin/usage?days=30');
   return (
@@ -42,6 +43,7 @@ export function UsageTab() {
               </p>
             </Card>
           )}
+          {data.jevPrices.length > 0 && <JevPrices prices={data.jevPrices} />}
           {data.rows.length === 0 ? (
             <EmptyState title="Aucune consommation sur la période" />
           ) : (
@@ -93,6 +95,36 @@ function RoleBreakdown({ rows }: { rows: UsageRow[] }) {
           </li>
         ))}
       </ul>
+    </Card>
+  );
+}
+
+const PER_MTOK = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 3 });
+
+/** Jev's price per million tokens, as read on its date at its source. */
+function JevPrices({ prices }: { prices: JevPrice[] }) {
+  const [first] = prices;
+  if (!first) return null;
+  return (
+    <Card className="p-4">
+      <p className="text-xs text-muted">
+        Tarif de Jev (TypeSafe), relevé le {first.readOn.split('-').reverse().join('/')}
+      </p>
+      <ul aria-label="Tarif de Jev" className="mt-2 flex flex-col gap-1 text-sm">
+        {prices.map((price) => (
+          <li key={price.model}>
+            {price.model} : {PER_MTOK.format(price.inputPerMtok)} $US par million de tokens en
+            entrée
+            {price.outputPerMtok === 0
+              ? ', sortie gratuite'
+              : `, ${PER_MTOK.format(price.outputPerMtok)} $US en sortie`}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-xs text-muted">
+        Source : {first.source}. Les appels à Jev sont faits avec la clé de votre entreprise : ils
+        sont comptés au rôle « Décision ».
+      </p>
     </Card>
   );
 }

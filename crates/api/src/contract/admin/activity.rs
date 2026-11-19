@@ -90,6 +90,8 @@ pub enum UsageRole {
     Classification,
     Advisor,
     Review,
+    /// A question of the decision service (ADR-213).
+    Decision,
 }
 
 /// Usage of one model, summed over the period.
@@ -129,6 +131,7 @@ impl UsageRow {
 
 /// `GET /admin/usage`.
 #[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct UsageSummary {
     /// Start of the period.
     pub since: String,
@@ -136,6 +139,21 @@ pub struct UsageSummary {
     /// What the company's model escalation spent this month, against its
     /// budget, if it chose one (ADR-207).
     pub escalation: Option<EscalationSpending>,
+    /// Jev's prices, where the operator opens it or the company asked it
+    /// (ADR-213).
+    pub jev_prices: Vec<JevPrice>,
+}
+
+/// A version of Jev's price in USD per million tokens, as read on a date
+/// at a source.
+#[derive(Debug, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct JevPrice {
+    pub model: String,
+    pub input_per_mtok: f64,
+    pub output_per_mtok: f64,
+    pub read_on: String,
+    pub source: String,
 }
 
 #[cfg(test)]
