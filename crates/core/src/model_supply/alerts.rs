@@ -6,8 +6,8 @@
 
 /// By default: 80 and 95 % of the cap.
 pub const DEFAULT_CAP_ALERTS: [u8; 2] = [80, 95];
-/// By default: 20 then 5 % of the last payment.
-pub const DEFAULT_CREDIT_ALERTS: [u8; 2] = [20, 5];
+/// By default: 20 then 5 % of the last payment, kept the lowest first.
+pub const DEFAULT_CREDIT_ALERTS: [u8; 2] = [5, 20];
 /// At most this many shares of each kind.
 pub const MAX_ALERTS: usize = 5;
 

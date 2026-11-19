@@ -3,8 +3,9 @@
 //! company on the operator's key: what its month was re-invoiced against
 //! the shares of its cap, or its credit's balance against the shares of its
 //! last payment, as the operator set them. The shares reached and never
-//! alerted for that month or that payment are told once, the most pressing
-//! alone, in one e-mail to each account that manages the company's settings
+//! alerted for that month and cap, or that payment, are told once (a cap
+//! raised or a new payment re-arms them), the most pressing alone, in one
+//! e-mail to each account that manages the company's settings
 //! on the whole company (`settings:manage`, as its rules say now,
 //! `company_wide_administrators`). It is always sent, as an invitation is:
 //! it says what would stop its runs. The shares are then recorded, even
@@ -148,12 +149,11 @@ async fn alert(services: &Services, mailer: &dyn Mailer, tenant_id: Uuid) -> any
 fn cap_due(state: &SupplyState, row: &ModelSupplyRow, month: DateTime<Utc>) -> Option<Due> {
     let cap = state.monthly_cap_micros.filter(|_| !state.unlimited)?;
     let month_billed = state.capped_month_billed_micros;
+    // The month and its cap: a cap raised re-arms its shares.
+    let month = month.with_timezone(&PLATFORM_TIME_ZONE).format("%Y-%m");
     Some(Due {
         kind: AlertKind::Cap,
-        period: month
-            .with_timezone(&PLATFORM_TIME_ZONE)
-            .format("%Y-%m")
-            .to_string(),
+        period: format!("{month}:{cap}"),
         reached: cap_alerts_reached(month_billed, cap, &row.cap_alerts()),
         amount_micros: month_billed,
         of_micros: cap,

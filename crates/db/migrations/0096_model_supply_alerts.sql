@@ -7,22 +7,29 @@
 -- whichever process runs the pass.
 ALTER TABLE tenant_model_supply
   -- Shares of the monthly cap, in percent, from 1 to 100 (the cap reached).
+  -- One dimension, from its first element: as the application reads it.
   ADD COLUMN cap_alert_percents smallint[] NOT NULL DEFAULT '{80,95}'
     CONSTRAINT tenant_model_supply_cap_alerts CHECK (
       cardinality(cap_alert_percents) <= 5
+      AND (cardinality(cap_alert_percents) = 0
+           OR (array_ndims(cap_alert_percents) = 1 AND array_lower(cap_alert_percents, 1) = 1))
       AND array_position(cap_alert_percents, NULL) IS NULL
       AND 1 <= ALL (cap_alert_percents) AND 100 >= ALL (cap_alert_percents)
     ),
   -- Shares of the last payment, in percent, from 0 (the credit spent) to 99.
-  ADD COLUMN credit_alert_percents smallint[] NOT NULL DEFAULT '{20,5}'
+  ADD COLUMN credit_alert_percents smallint[] NOT NULL DEFAULT '{5,20}'
     CONSTRAINT tenant_model_supply_credit_alerts CHECK (
       cardinality(credit_alert_percents) <= 5
+      AND (cardinality(credit_alert_percents) = 0
+           OR (array_ndims(credit_alert_percents) = 1
+               AND array_lower(credit_alert_percents, 1) = 1))
       AND array_position(credit_alert_percents, NULL) IS NULL
       AND 0 <= ALL (credit_alert_percents) AND 99 >= ALL (credit_alert_percents)
     );
 
--- The alerts sent: one per share, for a month of the cap (`period`, its
--- first day) or a payment of the credit (`period`, its reference). The
+-- The alerts sent: one per share, for a month of the cap and that cap
+-- (`period`, `YYYY-MM:` and the cap in micro-dollars, re-armed when the cap is
+-- raised) or a payment of the credit (`period`, its reference). The
 -- application records them as it sends them; none is ever changed.
 CREATE TABLE tenant_supply_alerts (
   tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

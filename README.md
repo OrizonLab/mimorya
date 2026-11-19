@@ -153,7 +153,8 @@ par e-mail quand le mois atteint une part du plafond, ou que le solde passe sous
 du dernier versement : par défaut 80 et 95 % du plafond, 20 puis 5 % du versement, réglés
 par `set-supply-alerts` (`--cap`, `--credit` ou les deux ; `aucun` pour n'en garder
 aucune ; `100` pour le plafond atteint, `0` pour le crédit épuisé). Chaque alerte part une
-fois pour son mois ou son versement (ADR-211).
+fois pour son mois et son plafond, ou pour son versement : un plafond relevé ou un nouveau
+versement la réarme (ADR-211).
 Gardez sa sortie : le journal d'audit de l'entreprise part avec elle, et ses sauvegardes la
 gardent jusqu'à leur retrait (après une restauration, supprimez-la de nouveau). Avant elle,
 `release-company`, dans le service `api` qui a la clé maître

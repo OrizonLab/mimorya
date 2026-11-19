@@ -15297,9 +15297,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       autant du plafond, sauf en mode sans plafond ;
     - en formule 3, quand le solde du crédit tombe à cette part du dernier versement
       positif, une correction n'en étant pas un. Sans versement, aucune alerte ;
-  - **une fois** : chaque part est dite une fois pour son mois (`AAAA-MM`, dans le fuseau
-    de la plateforme) ou pour son versement (sa référence). Le mois suivant ou un nouveau
-    versement la réarme. Les parts envoyées sont gardées dans `tenant_supply_alerts`, sous
+  - **une fois** : chaque part est dite une fois pour son mois et son plafond
+    (`AAAA-MM:` dans le fuseau de la plateforme, puis le plafond en micro-dollars) ou pour
+    son versement (sa référence). Le mois suivant, un plafond relevé (ce que l'e-mail
+    invite à demander) ou un nouveau versement la réarme. Les parts envoyées sont gardées dans `tenant_supply_alerts`, sous
     RLS, que l'application écrit en les envoyant, une ligne par part, jamais modifiée.
     Elle est supprimée avec l'entreprise ;
   - **qui et comment** :
@@ -15324,8 +15325,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **écran** : la section « Fourniture du modèle » (ADR-210) dit à quelles parts les
     administrateurs sont prévenus.
 - **Conséquences** :
-  - un arrêt du service entre l'envoi et l'enregistrement peut
-    faire dire une part deux fois ; jamais aucune n'est perdue ;
+  - un arrêt du service entre l'envoi et l'enregistrement peut faire dire une part deux
+    fois ;
+  - une part dont l'e-mail est refusé par le relais est enregistrée, comme pour les avis
+    des ADR-102 et ADR-170 : elle n'est pas redite, même si le relais revient. N'enregistrer
+    une part qu'après un envoi accepté reste possible plus tard ;
   - l'alerte suit la passe de chaque minute : un appel qui franchit une part est dit au
     plus une minute après, et le dépassement reste celui de l'ADR-208.
 - **Tests** :
@@ -15333,10 +15337,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     plafond et du versement, la plus pressante ;
   - `crates/api/tests/model_supply_alerts.rs` : 80 puis 95 % dits une fois chacun pour le
     mois, la plus pressante seule quand deux sont franchies d'un coup, 100 % ajouté par
-    l'exploitant, jamais à un compte sans les réglages, tracés sans adresse ; 20 puis 5 %
-    du versement, réarmés par un nouveau versement ; rien sans relais ; parts refusées
-    hors bornes, rangées, lues par l'entreprise ;
-  - `crates/db/tests/supply_alerts.rs` : bornes gardées par la table, parts que
+    l'exploitant, réarmés par un plafond relevé, tracés sans adresse ; 20 puis 5 % du
+    versement, réarmés par un nouveau versement ; rien sans relais ; parts refusées hors
+    bornes, rangées, lues par l'entreprise ;
+  - `crates/api/tests/model_supply_alert_recipients.rs` : ni l'administrateur d'une unité
+    seulement, ni un compte désactivé, ni un rôle expiré ; sans administrateur, rien
+    d'enregistré et l'alerte attend le suivant ; un processus qui n'exécute pas de runs
+    n'alerte personne, un seul à la fois ; un e-mail refusé par le relais tracé
+    (`failure`, sans adresse) et non renvoyé ;
+  - `crates/db/tests/supply_alerts.rs` : bornes gardées par la table (dont un tableau à
+    une dimension, depuis son premier élément), parts que
     l'application ne peut pas écrire, alertes de chaque entreprise à elle seule, passe sur
     les seules entreprises actives sur la clé de l'exploitant ;
   - `crates/api/src/services/supply_alerts/mail.rs` : objet et texte de chaque alerte ;

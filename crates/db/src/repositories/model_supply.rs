@@ -128,15 +128,19 @@ pub async fn set_supply_alerts(
     cap_percents: Option<&[i16]>,
     credit_percents: Option<&[i16]>,
 ) -> sqlx::Result<()> {
+    // A company without a row gets the table's defaults first.
     sqlx::query(
-        "insert into tenant_model_supply (tenant_id, formula, cap_alert_percents, \
-         credit_alert_percents) \
-         values ($1, 'client_key', coalesce($2, '{80,95}'::smallint[]), \
-         coalesce($3, '{20,5}'::smallint[])) \
-         on conflict (tenant_id) do update set \
-         cap_alert_percents = coalesce($2, tenant_model_supply.cap_alert_percents), \
-         credit_alert_percents = coalesce($3, tenant_model_supply.credit_alert_percents), \
-         updated_at = now()",
+        "insert into tenant_model_supply (tenant_id, formula) values ($1, 'client_key') \
+         on conflict (tenant_id) do nothing",
+    )
+    .bind(tenant_id)
+    .execute(&mut *conn)
+    .await?;
+    sqlx::query(
+        "update tenant_model_supply set \
+         cap_alert_percents = coalesce($2, cap_alert_percents), \
+         credit_alert_percents = coalesce($3, credit_alert_percents), updated_at = now() \
+         where tenant_id = $1",
     )
     .bind(tenant_id)
     .bind(cap_percents)

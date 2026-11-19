@@ -1,10 +1,12 @@
 //! The alerts of the operator's supply (ADR-211), by the periodic pass: the
 //! administrators of a company's settings told by e-mail once its month
 //! comes to a share of its cap, or its credit's balance falls to a share of
-//! its last payment; the most pressing share alone, once for its month or
-//! its payment, audited, never to the company's other accounts. The shares
-//! are the operator's, set by `mimorya-admin` within bounds and traced.
-//! Nothing is sent nor recorded without a relay.
+//! its last payment; the most pressing share alone, once for its month and
+//! cap or its payment, a cap raised or a new payment re-arming them;
+//! audited without the address. The shares are the operator's, set by
+//! `mimorya-admin` within bounds and traced. Nothing is sent nor recorded
+//! without a relay. Who is told, and when the pass runs:
+//! `model_supply_alert_recipients.rs`.
 
 mod support;
 
@@ -15,67 +17,50 @@ use mimorya_api::services::provisioning::{
 use mimorya_api::services::supply_alerts::{SUPPLY_ALERTED, send_supply_alerts};
 use mimorya_core::demo::{tenant, user};
 use mimorya_core::model_supply::SupplyFormula;
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use support::model_supply::{CAP, capped, credit_left, spent, supply};
 use support::refusals::{entries_since, latest_entry};
+use support::supply_alerts::{alerts, leave, pass, recorded};
 use support::{TestApi, email, owner_url};
 
-/// A pass of the alerts, as a process that executes runs makes every
-/// minute; the subjects of the e-mails it sent to Paul, and whether any
-/// other account than an administrator of the settings got one.
-async fn pass(api: &TestApi) -> Vec<String> {
-    api.app.services.runs.start_executing().unwrap();
-    let before = api.mail.sent().len();
-    send_supply_alerts(&api.app.services).await.unwrap();
-    let sent = api.mail.sent()[before..].to_vec();
-    assert!(
-        sent.iter().all(|mail| mail.to != email(user::MARC)),
-        "an account without the settings was told"
-    );
-    sent.into_iter()
-        .filter(|mail| mail.to == email(user::PAUL))
-        .map(|mail| mail.subject)
-        .collect()
-}
-
-fn alerts(cap: Option<Vec<u8>>, credit: Option<Vec<u8>>) -> SupplyChange {
-    SupplyChange::Alerts { cap, credit }
-}
-
-async fn leave(owner: &PgPool) {
-    spent(owner, SupplyFormula::Capped, 0).await;
-    supply(owner, alerts(Some(vec![80, 95]), Some(vec![20, 5]))).await;
-    supply(owner, capped(CapChoice::Default)).await;
-}
+const EIGHTY: &str = "Consommation du modèle : 80 % du plafond mensuel atteints";
+const NINETY_FIVE: &str = "Consommation du modèle : 95 % du plafond mensuel atteints";
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
-async fn the_shares_of_the_cap_are_told_once_each_for_the_month() {
+async fn the_shares_of_the_cap_are_told_once_each_for_the_month_and_its_cap() {
     let api = TestApi::start_with_mailer().await;
     let owner = PgPool::connect(owner_url()).await.unwrap();
+    leave(&owner).await;
     supply(&owner, capped(CapChoice::Amount(CAP))).await;
     let since = latest_entry(&api).await;
 
     spent(&owner, SupplyFormula::Capped, CAP * 79 / 100).await;
     assert!(pass(&api).await.is_empty());
     spent(&owner, SupplyFormula::Capped, CAP * 80 / 100).await;
-    let eighty = "Consommation du modèle : 80 % du plafond mensuel atteints";
-    assert_eq!(pass(&api).await, [eighty]);
+    assert_eq!(pass(&api).await, [EIGHTY]);
     // Once for the month.
     assert!(pass(&api).await.is_empty());
     // Past 95 % at once: that share alone.
     spent(&owner, SupplyFormula::Capped, CAP).await;
-    let ninety_five = "Consommation du modèle : 95 % du plafond mensuel atteints";
-    assert_eq!(pass(&api).await, [ninety_five]);
+    assert_eq!(pass(&api).await, [NINETY_FIVE]);
     // The operator adds the cap itself: told once reached.
     supply(&owner, alerts(Some(vec![80, 95, 100]), None)).await;
     let reached = "Plafond mensuel de consommation du modèle atteint";
     assert_eq!(pass(&api).await, [reached]);
     assert!(pass(&api).await.is_empty());
 
+    // The cap raised, as the e-mail asks of whom may: its shares told anew.
+    supply(&owner, capped(CapChoice::Amount(3 * CAP))).await;
+    assert!(pass(&api).await.is_empty());
+    spent(&owner, SupplyFormula::Capped, 3 * CAP * 80 / 100).await;
+    assert_eq!(pass(&api).await, [EIGHTY]);
+    spent(&owner, SupplyFormula::Capped, 3 * CAP * 95 / 100).await;
+    assert_eq!(pass(&api).await, [NINETY_FIVE]);
+
     let audit = entries_since(&api, since).await;
-    assert_eq!(audit.matches(SUPPLY_ALERTED).count(), 3, "{audit}");
+    assert_eq!(audit.matches(SUPPLY_ALERTED).count(), 5, "{audit}");
     assert!(audit.contains("model_supply.alerts_set"), "{audit}");
     assert!(!audit.contains(&email(user::PAUL)), "{audit}");
     leave(&owner).await;
@@ -86,6 +71,7 @@ async fn the_shares_of_the_cap_are_told_once_each_for_the_month() {
 async fn the_shares_of_the_last_payment_are_told_again_after_a_new_one() {
     let api = TestApi::start_with_mailer().await;
     let owner = PgPool::connect(owner_url()).await.unwrap();
+    leave(&owner).await;
     let prepaid = SupplyChange::Formula {
         formula: SupplyFormula::Prepaid,
         cap: CapChoice::Default,
@@ -121,22 +107,13 @@ async fn the_shares_of_the_last_payment_are_told_again_after_a_new_one() {
 async fn without_a_relay_nothing_is_sent_nor_recorded() {
     let api = TestApi::start().await;
     let owner = PgPool::connect(owner_url()).await.unwrap();
+    leave(&owner).await;
     supply(&owner, capped(CapChoice::Amount(CAP))).await;
     spent(&owner, SupplyFormula::Capped, CAP).await;
-    let before = recorded(&api).await;
     api.app.services.runs.start_executing().unwrap();
     assert_eq!(send_supply_alerts(&api.app.services).await.unwrap(), 0);
-    assert_eq!(recorded(&api).await, before);
+    assert_eq!(recorded(&api).await, 0);
     leave(&owner).await;
-}
-
-/// The alerts recorded for the company.
-async fn recorded(api: &TestApi) -> i64 {
-    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query_scalar("select count(*) from tenant_supply_alerts")
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap()
 }
 
 #[tokio::test]
@@ -144,11 +121,12 @@ async fn recorded(api: &TestApi) -> i64 {
 async fn the_operator_sets_the_shares_within_their_bounds_and_the_company_reads_them() {
     let api = TestApi::start().await;
     let owner = PgPool::connect(owner_url()).await.unwrap();
+    leave(&owner).await;
     let paul = api.sign_in(user::PAUL).await;
     let shown = paul.get("/admin/model-supply").await.json();
     assert_eq!(
         (&shown["capAlertPercents"], &shown["creditAlertPercents"]),
-        (&serde_json::json!([80, 95]), &serde_json::json!([20, 5]))
+        (&json!([80, 95]), &json!([5, 20]))
     );
     for refused in [
         alerts(Some(vec![0]), None),
@@ -169,6 +147,6 @@ async fn the_operator_sets_the_shares_within_their_bounds_and_the_company_reads_
     let shown = paul.get("/admin/model-supply").await;
     assert_eq!(shown.status, StatusCode::OK);
     let read: Value = shown.json();
-    assert_eq!(read["creditAlertPercents"], serde_json::json!([0, 30]));
+    assert_eq!(read["creditAlertPercents"], json!([0, 30]));
     leave(&owner).await;
 }

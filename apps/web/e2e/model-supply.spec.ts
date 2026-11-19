@@ -124,6 +124,10 @@ test('the formula and what the month cost under its cap are read in the model ta
 
 test('a prepaid credit shows its balance and its payments, the latest first', async ({ page }) => {
   await openAdmin(page, 'Modèle d’IA');
+  // The shares the API holds, the screen showing them the highest first (ADR-211).
+  const held = (await (await page.request.get(SUPPLY)).json()) as ModelSupplyView;
+  const falling = [...held.creditAlertPercents].sort((a, b) => b - a);
+  const shares = falling.map((percent) => `${percent} %`).join(', puis ');
   await page.route(`**${SUPPLY}`, async (route) => {
     const response = await route.fetch();
     const view = (await response.json()) as ModelSupplyView;
@@ -143,6 +147,7 @@ test('a prepaid credit shows its balance and its payments, the latest first', as
   await modelTab(page);
   const supply = page.getByRole('region', { name: 'Fourniture du modèle' });
   await expect(supply).toContainText('Modèle de la plateforme, sur un crédit prépayé');
+  await expect(supply).toContainText(`quand le solde passe sous ${shares} du dernier versement`);
   await expect(supply.getByText('Solde du crédit')).toContainText(cost(0));
   await expect(supply).toContainText(SPENT);
   const rows = supply.getByRole('row');

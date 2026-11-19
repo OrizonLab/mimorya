@@ -35,6 +35,9 @@ async fn the_shares_are_the_operator_s_within_their_bounds() {
         ("cap_alert_percents", "{10,20,30,40,50,60}"),
         ("credit_alert_percents", "{100}"),
         ("credit_alert_percents", "{-1}"),
+        // Not from its first element, nor in two dimensions: as read.
+        ("cap_alert_percents", "[2:3]={80,95}"),
+        ("credit_alert_percents", "{{5,20},{10,30}}"),
     ] {
         let statement = format!(
             "update tenant_model_supply set {column} = $2::smallint[] where tenant_id = $1"
