@@ -46,6 +46,7 @@ mod memory_settings;
 mod microsoft365;
 mod mission_settings;
 mod model_escalation;
+mod model_supply;
 mod oauth_client;
 mod oauth_version;
 mod org_units;
@@ -125,6 +126,7 @@ pub use model_escalation::{
     EscalationOverview, StoredEscalation, company_model_escalation, escalation_budget,
     reset_company_model_escalation, set_company_model_escalation,
 };
+pub use model_supply::{SupplyOverview, company_model_supply};
 pub use oauth_version::OAuthSeen;
 pub use org_units::{NewUnitInput, UnitChanges, create_unit, delete_unit, update_unit};
 pub use policies::{PolicyChanges, PolicyInput, create_policy, delete_policy, update_policy};

@@ -622,6 +622,15 @@ export type Created = { id: string, };
 export type Credentials = { email: string, password: string, };
 
 /**
+ * A payment of the prepaid credit, as the operator recorded it.
+ */
+export type CreditPayment = { amountMicros: number,
+/**
+ * The invoice it was paid against.
+ */
+reference: string, recordedAt: string, };
+
+/**
  * A permission a tool may require: one an agent can hold.
  */
 export type DelegablePermission = { permission: string, label: string, };
@@ -2114,6 +2123,45 @@ maxBudgetMicros: number,
 maxPerRunCeiling: number, };
 
 /**
+ * `GET /admin/model-supply`.
+ */
+export type ModelSupplyView = { formula: SupplyFormulaView,
+/**
+ * Whether the company's runs go to the operator's key now: on its own
+ * provider, they do not, whatever its formula.
+ */
+runsOnOperatorKey: boolean,
+/**
+ * The monthly cap, in micro-dollars, under the capped formula.
+ */
+monthlyCapMicros: number | null,
+/**
+ * Without a cap, at the operator's explicit asking.
+ */
+unlimited: boolean,
+/**
+ * The start of the month, in the platform's time zone (RFC 3339).
+ */
+monthStart: string,
+/**
+ * What the calls under the cap were re-invoiced this month.
+ */
+monthBilledMicros: number,
+/**
+ * The prepaid credit's balance: payments less what was consumed of it,
+ * once the company has a credit.
+ */
+balanceMicros: number | null,
+/**
+ * The credit's payments, the latest first.
+ */
+payments: Array<CreditPayment>,
+/**
+ * Why no call goes to the operator's key now, if so (in French).
+ */
+stopped: string | null, };
+
+/**
  * Body of `POST /admin/users`: the account is invited (ADR-027).
  */
 export type NewAccount = { email: string, displayName: string, jobTitle?: string, orgUnitId?: string,
@@ -3391,6 +3439,11 @@ export type SsoStart = { redirectUrl: string, };
 export type StatusChange = "active" | "disabled";
 
 /**
+ * How the company's model is supplied (ADR-208).
+ */
+export type SupplyFormulaView = "clientKey" | "capped" | "prepaid";
+
+/**
  * `POST /account/gateways/{id}/telegram-code`: the bot's link carrying a
  * new code, to open in Telegram, and until when (ADR-133).
  */
@@ -3483,9 +3536,15 @@ export type UsageRole = "main" | "escalation" | "classification" | "advisor" | "
 /**
  * Usage of one model, summed over the period.
  */
-export type UsageRow = { provider: string, model: string, kind: UsageKind, role: UsageRole, calls: number, inputTokens: number, outputTokens: number,
+export type UsageRow = { provider: string, model: string, kind: UsageKind, role: UsageRole,
 /**
- * Estimated cost, in millionths of the currency unit.
+ * Made on the operator's key, the platform's model (ADR-208).
+ */
+onOperatorKey: boolean, calls: number, inputTokens: number, outputTokens: number,
+/**
+ * What these calls cost the company, in micro-dollars: their estimated
+ * cost on its own key, the amount the operator re-invoices on its
+ * (ADR-210).
  */
 costMicros: number, };
 

@@ -78,22 +78,30 @@ pub struct UsageSummaryRow {
     pub model: String,
     pub kind: String,
     pub role: String,
+    /// Made on the operator's key (ADR-208).
+    pub on_operator_key: bool,
     pub calls: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    /// What the calls cost the company: their estimated cost on its own
+    /// key, the amount re-invoiced on the operator's, never its real cost
+    /// there (ADR-210).
     pub cost_micros: i64,
 }
 
+/// The company's usage since `since`, by model, kind, role and key.
 pub async fn usage_summary(
     conn: &mut PgConnection,
     since: DateTime<Utc>,
 ) -> sqlx::Result<Vec<UsageSummaryRow>> {
     sqlx::query_as(
-        "select provider, model, kind, role, count(*) as calls, \
+        "select provider, model, kind, role, supply_formula <> 'client_key' as on_operator_key, \
+         count(*) as calls, \
          coalesce(sum(input_tokens), 0)::bigint as input_tokens, \
          coalesce(sum(output_tokens), 0)::bigint as output_tokens, \
-         coalesce(sum(cost_micros), 0)::bigint as cost_micros \
-         from usage_records where created_at >= $1 group by provider, model, kind, role",
+         coalesce(sum(coalesce(billed_micros, cost_micros)), 0)::bigint as cost_micros \
+         from usage_records where created_at >= $1 \
+         group by provider, model, kind, role, on_operator_key",
     )
     .bind(since)
     .fetch_all(conn)

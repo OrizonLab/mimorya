@@ -471,9 +471,12 @@ qu'au-delà de ce que PostgreSQL tient.
   `mimorya-admin` et le rôle propriétaire, l'application ne faisant que les lire
   (`services/llm/supply.rs`, chargées avec les modèles de l'entreprise). Au-delà du
   plafond ou du crédit, aucun run n'est lancé et un run en cours s'arrête avant son appel
-  suivant (`services/llm/limits.rs`, port `SupplyLimit` du moteur). Fait : les formules,
-  les commandes et le compte de chaque appel (étape 0), les limites (étape 1) ;
-  l'escalade en formules 2 et 3 et les écrans suivent.
+  suivant (`services/llm/limits.rs`, port `SupplyLimit` du moteur). L'entreprise lit sa
+  formule, son plafond ou son crédit et ses versements dans « Modèle d'IA »
+  (`services/admin/model_supply.rs`), et sa consommation au montant refacturé, jamais le
+  coût réel ni le coefficient (ADR-210). Fait : les formules, les commandes et le compte
+  de chaque appel (étape 0), les limites (étape 1), l'escalade en formules 2 et 3
+  (étape 2, ADR-209), les écrans (étape 3) ; les alertes suivent.
 - **Escalade de modèle** (ADR-207) : un modèle plus puissant, chez le fournisseur des
   runs de l'entreprise (le sien, ou celui de la plateforme sur la clé de l'exploitant en
   formule 2 ou 3, ADR-209, compté aussi dans le plafond ou le crédit), appelé quand un

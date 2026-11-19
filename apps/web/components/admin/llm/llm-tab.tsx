@@ -9,9 +9,11 @@ import { EscalationSection } from './escalation-section';
 import { EvaluationLimitSection } from './evaluation-limit-section';
 import { LessonSection } from './lesson-section';
 import { MissionSection } from './mission-section';
+import { ModelSupplySection } from './model-supply-section';
 import { ReviewModel } from './review-model';
 
-/** The models the company's assistant uses: for its conversations, the
+/** How the operator supplies the company's model (ADR-210), and the
+ * models the company's assistant uses: for its conversations, the
  * platform's or its own, and for reviewing their answers, one apart if it
  * chooses (ADR-108); for searching its memory by meaning, its own if any
  * (ADR-074); whether the first rereads finished conversations for a lesson
@@ -23,6 +25,7 @@ export function LlmTab() {
   const [conversations, setConversations] = useState(0);
   return (
     <div className="flex flex-col gap-6">
+      <ModelSupplySection key={`supply-${conversations}`} />
       <Models onConversationsChanged={() => setConversations((n) => n + 1)} />
       <EscalationSection key={conversations} />
       <EmbeddingSection />
