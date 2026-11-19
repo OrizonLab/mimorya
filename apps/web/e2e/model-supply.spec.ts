@@ -6,12 +6,14 @@
 // view of the model without the platform's, as the API answers a company
 // it does not supply. A supplied company still goes back to the platform's.
 // The model tab shows the company's formula and what its month cost under
-// its cap, as the API reads them (ADR-210); and a prepaid credit's balance
-// and payments, the screen shown the API's view of such a company, whose
-// formula only the operator's command sets.
+// its cap, as the API reads them, and that its own provider leaves the
+// formula unused (ADR-210); a prepaid credit's balance and payments, the
+// screen shown the API's view of such a company, whose formula only the
+// operator's command sets; and the consumption shows a call on the
+// operator's key at the amount the API says the company pays.
 // Whatever happens, the company has no provider of its own afterwards.
 import type { Page } from '@playwright/test';
-import type { LlmView, ModelSupplyView } from '../lib/api/contract';
+import type { LlmView, ModelSupplyView, UsageSummary } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 
@@ -50,6 +52,12 @@ test('a company the operator does not supply removes its own provider knowing wh
   const own = await page.request.put(LLM, { headers: WRITE, data: OWN });
   expect(own.status()).toBe(200);
   await modelTab(page);
+  // On its own provider, the formula serves none of its runs.
+  const supplied = (await (await page.request.get(SUPPLY)).json()) as ModelSupplyView;
+  expect(supplied.runs).toBe('ownProvider');
+  await expect(page.getByRole('region', { name: 'Fourniture du modèle' })).toContainText(
+    'Vos conversations utilisent votre propre fournisseur',
+  );
   // Supplied, the company goes back to the platform's model.
   await expect(
     page.getByRole('button', { name: 'Revenir au modèle de la plateforme' }),
@@ -137,5 +145,19 @@ test('a prepaid credit shows its balance and its payments, the latest first', as
   await expect(rows.nth(1)).toContainText('FAC-2026-0412');
   await expect(rows.nth(1)).toContainText(cost(50_000_000));
   await expect(rows.nth(2)).toContainText('FAC-2026-0388');
+  await noError(page);
+});
+
+test('the consumption shows a call on the operator’s key at what the company pays', async ({
+  page,
+}) => {
+  await openAdmin(page, 'Consommation');
+  const usage = (await (await page.request.get('/api/admin/usage?days=30')).json()) as UsageSummary;
+  const supplied = usage.rows.find((row) => row.onOperatorKey && row.role === 'classification');
+  expect(supplied).toBeDefined();
+  const row = page.getByRole('row').filter({ hasText: 'modèle de la plateforme' });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText(cost(supplied?.costMicros ?? 0));
+  await expect(page.getByText('montants refacturés par l’exploitant')).toBeVisible();
   await noError(page);
 });

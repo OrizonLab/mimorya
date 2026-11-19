@@ -84,7 +84,7 @@ pub use model_escalation::{
     EscalationMechanism, EscalationSpending, MechanismView, ModelEscalationSettings,
     ModelEscalationUpdate, ModelEscalationView, RouterRoute, RouterRoutes,
 };
-pub use model_supply::{CreditPayment, ModelSupplyView, SupplyFormulaView};
+pub use model_supply::{CreditPayment, ModelSupplyView, SupplyFormulaView, SupplyRunsView};
 pub use policies::{
     ConditionAttribute, NewPolicy, Policies, PolicyEffect, PolicyUpdate, PolicyView,
     RestrictablePermission,

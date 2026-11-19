@@ -1,7 +1,10 @@
 //! What the demo company's model calls cost, by role, written at start for
 //! the consumption screen to show its breakdown (`model-escalation.spec.ts`,
 //! ADR-207), the end-to-end model having no price: a call of its main
-//! model, one of an escalation model and one review of an answer.
+//! model, one of an escalation model and one review of an answer, on its
+//! own key; and a classification on the operator's key, re-invoiced more
+//! than it cost, which the screen shows at what the company pays
+//! (`model-supply.spec.ts`, ADR-210).
 
 use mimorya_api::app::App;
 use mimorya_core::demo::{tenant, user};
@@ -29,6 +32,16 @@ pub async fn leave(app: &App) -> anyhow::Result<()> {
         .execute(&mut *tx)
         .await?;
     }
+    sqlx::query(
+        "insert into usage_records (tenant_id, user_id, kind, role, provider, model, \
+         input_tokens, output_tokens, cost_micros, supply_formula, billed_micros) \
+         values ($1, $2, 'llm', 'classification', 'anthropic', 'claude-haiku-5-5', 500, 10, \
+         200000, 'capped', 220000)",
+    )
+    .bind(tenant::ID)
+    .bind(user::MARC)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(())
 }

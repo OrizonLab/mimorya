@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, Cell, DataTable, ErrorNote, Loaded } from '@/components/ui';
+import { Card, Cell, DataTable, Loaded } from '@/components/ui';
 import { useApiData, type ModelSupplyView, type SupplyFormulaView } from '@/lib/api';
 import { formatCost, formatDate, PLATFORM_TIME_ZONE } from '@/lib/format';
 
@@ -26,10 +26,16 @@ function ModelSupply({ data }: { data: ModelSupplyView }) {
       <section aria-label="Fourniture du modèle" className="flex flex-col gap-3">
         <p className="font-medium">Fourniture du modèle</p>
         <p className="text-sm">{FORMULAS[data.formula]}.</p>
-        {data.formula !== 'clientKey' && !data.runsOnOperatorKey && (
+        {data.formula !== 'clientKey' && data.runs === 'ownProvider' && (
           <p className="text-xs text-muted">
             Vos conversations utilisent votre propre fournisseur : la formule de l’exploitant ne
             sert pas tant que vous le gardez.
+          </p>
+        )}
+        {data.formula !== 'clientKey' && data.runs === 'none' && (
+          <p className="text-xs text-muted">
+            Ce serveur n’a pas de modèle de la plateforme à fournir : la formule de l’exploitant ne
+            sert pas tant qu’il n’en a pas.
           </p>
         )}
         {data.formula === 'capped' && (
@@ -45,7 +51,10 @@ function ModelSupply({ data }: { data: ModelSupplyView }) {
             <span className="font-semibold">{formatCost(data.balanceMicros)}</span>
           </p>
         )}
-        {data.stopped && <ErrorNote message={data.stopped} />}
+        {data.stopped && (
+          // The supply's state, not an error of the page: no alert.
+          <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{data.stopped}</p>
+        )}
         {data.payments.length > 0 && (
           <DataTable columns={['Date', 'Référence', 'Montant']}>
             {data.payments.map((payment) => (

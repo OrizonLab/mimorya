@@ -15212,8 +15212,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 ## ADR-210 — Écrans de la fourniture du modèle : formule, plafond ou crédit, montants refacturés (chantier 6, étape 3)
 
 - **Statut** : accepté (2026-11-18) · complète l'ADR-208 (formules, limites) et
-  l'ADR-209 (escalade sur la clé de l'exploitant). Les alertes font l'objet de
-  l'ADR-211.
+  l'ADR-209 (escalade sur la clé de l'exploitant). Les alertes font l'objet d'une
+  décision suivante.
 - **Contexte** : l'exploitant règle la formule, le plafond, le coefficient et les crédits
   par `mimorya-admin` (ADR-208), et la plateforme les applique. L'entreprise doit voir ce
   qu'elle paie : sa formule, son plafond ou son crédit, ses versements, et des montants
@@ -15227,10 +15227,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - en formule 2, ce que le mois a refacturé et le plafond, ou le mode sans plafond ;
     - le solde du crédit dès que l'entreprise en a un, et l'historique de ses versements,
       le dernier d'abord, avec leur référence (numéro de facture) ;
-    - le refus en cours, s'il y en a un (plafond atteint, crédit épuisé), avec le
-      message que lisent les personnes ;
-    - que les runs utilisent le fournisseur propre de l'entreprise, si c'est le cas : la
-      formule ne sert alors pas.
+    - où vont ses runs : sur la clé de l'exploitant, sur son fournisseur propre (la
+      formule ne sert alors pas), ou nulle part, quand le serveur n'a pas de modèle de la
+      plateforme ;
+    - le refus en cours (plafond atteint, crédit épuisé), avec le message que lisent les
+      personnes, seulement quand ses runs vont sur la clé de l'exploitant : sinon, rien
+      n'est retenu.
 
     La lecture se fait avec le rôle applicatif, sous RLS. Le solde et le mois sont lus par
     la même requête que les limites et le compte rendu de l'exploitant
@@ -15241,18 +15243,29 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     coût estimé sur sa propre clé, le montant refacturé sur celle de l'exploitant. Les
     lignes d'un même modèle sont séparées par clé. La répartition par rôle et la dépense
     d'escalade (ADR-209) lisent donc le même montant ;
-  - **jamais le coût réel ni le coefficient** : ni la vue de la fourniture ni la
-    consommation ne contiennent le coût réel d'un appel sur la clé de l'exploitant ou son
-    coefficient. Seul le compte rendu de `mimorya-admin` les montre (ADR-208).
+  - **ces deux écrans, sans coût réel ni coefficient** : ni la vue de la fourniture ni la
+    consommation ne contiennent le coût réel d'un appel sur la clé de l'exploitant ni le
+    coefficient. Seul le compte rendu de `mimorya-admin` les montre (ADR-208). Les
+    jetons et le modèle restent affichés à côté du montant : qui connaît le prix public
+    peut en déduire le coefficient, qui n'est pas un secret envers le client.
 - **Conséquences** :
   - le coût sur 30 jours de la consommation devient, pour une entreprise fournie, le
     montant qu'elle paie. Sur sa propre clé, c'est toujours une estimation au prix public ;
   - une entreprise passée d'une formule à l'autre voit le solde d'un ancien crédit tant
-    qu'elle a des versements.
+    qu'elle a des versements ;
+  - les autres coûts montrés à l'entreprise restent au prix public estimé, y compris sur
+    la clé de l'exploitant : le coût d'un run (« Opérations » et flux d'usage), d'une
+    mission, d'une évaluation, et l'export personnel. Sur la clé de l'exploitant, ils
+    diffèrent du montant refacturé. Les montrer au montant payé est une suite inscrite
+    à la feuille de route.
 - **Tests** :
-  - `crates/api/tests/model_supply_view.rs` : formule, plafond, mois refacturé, refus au
-    plafond, solde et versements du dernier au premier, aucun coût réel ni coefficient,
-    aucun versement d'une autre entreprise, lecture réservée aux administrateurs des
-    réglages de toute l'entreprise, consommation au montant refacturé et séparée par clé ;
+  - `crates/api/tests/model_supply_view.rs` : formule, plafond, mois refacturé (et non le
+    coût réel), refus au plafond, rien de retenu sur le fournisseur propre, aucun modèle
+    sur un serveur sans celui de la plateforme, solde et versements du dernier au
+    premier, aucun coût réel ni coefficient, aucun versement d'une autre entreprise,
+    lecture réservée aux administrateurs des réglages de toute l'entreprise,
+    consommation au montant refacturé et séparée par clé ;
   - `apps/web/e2e/model-supply.spec.ts` : formule et mois de l'entreprise de
-    démonstration lus dans l'onglet ; solde, refus et versements d'un crédit prépayé.
+    démonstration lus dans l'onglet, fournisseur propre signalé ; solde, refus et
+    versements d'un crédit prépayé ; un appel sur la clé de l'exploitant montré dans la
+    consommation au montant que donne l'API.

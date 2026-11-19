@@ -473,8 +473,8 @@ qu'au-delà de ce que PostgreSQL tient.
   plafond ou du crédit, aucun run n'est lancé et un run en cours s'arrête avant son appel
   suivant (`services/llm/limits.rs`, port `SupplyLimit` du moteur). L'entreprise lit sa
   formule, son plafond ou son crédit et ses versements dans « Modèle d'IA »
-  (`services/admin/model_supply.rs`), et sa consommation au montant refacturé, jamais le
-  coût réel ni le coefficient (ADR-210). Fait : les formules, les commandes et le compte
+  (`services/admin/model_supply.rs`), et sa consommation au montant refacturé, ces deux
+  écrans sans le coût réel ni le coefficient (ADR-210). Fait : les formules, les commandes et le compte
   de chaque appel (étape 0), les limites (étape 1), l'escalade en formules 2 et 3
   (étape 2, ADR-209), les écrans (étape 3) ; les alertes suivent.
 - **Escalade de modèle** (ADR-207) : un modèle plus puissant, chez le fournisseur des

@@ -2127,10 +2127,9 @@ maxPerRunCeiling: number, };
  */
 export type ModelSupplyView = { formula: SupplyFormulaView,
 /**
- * Whether the company's runs go to the operator's key now: on its own
- * provider, they do not, whatever its formula.
+ * Where the company's runs go now, whatever its formula.
  */
-runsOnOperatorKey: boolean,
+runs: SupplyRunsView,
 /**
  * The monthly cap, in micro-dollars, under the capped formula.
  */
@@ -2157,7 +2156,8 @@ balanceMicros: number | null,
  */
 payments: Array<CreditPayment>,
 /**
- * Why no call goes to the operator's key now, if so (in French).
+ * Why its runs go no further on the operator's key now, if they go
+ * there (in French).
  */
 stopped: string | null, };
 
@@ -3442,6 +3442,11 @@ export type StatusChange = "active" | "disabled";
  * How the company's model is supplied (ADR-208).
  */
 export type SupplyFormulaView = "clientKey" | "capped" | "prepaid";
+
+/**
+ * Where the company's runs go now.
+ */
+export type SupplyRunsView = "operatorKey" | "ownProvider" | "none";
 
 /**
  * `POST /account/gateways/{id}/telegram-code`: the bot's link carrying a

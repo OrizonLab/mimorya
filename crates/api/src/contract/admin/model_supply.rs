@@ -18,6 +18,19 @@ pub enum SupplyFormulaView {
     Prepaid,
 }
 
+/// Where the company's runs go now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum SupplyRunsView {
+    /// The platform's model, on the operator's key: its formula holds them.
+    OperatorKey,
+    /// Its own provider: the formula serves none of its runs.
+    OwnProvider,
+    /// No model: the operator configured none on this server, or does not
+    /// supply the company.
+    None,
+}
+
 /// A payment of the prepaid credit, as the operator recorded it.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -33,9 +46,8 @@ pub struct CreditPayment {
 #[serde(rename_all = "camelCase")]
 pub struct ModelSupplyView {
     pub formula: SupplyFormulaView,
-    /// Whether the company's runs go to the operator's key now: on its own
-    /// provider, they do not, whatever its formula.
-    pub runs_on_operator_key: bool,
+    /// Where the company's runs go now, whatever its formula.
+    pub runs: SupplyRunsView,
     /// The monthly cap, in micro-dollars, under the capped formula.
     pub monthly_cap_micros: Option<i64>,
     /// Without a cap, at the operator's explicit asking.
@@ -49,6 +61,7 @@ pub struct ModelSupplyView {
     pub balance_micros: Option<i64>,
     /// The credit's payments, the latest first.
     pub payments: Vec<CreditPayment>,
-    /// Why no call goes to the operator's key now, if so (in French).
+    /// Why its runs go no further on the operator's key now, if they go
+    /// there (in French).
     pub stopped: Option<String>,
 }
