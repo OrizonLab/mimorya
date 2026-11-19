@@ -61,6 +61,11 @@ pub struct ModelSupplyView {
     pub balance_micros: Option<i64>,
     /// The credit's payments, the latest first.
     pub payments: Vec<CreditPayment>,
+    /// The shares of the cap its administrators are told of by e-mail,
+    /// in percent, set by the operator (ADR-211).
+    pub cap_alert_percents: Vec<u8>,
+    /// The shares of the last payment its balance falling to tells them.
+    pub credit_alert_percents: Vec<u8>,
     /// Why its runs go no further on the operator's key now, if they go
     /// there (in French).
     pub stopped: Option<String>,

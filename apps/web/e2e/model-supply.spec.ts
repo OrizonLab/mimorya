@@ -9,8 +9,9 @@
 // its cap, as the API reads them, and that its own provider leaves the
 // formula unused (ADR-210); a prepaid credit's balance and payments, the
 // screen shown the API's view of such a company, whose formula only the
-// operator's command sets; and the consumption shows a call on the
-// operator's key at the amount the API says the company pays.
+// operator's command sets; the shares of the cap its administrators are
+// told of by e-mail; and the consumption shows a call on the operator's key
+// at the amount the API says the company pays.
 // Whatever happens, the company has no provider of its own afterwards.
 import type { Page } from '@playwright/test';
 import type { LlmView, ModelSupplyView, UsageSummary } from '../lib/api/contract';
@@ -115,11 +116,18 @@ test('the formula and what the month cost under its cap are read in the model ta
   const month = supply.getByText(/Consommé depuis le/);
   await expect(month).toContainText(cost(view.monthBilledMicros));
   await expect(month).toContainText(cost(view.monthlyCapMicros ?? 0));
+  // When its administrators are told, at the operator's shares (ADR-211).
+  const shares = view.capAlertPercents.map((percent) => `${percent} %`).join(', puis ');
+  await expect(supply).toContainText(`prévenus par e-mail à ${shares} du plafond`);
   await noError(page);
 });
 
 test('a prepaid credit shows its balance and its payments, the latest first', async ({ page }) => {
   await openAdmin(page, 'Modèle d’IA');
+  // The shares the API holds, the screen showing them the highest first (ADR-211).
+  const held = (await (await page.request.get(SUPPLY)).json()) as ModelSupplyView;
+  const falling = [...held.creditAlertPercents].sort((a, b) => b - a);
+  const shares = falling.map((percent) => `${percent} %`).join(', puis ');
   await page.route(`**${SUPPLY}`, async (route) => {
     const response = await route.fetch();
     const view = (await response.json()) as ModelSupplyView;
@@ -139,6 +147,7 @@ test('a prepaid credit shows its balance and its payments, the latest first', as
   await modelTab(page);
   const supply = page.getByRole('region', { name: 'Fourniture du modèle' });
   await expect(supply).toContainText('Modèle de la plateforme, sur un crédit prépayé');
+  await expect(supply).toContainText(`quand le solde passe sous ${shares} du dernier versement`);
   await expect(supply.getByText('Solde du crédit')).toContainText(cost(0));
   await expect(supply).toContainText(SPENT);
   const rows = supply.getByRole('row');

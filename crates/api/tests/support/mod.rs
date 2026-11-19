@@ -83,6 +83,7 @@ pub mod slack_validations;
 pub mod slow_starts;
 pub mod sso;
 pub mod summaries;
+pub mod supply_alerts;
 pub mod suspension;
 pub mod sweeps;
 pub mod teams;

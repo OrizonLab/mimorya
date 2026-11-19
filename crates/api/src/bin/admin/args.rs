@@ -46,7 +46,8 @@ Commandes :
                      l’entreprise par son identifiant, tel que journalisé, ou son sigle)
   model-supply     formule de fourniture du modèle d’une entreprise (ADR-208) : formule,
                    plafond, coefficient, consommation du mois sur la clé de l’exploitant
-                   (coût réel et montant refacturé), versements du crédit et solde
+                   (coût réel et montant refacturé), versements du crédit et solde,
+                   parts qui alertent les administrateurs
                      --slug <sigle>
   set-model-supply choisit la formule : client-key (la clé de l’entreprise), capped (la
                    clé de l’exploitant dans un plafond mensuel, 100 USD sans --cap, sans
@@ -60,13 +61,19 @@ Commandes :
                    facture) ; une ligne n’est jamais modifiée : une correction est un
                    versement de plus, négatif s’il le faut
                      --slug <sigle>  --amount <USD>  --reference <facture>
+  set-supply-alerts parts qui alertent les administrateurs de l’entreprise par e-mail
+                   (ADR-211) : du plafond atteintes (de 1 à 100 %, 80 et 95 par défaut),
+                   du dernier versement restantes (de 0 à 99 %, 20 et 5 par défaut) ;
+                   au plus cinq de chaque, « aucun » pour n’en garder aucune
+                     --slug <sigle>  [--cap <parts>]  [--credit <parts>]   (l’une au moins,
+                     par exemple --cap 80,95,100)
   help             affiche cette aide
 
 create-company, invite, suspend-company, reactivate-company, release-company et
 verify-audit passent par DATABASE_APP_URL ; les liens mènent à WEB_ORIGIN.
-delete-company, model-supply, set-model-supply, set-markup et add-credit passent par
-DATABASE_URL (rôle propriétaire) : chaque changement est tracé dans le journal d’audit
-de l’entreprise.";
+delete-company, model-supply, set-model-supply, set-markup, add-credit et
+set-supply-alerts passent par DATABASE_URL (rôle propriétaire) : chaque changement est
+tracé dans le journal d’audit de l’entreprise.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {

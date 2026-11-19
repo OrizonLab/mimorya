@@ -5,9 +5,14 @@
 //! its re-invoiced amount beside its real cost. Pure rules: the
 //! administration command and the platform apply them.
 
+mod alerts;
 mod amounts;
 mod limits;
 
+pub use alerts::{
+    AlertKind, DEFAULT_CAP_ALERTS, DEFAULT_CREDIT_ALERTS, MAX_ALERTS, alerts_problem,
+    cap_alerts_reached, credit_alerts_reached, most_pressing, parse_alerts,
+};
 pub use amounts::{format_usd, parse_percent, parse_usd};
 pub use limits::{SupplyState, SupplyStop, supply_stop};
 

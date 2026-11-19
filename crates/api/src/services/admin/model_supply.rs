@@ -6,10 +6,14 @@
 //! security; the operator alone writes it (ADR-208).
 
 use chrono::{DateTime, Utc};
-use mimorya_core::model_supply::{SupplyFormula, SupplyState, SupplyStop, supply_stop};
+use mimorya_core::model_supply::{
+    DEFAULT_CAP_ALERTS, DEFAULT_CREDIT_ALERTS, SupplyFormula, SupplyState, SupplyStop, supply_stop,
+};
 use mimorya_core::time_zone::month_start;
 use mimorya_db::Database;
-use mimorya_db::repositories::model_supply::{CreditEntryRow, credit_entries, supply_state};
+use mimorya_db::repositories::model_supply::{
+    CreditEntryRow, ModelSupplyRow, credit_entries, model_supply, supply_state,
+};
 
 use crate::services::llm::Resolution;
 use crate::services::{AccessContext, LlmService};
@@ -36,6 +40,10 @@ pub struct SupplyOverview {
     pub runs: RunsOn,
     /// Why its runs go no further on the operator's key, if they go there.
     pub stopped: Option<SupplyStop>,
+    /// The shares of the cap and of the last payment its administrators
+    /// are alerted at (ADR-211).
+    pub cap_alerts: Vec<u8>,
+    pub credit_alerts: Vec<u8>,
 }
 
 pub async fn company_model_supply(
@@ -49,6 +57,7 @@ pub async fn company_model_supply(
     let mut tx = db.begin(tenant_id).await?;
     let state = supply_state(&mut tx, tenant_id, month_start).await?;
     let mut payments = credit_entries(&mut tx, tenant_id).await?;
+    let row = model_supply(&mut tx, tenant_id).await?;
     tx.commit().await?;
     payments.reverse();
     let runs = match llm.resolve(tenant_id).await?.runs {
@@ -69,5 +78,12 @@ pub async fn company_model_supply(
         payments,
         runs,
         stopped,
+        cap_alerts: row
+            .as_ref()
+            .map_or(DEFAULT_CAP_ALERTS.to_vec(), ModelSupplyRow::cap_alerts),
+        credit_alerts: row.as_ref().map_or(
+            DEFAULT_CREDIT_ALERTS.to_vec(),
+            ModelSupplyRow::credit_alerts,
+        ),
     })
 }

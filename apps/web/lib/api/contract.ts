@@ -2156,6 +2156,15 @@ balanceMicros: number | null,
  */
 payments: Array<CreditPayment>,
 /**
+ * The shares of the cap its administrators are told of by e-mail,
+ * in percent, set by the operator (ADR-211).
+ */
+capAlertPercents: Array<number>,
+/**
+ * The shares of the last payment its balance falling to tells them.
+ */
+creditAlertPercents: Array<number>,
+/**
  * Why its runs go no further on the operator's key now, if they go
  * there (in French).
  */

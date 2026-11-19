@@ -135,13 +135,19 @@ async fn the_company_reads_its_cap_or_its_credit_as_it_pays_them() {
 #[ignore = "requires PostgreSQL"]
 async fn on_a_server_without_the_platform_s_model_its_runs_go_nowhere() {
     let api = TestApi::without_llm().await;
+    let owner = PgPool::connect(owner_url()).await.unwrap();
     let paul = api.sign_in(user::PAUL).await;
+    // Past its cap, nothing of the operator's is held back: none runs on it.
+    supply(&owner, capped(CapChoice::Amount(CAP))).await;
+    spent(&owner, SupplyFormula::Capped, CAP).await;
     let shown = paul.get(SUPPLY).await.json();
     assert_eq!(shown["formula"], "capped", "{shown}");
     assert_eq!(
         (&shown["runs"], &shown["stopped"]),
         (&json!("none"), &Value::Null)
     );
+    spent(&owner, SupplyFormula::Capped, 0).await;
+    supply(&owner, capped(CapChoice::Default)).await;
 }
 
 #[tokio::test]

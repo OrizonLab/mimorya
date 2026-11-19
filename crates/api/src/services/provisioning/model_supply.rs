@@ -5,20 +5,23 @@
 //! in the company's audit log, by the `system` actor; a change of the
 //! formula or of the markup is announced to every process, which loads the
 //! company's models again. The report reads what the company consumed on
-//! the operator's key, really and re-invoiced, and its credit's balance,
-//! computed again from the register.
+//! the operator's key, really and re-invoiced, its credit's balance,
+//! computed again from the register, and the shares its administrators are
+//! alerted at (ADR-211).
 
 use chrono::{DateTime, Utc};
 use mimorya_core::DomainError;
 use mimorya_core::model_supply::{
-    DEFAULT_MONTHLY_CAP_MICROS, SupplyFormula, cap_problem, credit_problem, markup_problem,
+    AlertKind, DEFAULT_CAP_ALERTS, DEFAULT_CREDIT_ALERTS, DEFAULT_MONTHLY_CAP_MICROS,
+    SupplyFormula, alerts_problem, cap_problem, credit_problem, markup_problem,
 };
 use mimorya_core::time_zone::month_start;
 use mimorya_db::notifications::notify_invalidation;
 use mimorya_db::repositories::audit::append_audit;
 use mimorya_db::repositories::model_supply::{
-    CreditEntryRow, NewSupplyFormula, SupplySpending, add_credit_entry, credit_entries,
-    lock_supply, model_supply, set_supply_formula, set_supply_markup, supply_spending,
+    CreditEntryRow, ModelSupplyRow, NewSupplyFormula, SupplySpending, add_credit_entry,
+    credit_entries, lock_supply, model_supply, set_supply_alerts, set_supply_formula,
+    set_supply_markup, supply_spending,
 };
 use mimorya_db::repositories::tenants::find_tenant_by_slug;
 use serde_json::json;
@@ -52,6 +55,12 @@ pub enum SupplyChange {
         amount_micros: i64,
         reference: String,
     },
+    /// The shares its administrators are alerted at, those given alone
+    /// (ADR-211).
+    Alerts {
+        cap: Option<Vec<u8>>,
+        credit: Option<Vec<u8>>,
+    },
 }
 
 /// A company's supply as the operator reads it.
@@ -62,6 +71,10 @@ pub struct SupplyReport {
     pub monthly_cap_micros: Option<i64>,
     pub unlimited: bool,
     pub markup_bps: u32,
+    /// The shares of the cap and of the last payment its administrators
+    /// are alerted at (ADR-211).
+    pub cap_alerts: Vec<u8>,
+    pub credit_alerts: Vec<u8>,
     pub month_start: DateTime<Utc>,
     pub spending: SupplySpending,
     /// The credit's payments, the earliest first.
@@ -128,18 +141,46 @@ pub async fn change_model_supply(
             }
             json!({ "amountMicros": amount_micros, "reference": reference })
         }
+        SupplyChange::Alerts { cap, credit } => {
+            if let Some(cap) = cap {
+                refuse(alerts_problem(AlertKind::Cap, cap))?;
+            }
+            if let Some(credit) = credit {
+                refuse(alerts_problem(AlertKind::Credit, credit))?;
+            }
+            let (cap_stored, credit_stored) =
+                (cap.as_deref().map(stored), credit.as_deref().map(stored));
+            set_supply_alerts(
+                &mut tx,
+                tenant_id,
+                cap_stored.as_deref(),
+                credit_stored.as_deref(),
+            )
+            .await?;
+            json!({
+                "capAlertPercents": cap,
+                "creditAlertPercents": credit,
+                "previousCapAlertPercents": previous.as_ref().map(|row| &row.cap_alert_percents),
+                "previousCreditAlertPercents":
+                    previous.as_ref().map(|row| &row.credit_alert_percents),
+            })
+        }
     };
     let action = match change {
         SupplyChange::Formula { .. } => "model_supply.configured",
         SupplyChange::Markup { .. } => "model_supply.markup_set",
         SupplyChange::Credit { .. } => "model_supply.credit_added",
+        SupplyChange::Alerts { .. } => "model_supply.alerts_set",
     };
     append_audit(
         &mut tx,
         system_entry(tenant_id, action, "tenant", tenant_id).metadata(entry),
     )
     .await?;
-    if !matches!(change, SupplyChange::Credit { .. }) {
+    if !matches!(
+        change,
+        SupplyChange::Credit { .. } | SupplyChange::Alerts { .. }
+    ) {
         // Each process loads the company's models again, with this supply.
         let reload = announcement(Uuid::new_v4(), Invalidation::Llm(tenant_id));
         notify_invalidation(&mut *tx, &reload).await?;
@@ -192,10 +233,24 @@ async fn report(conn: &mut PgConnection, tenant_id: Uuid) -> anyhow::Result<Supp
         markup_bps: row
             .as_ref()
             .map_or(0, |row| u32::try_from(row.markup_bps).unwrap_or(0)),
+        cap_alerts: row
+            .as_ref()
+            .map_or(DEFAULT_CAP_ALERTS.to_vec(), ModelSupplyRow::cap_alerts),
+        credit_alerts: row.as_ref().map_or(
+            DEFAULT_CREDIT_ALERTS.to_vec(),
+            ModelSupplyRow::credit_alerts,
+        ),
         month_start,
         spending,
         entries,
     })
+}
+
+/// Shares as stored, the lowest first.
+fn stored(percents: &[u8]) -> Vec<i16> {
+    let mut stored: Vec<i16> = percents.iter().map(|percent| i16::from(*percent)).collect();
+    stored.sort_unstable();
+    stored
 }
 
 fn refuse(problem: Option<String>) -> Result<(), DomainError> {

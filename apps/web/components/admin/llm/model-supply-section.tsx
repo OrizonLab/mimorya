@@ -51,6 +51,7 @@ function ModelSupply({ data }: { data: ModelSupplyView }) {
             <span className="font-semibold">{formatCost(data.balanceMicros)}</span>
           </p>
         )}
+        <AlertsNote data={data} />
         {data.stopped && (
           // The supply's state, not an error of the page: no alert.
           <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{data.stopped}</p>
@@ -74,4 +75,27 @@ function ModelSupply({ data }: { data: ModelSupplyView }) {
       </section>
     </Card>
   );
+}
+
+/** When the company's administrators are told by e-mail (ADR-211). */
+function AlertsNote({ data }: { data: ModelSupplyView }) {
+  const shares = (percents: number[]) => percents.map((percent) => `${percent} %`).join(', puis ');
+  if (data.formula === 'capped' && !data.unlimited && data.capAlertPercents.length > 0) {
+    return (
+      <p className="text-xs text-muted">
+        Les administrateurs des réglages sont prévenus par e-mail à {shares(data.capAlertPercents)}{' '}
+        du plafond.
+      </p>
+    );
+  }
+  if (data.formula === 'prepaid' && data.creditAlertPercents.length > 0) {
+    const falling = [...data.creditAlertPercents].sort((a, b) => b - a);
+    return (
+      <p className="text-xs text-muted">
+        Les administrateurs des réglages sont prévenus par e-mail quand le solde passe sous{' '}
+        {shares(falling)} du dernier versement.
+      </p>
+    );
+  }
+  return null;
 }
