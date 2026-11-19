@@ -2,6 +2,7 @@
 //! routing per task class, price estimation, and the embedding models that
 //! search memory by meaning.
 
+pub mod advisor;
 pub mod anthropic;
 pub mod embedding;
 pub mod escalation;
@@ -12,6 +13,7 @@ pub mod router;
 pub mod settings;
 pub mod types;
 
+pub use advisor::{AdvisorOffer, advisor_pair_accepted, advisor_tool, advisors_for};
 pub use embedding::{
     EMBEDDING_DIMENSIONS, Embedded, EmbeddingConfig, EmbeddingProvider, TenantEmbeddingChoice,
 };
@@ -28,6 +30,7 @@ pub use settings::{
     official_endpoint, requires_api_key, uses_listed_endpoint,
 };
 pub use types::{
-    Effort, LlmError, LlmErrorKind, LlmMessage, LlmProvider, LlmRequest, LlmResponse, LlmToolCall,
-    LlmToolResult, LlmToolSpec, LlmUsage, NativeContent, StopReason, TextSink,
+    AdvisorTool, Consultation, Effort, LlmError, LlmErrorKind, LlmMessage, LlmProvider, LlmRequest,
+    LlmResponse, LlmToolCall, LlmToolResult, LlmToolSpec, LlmUsage, NativeContent, StopReason,
+    TextSink,
 };

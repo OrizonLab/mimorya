@@ -1,6 +1,7 @@
 //! The company's model escalation (`settings:manage`, company-wide,
-//! ADR-207): read with the mechanisms that may be turned on and what they
-//! spent this month, set, or removed.
+//! ADR-207): read with the mechanisms that may be turned on (the advisor
+//! where the platform offers it) and what they spent this month, set, or
+//! removed.
 
 use axum::Json;
 use axum::extract::State;
@@ -43,19 +44,18 @@ pub async fn show(
             updated_at: iso(&stored.updated_at),
         }),
         problem: overview.problem,
-        mechanisms: [
-            (EscalationMechanism::AfterFailure, Mechanism::AfterFailure),
-            (EscalationMechanism::Router, Mechanism::Router),
-            (EscalationMechanism::Advisor, Mechanism::Advisor),
-        ]
-        .into_iter()
-        .map(|(key, mechanism)| MechanismView {
-            key,
-            label: mechanism.label().to_string(),
-            available: mechanism.available(),
-            reason: (!mechanism.available()).then(|| "Bientôt disponible".to_string()),
-        })
-        .collect(),
+        mechanisms: vec![
+            delivered(EscalationMechanism::AfterFailure, Mechanism::AfterFailure),
+            delivered(EscalationMechanism::Router, Mechanism::Router),
+            // Where the platform offers it; turned on, why it does not serve
+            // with the model stored, if so.
+            MechanismView {
+                key: EscalationMechanism::Advisor,
+                label: Mechanism::Advisor.label().to_string(),
+                available: overview.advisor.problem().is_none(),
+                reason: overview.advisor.problem().or(overview.advisor_problem),
+            },
+        ],
         spent_micros: overview.spending.spent_micros,
         month_start: iso(&overview.spending.month_start),
         min_budget_micros: MIN_ESCALATION_BUDGET_MICROS,
@@ -78,4 +78,13 @@ pub async fn reset(State(state): State<AppState>, Auth(identity): Auth) -> ApiRe
     let access = state.access.context(identity).await?;
     reset_company_model_escalation(&state.db, &state.llm, &access).await?;
     Ok(Json(Done::OK))
+}
+
+fn delivered(key: EscalationMechanism, mechanism: Mechanism) -> MechanismView {
+    MechanismView {
+        key,
+        label: mechanism.label().to_string(),
+        available: mechanism.available(),
+        reason: (!mechanism.available()).then(|| "Bientôt disponible".to_string()),
+    }
 }

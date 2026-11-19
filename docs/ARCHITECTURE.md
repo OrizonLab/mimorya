@@ -486,7 +486,8 @@ qu'au-delà de ce que PostgreSQL tient.
   mécanisme le demande, dans un budget mensuel et un
   nombre d'escalades par run (réglages, escalade après échec du contrôle et routeur en
   amont faits, ce dernier selon la sorte du run, un classement de la demande ou une
-  compétence chargée ; advisor à venir).
+  compétence chargée ; advisor d'Anthropic fait, offert si l'exploitant l'ouvre, chez
+  Anthropic à son adresse officielle, ses consultations comptées comme des escalades).
 
 ## 10. Observabilité et exploitation
 

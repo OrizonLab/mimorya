@@ -148,6 +148,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             factory: options.provider_factory.unwrap_or_else(default_factory),
             prices: Arc::new(options.prices.unwrap_or_default()),
             invalidations: invalidations.clone(),
+            advisor_allowed: config.anthropic_advisor,
         },
     ));
     let embeddings = Arc::new(EmbeddingService::new(

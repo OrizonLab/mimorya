@@ -31,8 +31,8 @@ async fn a_company_chooses_its_escalation_model_within_its_bounds() {
     assert_eq!(empty["minBudgetMicros"], 1_000_000);
     assert_eq!(empty["maxBudgetMicros"], 10_000_000_000_i64);
     assert_eq!(empty["maxPerRunCeiling"], 50);
-    // Escalation after a failed review (step 1) and the router (step 2)
-    // are delivered; the advisor is not yet.
+    // Every mechanism is delivered; the advisor waits for the operator's
+    // consent, which this process lacks (`model_escalation_advisor.rs`).
     let mechanisms: Vec<(&str, bool, &Value)> = empty["mechanisms"]
         .as_array()
         .unwrap()
@@ -45,15 +45,16 @@ async fn a_company_chooses_its_escalation_model_within_its_bounds() {
             )
         })
         .collect();
-    let soon = json!("Bientôt disponible");
     assert_eq!(
-        mechanisms,
+        mechanisms[..2],
         [
             ("afterFailure", true, &Value::Null),
             ("router", true, &Value::Null),
-            ("advisor", false, &soon),
         ]
     );
+    let (key, available, reason) = mechanisms[2];
+    assert_eq!((key, available), ("advisor", false));
+    assert!(reason.as_str().unwrap().contains("n’a pas ouvert"));
 
     let mut cheap = escalation(STRONGER);
     cheap["monthlyBudgetMicros"] = json!(999_999);
@@ -71,7 +72,7 @@ async fn a_company_chooses_its_escalation_model_within_its_bounds() {
     refused(&paul, too_many, "1 à 50").await;
     let mut early = escalation(STRONGER);
     early["advisor"] = json!(true);
-    refused(&paul, early, "pas encore disponible").await;
+    refused(&paul, early, "n’a pas ouvert").await;
     let mut unknown = escalation(STRONGER);
     unknown["provider"] = json!("openai");
     let unknown = paul.put(ESCALATION, unknown).await;

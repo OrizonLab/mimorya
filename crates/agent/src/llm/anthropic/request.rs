@@ -2,6 +2,10 @@
 
 use serde_json::{Map, Value, json};
 
+use super::advisor::{
+    ADVISOR_BETA, THINKING_BINDING_BETA, advisor_tool, dropping_unbound_thinking,
+    history_has_advisor,
+};
 use crate::llm::types::{LlmMessage, LlmRequest};
 
 pub const DEFAULT_ANTHROPIC_MODEL: &str = "claude-opus-5-5";
@@ -97,24 +101,29 @@ pub fn build_body(settings: &RequestSettings, request: &LlmRequest) -> Value {
     // Caches the stable prefix (tools + system).
     body.insert("cache_control".into(), json!({ "type": "ephemeral" }));
     body.insert("stream".into(), json!(true));
-    if !request.tools.is_empty() {
-        let tools: Vec<Value> = request
-            .tools
-            .iter()
-            .map(|t| {
-                let mut tool = json!({
-                    "name": t.name,
-                    "description": t.description,
-                    "input_schema": t.input_schema,
-                });
-                if settings.eager_input_streaming {
-                    tool["eager_input_streaming"] = json!(true);
-                }
-                tool
-            })
-            .collect();
+    let mut tools: Vec<Value> = request
+        .tools
+        .iter()
+        .map(|t| {
+            let mut tool = json!({
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.input_schema,
+            });
+            if settings.eager_input_streaming {
+                tool["eager_input_streaming"] = json!(true);
+            }
+            tool
+        })
+        .collect();
+    // The advisor, last: the platform's tools keep their place.
+    tools.extend(request.advisor.as_ref().map(advisor_tool));
+    if !tools.is_empty() {
         body.insert("tools".into(), Value::Array(tools));
         body.insert("tool_choice".into(), json!({ "type": "auto" }));
+    }
+    if let Some(thinking) = unbound_thinking(settings, request) {
+        body.insert("thinking".into(), thinking);
     }
     if let Some(effort) = request.effort {
         body.insert("output_config".into(), json!({ "effort": effort }));
@@ -123,4 +132,29 @@ pub fn build_body(settings: &RequestSettings, request: &LlmRequest) -> Value {
         body.insert("fallbacks".into(), json!("default"));
     }
     Value::Object(body)
+}
+
+/// The reasoning bound to tools since changed, dropped rather than refused.
+fn unbound_thinking(settings: &RequestSettings, request: &LlmRequest) -> Option<Value> {
+    request
+        .drop_unbound_thinking
+        .then(|| dropping_unbound_thinking(&settings.model))
+        .flatten()
+}
+
+/// The betas a request is sent under: the server-side fallback, the advisor
+/// while it is given or its blocks are in the history, and the control of
+/// reasoning bound to changed tools.
+pub fn betas(settings: &RequestSettings, request: &LlmRequest) -> Vec<&'static str> {
+    let mut betas = Vec::new();
+    if settings.server_side_fallback {
+        betas.push(SERVER_FALLBACK_BETA);
+    }
+    if request.advisor.is_some() || history_has_advisor(&request.messages) {
+        betas.push(ADVISOR_BETA);
+    }
+    if unbound_thinking(settings, request).is_some() {
+        betas.push(THINKING_BINDING_BETA);
+    }
+    betas
 }

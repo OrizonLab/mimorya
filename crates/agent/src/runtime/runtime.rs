@@ -166,7 +166,14 @@ impl AgentRuntime {
 
         loop {
             state.elapsed_ms = elapsed(&started);
-            if let Err(reason) = check_budget(&self.config.budget, &state.usage, state.elapsed_ms) {
+            let spent = check_budget(&self.config.budget, &state.usage, state.elapsed_ms);
+            // A consultation of the advisor still to run goes on first, once
+            // a run past the budget: nothing else may be asked meanwhile
+            // (ADR-207).
+            let paused = state.escalation.advisor_pending && !state.escalation.paused_past_budget;
+            if spent.is_err() && paused {
+                state.escalation.paused_past_budget = true;
+            } else if let Err(reason) = spent {
                 if self.config.handoff {
                     return self.hand_over(state, &reason).await;
                 }
@@ -199,6 +206,21 @@ impl AgentRuntime {
                 tool_calls: response.tool_calls.clone(),
                 native: response.native.clone(),
             });
+
+            // Paused, its advisor still consulted (ADR-207): the same call
+            // goes on from the paused answer, nothing added.
+            if response.stop_reason == StopReason::PauseTurn {
+                if !response.text.is_empty() {
+                    let text = response.text.clone();
+                    let message = RunEvent::AssistantMessage {
+                        text,
+                        is_final: false,
+                    };
+                    self.deps.ports.events.emit(message).await?;
+                }
+                self.deps.ports.runs.checkpoint(&state).await?;
+                continue;
+            }
 
             if response.stop_reason == StopReason::Refusal {
                 let error = "Le modèle a refusé de traiter cette demande.".to_string();

@@ -162,6 +162,7 @@ async fn past_the_supply_a_request_is_not_classified() {
         provider: stronger.clone(),
         after_failure: false,
         router: Some(EscalationRoute::Classification),
+        advisor: None,
         max_per_run: 5,
         budget: Arc::new(Unbounded),
     };

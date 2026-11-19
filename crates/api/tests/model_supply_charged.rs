@@ -17,7 +17,7 @@ use support::missions::{
     cost_budget, entrust, executing, limit, read, spend_charged, stages, stop,
 };
 use support::model_supply::supply;
-use support::queue::take_queued;
+use support::queue::{API, take_queued};
 use support::runs::start_run;
 use support::skill_evaluations::{evaluations, forget, launched, play, played, write_case};
 use support::{TestApi, owner_url};
@@ -103,7 +103,9 @@ async fn a_mission_weighs_what_its_stages_were_charged() {
 #[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn the_person_s_export_counts_what_the_company_was_charged() {
-    let api = TestApi::start().await;
+    // Without maintenance: its retention would take calls older than five
+    // years.
+    let api = TestApi::start_with(API).await;
     let marc = api.sign_in(user::MARC).await;
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
     // A call on the operator's key, re-invoiced 1.10 USD for 1 USD, and

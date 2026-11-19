@@ -5,6 +5,7 @@
 //!   required for reasoning blocks bound to the conversation.
 //! - Enables prompt caching on the stable prefix (tools + system).
 //! - Opts into server-side fallback on supported models.
+//! - Gives the model Anthropic's advisor when the run does (ADR-207).
 
 use std::time::Duration;
 
@@ -13,7 +14,7 @@ use futures::StreamExt;
 
 use super::errors::{from_status, network};
 use super::request::{
-    API_VERSION, DEFAULT_ANTHROPIC_MODEL, RequestSettings, SERVER_FALLBACK_BETA, build_body,
+    API_VERSION, DEFAULT_ANTHROPIC_MODEL, RequestSettings, betas, build_body,
     supports_server_fallback,
 };
 use super::sse::SseParser;
@@ -94,8 +95,9 @@ impl LlmProvider for AnthropicProvider {
         if let Some(key) = &self.api_key {
             http = http.header("x-api-key", key);
         }
-        if self.settings.server_side_fallback {
-            http = http.header("anthropic-beta", SERVER_FALLBACK_BETA);
+        let betas = betas(&self.settings, request);
+        if !betas.is_empty() {
+            http = http.header("anthropic-beta", betas.join(","));
         }
 
         let response = http.send().await.map_err(|_| network())?;

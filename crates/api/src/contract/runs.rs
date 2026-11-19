@@ -72,13 +72,14 @@ impl RunUsage {
     /// before ADR-212 was charged its cost.
     pub fn read(stored_usage: &Value) -> anyhow::Result<Self> {
         let usage: StoredRunUsage = stored("usage", stored_usage)?;
-        Ok(Self {
+        Ok(Self::from(RunUsageTotals {
             steps: usage.steps,
             tool_calls: usage.tool_calls,
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
-            cost_micros: usage.charged_micros.unwrap_or(usage.cost_micros),
-        })
+            cost_micros: usage.cost_micros,
+            charged_micros: usage.charged_micros,
+        }))
     }
 }
 

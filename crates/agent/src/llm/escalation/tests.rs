@@ -1,6 +1,12 @@
 use super::*;
 use crate::llm::PriceTable;
 
+/// The advisor opened by the operator, on Anthropic's official address.
+const OPEN: AdvisorOffer = AdvisorOffer {
+    operator_allows: true,
+    anthropic_official: true,
+};
+
 fn haiku() -> TenantLlmChoice {
     TenantLlmChoice {
         provider: "anthropic".into(),
@@ -27,6 +33,7 @@ fn a_model_of_the_conversations_provider_is_kept_with_its_provider_and_endpoint(
         Some(&haiku()),
         &request("  claude-opus-5-5 "),
         &PriceTable::default(),
+        OPEN,
     )
     .unwrap();
     assert_eq!(
@@ -51,8 +58,13 @@ fn a_model_of_the_conversations_provider_is_kept_with_its_provider_and_endpoint(
 
 #[test]
 fn a_company_without_a_model_for_its_runs_may_not_choose_one() {
-    let refused =
-        check_escalation(None, &request("claude-opus-5-5"), &PriceTable::default()).unwrap_err();
+    let refused = check_escalation(
+        None,
+        &request("claude-opus-5-5"),
+        &PriceTable::default(),
+        OPEN,
+    )
+    .unwrap_err();
     assert!(refused.contains("fournisseur propre"), "{refused}");
     assert!(refused.contains("modèle de la plateforme"), "{refused}");
 }
@@ -64,8 +76,13 @@ fn the_model_is_named_well_and_differs_from_the_main_one() {
         ("claude opus", "Nom de modèle invalide"),
         ("claude-haiku-5-5", "doit différer du modèle principal"),
     ] {
-        let refused =
-            check_escalation(Some(&haiku()), &request(model), &PriceTable::default()).unwrap_err();
+        let refused = check_escalation(
+            Some(&haiku()),
+            &request(model),
+            &PriceTable::default(),
+            OPEN,
+        )
+        .unwrap_err();
         assert!(refused.contains(said), "{model}: {refused}");
     }
 }
@@ -75,13 +92,14 @@ fn a_dated_identifier_of_the_main_model_is_the_main_model() {
     let prices = PriceTable::default();
     let dated = "claude-haiku-5-5-20261101";
     assert!(prices.has(dated));
-    let refused = check_escalation(Some(&haiku()), &request(dated), &prices).unwrap_err();
+    let refused = check_escalation(Some(&haiku()), &request(dated), &prices, OPEN).unwrap_err();
     assert!(
         refused.contains("doit différer du modèle principal"),
         "{refused}"
     );
     // Stored before the conversations moved to a dated identifier of it.
-    let stored = check_escalation(Some(&haiku()), &request("claude-opus-5-5"), &prices).unwrap();
+    let stored =
+        check_escalation(Some(&haiku()), &request("claude-opus-5-5"), &prices, OPEN).unwrap();
     let opus = TenantLlmChoice {
         model: "claude-opus-5-5-20261101".into(),
         ..haiku()
@@ -106,7 +124,8 @@ fn the_budget_and_the_escalations_per_run_keep_to_their_bounds() {
             max_per_run: per_run,
             ..request("claude-opus-5-5")
         };
-        let refused = check_escalation(Some(&haiku()), &asked, &PriceTable::default()).unwrap_err();
+        let refused =
+            check_escalation(Some(&haiku()), &asked, &PriceTable::default(), OPEN).unwrap_err();
         assert!(refused.contains(said), "{budget}, {per_run}: {refused}");
     }
     let widest = EscalationRequest {
@@ -114,12 +133,12 @@ fn the_budget_and_the_escalations_per_run_keep_to_their_bounds() {
         max_per_run: MAX_ESCALATIONS_PER_RUN,
         ..request("claude-opus-5-5")
     };
-    assert!(check_escalation(Some(&haiku()), &widest, &PriceTable::default()).is_ok());
+    assert!(check_escalation(Some(&haiku()), &widest, &PriceTable::default(), OPEN).is_ok());
 }
 
 #[test]
-fn a_mechanism_not_delivered_yet_is_refused_rather_than_kept_without_effect() {
-    for (asked, label) in [
+fn every_mechanism_is_delivered_the_advisor_where_it_is_offered() {
+    for (asked, mechanism) in [
         (
             EscalationRequest {
                 after_failure: true,
@@ -142,15 +161,55 @@ fn a_mechanism_not_delivered_yet_is_refused_rather_than_kept_without_effect() {
             Mechanism::Advisor,
         ),
     ] {
-        let result = check_escalation(Some(&haiku()), &asked, &PriceTable::default());
-        if label.available() {
-            assert!(result.is_ok(), "{label:?}");
-        } else {
-            let refused = result.unwrap_err();
-            assert!(refused.contains("pas encore disponible"), "{refused}");
-            assert!(refused.contains(label.label()), "{refused}");
-        }
+        assert!(mechanism.available(), "{mechanism:?}");
+        let choice = check_escalation(Some(&haiku()), &asked, &PriceTable::default(), OPEN);
+        assert!(choice.is_ok(), "{mechanism:?}");
     }
+    let advisor = EscalationRequest {
+        advisor: true,
+        ..request("claude-opus-5-5")
+    };
+    // Not opened by the operator, or not on Anthropic's official address.
+    for offer in [
+        AdvisorOffer {
+            operator_allows: false,
+            ..OPEN
+        },
+        AdvisorOffer {
+            anthropic_official: false,
+            ..OPEN
+        },
+    ] {
+        let refused =
+            check_escalation(Some(&haiku()), &advisor, &PriceTable::default(), offer).unwrap_err();
+        assert_eq!(Some(refused), offer.problem());
+        // The other mechanisms do not need it.
+        let after_failure = EscalationRequest {
+            after_failure: true,
+            ..request("claude-opus-5-5")
+        };
+        assert!(
+            check_escalation(
+                Some(&haiku()),
+                &after_failure,
+                &PriceTable::default(),
+                offer
+            )
+            .is_ok()
+        );
+    }
+    // A pair Anthropic does not accept.
+    let sonnet = TenantLlmChoice {
+        model: "claude-sonnet-5-5".into(),
+        ..haiku()
+    };
+    let weaker = EscalationRequest {
+        advisor: true,
+        ..request("claude-opus-4-8")
+    };
+    let refused =
+        check_escalation(Some(&sonnet), &weaker, &PriceTable::default(), OPEN).unwrap_err();
+    assert!(refused.contains("ne peut pas conseiller"), "{refused}");
 }
 
 #[test]
@@ -159,6 +218,7 @@ fn a_choice_stops_serving_once_the_conversations_provider_changes() {
         Some(&haiku()),
         &request("claude-opus-5-5"),
         &PriceTable::default(),
+        OPEN,
     )
     .unwrap();
     let moved = TenantLlmChoice {
@@ -193,6 +253,7 @@ fn a_model_without_a_known_price_is_refused_the_budget_could_not_bound_it() {
         Some(&haiku()),
         &request("claude-sans-prix"),
         &PriceTable::default(),
+        OPEN,
     )
     .unwrap_err();
     assert!(refused.contains("ne connaît pas le prix"), "{refused}");
@@ -204,6 +265,7 @@ fn a_stored_model_that_lost_its_price_stops_serving() {
         Some(&haiku()),
         &request("claude-opus-5-5"),
         &PriceTable::default(),
+        OPEN,
     )
     .unwrap();
     stored.model = "claude-retire".into();

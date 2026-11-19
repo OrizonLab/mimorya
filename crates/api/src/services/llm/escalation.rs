@@ -5,14 +5,17 @@
 //! platform delivers is turned on and the stored choice still serves; and
 //! what its mechanisms spent this month, against which each escalation is
 //! weighed: what the company pays for them, the amount re-invoiced on the
-//! operator's key.
+//! operator's key. Its main model may consult it as Anthropic's advisor
+//! where the operator opens it, on Anthropic at its official address.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use mimorya_agent::llm::anthropic::DEFAULT_BASE_URL;
 use mimorya_agent::llm::{
-    ESCALATION_BUDGET_ROLES, EscalationChoice, EscalationRoute, EscalationRoutes, LlmProvider,
-    Mechanism, ProviderConfig, TenantLlmChoice, company_provider_config, escalation_problem,
+    AdvisorOffer, ESCALATION_BUDGET_ROLES, EscalationChoice, EscalationRoute, EscalationRoutes,
+    LlmProvider, Mechanism, ProviderConfig, TenantLlmChoice, company_provider_config,
+    escalation_problem,
 };
 use mimorya_core::time_zone::month_start;
 use mimorya_db::TenantTx;
@@ -34,6 +37,10 @@ pub struct EscalationModel {
     /// Whether the router is on (step 2), and its rule for each kind of run.
     pub router: bool,
     pub routes: EscalationRoutes,
+    /// The model its main model may consult as Anthropic's advisor (step
+    /// 3), where the platform offers it and Anthropic accepts the pair: the
+    /// escalation model, as the company chose it.
+    pub advisor: Option<String>,
     pub max_per_run: u32,
     pub monthly_budget_micros: i64,
 }
@@ -80,6 +87,36 @@ impl LlmService {
             }))
     }
 
+    /// Where the platform stands for the company's advisor, its runs' model
+    /// being `runs` (ADR-207): opened by the operator, and on Anthropic at
+    /// its official address.
+    pub fn advisor_offer(&self, runs: Option<&RunsModel>) -> AdvisorOffer {
+        self.advisor_offered(
+            runs.is_some_and(|runs| runs.on_operator_key),
+            runs.map(|runs| &runs.choice),
+        )
+    }
+
+    fn advisor_offered(
+        &self,
+        on_operator_key: bool,
+        runs: Option<&TenantLlmChoice>,
+    ) -> AdvisorOffer {
+        let anthropic_official = match (on_operator_key, runs) {
+            (_, None) => false,
+            // The operator's endpoint, as its provider is configured.
+            (true, Some(_)) => self.platform_config.as_ref().is_some_and(|config| {
+                config.kind == "anthropic" && at_anthropic(config.base_url.as_deref())
+            }),
+            // A company's Anthropic provider is always at its official address.
+            (false, Some(choice)) => choice.provider == "anthropic" && choice.base_url.is_none(),
+        };
+        AdvisorOffer {
+            operator_allows: self.advisor_allowed,
+            anthropic_official,
+        }
+    }
+
     /// The platform's model as an escalation is chosen beside it: its
     /// provider, without its endpoint, which the operator alone knows.
     fn platform_choice(&self) -> Option<TenantLlmChoice> {
@@ -112,7 +149,8 @@ impl LlmService {
         };
         let after_failure = row.after_failure && Mechanism::AfterFailure.available();
         let router = row.router && Mechanism::Router.available();
-        if !after_failure && !router {
+        let advisor = row.advisor && Mechanism::Advisor.available();
+        if !after_failure && !router && !advisor {
             return Ok(None);
         }
         let stored = escalation_choice(row);
@@ -122,6 +160,23 @@ impl LlmService {
         };
         if let Some(problem) = escalation_problem(&stored, runs_choice.as_ref(), &self.prices) {
             tracing::warn!(%tenant_id, problem = %problem, "Company escalation unusable");
+            return Ok(None);
+        }
+        // Where the platform no longer offers it, or Anthropic no longer
+        // accepts the pair, the other mechanisms go on without it.
+        let main_model = runs_choice
+            .as_ref()
+            .map_or("", |choice| choice.model.as_str());
+        let offer = self.advisor_offered(on_operator_key, runs_choice.as_ref());
+        let advisor = advisor
+            && match offer.pair_problem(main_model, &stored.model) {
+                None => true,
+                Some(problem) => {
+                    tracing::warn!(%tenant_id, problem = %problem, "Company advisor unusable");
+                    false
+                }
+            };
+        if !after_failure && !router && !advisor {
             return Ok(None);
         }
         let built = match on_operator_key {
@@ -140,6 +195,7 @@ impl LlmService {
             after_failure,
             router,
             routes: stored.routes,
+            advisor: advisor.then(|| stored.model.clone()),
             max_per_run: stored.max_per_run,
             monthly_budget_micros: stored.monthly_budget_micros,
         }))
@@ -234,4 +290,10 @@ pub fn escalation_choice(row: ModelEscalationRow) -> EscalationChoice {
 
 fn stored_route(stored: &str) -> EscalationRoute {
     EscalationRoute::parse(stored).unwrap_or_default()
+}
+
+/// Whether an endpoint is Anthropic's official address (none: the
+/// provider's default, which is it).
+fn at_anthropic(base_url: Option<&str>) -> bool {
+    base_url.is_none_or(|url| url.trim_end_matches('/') == DEFAULT_BASE_URL)
 }

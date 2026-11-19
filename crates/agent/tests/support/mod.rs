@@ -2,6 +2,7 @@
 //! in-memory ports.
 #![allow(dead_code)] // not every test binary uses every fixture
 
+pub mod advisor;
 pub mod renamed;
 
 use std::collections::{HashMap, HashSet};

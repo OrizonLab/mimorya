@@ -14902,6 +14902,135 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         comme dans l'autre (`skill_proposal_escalation.rs`) ;
       - la table refuse une règle inconnue ;
     - les parcours de bout en bout règlent le routeur et cochent la case d'une version.
+- **Complément (étape 3, advisor d'Anthropic)** :
+  - **offert** à trois conditions, sinon l'option est grisée avec la raison et le serveur
+    la refuse :
+    - l'exploitant l'ouvre (`MIMORYA_ANTHROPIC_ADVISOR`, faux par défaut) : la fonction
+      est en bêta, et un accord de non-conservation des données ne couvre pas tous les
+      modèles ;
+    - les runs vont chez Anthropic à son adresse officielle : la propre clé de
+      l'entreprise, toujours à cette adresse, ou celle de l'exploitant, sans
+      `LLM_BASE_URL` ni `ANTHROPIC_BASE_URL` vers un autre serveur (la seconde est
+      désormais lue avec la configuration) ;
+    - Anthropic accepte la paire (modèle principal, modèle d'escalade) : la table de
+      compatibilité est une constante datée du 2026-11-19, avec le lien de sa source
+      (`crates/agent/src/llm/advisor.rs`).
+
+    Un réglage gardé dont la paire n'est plus acceptée, le modèle principal ayant changé,
+    ne sert plus, et l'écran le dit ; les autres mécanismes continuent ;
+
+  - **l'outil** : `advisor_20260301`, sous la bêta `advisor-tool-2026-03-01`, avec le
+    modèle d'escalade. `max_uses` vaut les escalades permises par run, que
+    l'administrateur règle déjà : une consultation est une escalade. Le prompt du
+    conseiller est mis en cache (5 minutes) à partir de trois consultations permises, là
+    où le cache commence à rapporter ;
+  - **décidé au premier appel du run, puis inchangé** : l'outil est donné si
+    l'entreprise a le conseiller, que le run part sur son modèle principal et que ses
+    bornes le permettent. Un run que le routeur fait partir sur le modèle d'escalade ne
+    l'a pas. L'outil n'est ensuite ni ajouté ni modifié : changer les outils d'un run
+    invalide le raisonnement qui leur est lié, et Anthropic refuse alors la requête sur
+    les comptes où ce contrôle s'applique. Un run qui commence au-delà de ses bornes ne
+    l'a pas, sans trace : rien n'a été escaladé. Un run dont le point de reprise, écrit
+    avant le conseiller, n'en dit rien et qui a déjà fait des appels continue sans ;
+  - **la borne du run tenue** : `max_uses` borne les consultations d'un tour
+    d'Anthropic, et un message de la plateforme (une correction, le passage au modèle
+    d'escalade) ouvre un nouveau tour, compté de zéro ; un appel au modèle d'escalade est
+    une escalade qu'Anthropic ne compte pas. Pour que les escalades du run restent dans
+    leur borne, l'outil est retiré pour de bon dès que le run a une escalade que le
+    compte du tour ignore : une consultation d'un tour précédent, ou un appel au modèle
+    d'escalade. Le modèle d'escalade n'est donc jamais appelé avec le conseiller, ni le
+    modèle principal qui reprend après son échec ;
+  - **retiré pour de bon** aussi quand une borne est atteinte (budget du mois ou
+    escalades du run, journalisé une fois comme `model_escalation.limited`), ou quand
+    l'escalade de l'entreprise a changé ou que l'offre ne tient plus (réglages et
+    configuration relus au chargement et à la reprise). Dès lors, pour les modèles qui
+    raisonnent par défaut, le raisonnement lié à l'ancien outil est abandonné plutôt que
+    refusé : `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`, sous la
+    bêta `thinking-binding-controls-2026-08-01`. Le retrait n'a jamais lieu tant qu'une
+    consultation reste à faire : le tour a été mis en pause (`pause_turn`), ou le modèle
+    a appelé le conseiller à côté d'outils de la plateforme, la réponse s'arrêtant sur
+    `tool_use` et la consultation partant au début de la requête suivante. L'adaptateur
+    le lit dans la réponse (un `server_tool_use` du conseiller sans résultat,
+    `advisor_pending`). La requête suivante garde alors l'outil, quelles que soient les
+    bornes, l'escalade de l'entreprise relue à une reprise ou une compétence chargée,
+    et part au modèle principal : le passage au modèle d'escalade qu'une compétence
+    demande attend l'appel d'après. Les consultations restent comptées par Anthropic
+    dans le même tour ;
+  - **pause** : un tour mis en pause pendant une consultation reprend tel quel, sans
+    message ajouté, sur le même modèle. Le texte déjà écrit est montré comme message
+    intermédiaire. Rien d'autre ne peut être demandé tant qu'une consultation reste à
+    faire : si le budget du run est atteint à ce moment, la requête suivante part
+    d'abord, une fois par run (un appel de plus) ; la consultation encore à faire après,
+    le run s'arrête là, et une étape de mission passe le relais sans demander de point
+    d'étape (`NO_NOTE`), qui ouvrirait un nouveau tour. Le budget du mois est
+    relu avant chaque appel : les consultations d'un même appel peuvent le dépasser, dans
+    la limite des escalades permises par run ;
+  - **comptage** : chaque consultation (entrée `advisor_message` de `usage.iterations`)
+    est enregistrée une fois, avec le rôle « conseiller », au prix de son modèle (à
+    défaut, du modèle demandé), sur la clé des runs. Elle compte dans les escalades du
+    run, dans le budget du mois, et dans le coût et les jetons du run. Les blocs du
+    conseiller (`server_tool_use`, `advisor_tool_result`, dont le conseil chiffré) sont
+    rejoués tels quels, et la bêta est envoyée tant que l'historique en contient ;
+  - **formules de fourniture** (ADR-208 à ADR-212) : sur la clé de l'exploitant, en
+    formule 2 ou 3, une consultation est enregistrée avec la formule et le montant
+    refacturé, comme tout appel des runs (ADR-208). Ce montant, celui que l'entreprise
+    paie, compte :
+    - dans le budget d'escalade, qui pèse les montants refacturés (ADR-209) ;
+    - dans le plafond du mois ou le crédit, avec les autres appels du run (ADR-208) ;
+    - dans le coût du run et son budget de coût (ADR-212).
+
+    La limite de la fourniture est relue avant chaque appel du run, comme avant : une
+    consultation qui fait dépasser le plafond, ou épuise le crédit, arrête l'appel
+    suivant, et le run s'arrête en le disant. Le dépassement est borné par les
+    consultations d'un appel, comme pour tout appel déjà parti. Le conseiller n'est
+    offert sur la clé de l'exploitant qu'aux conditions de l'escalade elle-même (formule
+    2 ou 3, ADR-209), en plus de celles de l'offre ;
+
+  - **écran** : la case du conseiller, ouverte ou grisée avec la raison, et, cochée, ce
+    que compte une consultation. Les sous-agents restent sans escalade, donc sans
+    conseiller ;
+  - **tests** :
+    - `crates/agent/src/llm/advisor/tests.rs` : paires acceptées, refusées et datées,
+      raisons en français, cache à partir de trois ;
+    - `crates/agent/src/llm/escalation/tests.rs` : conseiller refusé sans l'exploitant,
+      hors de l'adresse officielle ou pour une paire refusée, les autres mécanismes non ;
+    - `crates/agent/tests/llm_anthropic_advisor.rs`, contre un serveur local : outil
+      après ceux de la plateforme, bêtas dans l'en-tête, bêta gardée pour un historique
+      qui contient ses blocs, raisonnement abandonné selon le modèle, consultations lues
+      à part, blocs gardés, pause lue, consultation à faire lue à côté d'appels d'outils
+      et non après son résultat ;
+    - `crates/agent/tests/runtime_escalation_advisor.rs`, avec des modèles simulés :
+      consultation comptée comme escalade et tarifée, tour en pause repris, retrait aux
+      escalades du run, pause gardée au-delà, budget du mois épuisé dès le départ (sans
+      trace), run parti sur le modèle d'escalade, run repris une fois le conseiller
+      retiré ;
+    - `crates/agent/tests/runtime_escalation_advisor_turns.rs` : une correction après
+      une consultation retire le conseiller, avant toute consultation le garde ; le run
+      escaladé après un échec appelle le modèle d'escalade sans lui, et le modèle
+      principal qui reprend après son échec de même ; un tour en pause va au bout
+      au-delà du budget, une fois par run ; un run d'un point de reprise antérieur
+      continue sans ; une consultation demandée à côté d'outils garde le conseiller à la
+      requête suivante, au-delà de la borne du run, à la reprise d'une validation après
+      le retrait de l'escalade, et quand une compétence chargée dans la même réponse
+      demande le modèle d'escalade, qui attend l'appel d'après ; une étape passe le
+      relais sans point d'étape tant qu'une consultation reste à faire ;
+    - `crates/api/src/config/tests.rs` : `ANTHROPIC_BASE_URL` lue pour le modèle
+      d'Anthropic de la plateforme, après `LLM_BASE_URL`, et nommée dans le refus d'une
+      adresse invalide ;
+    - `crates/api/tests/model_supply_advisor.rs`, sur PostgreSQL : en formules 2 et 3,
+      le modèle de la plateforme consulte le conseiller ; chaque consultation est
+      enregistrée une fois sur la clé de l'exploitant, au montant refacturé, compté dans
+      le budget d'escalade et dans le plafond ou le crédit ; une consultation qui fait
+      dépasser le plafond arrête l'appel suivant du run ; une adresse de l'exploitant
+      autre que celle d'Anthropic (`LLM_BASE_URL`, `ANTHROPIC_BASE_URL`) retire le
+      conseiller des runs ;
+    - `crates/api/tests/model_escalation_advisor.rs`, sur PostgreSQL : sans l'accord de
+      l'exploitant, refusé ; avec, gardé pour une paire acceptée, et dit hors service
+      quand le modèle principal change ; sur la clé de l'exploitant, offert à l'adresse
+      officielle seule ; consultations d'un run enregistrées et comptées dans la dépense
+      du mois ; l'exploitant le refermant, ou le modèle principal changeant pour une paire
+      refusée, les runs n'ont plus le conseiller et les autres mécanismes servent ;
+    - le parcours de bout en bout coche le conseiller.
 
 ## ADR-208 — Formules de fourniture du modèle : clé du client, modèle fourni avec plafond, crédit prépayé (chantier 6)
 

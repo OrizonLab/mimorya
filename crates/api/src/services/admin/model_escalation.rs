@@ -3,13 +3,15 @@
 //! lock that its conversations' model is changed under too: a model of its
 //! runs' provider (its own, or the platform's in the formulas the operator
 //! gives it, ADR-209), with its key and endpoint, the mechanisms that call
-//! it, their monthly budget and the escalations a run may have. Read with
-//! why it does not serve, if so, and what the mechanisms spent this month.
+//! it, their monthly budget and the escalations a run may have; Anthropic's
+//! advisor where the platform offers it and Anthropic accepts the pair.
+//! Read with why it does not serve, if so, and what the mechanisms spent
+//! this month.
 //! Each change is audited, with the choice alone.
 
 use chrono::{DateTime, Utc};
 use mimorya_agent::llm::{
-    EscalationChoice, EscalationRequest, check_escalation, escalation_problem,
+    AdvisorOffer, EscalationChoice, EscalationRequest, check_escalation, escalation_problem,
 };
 use mimorya_core::DomainError;
 use mimorya_db::Database;
@@ -35,6 +37,10 @@ pub struct EscalationOverview {
     pub stored: Option<StoredEscalation>,
     /// Why the escalation stored does not serve now.
     pub problem: Option<String>,
+    /// Where the platform stands for its advisor (step 3).
+    pub advisor: AdvisorOffer,
+    /// Why the advisor stored does not serve now, the rest serving.
+    pub advisor_problem: Option<String>,
     pub spending: MonthSpending,
 }
 
@@ -60,14 +66,24 @@ pub async fn company_model_escalation(
         });
     let spending = month_spending(&mut tx).await?;
     tx.commit().await?;
-    let problem = stored.as_ref().and_then(|stored| {
-        let main = runs.as_ref().map(|runs| &runs.choice);
-        escalation_problem(&stored.choice, main, llm.prices())
-    });
+    let main = runs.as_ref().map(|runs| &runs.choice);
+    let problem = stored
+        .as_ref()
+        .and_then(|stored| escalation_problem(&stored.choice, main, llm.prices()));
+    let advisor = llm.advisor_offer(runs.as_ref());
+    let advisor_problem = stored
+        .as_ref()
+        .filter(|stored| stored.choice.advisor && problem.is_none())
+        .and_then(|stored| {
+            let main = main.map_or("", |choice| choice.model.as_str());
+            advisor.pair_problem(main, &stored.choice.model)
+        });
     Ok(EscalationOverview {
         runs,
         stored,
         problem,
+        advisor,
+        advisor_problem,
         spending,
     })
 }
@@ -95,7 +111,9 @@ pub async fn set_company_model_escalation(
         max_per_run: update.max_per_run,
     };
     let main = runs.as_ref().map(|runs| &runs.choice);
-    let choice = check_escalation(main, &request, llm.prices()).map_err(DomainError::validation)?;
+    let advisor = llm.advisor_offer(runs.as_ref());
+    let choice =
+        check_escalation(main, &request, llm.prices(), advisor).map_err(DomainError::validation)?;
     let previous = model_escalation(&mut tx).await?;
     let max_per_run = i32::try_from(choice.max_per_run)?;
     set_model_escalation(

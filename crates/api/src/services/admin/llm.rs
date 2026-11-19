@@ -213,14 +213,11 @@ pub async fn test_llm(
             Review::Refused(reason) => return Err(unusable(reason).into()),
         },
     };
-    let request = LlmRequest {
-        system: "Réponds uniquement « OK ».".into(),
-        messages: vec![LlmMessage::user("Test de connexion")],
-        tools: Vec::new(),
-        max_output_tokens: Some(16),
-        effort: None,
-        on_text_delta: None,
-    };
+    let mut request = LlmRequest::new(
+        "Réponds uniquement « OK ».",
+        vec![LlmMessage::user("Test de connexion")],
+    );
+    request.max_output_tokens = Some(16);
     let outcome = provider.complete(&request).await;
     // Charged as the company's other calls, on whose key (ADR-208).
     let cost_micros = match &outcome {

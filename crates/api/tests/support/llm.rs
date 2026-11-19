@@ -111,3 +111,34 @@ pub async fn ask(api: &super::TestApi, user: &Client<'_>, text: &str) -> (Status
         .join("\n");
     (sent.status, answer)
 }
+
+/// The scripted model under another name: the one the platform's
+/// configuration gives it, its answers unchanged (ADR-207).
+pub struct Named {
+    model: Arc<ScriptedProvider>,
+    name: &'static str,
+}
+
+impl Named {
+    pub fn new(model: Arc<ScriptedProvider>, name: &'static str) -> Self {
+        Self { model, name }
+    }
+}
+
+#[async_trait::async_trait]
+impl LlmProvider for Named {
+    fn id(&self) -> &str {
+        self.model.id()
+    }
+
+    fn model(&self) -> &str {
+        self.name
+    }
+
+    async fn complete(
+        &self,
+        request: &mimorya_agent::llm::LlmRequest,
+    ) -> Result<mimorya_agent::llm::LlmResponse, mimorya_agent::llm::LlmError> {
+        self.model.complete(request).await
+    }
+}

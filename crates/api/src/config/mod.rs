@@ -96,6 +96,11 @@ pub struct AppConfig {
     pub mail: Option<MailSettings>,
     /// Model-based review of answers when success criteria are given.
     pub llm_judge: bool,
+    /// Whether a company may give its runs Anthropic's advisor
+    /// (`MIMORYA_ANTHROPIC_ADVISOR`, off by default, ADR-207): the function
+    /// is in beta, and an agreement not to retain data does not cover every
+    /// model.
+    pub anthropic_advisor: bool,
     /// Login attempts allowed per client address and per minute.
     pub login_rate_limit_per_minute: u32,
     /// The program that reads deposited documents (`MIMORYA_EXTRACTOR`;
@@ -134,6 +139,7 @@ impl std::fmt::Debug for AppConfig {
             .field("mcp_start_patience", &self.mcp_start_patience)
             .field("mail", &self.mail)
             .field("llm_judge", &self.llm_judge)
+            .field("anthropic_advisor", &self.anthropic_advisor)
             .field(
                 "login_rate_limit_per_minute",
                 &self.login_rate_limit_per_minute,
@@ -217,6 +223,7 @@ impl AppConfig {
         let mcp_start_patience = Duration::from_secs(patience_seconds);
         let mail = reader.mail();
         let llm_judge = reader.boolean("MIMORYA_LLM_JUDGE", false);
+        let anthropic_advisor = reader.boolean("MIMORYA_ANTHROPIC_ADVISOR", false);
         let login_rate_limit_per_minute = reader.parsed("LOGIN_RATE_LIMIT_PER_MINUTE", 10_u32);
         if login_rate_limit_per_minute == 0 {
             reader.issue("LOGIN_RATE_LIMIT_PER_MINUTE", "entier positif attendu");
@@ -255,6 +262,7 @@ impl AppConfig {
             mcp_start_patience,
             mail,
             llm_judge,
+            anthropic_advisor,
             login_rate_limit_per_minute,
             document_extractor,
             document_quota_bytes,

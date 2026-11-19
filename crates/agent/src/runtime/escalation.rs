@@ -6,7 +6,8 @@
 //! from where it stands: one message is appended, nothing done is done
 //! again; or, while the company's router is on, from its start (by the
 //! company's rule or a classification, `routing`) or once it loads a skill
-//! that asks for the escalation model.
+//! that asks for the escalation model. Its main model may also consult it
+//! as Anthropic's advisor (`advisor`).
 
 use std::sync::Arc;
 
@@ -28,6 +29,9 @@ pub struct Escalation {
     /// While the router is on (step 2), its rule for this kind of run: the
     /// model the run starts with. A skill loaded may then switch the run.
     pub router: Option<EscalationRoute>,
+    /// The model the main model may consult as Anthropic's advisor (step 3,
+    /// `advisor`): the escalation model, as the company chose it.
+    pub advisor: Option<String>,
     pub max_per_run: u32,
     pub budget: Arc<dyn EscalationBudget>,
 }
@@ -41,7 +45,7 @@ pub trait EscalationBudget: Send + Sync {
 
 /// The bound that stopped an escalation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Bound {
+pub(super) enum Bound {
     MonthlyBudget,
     PerRun,
 }
@@ -95,8 +99,12 @@ pub(super) async fn next_model(
         return Ok((main, ModelRole::Main));
     };
     // A skill loaded since the last call asks for the escalation model:
-    // heeded once a run, while the router is on.
-    if state.escalation.skill_asked && !state.escalation.skill_heeded {
+    // heeded once a run, while the router is on; after the advisor's
+    // consultation still to run, which the main model's call gives it.
+    if state.escalation.skill_asked
+        && !state.escalation.skill_heeded
+        && !state.escalation.advisor_pending
+    {
         state.escalation.skill_heeded = true;
         if escalation.router.is_some() {
             start_escalation(deps, state, Reason::Skill).await?;
@@ -197,7 +205,7 @@ pub(super) async fn budget_spent(
     Ok(true)
 }
 
-async fn bound_reached(
+pub(super) async fn bound_reached(
     escalation: &Escalation,
     state: &RunCheckpoint,
 ) -> anyhow::Result<Option<Bound>> {
@@ -211,7 +219,7 @@ async fn bound_reached(
 }
 
 /// A bound stopped an escalation: journaled once a run.
-async fn limited(
+pub(super) async fn limited(
     deps: &RuntimeDeps,
     state: &mut RunCheckpoint,
     bound: Bound,
