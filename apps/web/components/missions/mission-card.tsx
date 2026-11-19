@@ -38,7 +38,7 @@ export function MissionCard({ mission, onChanged }: { mission: Mission; onChange
         </div>
         <p className="text-xs text-muted">
           Confiée le {formatDate(mission.createdAt)} · étape {mission.stages} sur{' '}
-          {mission.maxStages} au plus · coût {formatCost(mission.costMicros)} sur{' '}
+          {mission.maxStages} au plus · coût estimé {formatCost(mission.costMicros)} sur{' '}
           {formatCost(mission.maxCostMicros)} au plus
         </p>
         <p className="text-sm whitespace-pre-line">{mission.objective}</p>

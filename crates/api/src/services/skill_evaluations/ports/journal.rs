@@ -123,8 +123,7 @@ impl UsageSink for Journal {
         )
         .await?;
         tx.commit().await?;
-        // What it cost the company (ADR-212).
-        Ok(charge.billed_micros.unwrap_or(record.cost_micros))
+        Ok(charge.charged(record.cost_micros))
     }
 }
 

@@ -418,7 +418,7 @@ Repères à l'intérieur des crates :
   généré par `pnpm contract`, `useApiData`), `web/lib/use-synced-state.ts` (état d'un
   formulaire repris de la liste rechargée, ADR-041), `web/lib/focus-keeper.ts` (focus rendu
   au contrôle réactivé, ADR-043), `web/lib/use-refresh-while.ts` (liste relue tant
-  qu'un travail du serveur est en cours, ADR-105), `web/lib/labels.ts`, `web/lib/format.ts`, `web/lib/run-cost.ts` (ce qu'un run a coûté à l'entreprise, ADR-212),
+  qu'un travail du serveur est en cours, ADR-105), `web/lib/labels.ts`, `web/lib/format.ts`,
   `web/lib/input-patterns.ts` (ce qu'acceptent les champs, comme le serveur, ADR-139),
   `web/proxy.ts` et
   `web/lib/security/` (CSP à nonce par page, ADR-030), `web/e2e/` (tests de bout en

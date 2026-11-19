@@ -43,10 +43,32 @@ async fn a_run_keeps_its_cost_and_shows_what_the_company_was_charged() {
     )]);
     let run = start_run(&marc).await;
     api.idle().await;
+    // The engine keeps both, for the operator alone.
+    let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
+    let (kept, audited): (Value, Value) = sqlx::query_as(
+        "select r.usage, a.metadata from agent_runs r join audit_log a on a.run_id = r.id \
+         and a.action = 'agent.run.completed' where r.id = $1",
+    )
+    .bind(run)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(kept["costMicros"], SCRIPTED_CALL_MICROS, "{kept}");
+    assert_eq!(kept["chargedMicros"], CHARGED, "{kept}");
+    // The company reads what it was charged, in the run, in the list of its
+    // runs and in its audit journal; never what the call cost the operator.
     let detail = marc.get(&format!("/runs/{run}")).await.json();
-    let usage = &detail["run"]["usage"];
-    assert_eq!(usage["costMicros"], SCRIPTED_CALL_MICROS, "{detail}");
-    assert_eq!(usage["chargedMicros"], CHARGED, "{detail}");
+    let list = marc.get("/runs").await.json();
+    let listed = list["runs"]
+        .as_array()
+        .and_then(|runs| runs.iter().find(|item| item["id"] == json!(run)))
+        .unwrap_or_else(|| panic!("{list}"))
+        .clone();
+    for usage in [&detail["run"]["usage"], &listed["usage"], &audited["usage"]] {
+        assert_eq!(usage["costMicros"], CHARGED, "{usage}");
+        assert!(usage.get("chargedMicros").is_none(), "{usage}");
+    }
     // Its usage event tells what the call cost the company.
     let told: Vec<&Value> = detail["events"]
         .as_array()
@@ -84,17 +106,23 @@ async fn the_person_s_export_counts_what_the_company_was_charged() {
     let api = TestApi::start().await;
     let marc = api.sign_in(user::MARC).await;
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    sqlx::query(
-        "insert into usage_records (tenant_id, user_id, kind, role, provider, model, \
-         input_tokens, output_tokens, cost_micros, supply_formula, billed_micros, created_at) \
-         values ($1, $2, 'llm', 'main', 'anthropic', 'claude-haiku-5-5', 1, 1, 1000000, \
-         'capped', 1100000, '2020-01-15T12:00:00Z')",
-    )
-    .bind(tenant::ID)
-    .bind(user::MARC)
-    .execute(&mut *tx)
-    .await
-    .unwrap();
+    // A call on the operator's key, re-invoiced 1.10 USD for 1 USD, and
+    // one on the company's own key, which it pays at its cost.
+    for (formula, billed) in [("capped", Some(1_100_000_i64)), ("client_key", None)] {
+        sqlx::query(
+            "insert into usage_records (tenant_id, user_id, kind, role, provider, model, \
+             input_tokens, output_tokens, cost_micros, supply_formula, billed_micros, \
+             created_at) values ($1, $2, 'llm', 'main', 'anthropic', 'claude-haiku-5-5', 1, 1, \
+             1000000, $3, $4, '2020-01-15T12:00:00Z')",
+        )
+        .bind(tenant::ID)
+        .bind(user::MARC)
+        .bind(formula)
+        .bind(billed)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    }
     tx.commit().await.unwrap();
 
     let exported = marc.get("/account/export").await.json();
@@ -105,7 +133,7 @@ async fn the_person_s_export_counts_what_the_company_was_charged() {
         .filter(|row| row["month"].as_str().unwrap_or("").starts_with("2020-01"))
         .collect();
     assert_eq!(months.len(), 1, "{exported}");
-    assert_eq!(months[0]["costMicros"], json!(1_100_000));
+    assert_eq!(months[0]["costMicros"], json!(2_100_000));
 }
 
 #[tokio::test]

@@ -133,7 +133,13 @@ pub async fn spend_charged(mission: Uuid, cost_micros: i64, charged_micros: i64)
     stage_over(mission, usage).await;
 }
 
-async fn stage_over(mission: Uuid, usage: Value) {
+/// A finished stage, its usage whole as the engine stores it: the list of
+/// its author's runs reads it.
+async fn stage_over(mission: Uuid, cost: Value) {
+    let mut usage = json!({ "steps": 1, "toolCalls": 0, "inputTokens": 0, "outputTokens": 0 });
+    if let (Some(usage), Some(cost)) = (usage.as_object_mut(), cost.as_object()) {
+        usage.extend(cost.clone());
+    }
     let owner = sqlx::PgPool::connect(owner_url()).await.unwrap();
     sqlx::query(
         "insert into agent_runs (tenant_id, conversation_id, on_behalf_of_user_id, objective, \

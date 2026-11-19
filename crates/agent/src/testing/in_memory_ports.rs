@@ -118,6 +118,8 @@ impl InMemoryPorts {
             unroutable: state.unroutable.clone(),
             linked_accounts: state.linked_accounts.clone(),
             mail_account: state.mail_account.clone(),
+            // Charged as its parent is (ADR-212).
+            markup_bps: state.markup_bps,
             ..State::default()
         };
         Arc::new(Self {

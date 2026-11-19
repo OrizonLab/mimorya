@@ -3,7 +3,6 @@ import { Badge, LabelBadge } from '@/components/ui';
 import type { RunListItem } from '@/lib/api';
 import { formatCost, formatDate } from '@/lib/format';
 import { AGENT_PROFILES, RUN_STATUS } from '@/lib/labels';
-import { chargedOf } from '@/lib/run-cost';
 
 /**
  * One run of a list, linking to its trace: what it was asked, its status,
@@ -28,7 +27,7 @@ export function RunRow({
       <span className="flex flex-wrap items-center gap-2 text-xs text-muted">
         <LabelBadge labels={RUN_STATUS} value={run.status} />
         <span>{run.usage.toolCalls} outil(s)</span>
-        <span>{formatCost(chargedOf(run.usage))}</span>
+        <span>{formatCost(run.usage.costMicros)}</span>
         {dated && <span>{formatDate(run.createdAt)}</span>}
       </span>
     </Link>

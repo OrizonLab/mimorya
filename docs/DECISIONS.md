@@ -15378,14 +15378,20 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     (sa limite en USD, ADR-093), le coût d'une évaluation et la dépense de ses trente
     jours (ADR-154) se comptent au montant payé. Sur la propre clé de l'entreprise, rien
     ne change ;
-  - **montré au montant payé** :
-    - le coût d'un run (`usage.chargedMicros`), libellé « Coût » dans « Opérations » ;
-    - celui d'une mission ;
+  - **montré au montant payé, et à lui seul** : l'entreprise ne lit ni le coût réel de
+    l'exploitant, ni son coefficient run par run (ADR-210) :
+    - le coût d'un run, dans sa vue et la liste des runs (`usage.costMicros`, que l'API
+      lit du total payé, `RunUsage::read`), « Coût estimé » dans « Opérations » comme
+      avant : sur sa propre clé, c'est une estimation au prix public ;
+    - l'entrée du journal d'audit qui clôt un run (`agent.run.*`), que lisent ses
+      administrateurs et l'export vers son SIEM ;
+    - le coût d'une mission ;
     - l'événement d'usage de chaque appel ;
     - le coût d'une évaluation ;
     - l'export personnel (`coalesce(billed_micros, cost_micros)`).
 
-    Le coût réel reste enregistré, et seul le compte rendu de `mimorya-admin` le montre
+    Le coût réel reste enregistré dans le run (`agent_runs.usage`) et dans la
+    consommation, pour l'exploitant : seul le compte rendu de `mimorya-admin` le montre,
     à côté du montant refacturé.
 - **Conséquences** :
   - avec un coefficient, un run ou une mission sur la clé de l'exploitant atteint son
@@ -15398,9 +15404,14 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - `crates/agent/tests/model_usage.rs` : coût et montant payé d'un appel comptés à part,
     et l'événement d'usage au montant payé ;
   - `crates/api/tests/model_supply_charged.rs` :
-    - un run garde son coût et montre le montant refacturé, son événement d'usage aussi ;
+    - un run garde son coût pour l'exploitant, et sa vue, la liste des runs et son
+      entrée d'audit ne montrent que le montant refacturé, son événement d'usage aussi ;
     - une mission pèse ce que ses étapes ont coûté à l'entreprise, sa prochaine étape
       recevant ce qui en reste ;
     - une évaluation et sa dépense sur trente jours au montant refacturé ;
-    - l'export personnel au montant refacturé ;
-  - `crates/api/src/contract/tests/records.rs` : un run relu avec ou sans montant payé.
+    - l'export personnel au montant refacturé sur la clé de l'exploitant, au coût sur
+      la propre clé de l'entreprise ;
+  - `crates/agent/tests/runtime_delegation.rs` : un sous-agent apporte à son parent son
+    coût et ce que l'entreprise en a payé, à part ;
+  - `crates/api/src/contract/tests/records.rs` : un run relu avec ou sans montant payé,
+    l'entreprise ne lisant que celui-ci.

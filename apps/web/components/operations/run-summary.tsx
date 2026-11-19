@@ -3,7 +3,6 @@ import type { RunView } from '@/lib/api';
 import { formatCost, formatDate, formatNumber } from '@/lib/format';
 import { AUTONOMY_LABELS, RUN_STATUS } from '@/lib/labels';
 import { Stat } from './stat';
-import { chargedOf } from '@/lib/run-cost';
 
 /** Objective, status, autonomy, usage and verification of one run. */
 export function RunSummary({ run }: { run: RunView }) {
@@ -14,7 +13,7 @@ export function RunSummary({ run }: { run: RunView }) {
         <Stat label="Statut" value={<LabelBadge labels={RUN_STATUS} value={run.status} />} />
         <Stat label="Autonomie" value={AUTONOMY_LABELS[run.autonomyLevel] ?? run.autonomyLevel} />
         <Stat label="Étapes / outils" value={`${run.usage.steps} / ${run.usage.toolCalls}`} />
-        <Stat label="Coût" value={formatCost(chargedOf(run.usage))} />
+        <Stat label="Coût estimé" value={formatCost(run.usage.costMicros)} />
         <Stat
           label="Tokens (entrée / sortie)"
           value={`${formatNumber(run.usage.inputTokens)} / ${formatNumber(run.usage.outputTokens)}`}

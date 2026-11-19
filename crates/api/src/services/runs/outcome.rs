@@ -140,7 +140,9 @@ async fn record_outcome(
         )
         .on_behalf_of(scope.user_id)
         .run(scope.run_id)
-        .metadata(json!({ "usage": checkpoint.usage })),
+        // What the company paid, never what the calls cost the operator
+        // (ADR-212): the journal is read by its administrators.
+        .metadata(json!({ "usage": contract::RunUsage::from(checkpoint.usage) })),
     )
     .await?;
     Ok(())

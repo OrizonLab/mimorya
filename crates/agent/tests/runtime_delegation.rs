@@ -2,13 +2,14 @@
 //! the tools that only read and run without validation, within its
 //! parent's ceiling, through its own run, and returns a summary whose
 //! sources its parent may cite; it delegates nothing further. A run that
-//! may not use the agent delegates nothing.
+//! may not use the agent delegates nothing. What a child cost, and what
+//! the company paid for it, count in its parent apart (ADR-212).
 
 mod support;
 
 use std::collections::{HashMap, HashSet};
 
-use mimorya_agent::llm::LlmMessage;
+use mimorya_agent::llm::{LlmMessage, ModelPrice, PriceTable};
 use mimorya_agent::runtime::{RunOutcome, SUB_AGENT_BUDGET, SubAgentProfile};
 use mimorya_agent::testing::{
     RecordedRequest, ScriptedCall, ScriptedReply, ScriptedStep, call, last_tool_results,
@@ -279,4 +280,40 @@ async fn a_sub_agent_reads_through_its_own_run() {
     let child = &h.ports.sub_runs()[0];
     assert_eq!(child.ports.memories()[0].use_count, 1);
     assert_eq!(child.ports.tool_records()[0].tool_name, "memory_search");
+}
+
+#[tokio::test]
+async fn a_sub_agent_brings_its_parent_what_it_cost_and_what_the_company_paid() {
+    // 0.20 USD a call, re-invoiced 10 % more on the operator's key (ADR-212).
+    let price = ModelPrice {
+        input_per_mtok: 1500.0,
+        output_per_mtok: 2500.0,
+        cache_read_per_mtok: None,
+        cache_write_per_mtok: None,
+        long_prompt: None,
+    };
+    let h = setup(
+        vec![
+            ScriptedStep::calls("Je confie la recherche.", vec![delegate("research")]),
+            ScriptedStep::text("Rien à signaler cette semaine."),
+            ScriptedStep::text("Synthèse : rien à signaler cette semaine."),
+        ],
+        Options {
+            sub_agents: true,
+            prices: Some(PriceTable::new(HashMap::from([(
+                "scripted-model".to_string(),
+                price,
+            )]))),
+            ..Options::default()
+        },
+    );
+    h.ports.charge_at(1_000);
+    let RunOutcome::Completed { checkpoint, .. } = h.start().await else {
+        panic!("expected the parent's answer");
+    };
+    // The parent's two calls and its child's one, each apart.
+    assert_eq!(checkpoint.usage.cost_micros, 600_000);
+    assert_eq!(checkpoint.usage.charged(), 660_000);
+    let child = &h.ports.sub_runs()[0];
+    assert_eq!(child.ports.usage_records().len(), 1);
 }
