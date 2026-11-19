@@ -175,6 +175,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::MissionSettingsView>();
     declarations.add::<admin::EvaluationSettingsView>();
     declarations.add::<admin::ModelEscalationView>();
+    declarations.add::<admin::ModelSupplyView>();
     declarations.add::<admin::RetentionView>();
     declarations.add::<admin::SecondFactorPolicyView>();
     declarations.add::<admin::IdentityProvidersView>();

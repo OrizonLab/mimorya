@@ -23,6 +23,7 @@ mod llm;
 mod memory_settings;
 mod mission_settings;
 mod model_escalation;
+mod model_supply;
 mod organization;
 mod policies;
 mod policy_proposals;
@@ -142,6 +143,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
                 .put(evaluation_settings::update)
                 .delete(evaluation_settings::reset),
         )
+        .route("/admin/model-supply", get(model_supply::show))
         .route(
             "/admin/model-escalation",
             get(model_escalation::show)

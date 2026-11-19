@@ -100,10 +100,14 @@ pub struct UsageRow {
     pub model: String,
     pub kind: UsageKind,
     pub role: UsageRole,
+    /// Made on the operator's key, the platform's model (ADR-208).
+    pub on_operator_key: bool,
     pub calls: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
-    /// Estimated cost, in millionths of the currency unit.
+    /// What these calls cost the company, in micro-dollars: their estimated
+    /// cost on its own key, the amount the operator re-invoices on its
+    /// (ADR-210).
     pub cost_micros: i64,
 }
 
@@ -114,6 +118,7 @@ impl UsageRow {
             model: r.model.clone(),
             kind: stored_text("usage kind", &r.kind)?,
             role: stored_text("usage role", &r.role)?,
+            on_operator_key: r.on_operator_key,
             calls: r.calls,
             input_tokens: r.input_tokens,
             output_tokens: r.output_tokens,

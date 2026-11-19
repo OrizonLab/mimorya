@@ -15208,3 +15208,64 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     l'exploitant compte dans le budget à son montant refacturé ;
   - `apps/web/e2e/model-escalation.spec.ts` : une escalade choisie sur le modèle de la
     plateforme, avec la mention du plafond ou du crédit.
+
+## ADR-210 — Écrans de la fourniture du modèle : formule, plafond ou crédit, montants refacturés (chantier 6, étape 3)
+
+- **Statut** : accepté (2026-11-18) · complète l'ADR-208 (formules, limites) et
+  l'ADR-209 (escalade sur la clé de l'exploitant). Les alertes font l'objet d'une
+  décision suivante.
+- **Contexte** : l'exploitant règle la formule, le plafond, le coefficient et les crédits
+  par `mimorya-admin` (ADR-208), et la plateforme les applique. L'entreprise doit voir ce
+  qu'elle paie : sa formule, son plafond ou son crédit, ses versements, et des montants
+  qui sont, sur la clé de l'exploitant, ceux qu'il lui refacture. Elle ne doit voir ni le
+  coût réel de l'exploitant, ni son coefficient.
+- **Décision** :
+  - **onglet « Modèle d'IA »** : une section « Fourniture du modèle », lue par
+    `GET /admin/model-supply`. Elle est réservée à qui gère les réglages de toute
+    l'entreprise (`settings:manage`), comme le reste de l'onglet. Elle montre :
+    - la formule (clé de l'entreprise, plafond mensuel, crédit prépayé) ;
+    - en formule 2, ce que le mois a refacturé et le plafond, ou le mode sans plafond ;
+    - le solde du crédit dès que l'entreprise en a un, et l'historique de ses versements,
+      le dernier d'abord, avec leur référence (numéro de facture) ;
+    - où vont ses runs : sur la clé de l'exploitant, sur son fournisseur propre (la
+      formule ne sert alors pas), ou nulle part, quand le serveur n'a pas de modèle de la
+      plateforme ;
+    - le refus en cours (plafond atteint, crédit épuisé), avec le message que lisent les
+      personnes, seulement quand ses runs vont sur la clé de l'exploitant : sinon, rien
+      n'est retenu.
+
+    La lecture se fait avec le rôle applicatif, sous RLS. Le solde et le mois sont lus par
+    la même requête que les limites et le compte rendu de l'exploitant
+    (`supply_spending`). Rien n'y est modifiable : seul l'exploitant écrit ces données ;
+
+  - **onglet « Consommation »** : chaque ligne d'usage dit si ses appels sont partis sur
+    la clé de l'exploitant (`onOperatorKey`). Son coût est ce que l'entreprise paie : le
+    coût estimé sur sa propre clé, le montant refacturé sur celle de l'exploitant. Les
+    lignes d'un même modèle sont séparées par clé. La répartition par rôle et la dépense
+    d'escalade (ADR-209) lisent donc le même montant ;
+  - **ces deux écrans, sans coût réel ni coefficient** : ni la vue de la fourniture ni la
+    consommation ne contiennent le coût réel d'un appel sur la clé de l'exploitant ni le
+    coefficient. Seul le compte rendu de `mimorya-admin` les montre (ADR-208). Les
+    jetons et le modèle restent affichés à côté du montant : qui connaît le prix public
+    peut en déduire le coefficient, qui n'est pas un secret envers le client.
+- **Conséquences** :
+  - le coût sur 30 jours de la consommation devient, pour une entreprise fournie, le
+    montant qu'elle paie. Sur sa propre clé, c'est toujours une estimation au prix public ;
+  - une entreprise passée d'une formule à l'autre voit le solde d'un ancien crédit tant
+    qu'elle a des versements ;
+  - les autres coûts montrés à l'entreprise restent au prix public estimé, y compris sur
+    la clé de l'exploitant : le coût d'un run (« Opérations » et flux d'usage), d'une
+    mission, d'une évaluation, et l'export personnel. Sur la clé de l'exploitant, ils
+    diffèrent du montant refacturé. Les montrer au montant payé est une suite inscrite
+    à la feuille de route.
+- **Tests** :
+  - `crates/api/tests/model_supply_view.rs` : formule, plafond, mois refacturé (et non le
+    coût réel), refus au plafond, rien de retenu sur le fournisseur propre, aucun modèle
+    sur un serveur sans celui de la plateforme, solde et versements du dernier au
+    premier, aucun coût réel ni coefficient, aucun versement d'une autre entreprise,
+    lecture réservée aux administrateurs des réglages de toute l'entreprise,
+    consommation au montant refacturé et séparée par clé ;
+  - `apps/web/e2e/model-supply.spec.ts` : formule et mois de l'entreprise de
+    démonstration lus dans l'onglet, fournisseur propre signalé ; solde, refus et
+    versements d'un crédit prépayé ; un appel sur la clé de l'exploitant montré dans la
+    consommation au montant que donne l'API.
