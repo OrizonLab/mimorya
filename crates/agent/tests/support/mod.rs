@@ -249,6 +249,8 @@ pub struct Options {
     pub escalation: Option<Escalation>,
     /// The operator's supply of the company's model (ADR-208).
     pub supply: Option<Arc<dyn SupplyLimit>>,
+    /// The models' prices (none known by default).
+    pub prices: Option<PriceTable>,
 }
 
 pub struct Harness {
@@ -350,7 +352,7 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
         access,
         Arc::new(ToolRegistry::new(tools, &options.overrides).unwrap()),
         ports.ports(),
-        Arc::new(PriceTable::default()),
+        Arc::new(options.prices.unwrap_or_default()),
     );
     deps.retry_delay = Duration::from_millis(1);
     deps.escalation = options.escalation;

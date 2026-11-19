@@ -23,13 +23,36 @@ use crate::contract::*;
 
 #[test]
 fn run_records_read_back_as_their_contract_types() {
-    reads_back::<_, RunUsage>(&RunUsageTotals {
+    let usage = RunUsageTotals {
         steps: 3,
         tool_calls: 2,
         input_tokens: 1_200,
         output_tokens: 300,
         cost_micros: 4_500,
-    });
+        charged_micros: None,
+    };
+    let read = |usage: &RunUsageTotals| {
+        let stored_usage = serde_json::to_value(usage).unwrap();
+        serde_json::to_value(RunUsage::read(&stored_usage).unwrap()).unwrap()
+    };
+    let shown = json!({ "steps": 3, "toolCalls": 2, "inputTokens": 1_200,
+                        "outputTokens": 300, "costMicros": 4_500 });
+    // A run recorded before ADR-212 was charged its cost.
+    assert_eq!(read(&usage), shown);
+    assert_eq!(serde_json::to_value(RunUsage::from(usage)).unwrap(), shown);
+    // On the operator's key, the company reads what it was charged, never
+    // what the calls cost the operator.
+    let charged = RunUsageTotals {
+        charged_micros: Some(4_950),
+        ..usage
+    };
+    let shown = json!({ "steps": 3, "toolCalls": 2, "inputTokens": 1_200,
+                        "outputTokens": 300, "costMicros": 4_950 });
+    assert_eq!(read(&charged), shown);
+    assert_eq!(
+        serde_json::to_value(RunUsage::from(charged)).unwrap(),
+        shown
+    );
     reads_back::<BudgetLimits, RunBudget>(&DEFAULT_BUDGET);
     reads_back::<_, Verification>(&VerificationReport {
         passed: false,
@@ -107,7 +130,7 @@ fn a_stored_value_off_the_contract_is_an_error_that_does_not_quote_it() {
     }
     let usage = json!({ "steps": 1, "toolCalls": 0, "inputTokens": 1, "outputTokens": 1,
                         "costMicros": 0, "cachedTokens": 1 });
-    assert!(stored::<RunUsage>("usage", &usage).is_err());
+    assert!(RunUsage::read(&usage).is_err());
 }
 
 #[test]

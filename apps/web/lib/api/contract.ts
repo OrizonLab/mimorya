@@ -1136,7 +1136,12 @@ month: string,
 /**
  * `llm`, `embedding` or `tool`.
  */
-kind: string, inputTokens: number, outputTokens: number, costMicros: number, };
+kind: string, inputTokens: number, outputTokens: number,
+/**
+ * What it cost the company (ADR-212): the cost on its own key, the
+ * amount re-invoiced on the operator's.
+ */
+costMicros: number, };
 
 /**
  * An entry as exported: its place and seal in the company's chain, then
@@ -3035,11 +3040,13 @@ export type RunStatus = "queued" | "running" | "awaiting_approval" | "completed"
 export type RunStreamEvent = { "type": "run_started", "data": RunStarted } | { "type": "connectors_unavailable", "data": ConnectorsUnavailable } | { "type": "assistant_delta", "data": AssistantDelta } | { "type": "assistant_message", "data": AssistantMessage } | { "type": "tool_call", "data": ToolCallEvent } | { "type": "tool_result", "data": ToolResultEvent } | { "type": "approval_requested", "data": ApprovalRequestedEvent } | { "type": "approval_resolved", "data": ApprovalResolvedEvent } | { "type": "verification", "data": VerificationEvent } | { "type": "usage", "data": UsageEvent } | { "type": "run_resumed", "data": RunResumed } | { "type": "run_queued", "data": RunQueued } | { "type": "run_finished", "data": RunFinished };
 
 /**
- * What a run has consumed so far (`agent_runs.usage`).
+ * What a run has consumed so far, as the company reads it (ADR-212).
  */
 export type RunUsage = { steps: number, toolCalls: number, inputTokens: number, outputTokens: number,
 /**
- * Estimated cost, in millionths of the currency unit.
+ * What its calls cost the company, in micro-dollars: at the platform's
+ * prices on its own key, the amount the operator re-invoices on its
+ * key; never what they cost the operator.
  */
 costMicros: number, };
 
@@ -3536,7 +3543,9 @@ export type ToolRisk = "read" | "draft" | "write" | "external" | "irreversible";
  */
 export type UsageEvent = { inputTokens: number, outputTokens: number,
 /**
- * `null` when the model is not priced.
+ * What the call cost the company (ADR-212): its cost on its own key,
+ * the amount re-invoiced on the operator's; `null` when the model is
+ * not priced.
  */
 costMicros: number | null, };
 

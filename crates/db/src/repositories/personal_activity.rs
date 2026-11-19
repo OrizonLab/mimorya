@@ -150,7 +150,8 @@ pub async fn exported_usage(
     sqlx::query_as(
         "select date_trunc('month', created_at) as month, kind, \
          sum(input_tokens)::bigint as input_tokens, sum(output_tokens)::bigint as output_tokens, \
-         sum(cost_micros)::bigint as cost_micros from usage_records where user_id = $1 \
+         sum(coalesce(billed_micros, cost_micros))::bigint as cost_micros \
+         from usage_records where user_id = $1 \
          group by 1, 2 order by 1, 2",
     )
     .bind(user_id)

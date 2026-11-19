@@ -88,11 +88,11 @@ impl ToolCallProcessor {
 }
 
 /// What a sub-agent spent, counted in its parent's budget: its tokens and
-/// its cost, not its steps.
+/// its cost, as it cost the company too (ADR-212), not its steps.
 fn add_spent(usage: &mut RunUsageTotals, spent: &RunUsageTotals) {
     usage.input_tokens += spent.input_tokens;
     usage.output_tokens += spent.output_tokens;
-    usage.cost_micros += spent.cost_micros;
+    usage.add_cost(spent.cost_micros, spent.charged());
 }
 
 /// A delegation whose validated input does not read back: never run.

@@ -76,6 +76,8 @@ pub struct ExportUsage {
     pub kind: String,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    /// What it cost the company (ADR-212): the cost on its own key, the
+    /// amount re-invoiced on the operator's.
     pub cost_micros: i64,
 }
 

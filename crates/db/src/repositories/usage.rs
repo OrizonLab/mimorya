@@ -47,6 +47,12 @@ impl UsageCharge {
         formula: SupplyFormula::ClientKey,
         billed_micros: None,
     };
+
+    /// What a call of `cost_micros` cost the company (ADR-212): the amount
+    /// re-invoiced on the operator's key, its cost on its own.
+    pub fn charged(&self, cost_micros: i64) -> i64 {
+        self.billed_micros.unwrap_or(cost_micros)
+    }
 }
 
 pub async fn append_usage(conn: &mut PgConnection, entry: NewUsage) -> sqlx::Result<()> {

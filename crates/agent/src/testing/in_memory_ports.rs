@@ -45,6 +45,8 @@ pub(super) struct State {
     tool_records: Vec<ToolInvocationRecord>,
     approvals: Vec<(Uuid, ApprovalRequest)>,
     usage: Vec<UsageRecord>,
+    /// The markup each call is charged at, in basis points (ADR-212).
+    markup_bps: i64,
     pub(super) memories: Vec<StoredMemory>,
     pub(super) documents: Vec<DocumentFixture>,
     checkpoints: Vec<RunCheckpoint>,
@@ -116,6 +118,8 @@ impl InMemoryPorts {
             unroutable: state.unroutable.clone(),
             linked_accounts: state.linked_accounts.clone(),
             mail_account: state.mail_account.clone(),
+            // Charged as its parent is (ADR-212).
+            markup_bps: state.markup_bps,
             ..State::default()
         };
         Arc::new(Self {
@@ -183,6 +187,12 @@ impl InMemoryPorts {
         self.state().usage.clone()
     }
 
+    /// Charges each call at its cost plus `markup_bps`, as the operator's
+    /// key does (ADR-208, ADR-212).
+    pub fn charge_at(&self, markup_bps: i64) {
+        self.state().markup_bps = markup_bps;
+    }
+
     pub fn memories(&self) -> Vec<StoredMemory> {
         self.state().memories.clone()
     }
@@ -248,9 +258,12 @@ impl ApprovalStore for InMemoryPorts {
 
 #[async_trait]
 impl UsageSink for InMemoryPorts {
-    async fn record(&self, usage: UsageRecord) -> anyhow::Result<()> {
-        self.state().usage.push(usage);
-        Ok(())
+    async fn record(&self, usage: UsageRecord) -> anyhow::Result<i64> {
+        let mut state = self.state();
+        // Charged at its cost, unless the test set a markup.
+        let charged = usage.cost_micros * (10_000 + state.markup_bps) / 10_000;
+        state.usage.push(usage);
+        Ok(charged)
     }
 }
 

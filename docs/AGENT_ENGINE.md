@@ -440,5 +440,8 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   s'arrête avant son appel suivant en disant pourquoi, un classement n'est pas demandé et
   une réponse n'est pas jugée par un modèle ; un sous-agent y est tenu comme son parent.
   Chaque juge est vérifié pour sa clé : le modèle des runs ne remplace pas au-delà un
-  modèle de contrôle qui échoue, et son jugement est compté sur la clé des runs.
+  modèle de contrôle qui échoue, et son jugement est compté sur la clé des runs. Le port
+  d'usage renvoie ce que chaque appel a coûté à l'entreprise : le run en garde le total à
+  côté du coût réel (`RunUsageTotals.chargedMicros`), et son budget de coût le pèse
+  (ADR-212).
   L'arrêt est tracé une fois par run (`model_supply.limited`, `runtime/supply.rs`).

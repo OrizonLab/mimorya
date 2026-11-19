@@ -257,7 +257,7 @@ async fn record(
             tools: &tools,
             input_tokens: i64::try_from(played.usage.input_tokens).unwrap_or(i64::MAX),
             output_tokens: i64::try_from(played.usage.output_tokens).unwrap_or(i64::MAX),
-            cost_micros: played.usage.cost_micros,
+            cost_micros: played.usage.charged(),
         },
     )
     .await?;
@@ -265,7 +265,7 @@ async fn record(
     if written && inside_only {
         mark_inside_only(&mut tx, scope.evaluation_id).await?;
     }
-    count_spent(&mut tx, scope.tenant_id, played.usage.cost_micros).await?;
+    count_spent(&mut tx, scope.tenant_id, played.usage.charged()).await?;
     tx.commit().await?;
     Ok(written)
 }

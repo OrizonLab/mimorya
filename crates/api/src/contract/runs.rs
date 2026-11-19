@@ -1,7 +1,7 @@
 //! Agent runs as the web client sees them: list, detail with its trace, and
 //! the run records stored as JSON (usage, budget, verification).
 
-use mimorya_agent::runtime::VerificationReport;
+use mimorya_agent::runtime::{RunUsageTotals, VerificationReport};
 use mimorya_db::repositories::run_events::RunEventRow;
 use mimorya_db::repositories::runs::{self, RunRow};
 use mimorya_db::repositories::tool_invocations::ToolInvocationRow;
@@ -39,16 +39,59 @@ impl From<runs::RunStatus> for RunStatus {
     }
 }
 
-/// What a run has consumed so far (`agent_runs.usage`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// What a run has consumed so far, as the company reads it (ADR-212).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct RunUsage {
     pub steps: u32,
     pub tool_calls: u32,
     pub input_tokens: u64,
     pub output_tokens: u64,
-    /// Estimated cost, in millionths of the currency unit.
+    /// What its calls cost the company, in micro-dollars: at the platform's
+    /// prices on its own key, the amount the operator re-invoices on its
+    /// key; never what they cost the operator.
     pub cost_micros: i64,
+}
+
+/// A run's usage as the engine stores it (`agent_runs.usage`): what its
+/// calls cost and, since ADR-212, what the company was charged for them.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredRunUsage {
+    steps: u32,
+    tool_calls: u32,
+    input_tokens: u64,
+    output_tokens: u64,
+    cost_micros: i64,
+    #[serde(default)]
+    charged_micros: Option<i64>,
+}
+
+impl RunUsage {
+    /// The stored usage, read as the company reads it: a run recorded
+    /// before ADR-212 was charged its cost.
+    pub fn read(stored_usage: &Value) -> anyhow::Result<Self> {
+        let usage: StoredRunUsage = stored("usage", stored_usage)?;
+        Ok(Self {
+            steps: usage.steps,
+            tool_calls: usage.tool_calls,
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cost_micros: usage.charged_micros.unwrap_or(usage.cost_micros),
+        })
+    }
+}
+
+impl From<RunUsageTotals> for RunUsage {
+    fn from(usage: RunUsageTotals) -> Self {
+        Self {
+            steps: usage.steps,
+            tool_calls: usage.tool_calls,
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cost_micros: usage.charged(),
+        }
+    }
 }
 
 /// The limits a run stops at (`agent_runs.budget`).
@@ -117,7 +160,7 @@ impl RunListItem {
             objective: run.objective.clone(),
             agent_profile: stored_text("agent profile", &run.agent_profile)?,
             status: run.status().into(),
-            usage: stored("usage", &run.usage)?,
+            usage: RunUsage::read(&run.usage)?,
             error: run.error.clone(),
             created_at: iso(&run.created_at),
             finished_at: run.finished_at.as_ref().map(iso),
@@ -179,7 +222,7 @@ impl RunView {
             objective: run.objective.clone(),
             status: run.status().into(),
             autonomy_level: run.autonomy_level.clone(),
-            usage: stored("usage", &run.usage)?,
+            usage: RunUsage::read(&run.usage)?,
             budget: stored("budget", &run.budget)?,
             verification: run
                 .verification
