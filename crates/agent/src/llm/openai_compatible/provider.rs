@@ -147,6 +147,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
                 .to_string(),
             native: None,
             consultations: Vec::new(),
+            advisor_pending: false,
         })
     }
 }

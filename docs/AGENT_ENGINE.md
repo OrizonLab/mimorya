@@ -430,8 +430,10 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   escalade que le compte du tour d'Anthropic ignore (une consultation d'un tour
   précédent, un appel au modèle d'escalade), pour que la borne du run tienne ; le
   raisonnement qui lui était lié est alors abandonné plutôt que refusé ; jamais retiré
-  pendant une consultation (`pause_turn`, dont le tour reprend tel quel, une fois par
-  run au-delà du budget). Chaque consultation est une escalade, enregistrée avec le
+  tant qu'une consultation reste à faire, le tour en pause (`pause_turn`) ou le
+  conseiller appelé à côté d'outils : la requête suivante le garde, sur le modèle
+  principal, une fois par run au-delà du budget, et une étape de mission passe alors le
+  relais sans point d'étape. Chaque consultation est une escalade, enregistrée avec le
   rôle « conseiller » au prix de son modèle (`runtime/advisor.rs`).
 - **Routeur** (ADR-207, étape 2) : activé, il décide au début du run, une fois, le modèle
   de départ selon la règle de l'entreprise pour sa sorte (conversation, mission, tâche

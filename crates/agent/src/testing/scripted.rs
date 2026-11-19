@@ -67,6 +67,9 @@ pub struct ScriptedReply {
     pub consultations: Vec<Consultation>,
     /// Whether the turn paused, a consultation still running.
     pub paused: bool,
+    /// Whether a consultation is still to run at the next request, beside
+    /// the calls of tools.
+    pub pending: bool,
 }
 
 impl ScriptedReply {
@@ -107,6 +110,13 @@ impl ScriptedReply {
     /// The turn paused, the advisor still consulted.
     pub fn paused(mut self) -> Self {
         self.paused = true;
+        self
+    }
+
+    /// The model called its advisor beside its tools: the consultation runs
+    /// at the start of the next request.
+    pub fn pending(mut self) -> Self {
+        self.pending = true;
         self
     }
 }
@@ -234,6 +244,7 @@ impl LlmProvider for ScriptedProvider {
             model: "scripted-model".into(),
             native: None,
             consultations: reply.consultations,
+            advisor_pending: reply.paused || reply.pending,
         })
     }
 }

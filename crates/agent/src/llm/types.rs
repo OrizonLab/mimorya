@@ -206,6 +206,10 @@ pub struct LlmResponse {
     pub native: Option<NativeContent>,
     /// The advisor's consultations during the call, apart from its usage.
     pub consultations: Vec<Consultation>,
+    /// Whether a consultation of the advisor is still to run, at the start
+    /// of the next request: the turn paused, or the model called it beside
+    /// tools. That request must give the advisor again.
+    pub advisor_pending: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

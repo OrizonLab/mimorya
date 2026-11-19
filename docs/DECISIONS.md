@@ -14946,14 +14946,23 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     configuration relus au chargement et à la reprise). Dès lors, pour les modèles qui
     raisonnent par défaut, le raisonnement lié à l'ancien outil est abandonné plutôt que
     refusé : `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`, sous la
-    bêta `thinking-binding-controls-2026-08-01`. Le retrait n'a jamais lieu pendant
-    qu'une consultation est en cours (`pause_turn`) : la requête qui reprend le tour
-    garde l'outil. Les consultations restent comptées par Anthropic dans le même tour ;
+    bêta `thinking-binding-controls-2026-08-01`. Le retrait n'a jamais lieu tant qu'une
+    consultation reste à faire : le tour a été mis en pause (`pause_turn`), ou le modèle
+    a appelé le conseiller à côté d'outils de la plateforme, la réponse s'arrêtant sur
+    `tool_use` et la consultation partant au début de la requête suivante. L'adaptateur
+    le lit dans la réponse (un `server_tool_use` du conseiller sans résultat,
+    `advisor_pending`). La requête suivante garde alors l'outil, quelles que soient les
+    bornes, l'escalade de l'entreprise relue à une reprise ou une compétence chargée,
+    et part au modèle principal : le passage au modèle d'escalade qu'une compétence
+    demande attend l'appel d'après. Les consultations restent comptées par Anthropic
+    dans le même tour ;
   - **pause** : un tour mis en pause pendant une consultation reprend tel quel, sans
     message ajouté, sur le même modèle. Le texte déjà écrit est montré comme message
-    intermédiaire. Rien d'autre ne peut être demandé pendant une consultation : si le
-    budget du run est atteint à ce moment, le tour va d'abord au bout, une fois par run
-    (un appel de plus) ; en pause de nouveau, le run s'arrête là. Le budget du mois est
+    intermédiaire. Rien d'autre ne peut être demandé tant qu'une consultation reste à
+    faire : si le budget du run est atteint à ce moment, la requête suivante part
+    d'abord, une fois par run (un appel de plus) ; la consultation encore à faire après,
+    le run s'arrête là, et une étape de mission passe le relais sans demander de point
+    d'étape (`NO_NOTE`), qui ouvrirait un nouveau tour. Le budget du mois est
     relu avant chaque appel : les consultations d'un même appel peuvent le dépasser, dans
     la limite des escalades permises par run ;
   - **comptage** : chaque consultation (entrée `advisor_message` de `usage.iterations`)
@@ -14988,7 +14997,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `crates/agent/tests/llm_anthropic_advisor.rs`, contre un serveur local : outil
       après ceux de la plateforme, bêtas dans l'en-tête, bêta gardée pour un historique
       qui contient ses blocs, raisonnement abandonné selon le modèle, consultations lues
-      à part, blocs gardés, pause lue ;
+      à part, blocs gardés, pause lue, consultation à faire lue à côté d'appels d'outils
+      et non après son résultat ;
     - `crates/agent/tests/runtime_escalation_advisor.rs`, avec des modèles simulés :
       consultation comptée comme escalade et tarifée, tour en pause repris, retrait aux
       escalades du run, pause gardée au-delà, budget du mois épuisé dès le départ (sans
@@ -14999,7 +15009,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       escaladé après un échec appelle le modèle d'escalade sans lui, et le modèle
       principal qui reprend après son échec de même ; un tour en pause va au bout
       au-delà du budget, une fois par run ; un run d'un point de reprise antérieur
-      continue sans ;
+      continue sans ; une consultation demandée à côté d'outils garde le conseiller à la
+      requête suivante, au-delà de la borne du run, à la reprise d'une validation après
+      le retrait de l'escalade, et quand une compétence chargée dans la même réponse
+      demande le modèle d'escalade, qui attend l'appel d'après ; une étape passe le
+      relais sans point d'étape tant qu'une consultation reste à faire ;
     - `crates/api/src/config/tests.rs` : `ANTHROPIC_BASE_URL` lue pour le modèle
       d'Anthropic de la plateforme, après `LLM_BASE_URL`, et nommée dans le refus d'une
       adresse invalide ;

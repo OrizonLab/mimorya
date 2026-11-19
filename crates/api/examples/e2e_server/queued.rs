@@ -134,6 +134,7 @@ impl LlmProvider for WithQueued {
             model: self.others.model().into(),
             native: None,
             consultations: Vec::new(),
+            advisor_pending: false,
         })
     }
 }

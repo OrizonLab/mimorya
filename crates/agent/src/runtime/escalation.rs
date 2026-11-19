@@ -99,8 +99,12 @@ pub(super) async fn next_model(
         return Ok((main, ModelRole::Main));
     };
     // A skill loaded since the last call asks for the escalation model:
-    // heeded once a run, while the router is on.
-    if state.escalation.skill_asked && !state.escalation.skill_heeded {
+    // heeded once a run, while the router is on; after the advisor's
+    // consultation still to run, which the main model's call gives it.
+    if state.escalation.skill_asked
+        && !state.escalation.skill_heeded
+        && !state.escalation.advisor_pending
+    {
         state.escalation.skill_heeded = true;
         if escalation.router.is_some() {
             start_escalation(deps, state, Reason::Skill).await?;

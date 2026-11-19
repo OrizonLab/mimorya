@@ -29,6 +29,7 @@ async fn cached_input_tokens_count_once_everywhere() {
         model: "scripted-model".into(),
         native: None,
         consultations: Vec::new(),
+        advisor_pending: false,
     };
     record_model_usage(
         &ports.ports(),
@@ -86,6 +87,7 @@ async fn what_a_call_cost_and_what_the_company_was_charged_are_counted_apart() {
         model: "scripted-model".into(),
         native: None,
         consultations: Vec::new(),
+        advisor_pending: false,
     };
     let call = || ModelCall {
         role: ModelRole::Main,

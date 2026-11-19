@@ -93,3 +93,17 @@ pub fn consultations(iterations: &[Value]) -> Vec<Consultation> {
         })
         .collect()
 }
+
+/// Whether a call of the advisor among `blocks` has no result yet: it runs
+/// at the start of the next request, which must give the advisor again.
+pub fn consultation_pending(blocks: &[Value]) -> bool {
+    let answered: Vec<&Value> = blocks
+        .iter()
+        .filter(|block| block["type"] == "advisor_tool_result")
+        .map(|block| &block["tool_use_id"])
+        .collect();
+    blocks
+        .iter()
+        .filter(|block| block["type"] == "server_tool_use" && block["name"] == "advisor")
+        .any(|call| !answered.contains(&&call["id"]))
+}

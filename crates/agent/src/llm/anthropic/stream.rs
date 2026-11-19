@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use serde_json::{Value, json};
 
-use super::advisor::consultations;
+use super::advisor::{consultation_pending, consultations};
 use super::errors::{from_stream_error, malformed, network};
 use super::sse::SseEvent;
 use crate::llm::types::{LlmError, LlmResponse, LlmToolCall, LlmUsage, NativeContent, StopReason};
@@ -164,6 +164,7 @@ impl MessageAccumulator {
                 input: b["input"].clone(),
             })
             .collect();
+        let advisor_pending = consultation_pending(&blocks);
         Ok(LlmResponse {
             text,
             tool_calls,
@@ -176,6 +177,7 @@ impl MessageAccumulator {
                 content: Value::Array(blocks),
             }),
             consultations: consultations(&self.iterations),
+            advisor_pending,
         })
     }
 }

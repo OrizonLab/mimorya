@@ -59,6 +59,7 @@ impl LlmProvider for WithLessons {
             model: self.conversations.model().into(),
             native: None,
             consultations: Vec::new(),
+            advisor_pending: false,
         })
     }
 }

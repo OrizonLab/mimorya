@@ -3,7 +3,8 @@
 //! instead of failing. The next stage starts from the mission's
 //! conversation, where the note is kept, with the sources found so far.
 //! The note costs one model call beyond the stage's budget, no more; a tool
-//! the model still calls is never run.
+//! the model still calls is never run. While a consultation of the advisor
+//! is still to run, no note is asked (ADR-207).
 
 use super::model_call::{ModelTurn, call_model};
 use super::ports::{RunEvent, StepAccess};
@@ -40,6 +41,11 @@ impl AgentRuntime {
             StepAccess::Granted(access) => access,
             StepAccess::Ended(reason) => return self.end_without_access(state, reason).await,
         };
+        // A consultation of its advisor still to run: nothing else may be
+        // asked, and a new message would open another turn (ADR-207).
+        if state.escalation.advisor_pending {
+            return self.handed_over(state, NO_NOTE.to_string()).await;
+        }
         state.messages.push(LlmMessage::user(note_request(reason)));
         // The tools stay declared: the conversation holds their calls, and
         // the request its cached prefix.
@@ -67,6 +73,11 @@ impl AgentRuntime {
             "" => NO_NOTE.to_string(),
             text => text.to_string(),
         };
+        self.handed_over(state, note).await
+    }
+
+    /// The stage ends with `note`.
+    async fn handed_over(&self, state: RunCheckpoint, note: String) -> anyhow::Result<RunOutcome> {
         self.deps
             .ports
             .events

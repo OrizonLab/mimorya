@@ -183,6 +183,8 @@ fn its_consultations_are_read_apart_and_its_blocks_kept() {
     }
     let response = message.finish().unwrap();
     assert_eq!(response.stop_reason, StopReason::PauseTurn);
+    // Its second call has no result yet: it runs at the next request.
+    assert!(response.advisor_pending);
     // The model's own tokens; its advisor's apart.
     assert_eq!(
         (response.usage.input_tokens, response.usage.output_tokens),
@@ -221,6 +223,69 @@ fn its_consultations_are_read_apart_and_its_blocks_kept() {
     );
     assert_eq!(blocks[0]["input"], json!({}));
     assert_eq!(blocks[1]["content"]["encrypted_content"], "chiffré");
+}
+
+fn transcript(events: &[Value]) -> String {
+    events
+        .iter()
+        .map(|data| {
+            format!(
+                "event: {}\r\ndata: {data}\r\n\r\n",
+                data["type"].as_str().unwrap()
+            )
+        })
+        .collect()
+}
+
+fn read(stream: &str) -> mimorya_agent::llm::LlmResponse {
+    let mut parser = SseParser::default();
+    let mut message = MessageAccumulator::new("claude-haiku-5-5");
+    for event in parser.push(stream.as_bytes()) {
+        message.apply(&event, &|_| {}).unwrap();
+    }
+    message.finish().unwrap()
+}
+
+#[test]
+fn a_consultation_asked_beside_tools_is_pending_one_answered_is_not() {
+    let start = json!({ "type": "message_start", "message": { "model": "claude-haiku-5-5",
+                        "content": [], "usage": { "input_tokens": 10, "output_tokens": 1 } } });
+    let advisor = json!({ "type": "content_block_start", "index": 0, "content_block":
+                          { "type": "server_tool_use", "id": "srvtoolu_1", "name": "advisor",
+                            "input": {} } });
+    let stop = |index: u32| json!({ "type": "content_block_stop", "index": index });
+    let end = |reason: &str| {
+        json!({ "type": "message_delta", "delta": { "stop_reason": reason },
+                                      "usage": { "output_tokens": 5 } })
+    };
+    // The advisor called beside a tool: the answer stops on the tool, the
+    // consultation still to run.
+    let beside_tools = read(&transcript(&[
+        start.clone(),
+        advisor.clone(),
+        stop(0),
+        json!({ "type": "content_block_start", "index": 1, "content_block":
+                { "type": "tool_use", "id": "toolu_1", "name": "jobs_search", "input": {} } }),
+        stop(1),
+        end("tool_use"),
+        json!({ "type": "message_stop" }),
+    ]));
+    assert_eq!(beside_tools.stop_reason, StopReason::ToolUse);
+    assert_eq!(beside_tools.tool_calls.len(), 1);
+    assert!(beside_tools.advisor_pending);
+    // Consulted and answered.
+    let answered = read(&transcript(&[
+        start,
+        advisor,
+        stop(0),
+        json!({ "type": "content_block_start", "index": 1, "content_block":
+                { "type": "advisor_tool_result", "tool_use_id": "srvtoolu_1", "content":
+                  { "type": "advisor_redacted_result", "encrypted_content": "chiffré" } } }),
+        stop(1),
+        end("end_turn"),
+        json!({ "type": "message_stop" }),
+    ]));
+    assert!(!answered.advisor_pending);
 }
 
 async fn serve(body: String) -> (String, Arc<Mutex<Vec<(HeaderMap, Value)>>>) {

@@ -10,7 +10,9 @@
 //! escalation model. It is withdrawn too when a bound is reached (journaled
 //! once, as an escalation's) or the company's escalation changed. Then the
 //! reasoning bound to it is dropped rather than refused; never while a
-//! consultation is still running, whose turn goes on with it. Each
+//! consultation is still to run (the turn paused, or the advisor called
+//! beside tools): the next request gives it, on the main model, a skill's
+//! switch to the escalation model waiting for the call after. Each
 //! consultation is an escalation: counted in the run's, recorded and priced
 //! as its model.
 
@@ -45,7 +47,7 @@ pub(super) async fn advisor_for_call(
             drop_unbound_thinking: state.escalation.advisor == AdvisorState::Withdrawn,
         });
     };
-    // A paused turn goes on with the tool it paused with.
+    // A consultation still to run is given the tool it was asked with.
     if state.escalation.advisor_pending {
         return Ok(given(tool));
     }
@@ -123,7 +125,9 @@ async fn still_given(
 }
 
 /// After a call: its consultations counted in the run's escalations and in
-/// its turn's, and whether one is still running.
+/// its turn's, and whether one is still to run: the turn paused, or the
+/// model called its advisor beside tools, the consultation running at the
+/// start of the next request.
 pub(super) fn after_call(state: &mut RunCheckpoint, response: &LlmResponse) {
     let consulted = u32::try_from(response.consultations.len()).unwrap_or(u32::MAX);
     state.escalation.calls = state.escalation.calls.saturating_add(consulted);
@@ -131,8 +135,9 @@ pub(super) fn after_call(state: &mut RunCheckpoint, response: &LlmResponse) {
         .escalation
         .turn_consultations
         .saturating_add(consulted);
-    state.escalation.advisor_pending = response.stop_reason == StopReason::PauseTurn
-        && matches!(state.escalation.advisor, AdvisorState::Given(_));
+    let pending = response.advisor_pending || response.stop_reason == StopReason::PauseTurn;
+    state.escalation.advisor_pending =
+        pending && matches!(state.escalation.advisor, AdvisorState::Given(_));
 }
 
 /// Records each consultation of a call as the advisor's, priced as its
