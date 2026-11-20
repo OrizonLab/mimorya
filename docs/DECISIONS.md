@@ -15897,8 +15897,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     validation disant pourquoi dans sa raison (« Contenu externe suspect lu par ce run »),
     comme le garde-fou de D5 et avant lui ; rien n'est levé ;
   - un sous-agent (ADR-098) qui a lu un contenu suspect, ou illisible, rend son parent
-    suspect : son compte rendu, que la détection ne relit pas, est remis derrière le même
-    avertissement et marqué pour la personne ;
+    suspect ; son compte rendu, que la détection ne relit pas, est remis derrière le même
+    avertissement et marqué pour la personne quand des instructions ont été détectées,
+    tel quel quand la lecture a seulement échoué ;
   - valeur prudente : un contenu qu'aucun moteur ne lit dans le délai (15 s) rend aussi
     le run suspect, sans avertissement au modèle ni à la personne ; observé, la détection
     est demandée, comptée et journalisée, sans effet ; ses réglages sont relus à chaque
@@ -15909,8 +15910,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - limites assumées : dans un run suspect, une mémoire personnelle que l'agent
     enregistre seule (brouillon, sans effet au sens de l'autonomie) l'est aussitôt et
     peut revenir dans les runs suivants sans les rendre suspects (D3 peut la garder en
-    proposition si elle contient des données sensibles) ; l'étape suivante d'une mission
-    repart d'un point de reprise neuf, non suspect, depuis le point d'étape que le modèle
+    proposition si elle contient des données sensibles) ; le tour suivant d'une conversation et l'étape suivante d'une mission
+    repartent d'un point de reprise neuf, non suspect (l'historique rejoue pourtant la réponse du run suspect), depuis le point d'étape que le modèle
     a écrit ; une évaluation de compétence, dont les actions ne partent jamais, ne demande
     pas la détection (ses outils ne font que lire) ;
   - **ce n'est pas une protection absolue** : une instruction placée après le début lu,

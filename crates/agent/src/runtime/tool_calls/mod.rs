@@ -252,7 +252,7 @@ impl ToolCallProcessor {
             tool_call_id,
             input,
             approval_id,
-            suspect: false,
+            reported: None,
         };
         self.record(state, call, result, duration_ms, None).await
     }

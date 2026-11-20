@@ -102,6 +102,10 @@ pub struct RunCheckpoint {
     /// action waits for a person.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub external_suspect: bool,
+    /// Of which an external content was said to hold such instructions
+    /// (not only unread): a sub-agent's report is then marked so.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub instructions_detected: bool,
 }
 
 /// A run's model escalation (ADR-207).
@@ -180,6 +184,7 @@ impl RunCheckpoint {
             supply_stopped: false,
             skills_shown: Vec::new(),
             external_suspect: false,
+            instructions_detected: false,
         }
     }
 }

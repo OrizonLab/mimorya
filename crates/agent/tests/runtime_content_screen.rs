@@ -149,6 +149,9 @@ async fn a_suspect_run_stays_so_once_resumed_and_lifts_nothing() {
     let stored = serde_json::to_value(&checkpoint).unwrap();
     let checkpoint: RunCheckpoint = serde_json::from_value(stored).unwrap();
     assert!(checkpoint.external_suspect);
+    // Nothing read after the resumption is suspect: the run stays so of
+    // itself.
+    h.ports.screen_says(ScreenVerdict::Clear);
     let decisions = HashMap::from([(approvals[0].approval_id, ApprovalDecision::approved())]);
     let resumed = h.runtime.resume(checkpoint, &decisions).await.unwrap();
     assert_eq!(resumed.status(), "awaiting_approval");
@@ -175,14 +178,32 @@ async fn a_suspect_run_stays_so_once_resumed_and_lifts_nothing() {
 
 #[tokio::test]
 async fn a_suspect_run_lifts_no_refusal() {
-    let mut options = autonomous();
-    // Without the permission its tools require, each call is denied.
-    options.allowed_permissions = Some(HashSet::new());
-    let h = setup(read_then_act(false), options);
+    // It reads; it may not disable accounts, which it would do alone.
+    let mut options = Options {
+        autonomy: Some(AutonomyPolicy {
+            level: AutonomyLevel::AutonomousLimited,
+            autonomous_tools: HashSet::from(["users_disable".to_string()]),
+        }),
+        ..Options::default()
+    };
+    options.allowed_permissions = Some(HashSet::from(["intervention:read".to_string()]));
+    let steps = vec![
+        ScriptedStep::calls("", vec![call("jobs_search", json!({ "query": "x" }))]),
+        ScriptedStep::calls("", vec![call("users_disable", json!({ "userId": "u-1" }))]),
+        ScriptedStep::text("Je ne peux pas désactiver ce compte."),
+    ];
+    let h = setup(steps, options);
     h.ports.screen_says(ScreenVerdict::Suspect);
-    assert_eq!(h.start().await.status(), "completed");
+    let outcome = h.start().await;
+    assert_eq!(outcome.status(), "completed");
+    // Suspect, its refusal stays a refusal: no validation asked.
+    assert!(outcome.checkpoint().external_suspect);
+    assert_eq!(h.ports.screened(), ["jobs_search"]);
     assert!(h.ports.approval_requests().is_empty());
-    assert!(h.applied.lock().unwrap().is_empty());
+    let denied = (h.ports.tool_records().into_iter())
+        .find(|r| r.tool_name == "users_disable")
+        .unwrap();
+    assert_eq!(denied.decision, "deny");
 }
 
 #[tokio::test]
@@ -227,4 +248,34 @@ async fn a_sub_agent_that_read_a_suspect_content_holds_its_parent_suspect() {
         summary.contains("instructions destinées à l’IA détectées"),
         "{summary}"
     );
+}
+
+#[tokio::test]
+async fn a_sub_agent_whose_reading_failed_holds_its_parent_suspect_unmarked() {
+    let mut options = autonomous();
+    options.sub_agents = true;
+    let delegate = call(
+        "delegate_task",
+        json!({ "profile": "research", "task": "Lire les interventions" }),
+    );
+    let steps = vec![
+        ScriptedStep::calls("", vec![delegate]),
+        ScriptedStep::calls("", vec![call("jobs_search", json!({ "query": "x" }))]),
+        ScriptedStep::text("Une intervention à reprendre."),
+        ScriptedStep::dynamic(|request| {
+            let shown = &last_tool_results(request)[0].content;
+            assert!(!shown.starts_with(NOTICE), "{shown}");
+            ScriptedReply::calls("", vec![call("planning_apply", json!({ "slots": 1 }))])
+        }),
+    ];
+    let h = setup(steps, options);
+    h.ports.screen_says(ScreenVerdict::Unread);
+    let RunOutcome::AwaitingApproval { checkpoint, .. } = h.start().await else {
+        panic!("expected a pause")
+    };
+    assert!(checkpoint.external_suspect && !checkpoint.instructions_detected);
+    let record = (h.ports.tool_records().into_iter())
+        .find(|r| r.tool_name == "delegate_task")
+        .unwrap();
+    assert!(!record.output_summary.unwrap().contains("instructions"));
 }

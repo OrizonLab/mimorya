@@ -36,6 +36,7 @@ impl ToolCallProcessor {
             ScreenVerdict::Clear => false,
             ScreenVerdict::Suspect => {
                 state.external_suspect = true;
+                state.instructions_detected = true;
                 true
             }
             ScreenVerdict::Unread => {

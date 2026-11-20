@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use super::ToolCallProcessor;
 use crate::llm::LlmToolResult;
-use crate::runtime::content_screen::{SUSPECT_NOTICE, SUSPECT_SUMMARY};
+use crate::runtime::content_screen::{SUSPECT_NOTICE, SUSPECT_SUMMARY, ScreenVerdict};
 use crate::runtime::ports::{EngineAuditEntry, RunEvent, ToolInvocationRecord};
 use crate::runtime::state::RunCheckpoint;
 use crate::tools::platform::SKILL_READ;
@@ -27,9 +27,10 @@ pub(super) struct Call<'a> {
     pub tool_call_id: &'a str,
     pub input: Value,
     pub approval_id: Option<Uuid>,
-    /// A sub-agent's report whose run read a suspect content (ADR-213,
-    /// D6): marked as such, and its parent held suspect.
-    pub suspect: bool,
+    /// What a sub-agent's detection said of what it read (ADR-213, D6):
+    /// its parent held suspect on either, its report marked when
+    /// instructions were detected.
+    pub reported: Option<ScreenVerdict>,
 }
 
 impl ToolCallProcessor {
@@ -48,7 +49,7 @@ impl ToolCallProcessor {
             tool_call_id,
             input,
             approval_id,
-            suspect: reported_suspect,
+            reported,
         } = call;
         state.usage.tool_calls += 1;
         if !result.is_error {
@@ -69,8 +70,10 @@ impl ToolCallProcessor {
         });
         // External content screened for instructions meant for an AI
         // (ADR-213, D6), before the person and the model read it.
+        let reported_suspect = reported == Some(ScreenVerdict::Suspect);
         let suspect = self.screen(state, tool, &result).await? || reported_suspect;
-        state.external_suspect |= reported_suspect;
+        state.external_suspect |= reported.is_some();
+        state.instructions_detected |= reported_suspect;
         let summary = if suspect {
             format!("{summary} — {SUSPECT_SUMMARY}")
         } else {
