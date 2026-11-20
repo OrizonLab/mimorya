@@ -15957,10 +15957,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     démarrée, ou `down -v`), et le dossier de son archive (`MIMORYA_WAL_ARCHIVE`) doit
     tenir une copie de celle de la base sauvegardée, ramenée de hors site. Il refuse :
     - une base démarrée, ou qui contient déjà des fichiers ;
-    - un instant qui n'est pas une date, une heure et son fuseau (un décalage comme
-      `+01`, ou `UTC`), une fraction de seconde seulement après les secondes : il ne peut
-      sortir de son réglage, et PostgreSQL le lit comme le script, quel que soit son
-      propre fuseau (il lirait `14:30.5` en minutes et secondes) ;
+    - un instant qui n'est pas une date, une heure et son fuseau, une fraction de seconde
+      seulement après les secondes : il ne peut sortir de son réglage, et PostgreSQL le
+      lit comme le script, quel que soit son propre fuseau (il lirait `14:30.5` en
+      minutes et secondes). Seuls les fuseaux que PostgreSQL prend sur sa ligne de
+      commande sont acceptés : `UTC`, `GMT`, ou un décalage jusqu'à ±15:59 (`+01`,
+      `-05:30`) ; jamais `Z`, qu'il ne lit qu'en session ;
     - une sauvegarde que l'identité n'ouvre pas ;
     - un dossier d'archive sans celui du système de la base sauvegardée, lu dans la
       sauvegarde (`pg_controldata`) ;
@@ -16019,8 +16021,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       que PostgreSQL tient pour fatal) : un fichier présent mais illisible (une autre
       identité, un fichier abîmé, une somme qui diffère) ou en double ; un segment absent
       quand un segment suivant de sa ligne temporelle est archivé, un trou où le rejeu
-      s'arrêterait ; un dossier de l'archive qui n'est pas à la base (uid 999), copié en
-      `root` ou renuméroté par un autre hôte, dont les fichiers sembleraient absents.
+      s'arrêterait ; un segment d'une ligne temporelle dont l'historique est archivé et
+      aucun segment (sa base disparue avant d'en fermer un) : PostgreSQL lirait à la
+      place le segment de la ligne dont elle part, et rejouerait celle-ci au-delà de
+      leur bifurcation ; un dossier de l'archive qui n'est pas à la base (uid 999),
+      copié en `root` ou renuméroté par un autre hôte, dont les fichiers sembleraient
+      absents.
       Une archive à laquelle on ne peut se fier n'écourte jamais une restauration en
       silence ;
   - **identité** : elle est remise au conteneur de la récupération sur son entrée standard
@@ -16063,9 +16069,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     entreprises sont ouvertes l'une après l'autre, un instant noté entre chacune, et le
     segment qui les tient archivé, puis un autre :
     - la restauration est refusée base démarrée, base qui contient des fichiers, pour un
-      instant à apostrophe, sans fuseau ou à fraction sans secondes, avec une autre
-      identité, sans l'archive de la base dans le dossier, et pour la ligne temporelle
-      `latest` ;
+      instant à apostrophe, sans fuseau, à fraction sans secondes, en `Z` ou à décalage
+      de 16 heures, avec une autre identité, sans l'archive de la base dans le dossier,
+      et pour la ligne temporelle `latest` ;
     - ce qui écourterait la récupération l'arrête, et sa raison est dite : le premier
       segment lu remplacé par un autre contenu, chiffré pour la même clé ; le segment des
       entreprises retiré, sans instant ; une copie de l'archive faite en `root` ;
@@ -16078,6 +16084,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       système, sur la ligne temporelle suivante, dite en décimal, sans les réglages de la
       récupération ni son conteneur. Une quatrième entreprise y est ouverte, et sa ligne
       temporelle est archivée à côté de l'ancienne, avec son historique ;
+    - le long de la ligne de la première restauration, une copie de l'archive qui n'en
+      tient que l'historique, aucun segment, arrête la récupération, et la raison est
+      dite ;
     - restaurée de nouveau au second instant, depuis la même sauvegarde et la même
       archive : les deux premières entreprises, pas les autres, sur une ligne temporelle
       au-delà des deux autres ;

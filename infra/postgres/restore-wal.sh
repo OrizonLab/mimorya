@@ -14,8 +14,10 @@
 # word stops it instead (status 126, which PostgreSQL takes as fatal): a
 # file present but unreadable (another identity, a damaged file, a sum that
 # differs) or archived twice, a segment absent while a later one of its
-# timeline is archived (a hole), an archive's folder the database cannot
-# read, whose files would seem absent. Its messages go to PostgreSQL's log,
+# timeline is archived (a hole), a segment of a timeline whose history is
+# archived and none of its segments (PostgreSQL would go on along its
+# parent, past their fork), an archive's folder the database cannot read,
+# whose files would seem absent. Its messages go to PostgreSQL's log,
 # for the operator, in French (ADR-013).
 set -euo pipefail
 # Segments' names compared as bytes, never by a locale's collation.
@@ -56,16 +58,28 @@ for file in "$folder/$name".*.gz.age; do
   archived "$file" "$name" && found+=("$file")
 done
 if ((${#found[@]} == 0)); then
-  # A segment absent while a later one of its timeline is archived: a hole,
-  # where the replay would end.
   if [[ $name =~ ^[0-9A-F]{24}$ ]]; then
-    for file in "$folder/${name:0:8}"*.gz.age; do
-      later=${file#"$folder/"}
-      later=${later:0:24}
-      if [[ $later =~ ^[0-9A-F]{24}$ && $later > $name ]] && archived "$file" "$later"; then
-        stop "absent de l'archive, qui tient pourtant $later, de la même ligne temporelle : il y manque"
-      fi
+    timeline=${name:0:8}
+    segments=0
+    for file in "$folder/$timeline"*.gz.age; do
+      other=${file#"$folder/"}
+      other=${other:0:24}
+      [[ $other =~ ^[0-9A-F]{24}$ ]] && archived "$file" "$other" || continue
+      segments=$((segments + 1))
+      # A later segment of its timeline archived: a hole, where the replay
+      # would end.
+      [[ $other > $name ]] &&
+        stop "absent de l'archive, qui tient pourtant $other, de la même ligne temporelle : il y manque"
     done
+    # A timeline whose history is archived, not one of its segments (its
+    # database gone before it closed one): PostgreSQL would read its
+    # parent's segment instead, and replay the parent past their fork.
+    if ((segments == 0)); then
+      for file in "$folder/$timeline.history".*.gz.age; do
+        archived "$file" "$timeline.history" &&
+          stop "la ligne temporelle $((16#$timeline)) n'a dans l'archive que son historique, aucun segment : la récupération suivrait au-delà de sa bifurcation la ligne dont elle part"
+      done
+    fi
   fi
   # Not archived: the end of the archive, or a history that does not exist.
   exit 1

@@ -357,15 +357,16 @@ COMPOSE_ENV_FILES=.env.production infra/backup/restore-base.sh \
 docker compose --env-file .env.production -f compose.production.yml up -d
 ```
 
-L'instant est une date, une heure et son fuseau (un décalage comme `+01`, ou `UTC`) : la
-base revient à son dernier commit qui le précède ; sans instant, toute l'archive est
+L'instant est une date, une heure et son fuseau (`UTC`, ou un décalage comme `+01` ou
+`-05:30`) : la base revient à son dernier commit qui le précède ; sans instant, toute l'archive est
 rejouée. Prenez la plus récente sauvegarde de base terminée avant l'instant : un instant
 qui ne vient pas au moins une seconde après son début est refusé, avant toute
 récupération. Le script refuse aussi une base démarrée ou qui
 contient déjà des fichiers, et une archive sans le dossier de la base sauvegardée. Ce
 dossier doit être à la base (uid 999) : une copie faite en `root` arrête la restauration,
 comme un WAL illisible, dont le contenu diffère de son nom, ou qui manque alors qu'un
-suivant est archivé ; la raison en est dite. Après un échec, videz la base (`down -v`)
+suivant est archivé, et une ligne temporelle nommée dont l'archive ne tient que
+l'historique ; la raison en est dite. Après un échec, videz la base (`down -v`)
 avant de réessayer. `MIMORYA_RESTORE_TIMEOUT` borne la récupération, une heure par défaut,
 au-delà de quoi elle est arrêtée.
 

@@ -6,23 +6,28 @@
 # companies are opened one after the other, an instant noted between each,
 # and the segment that holds them archived, then another.
 #   - The restore is refused while the stack's database runs, while it holds
-#     files, for an instant that could end its setting or without its zone,
-#     with an identity that does not open the base, when the archive's
-#     folder holds none of this database's, and for a timeline named
-#     `latest`.
+#     files, for an instant that could end its setting, without its zone,
+#     with a fraction without seconds, with Z or an offset PostgreSQL does
+#     not take, with an identity that does not open the base, when the
+#     archive's folder holds none of this database's, and for a timeline
+#     named `latest`.
 #   - What would end the recovery short stops it, said with the reason: a
 #     segment whose contents differ from its name, a segment missing while
 #     a later one is archived (without an instant, all the archive
 #     replayed), an archive's folder that is not the database's (a copy made
 #     as root).
-#   - An instant before the base began is refused before any recovery: no
-#     new timeline is taken.
+#   - An instant before the base began, written at UTC+1, is refused before
+#     any recovery: no new timeline is taken. The first instant is written
+#     at UTC-5: an offset's sign turned the wrong way fails one or the other.
 #   - Restored to the first instant, the stack serves the first company,
 #     whose administrator signs in, and neither of the others. Its database
 #     is the same system, on the next timeline, said in decimal, without the
 #     recovery's settings nor its container left. A fourth company opened
 #     there is archived on the new timeline, beside the former one, with
 #     its history.
+#   - Along the first restore's timeline, an archive holding its history and
+#     none of its segments stops the recovery, which would otherwise follow
+#     the base's timeline past their fork.
 #   - Restored again from the same base and archive to the second instant,
 #     on the base's own timeline: the first two companies, not the others,
 #     on a timeline beyond both former ones.
@@ -153,6 +158,8 @@ refused 'la base de la pile est démarrée' "$identity" "$first_instant"
 refused 'instant illisible' "$identity" "$first_instant'; select 1"
 refused 'instant illisible' "$identity" "${first_instant%[+-]*}"
 refused 'instant illisible' "$identity" "${second_instant:0:16}.5+00"
+refused 'instant illisible' "$identity" "${second_instant%+00}Z"
+refused 'instant illisible' "$identity" "${second_instant%+00}+16"
 MIMORYA_RESTORE_TIMELINE=latest refused 'MIMORYA_RESTORE_TIMELINE : current ou le numéro' \
   "$identity" "$first_instant"
 docker compose stop >/dev/null 2>&1 || fail "the stack did not stop"
@@ -228,8 +235,21 @@ segment=$(switched)
 await_archived "$segment" >/dev/null
 await_archived "$hex\\.history" >/dev/null
 
-# Restored again, to the second instant, from the same base and archive.
+# A copy of the archive holding the first restore's timeline's history and
+# none of its segments, as when its database is gone before it closed one:
+# along it, the recovery stops rather than follow the base's timeline past
+# their fork.
 throw_away
+forked=$(copied_archive -a)
+as_root find "$forked/$system" -maxdepth 1 -regextype posix-extended \
+  -regex ".*/$hex[0-9A-F]{16}\.[0-9a-f]{64}\.gz\.age" -delete
+MIMORYA_WAL_ARCHIVE=$forked MIMORYA_RESTORE_TIMELINE=$first refused "la récupération s'est arrêtée" \
+  "$identity"
+grep -qF "la ligne temporelle $first n'a dans l'archive que son historique, aucun segment" <<<"$refusal" ||
+  fail "the timeline without segments was not said: $refusal"
+throw_away
+
+# Restored again, to the second instant, from the same base and archive.
 said=$(restore "$identity" "$second_instant") || fail "the restore to the second instant failed: $said"
 start_stack
 [[ $(opened) == "$stamp-a,$stamp-b" ]] || fail "restored to the second instant, the companies are: $(opened)"

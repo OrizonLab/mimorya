@@ -53,8 +53,10 @@ command -v age >/dev/null || fail "age n'est pas installé (https://age-encrypti
 # The instant, its zone always given: read the same by PostgreSQL whatever
 # its own time zone, and compared with the base's start before the recovery.
 # A fraction of a second only after the seconds: PostgreSQL would read
-# `14:30.5` as minutes and seconds.
-instant='^([0-9]{4}-[0-9]{2}-[0-9]{2})[ T]([0-9]{2}:[0-9]{2})(:[0-9]{2}(\.[0-9]{1,6})?)? ?(UTC|GMT|Z|[+-][0-9]{2}(:?[0-9]{2})?)$'
+# `14:30.5` as minutes and seconds. Only the zones PostgreSQL takes on its
+# command line: UTC, GMT, or an offset within ±15:59 (never Z, which it
+# reads in a session only).
+instant='^([0-9]{4}-[0-9]{2}-[0-9]{2})[ T]([0-9]{2}:[0-9]{2})(:[0-9]{2}(\.[0-9]{1,6})?)? ?(UTC|GMT|[+-](0[0-9]|1[0-5])(:?[0-5][0-9])?)$'
 if [[ -n $until ]]; then
   [[ $until =~ $instant ]] ||
     fail "instant illisible : $until (attendu : une date, une heure et son fuseau, comme 2026-11-20 14:30:00+01)"
@@ -114,7 +116,7 @@ started_zone=${BASH_REMATCH[2]}
 # recovery, as seconds since 1970, by the database's image (GNU date).
 offset() {
   local zone=$1 sign hours minutes
-  case $zone in UTC | GMT | Z) echo 0 && return ;; esac
+  case $zone in UTC | GMT) echo 0 && return ;; esac
   sign=${zone:0:1}1
   zone=${zone:1}
   zone=${zone/:/}
