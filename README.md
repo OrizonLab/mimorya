@@ -376,7 +376,8 @@ cette restauration avait dit) : la récupération suit son histoire.
 
 La base restaurée prend une nouvelle ligne temporelle et archive à côté des fichiers de la
 base sauvegardée, sans jamais les remplacer : plusieurs restaurations de la même archive ne
-se gênent pas. La CI restaure ainsi deux fois, à deux instants, la pile qu'elle installe
+se gênent pas. La CI restaure ainsi trois fois la pile qu'elle installe, à deux instants
+puis le long d'une ligne temporelle nommée par son numéro
 (`infra/docker/point-in-time-test.sh`).
 
 ## Qualité

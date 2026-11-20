@@ -15958,8 +15958,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     tenir une copie de celle de la base sauvegardée, ramenée de hors site. Il refuse :
     - une base démarrée, ou qui contient déjà des fichiers ;
     - un instant qui n'est pas une date, une heure et son fuseau (un décalage comme
-      `+01`, ou `UTC`) : il ne peut sortir de son réglage, et PostgreSQL le lit de même
-      quel que soit son propre fuseau ;
+      `+01`, ou `UTC`), une fraction de seconde seulement après les secondes : il ne peut
+      sortir de son réglage, et PostgreSQL le lit comme le script, quel que soit son
+      propre fuseau (il lirait `14:30.5` en minutes et secondes) ;
     - une sauvegarde que l'identité n'ouvre pas ;
     - un dossier d'archive sans celui du système de la base sauvegardée, lu dans la
       sauvegarde (`pg_controldata`) ;
@@ -15973,10 +15974,13 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       récupération ne peut défaire : sans transaction validée pendant la copie,
       PostgreSQL s'arrêterait sans un mot au premier commit suivant, la base revenue à
       la fin de la copie et non à l'instant. Le début est écrit après le checkpoint de
-      la sauvegarde : un instant d'une seconde plus tard suit tout ce qu'elle tient.
-      Une vérification faite pendant la récupération, à une pause à l'instant, a été
-      écartée : PostgreSQL ne s'y arrête que si la lecture y est ouverte (hot standby),
-      ce qu'une transaction de plus de 64 sous-transactions pendant la copie empêche ;
+      la sauvegarde : un instant d'une seconde plus tard suit tout commit que la
+      récupération ne rejoue pas, ceux d'avant le point de reprise du checkpoint. Ceux
+      de la copie sont rejoués, et un commit postérieur à l'instant y fait échouer la
+      récupération, ce qui est dit. Une vérification faite pendant la récupération, à
+      une pause à l'instant, a été écartée : PostgreSQL ne s'y arrête que si la lecture
+      y est ouverte (hot standby), ce qu'une transaction de plus de 64
+      sous-transactions pendant la copie peut retarder au-delà de l'instant ;
   - **déballage** : la sauvegarde est déchiffrée par `age` sur l'hôte, puis décompressée et
     dépaquetée dans le volume de la base par un conteneur de son image, et rendue à la base
     (uid 999, 700). Rien en clair ne touche le disque de l'hôte ;
@@ -16059,13 +16063,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     entreprises sont ouvertes l'une après l'autre, un instant noté entre chacune, et le
     segment qui les tient archivé, puis un autre :
     - la restauration est refusée base démarrée, base qui contient des fichiers, pour un
-      instant à apostrophe ou sans fuseau, avec une autre identité, sans l'archive de la
-      base dans le dossier, et pour la ligne temporelle `latest` ;
+      instant à apostrophe, sans fuseau ou à fraction sans secondes, avec une autre
+      identité, sans l'archive de la base dans le dossier, et pour la ligne temporelle
+      `latest` ;
     - ce qui écourterait la récupération l'arrête, et sa raison est dite : le premier
       segment lu remplacé par un autre contenu, chiffré pour la même clé ; le segment des
       entreprises retiré, sans instant ; une copie de l'archive faite en `root` ;
-    - l'instant noté avant la sauvegarde est refusé avant toute récupération, sans
-      ligne temporelle nouvelle : la première restauration prend la suivante ;
+    - l'instant noté avant la sauvegarde, écrit à l'heure de UTC+1 (`+01`), est refusé
+      avant toute récupération, sans ligne temporelle nouvelle : la première
+      restauration prend la suivante, au premier instant écrit à l'heure de UTC-5
+      (`-05`) ;
     - restaurée au premier instant, la pile sert la première entreprise, dont
       l'administrateur se connecte, et aucune des deux autres. La base est le même
       système, sur la ligne temporelle suivante, dite en décimal, sans les réglages de la

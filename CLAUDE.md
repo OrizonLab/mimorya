@@ -463,7 +463,7 @@ Repères à l'intérieur des crates :
   `age`, `db.Dockerfile`, ADR-206, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   archive des WAL et sauvegarde de base vérifiées, `wal-archive-test.sh`, ADR-206,
-  restauration à un instant précis vérifiée, deux fois depuis la même archive,
+  restauration à un instant précis vérifiée, trois fois depuis la même archive,
   `point-in-time-test.sh`, ADR-214, vérifications de l'archive partagées
   `archive-checks.sh`,
   sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166, son

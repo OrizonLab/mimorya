@@ -74,9 +74,20 @@ switched() {
 opened() {
   sql "select coalesce(string_agg(slug, ',' order by slug), '') from tenants where slug like '$stamp-%'"
 }
-# An instant between two commits: after the former, before the next.
+# An instant between two commits: after the former, before the next. As
+# the database writes it (+00), or at the hour of the offset $1 (+01, -05),
+# so that the offsets' signs are checked too.
 noted_instant() {
-  sql "select clock_timestamp()"
+  local zone
+  case ${1:-} in
+    '') sql "select clock_timestamp()" ;;
+    # Etc/GMT-1 is UTC+1: POSIX's sign is the other way round.
+    +01 | -05)
+      [[ $1 == +01 ]] && zone=Etc/GMT-1 || zone=Etc/GMT+5
+      sql "select to_char(clock_timestamp() at time zone '$zone', 'YYYY-MM-DD HH24:MI:SS.US') || '$1'"
+      ;;
+    *) fail "unexpected offset: $1" ;;
+  esac
   sleep 1
 }
 restore() {
@@ -118,13 +129,16 @@ system=$(sql "select system_identifier from pg_control_system()")
 folder=$archive/$system
 owner=$(as_root stat -c %u "$folder") || fail "the stack archives nothing in $folder"
 before=$(timeline)
-too_early=$(noted_instant)
+too_early=$(noted_instant +01)
 MIMORYA_BACKUP_RECIPIENTS=$recipient infra/backup/backup.sh --base "$work/base.tar.gz.age" >/dev/null
+# The first instant, to the second, comes a second at least after the base
+# began.
+sleep 1
 
 stamp=instant-$(date +%s)
 password=$(openssl rand -hex 24)
 open_company "$base" "$stamp-a" 'Entreprise A' "$password" >/dev/null
-first_instant=$(noted_instant)
+first_instant=$(noted_instant -05)
 open_company "$base" "$stamp-b" 'Entreprise B' "$password" >/dev/null
 second_instant=$(noted_instant)
 open_company "$base" "$stamp-c" 'Entreprise C' "$password" >/dev/null
@@ -137,7 +151,8 @@ await_archived "$(switched)" >/dev/null
 # to throw away, as the script says.
 refused 'la base de la pile est démarrée' "$identity" "$first_instant"
 refused 'instant illisible' "$identity" "$first_instant'; select 1"
-refused 'instant illisible' "$identity" "${first_instant%+*}"
+refused 'instant illisible' "$identity" "${first_instant%[+-]*}"
+refused 'instant illisible' "$identity" "${second_instant:0:16}.5+00"
 MIMORYA_RESTORE_TIMELINE=latest refused 'MIMORYA_RESTORE_TIMELINE : current ou le numéro' \
   "$identity" "$first_instant"
 docker compose stop >/dev/null 2>&1 || fail "the stack did not stop"

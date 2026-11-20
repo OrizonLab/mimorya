@@ -52,11 +52,15 @@ command -v age >/dev/null || fail "age n'est pas installé (https://age-encrypti
 [[ -r $identity ]] || fail "impossible de lire $identity"
 # The instant, its zone always given: read the same by PostgreSQL whatever
 # its own time zone, and compared with the base's start before the recovery.
-instant='^([0-9]{4}-[0-9]{2}-[0-9]{2})[ T]([0-9]{2}:[0-9]{2}(:[0-9]{2})?)(\.[0-9]{1,6})? ?(UTC|GMT|Z|[+-][0-9]{2}(:?[0-9]{2})?)$'
+# A fraction of a second only after the seconds: PostgreSQL would read
+# `14:30.5` as minutes and seconds.
+instant='^([0-9]{4}-[0-9]{2}-[0-9]{2})[ T]([0-9]{2}:[0-9]{2})(:[0-9]{2}(\.[0-9]{1,6})?)? ?(UTC|GMT|Z|[+-][0-9]{2}(:?[0-9]{2})?)$'
 if [[ -n $until ]]; then
   [[ $until =~ $instant ]] ||
     fail "instant illisible : $until (attendu : une date, une heure et son fuseau, comme 2026-11-20 14:30:00+01)"
-  until_wall="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"
+  # To the second: the fraction left out makes the check stricter only.
+  seconds=${BASH_REMATCH[3]}
+  until_wall="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}${seconds%.*}"
   until_zone=${BASH_REMATCH[5]}
 fi
 timeout=${MIMORYA_RESTORE_TIMEOUT:-3600}
@@ -93,6 +97,7 @@ in_db "test -d /var/lib/postgresql/wal-archive/$system" ||
 # log_timezone: UTC by default, or an offset; another zone's abbreviation
 # could mean several (IST), and is refused.
 started=$(in_db 'sed -n "s/^START TIME: //p" /var/lib/postgresql/data/backup_label') || true
+[[ -n $started ]] || fail "la sauvegarde n'a pas d'étiquette (backup_label) lisible ; videz la base (down -v)"
 [[ $started =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2})\ (UTC|GMT|[+-][0-9]{2}(:?[0-9]{2})?)$ ]] ||
   fail "l'étiquette de la sauvegarde (backup_label) ne date pas son début en UTC ($started) : la base doit garder log_timezone à UTC ; videz la base (down -v)"
 started_wall=${BASH_REMATCH[1]}
@@ -103,8 +108,10 @@ started_zone=${BASH_REMATCH[2]}
 # would end at the first commit past the base, the database back to the
 # copy's end, not to the instant, without a word. Its start is to the
 # second, written after its checkpoint: an instant a second later at least
-# follows all the base holds. Compared before the recovery, as seconds since
-# 1970, by the database's image (GNU date).
+# follows every commit the recovery does not replay, those before the
+# checkpoint's redo point; one after the instant during the copy is
+# replayed, and ends the recovery with an error. Compared before the
+# recovery, as seconds since 1970, by the database's image (GNU date).
 offset() {
   local zone=$1 sign hours minutes
   case $zone in UTC | GMT | Z) echo 0 && return ;; esac
