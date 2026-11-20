@@ -46,16 +46,19 @@ test('a company chooses Jev for its decisions, then its main model again', async
   // The main model's probabilities are said not to be calibrated.
   const uncalibrated = form.getByText(/cette probabilité n’est pas calibrée/);
   await expect(uncalibrated).toBeVisible();
-  // The model's routing and the skill choice are delivered (D1, D2), off
-  // until set; the others wait for their step.
+  // The model's routing, the skill choice and the memory guard are
+  // delivered (D1 to D3), off until set; the others wait for their step.
   const routing = form.getByLabel('Mode : Choix du modèle d’un run');
   await expect(routing).toBeEnabled();
   await expect(routing).toHaveValue('off');
   await expect(form.getByLabel('Mode : Choix des compétences à charger')).toBeEnabled();
   await expect(
     form.getByLabel('Mode : Données sensibles dans la mémoire et les leçons'),
+  ).toBeEnabled();
+  await expect(
+    form.getByLabel('Mode : Type et confidentialité des documents déposés'),
   ).toBeDisabled();
-  await expect(form.getByText('(bientôt disponible)')).toHaveCount(5);
+  await expect(form.getByText('(bientôt disponible)')).toHaveCount(4);
 
   await jev.check();
   await expect(form).toContainText('sous-traitant situé hors de l’Union européenne');

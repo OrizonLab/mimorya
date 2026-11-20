@@ -139,7 +139,7 @@ impl TypedTool for MemoryRemember {
         ToolInfo::new(
             "memory_remember",
             "Mémorisation",
-            "Enregistre une information utile pour les prochaines missions. Espace « personal » : préférences et informations de travail de l’utilisateur (enregistré immédiatement, sauf dans une demande lancée par un déclencheur : proposition à valider). Espaces « team » et « company » : connaissance partagée, enregistrée comme proposition à valider. N’enregistre jamais de secret, de mot de passe ni de donnée personnelle sensible.",
+            "Enregistre une information utile pour les prochaines missions. Espace « personal » : préférences et informations de travail de l’utilisateur (enregistré immédiatement, sauf dans une demande lancée par un déclencheur, ou si la plateforme y voit une donnée sensible : proposition à valider). Espaces « team » et « company » : connaissance partagée, enregistrée comme proposition à valider. N’enregistre jamais de secret, de mot de passe ni de donnée personnelle sensible.",
             ToolRisk::Draft,
         )
         .requires(["agent:use"])
@@ -185,7 +185,8 @@ impl TypedTool for MemoryRemember {
         } else {
             MemoryStatus::Proposed
         };
-        let id = self
+        // Saved as said, or held for validation by the platform (D3).
+        let (id, status) = self
             .memory
             .create(NewMemory {
                 scope: target.scope,

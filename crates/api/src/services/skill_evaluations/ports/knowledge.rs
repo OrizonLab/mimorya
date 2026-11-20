@@ -15,7 +15,7 @@ use mimorya_agent::runtime::{
 };
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::documents::DocumentReadFilter;
-use mimorya_core::memory::MemoryReadFilter;
+use mimorya_core::memory::{MemoryReadFilter, MemoryStatus};
 use mimorya_core::skill_proposals::{ProposalOutcome, SkillProposal};
 use mimorya_db::Database;
 use mimorya_db::repositories::skills::{get_active_skill, list_active_skills};
@@ -94,7 +94,7 @@ impl MemoryStore for Knowledge {
         reader.search_memory(filter, query, limit, clearance).await
     }
 
-    async fn create(&self, _memory: NewMemory) -> anyhow::Result<Uuid> {
+    async fn create(&self, _memory: NewMemory) -> anyhow::Result<(Uuid, MemoryStatus)> {
         anyhow::bail!("an evaluation writes no memory")
     }
 

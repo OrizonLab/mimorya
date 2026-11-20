@@ -255,7 +255,7 @@ impl RunExecutor {
         };
         let tenant_id = access.subject.tenant_id;
         self.llm
-            .run_decisions(tenant_id, scope, models)
+            .run_decisions(tenant_id, scope, models, None)
             .await
             .unwrap_or_else(|error| {
                 tracing::warn!(error = %error, "Decisions unread: the run asks none");

@@ -98,13 +98,15 @@ impl LlmService {
     }
 
     /// The decisions a run of the company may ask, on its execution's
-    /// `models`: none while no usage is set, so that no engine is built nor
-    /// key read for nothing.
+    /// `models` — of `only` this usage, when one is named: none while no
+    /// usage wanted is set, so that no engine is built nor key read for
+    /// nothing.
     pub async fn run_decisions(
         &self,
         tenant_id: Uuid,
         scope: DecisionScope,
         models: &Arc<Models>,
+        only: Option<DecisionUsage>,
     ) -> anyhow::Result<Option<Arc<RunDecisions>>> {
         let mut tx = self.db.begin(tenant_id).await?;
         let rows = decision_usages(&mut tx).await?;
@@ -114,7 +116,8 @@ impl LlmService {
             .filter_map(|row| {
                 let usage = DecisionUsage::parse(&row.usage)?;
                 let mode = DecisionMode::parse(&row.mode)?;
-                let set = usage.available() && mode != DecisionMode::Off;
+                let wanted = only.is_none_or(|only| only == usage);
+                let set = wanted && usage.available() && mode != DecisionMode::Off;
                 set.then_some((
                     usage,
                     UsagePolicy {

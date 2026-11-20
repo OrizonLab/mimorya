@@ -17,6 +17,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::db_ports::{DbPorts, RunScope};
+use super::memory_guard::memory_status;
 
 #[async_trait]
 impl MemoryStore for DbPorts {
@@ -31,7 +32,10 @@ impl MemoryStore for DbPorts {
         reader.search_memory(filter, query, limit, clearance).await
     }
 
-    async fn create(&self, input: NewMemory) -> anyhow::Result<Uuid> {
+    async fn create(&self, input: NewMemory) -> anyhow::Result<(Uuid, MemoryStatus)> {
+        // Held for validation when the company's decision says so (D3),
+        // read before the transaction: no lock is held while it is asked.
+        let status = memory_status(&self.llm, &self.models, self.scope, &input).await;
         let mut tx = self.held_tx().await?;
         let id = memory::create_memory(
             &mut tx,
@@ -44,7 +48,7 @@ impl MemoryStore for DbPorts {
                 title: input.title,
                 content: input.content,
                 sensitivity: input.sensitivity,
-                status: input.status,
+                status,
                 source: input.source,
                 created_by_user_id: Some(self.scope.user_id),
                 created_by_run_id: Some(self.scope.run_id),
@@ -53,10 +57,10 @@ impl MemoryStore for DbPorts {
         .await?;
         tx.commit().await?;
         // A proposal waits for its approval.
-        if input.status == MemoryStatus::Active {
+        if status == MemoryStatus::Active {
             self.embeddings.wake();
         }
-        Ok(id)
+        Ok((id, status))
     }
 
     async fn mark_used(&self, ids: &[Uuid]) -> anyhow::Result<()> {

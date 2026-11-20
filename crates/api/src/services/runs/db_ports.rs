@@ -39,7 +39,7 @@ use crate::services::access::AccessService;
 use crate::services::account_links::{AccountLinkService, PersonAccounts};
 use crate::services::embeddings::{EmbeddingService, UsageBy};
 use crate::services::event_bus::RunEventBus;
-use crate::services::llm::Models;
+use crate::services::llm::{LlmService, Models};
 
 /// No event recorded yet by this execution.
 const NO_EVENT: i32 = -1;
@@ -92,9 +92,12 @@ pub struct DbPorts {
     pub(super) sub_run: bool,
     /// The accounts the run's user linked, for its tools (ADR-117).
     account_links: Arc<AccountLinkService>,
+    /// Reads a memory before it is saved, when the company set it (ADR-213,
+    /// D3).
+    pub(super) llm: Arc<LlmService>,
     /// The company's models the execution took: what each of its model
     /// calls is charged, on whose key (ADR-208).
-    models: Arc<Models>,
+    pub(super) models: Arc<Models>,
 }
 
 /// The ports of `scope`'s run, executed by `executor` under `fence`.
@@ -119,6 +122,7 @@ pub fn engine_ports(
         leased: scope.run_id,
         sub_run: false,
         account_links: executor.account_links.clone(),
+        llm: executor.llm.clone(),
         models,
     }
     .into_engine_ports()

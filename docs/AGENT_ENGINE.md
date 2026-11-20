@@ -337,7 +337,10 @@ qu'un déclencheur a lancé (canal `hook`, ADR-109) n'écrit directement dans au
 espace, pas même personnel : ce qu'il retiendrait est une proposition à la personne.
 Un run que la personne lance en écrivant à l'application Slack de l'entreprise (canal
 `slack`, ADR-127), ou à son bot Telegram (canal `telegram`, ADR-135), est sa propre
-demande : il retient comme un tour de l'application.
+demande : il retient comme un tour de l'application. Là où l'entreprise a réglé le
+service de décision (ADR-213, D3), une mémoire personnelle que l'agent écrirait
+directement est d'abord lue : dite sensible (santé, bancaire, personnel sensible), ou
+illisible à temps, elle devient une proposition que la personne valide.
 
 ### 9.2 Recherche
 
@@ -369,7 +372,8 @@ Si l'entreprise l'a choisi (désactivé par défaut, dans « Modèle d'IA », AD
 chaque demande dont la réponse a appelé un outil est relue, une fois la réponse donnée, par le
 modèle des conversations : il reçoit le run comme donnée et propose au plus une leçon
 générale, dans la mémoire personnelle de la personne servie, qui seule la valide
-(« Propositions à valider » de la page « Mémoire »).
+(« Propositions à valider » de la page « Mémoire »). Là où l'entreprise a réglé le service de décision
+(ADR-213, D3), une leçon dite sensible n'est pas même proposée.
 
 ### 9.4 Cycle de vie
 
@@ -474,7 +478,7 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   départ d'un run (D2) : actif, le prompt système ne les liste plus et le premier tour
   liste celles que la décision retient, toutes sur un doute (`runtime/skill_choice.rs`,
   `services/runs/start_context.rs`), gardées dans le point de reprise pour ses
-  sous-agents, `skill_read` chargeant toujours toute compétence active ; les autres usages viennent un à un (D3 à D7).
+  sous-agents, `skill_read` chargeant toujours toute compétence active ; les données sensibles d'une mémoire personnelle ou d'une leçon (D3, `services/runs/memory_guard.rs`) : actif, une mémoire dite sensible ou illisible attend la validation de son propriétaire, une leçon dite sensible n'est pas gardée ; les autres usages viennent un à un (D4 à D7).
 - **Fourniture du modèle** (ADR-208) : un run est compté par les modèles de l'entreprise
   que son exécution a prises. Sur la clé de l'exploitant, avant chaque appel au modèle,
   le moteur demande si un appel de ce rôle peut encore partir (port `SupplyLimit`, relu en

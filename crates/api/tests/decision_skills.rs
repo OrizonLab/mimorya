@@ -17,6 +17,7 @@ use mimorya_db::repositories::skills::list_active_skills;
 use serde_json::{Map, Value, json};
 use support::decisions::{DECISIONS, set, settings};
 use support::llm::SCRIPTED_CALL_MICROS;
+use support::mcp::capture_logs;
 use support::planning::{apply_proposal, propose};
 use support::runs::start_run;
 use support::usage_roles::recorded_roles;
@@ -121,10 +122,29 @@ async fn the_skills_a_run_lists_are_chosen_by_the_decision() {
         assert!(turn.contains(name.as_str()), "{name}: {turn}");
     }
 
-    // Observed: asked and counted, the run lists them as before.
+    // Observed: asked and counted, the run lists them as before; what it
+    // would leave out journaled, never the request nor a skill's name.
     set(&paul, choosing("observe")).await;
+    let logs = capture_logs();
     let roles = run(&api, &marc, vec![first_useful(names.len()), answer()]).await;
     assert_eq!(roles, ["decision", "main"]);
+    let journaled = logs.text();
+    for said in [
+        "skill_choice",
+        "observe",
+        "reason=\"decided\"",
+        "index_chars",
+        "shown_chars",
+    ] {
+        assert!(journaled.contains(said), "{said}: {journaled}");
+    }
+    assert!(
+        !journaled.contains("Fais le point sur la semaine"),
+        "{journaled}"
+    );
+    for name in &names {
+        assert!(!journaled.contains(name.as_str()), "{name}: {journaled}");
+    }
     let (system, turn) = answered_with(&api);
     assert!(system.contains(FULL_INDEX), "{system}");
     assert!(!turn.contains(CHOSEN), "{turn}");

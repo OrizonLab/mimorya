@@ -8,6 +8,7 @@ mod engine;
 mod jev;
 mod jev_wire;
 mod main_model;
+mod memory_guard;
 mod question;
 mod run;
 mod service;
@@ -19,6 +20,7 @@ pub use jev::{
     DEFAULT_JEV_MODEL, JEV_ENDPOINT, JEV_PROVIDER, JevClient, JevEngine, is_versioned_jev,
 };
 pub use main_model::MainModelEngine;
+pub use memory_guard::{holds_sensitive_data, memory_guard_request};
 pub use question::{
     DecisionQuestion, DecisionRequest, DecisionState, MAX_LEVELS, MAX_OPTIONS, MAX_STATE_CHARS,
     QuestionKind, TRUNCATED,

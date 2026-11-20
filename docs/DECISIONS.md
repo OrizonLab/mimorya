@@ -15548,7 +15548,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 ## ADR-213 — Service de décision : jugements rapides et typés, Jev ou le modèle principal (chantier 7)
 
-- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 et D2 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
+- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1, D2 et D3 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
   ADR-207 (routeur en amont, dont il remplace le classement), ADR-208 à ADR-212
   (fourniture du modèle et montant payé).
 - **Contexte** : le moteur et plusieurs fonctionnalités ont besoin de jugements courts et
@@ -15747,3 +15747,39 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     sa règle est « classement » ;
   - avec Jev, la demande et le nom et la description de chaque compétence partent chez
     TypeSafe.
+- **D3, mémoire et leçons (livré)** :
+  - avant que l'agent n'enregistre une mémoire directement dans l'espace personnel de
+    la personne servie (`memory_remember`, sans validation), le service de décision
+    reçoit trois `noul` sur son titre et son texte, et rien d'autre : données de santé,
+    données bancaires ou de paiement, données personnelles sensibles (origine,
+    opinions, convictions, syndicat, orientation sexuelle, condamnations, numéro de
+    sécurité sociale, pièce d'identité) ;
+  - actif, un oui au seuil, une question sans réponse ou un échec enregistre la
+    mémoire comme proposition, que son propriétaire valide dans « Mémoire », et l'outil
+    dit à l'agent qu'elle attend une validation (le port de la mémoire rend le statut
+    enregistré) ; claire, elle est enregistrée aussitôt, comme avant ;
+  - une leçon tirée d'un run (ADR-076), toujours proposée, n'est pas gardée du tout si
+    la décision la dit sensible ; si la décision échoue, elle est proposée comme toute
+    leçon : rien n'est stocké sans validation humaine ;
+  - une mémoire qui attend déjà une validation (espace d'équipe ou d'entreprise, run
+    d'un déclencheur) ne demande rien : la décision ne peut qu'en ajouter une ;
+  - observé, la décision est demandée, comptée et journalisée (`verdict` : `clear`,
+    `sensitive` ou `unread`), sans rien changer ;
+  - la décision est demandée hors de toute transaction, avant l'écriture, et attendue
+    15 s au plus, la moitié du délai d'un appel d'outil : au-delà, elle compte comme
+    illisible (proposition en mode actif, mémoire enregistrée telle quelle en mode
+    observé), pour qu'un moteur lent ne fasse jamais perdre la mémoire ;
+  - les réglages sont relus à chaque écriture (un réglage changé en cours de run vaut
+    aussitôt), seuls ceux de la garde, sans construire de moteur si elle est
+    désactivée ; s'ils ne peuvent être lus, la mémoire est enregistrée comme demandée,
+    comme sans décision ;
+  - son coût est enregistré au rôle « décision » pour le run (consommation, export,
+    plafond ou crédit de l'exploitant relu avant l'appel), mais n'entre pas dans les
+    totaux du run en mémoire, que le port de la mémoire n'atteint pas : il échappe au
+    budget de coût du run, à la limite d'une mission et au coût montré dans
+    « Opérations » ; il est borné par le nombre d'appels à `memory_remember` du run ;
+  - le seuil s'y lit dans le sens de la prudence : le baisser rend la garde plus
+    stricte (un oui plus faible suffit), à l'inverse du choix du modèle (D1) ;
+  - avec Jev, le titre et le texte de la mémoire ou de la leçon partent chez TypeSafe ;
+    c'est ce que l'usage cherche à protéger : à ne régler qu'avec un accord de
+    traitement et la conservation nulle, ou avec le modèle principal.
