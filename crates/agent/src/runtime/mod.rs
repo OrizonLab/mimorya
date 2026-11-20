@@ -7,6 +7,7 @@ pub mod answer_review;
 pub mod budget;
 pub mod context;
 pub mod conversation_summary;
+mod decided_routing;
 pub mod delegation;
 mod document_store;
 pub mod escalation;

@@ -446,7 +446,11 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   demander le modèle d'escalade : chargée par `skill_read`, et lui seul, elle y fait
   passer le run avant son appel suivant, une fois par run, dans les mêmes bornes. La
   décision est gardée dans le point de reprise ; un run repris n'est pas routé de
-  nouveau.
+  nouveau. Là où l'entreprise a réglé le choix du modèle de son service de
+  décision (ADR-213, D1, `runtime/decided_routing.rs`), il est demandé avant le
+  classement : actif, « escalade », ou « principal » avec une confiance sous le seuil,
+  fait escalader ; « principal » confiant garde le modèle principal ; sans décision,
+  le classement décide comme avant. Son coût entre dans le run.
 - **Service de décision** (ADR-213, `agent/src/decision/`) : jugements courts et typés,
   plusieurs questions sur un même état : `noul` (probabilité du oui), `choice` (une
   option parmi 255 au plus) et `score` (un niveau parmi 10 au plus), avec probabilités et
@@ -466,7 +470,8 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   demandée avant (`SupplyLimit`). Chaque usage est désactivé, observé (décidé et
   journalisé, sans effet) ou actif, avec son seuil ; une décision ne peut que rendre
   l'agent plus prudent. Fait : le service, ses moteurs, ses réglages et son essai (D0) ;
-  les usages viennent un à un (D1 à D7).
+  le choix du modèle d'un run par le routeur (D1) ; les autres usages viennent un à un
+  (D2 à D7).
 - **Fourniture du modèle** (ADR-208) : un run est compté par les modèles de l'entreprise
   que son exécution a prises. Sur la clé de l'exploitant, avant chaque appel au modèle,
   le moteur demande si un appel de ce rôle peut encore partir (port `SupplyLimit`, relu en

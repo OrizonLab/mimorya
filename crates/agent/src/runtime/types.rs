@@ -14,6 +14,7 @@ use super::ports::{AccessSource, EnginePorts};
 use super::state::{PendingApproval, RunCheckpoint};
 use super::supply::SupplyLimit;
 use super::verification::VerificationReport;
+use crate::decision::RunDecisions;
 use crate::llm::{Effort, ModelRouter, PriceTable};
 use crate::tools::ToolRegistry;
 
@@ -34,6 +35,8 @@ pub struct RuntimeDeps {
     /// What the operator's supply of the company still allows, read before
     /// each call to the model (ADR-208); none, no limit.
     pub supply: Option<Arc<dyn SupplyLimit>>,
+    /// The company's decisions, when a usage of them is set (ADR-213).
+    pub decisions: Option<Arc<RunDecisions>>,
 }
 
 /// How long a tool call may take before the executor stops it: past a
@@ -60,6 +63,7 @@ impl RuntimeDeps {
             tool_timeout: DEFAULT_TOOL_TIMEOUT,
             escalation: None,
             supply: None,
+            decisions: None,
         }
     }
 }

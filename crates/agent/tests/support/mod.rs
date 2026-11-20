@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use mimorya_agent::decision::RunDecisions;
 use mimorya_agent::llm::{LlmProvider, ModelRouter, PriceTable};
 use mimorya_agent::runtime::UnavailableConnectors;
 use mimorya_agent::runtime::{
@@ -252,6 +253,8 @@ pub struct Options {
     pub supply: Option<Arc<dyn SupplyLimit>>,
     /// The models' prices (none known by default).
     pub prices: Option<PriceTable>,
+    /// The company's decisions (ADR-213).
+    pub decisions: Option<Arc<RunDecisions>>,
 }
 
 pub struct Harness {
@@ -358,6 +361,7 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
     deps.retry_delay = Duration::from_millis(1);
     deps.escalation = options.escalation;
     deps.supply = options.supply;
+    deps.decisions = options.decisions;
     let mut actor = Actor::agent(Some(run_id));
     actor.allowed_permissions = options.allowed_permissions;
     let config = RunConfig {

@@ -67,6 +67,8 @@ pub(super) enum Reason {
     Rule,
     /// The main model's classification of its request.
     Classification,
+    /// The decision service's choice (ADR-213, D1).
+    Decision,
     /// A skill it loaded asks for the escalation model.
     Skill,
 }
@@ -77,6 +79,7 @@ impl Reason {
             Reason::AfterFailure => "after_failure",
             Reason::Rule => "rule",
             Reason::Classification => "classification",
+            Reason::Decision => "decision",
             Reason::Skill => "skill",
         }
     }

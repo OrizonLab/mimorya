@@ -40,7 +40,7 @@ use crate::services::account_links::AccountLinkService;
 use crate::services::connectors::ConnectorService;
 use crate::services::embeddings::EmbeddingService;
 use crate::services::event_bus::RunEventBus;
-use crate::services::llm::{LlmService, Models, SupplyGuard};
+use crate::services::llm::{DecisionScope, LlmService, Models, SupplyGuard};
 
 const MAX_CORRECTION_ATTEMPTS: u32 = 2;
 
@@ -309,6 +309,20 @@ impl RunExecutor {
             tenant_id,
             Arc::clone(&models),
         )));
+        // The company's decisions, if it set a usage of them (ADR-213); a
+        // decision never blocks a run: unread, the run asks none.
+        let scope = DecisionScope {
+            run_id: Some(run.id),
+            user_id: Some(access.subject.user_id),
+        };
+        deps.decisions = self
+            .llm
+            .run_decisions(tenant_id, scope)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(error = %error, "Decisions unread: the run asks none");
+                None
+            });
         let runtime = AgentRuntime::new(
             deps,
             RunConfig {

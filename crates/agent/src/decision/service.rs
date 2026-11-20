@@ -35,7 +35,20 @@ pub struct DecisionCall {
 /// Where each call that answered is counted.
 #[async_trait]
 pub trait DecisionRecorder: Send + Sync {
-    async fn record(&self, call: DecisionCall) -> anyhow::Result<()>;
+    /// Records `call`; what it cost the company (ADR-212): its cost on the
+    /// company's own key, the amount re-invoiced on the operator's.
+    async fn record(&self, call: DecisionCall) -> anyhow::Result<i64>;
+}
+
+/// What a call that answered cost, as a run adds it to its totals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Counted {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    /// Its cost, `None` when the model has no price.
+    pub cost_micros: Option<i64>,
+    /// What the company was charged; 0 when it could not be recorded.
+    pub charged_micros: i64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,13 +90,23 @@ impl DecisionService {
     }
 
     pub async fn decide(&self, request: &DecisionRequest) -> DecisionOutcome {
+        self.decide_counted(request).await.0
+    }
+
+    /// `decide`, with what each call that answered cost: what a run adds to
+    /// its own totals.
+    pub async fn decide_counted(
+        &self,
+        request: &DecisionRequest,
+    ) -> (DecisionOutcome, Vec<Counted>) {
+        let mut counted = Vec::new();
         if let Some(problem) = request.problem() {
             tracing::warn!(
                 usage = request.usage,
                 problem,
                 "Decision asked wrongly: failed"
             );
-            return DecisionOutcome::Failed;
+            return (DecisionOutcome::Failed, counted);
         }
         for link in &self.chain {
             let started = Instant::now();
@@ -95,7 +118,7 @@ impl DecisionService {
             };
             match answer {
                 Ok(answer) => {
-                    self.count(request, link, &answer).await;
+                    counted.push(self.count(request, link, &answer).await);
                     let model = answer.model.clone();
                     match checked(&request.questions, answer.answers) {
                         Some(answers) => {
@@ -106,7 +129,7 @@ impl DecisionService {
                                 answers,
                             };
                             journal_decided(request, &decided);
-                            return DecisionOutcome::Decided(decided);
+                            return (DecisionOutcome::Decided(decided), counted);
                         }
                         None => journal_failure(request, link, EngineFailure::Invalid, latency_ms),
                     }
@@ -120,12 +143,21 @@ impl DecisionService {
             outcome = "failed",
             "No engine decided: the usage applies its prudent value"
         );
-        DecisionOutcome::Failed
+        (DecisionOutcome::Failed, counted)
     }
 
     /// The call counted, priced as its model; a failure to record it is
     /// journaled, never blocking.
-    async fn count(&self, request: &DecisionRequest, link: &Link, answer: &EngineAnswer) {
+    async fn count(
+        &self,
+        request: &DecisionRequest,
+        link: &Link,
+        answer: &EngineAnswer,
+    ) -> Counted {
+        let cost_micros = self
+            .prices
+            .cost_micros(&answer.model, &answer.usage)
+            .or_else(|| self.prices.cost_micros(link.engine.model(), &answer.usage));
         let call = DecisionCall {
             usage: request.usage,
             engine: link.engine.kind(),
@@ -133,13 +165,20 @@ impl DecisionService {
             model: answer.model.clone(),
             input_tokens: answer.usage.input_total(),
             output_tokens: answer.usage.output_tokens,
-            cost_micros: self
-                .prices
-                .cost_micros(&answer.model, &answer.usage)
-                .or_else(|| self.prices.cost_micros(link.engine.model(), &answer.usage)),
+            cost_micros,
         };
-        if let Err(error) = self.recorder.record(call).await {
-            tracing::warn!(error = %error, "Decision call not recorded");
+        let charged_micros = match self.recorder.record(call).await {
+            Ok(charged) => charged,
+            Err(error) => {
+                tracing::warn!(error = %error, "Decision call not recorded");
+                0
+            }
+        };
+        Counted {
+            input_tokens: answer.usage.input_total(),
+            output_tokens: answer.usage.output_tokens,
+            cost_micros,
+            charged_micros,
         }
     }
 }

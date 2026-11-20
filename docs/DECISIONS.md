@@ -15547,7 +15547,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 ## ADR-213 — Service de décision : jugements rapides et typés, Jev ou le modèle principal (chantier 7)
 
-- **Statut** : accepté (2026-11-19) · s'appuie sur ADR-024 (modèle par entreprise),
+- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
   ADR-207 (routeur en amont, dont il remplace le classement), ADR-208 à ADR-212
   (fourniture du modèle et montant payé).
 - **Contexte** : le moteur et plusieurs fonctionnalités ont besoin de jugements courts et
@@ -15687,3 +15687,26 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     prudente ;
   - l'essai du moteur principal, sur la clé de l'exploitant au-delà de sa fourniture,
     est refusé et tracé comme le lancement d'un run (`model_supply.limited`, ADR-208).
+- **D1, routeur de modèle (livré)** :
+  - là où la règle du routeur de l'escalade est « classement » (ADR-207), le service de
+    décision est demandé d'abord : un `choice` « principal » ou « escalade » sur la
+    demande seule (champ `demande`, 2 000 caractères au plus, comme le classement) ;
+  - actif, « escalade », ou « principal » avec une confiance sous le seuil, fait partir
+    le run sur le modèle d'escalade (raison `decision` de `model_escalation.started`) ;
+    « principal » avec une confiance au seuil ou au-dessus garde le modèle principal,
+    sans classement ;
+  - sans décision (usage désactivé ou observé, moteurs en échec, réponse hors de sa
+    question), le classement par le modèle principal décide comme avant, puis
+    « principal » ; observé, le choix est journalisé (`would_escalate`) et ne change rien ;
+  - le choix du modèle ne touche à aucune règle : permissions, validations, outils et
+    bornes restent les mêmes. Les bornes de l'escalade restent la seule porte : le budget
+    du mois épuisé, rien n'est demandé, ni décision ni classement ; chaque escalade reste
+    comptée dans ses escalades par run ;
+  - le coût de la décision entre dans le run (ses jetons et ce qu'il a coûté à
+    l'entreprise), enregistré au rôle « décision » ; il n'entre pas dans le budget
+    d'escalade, qui compte l'escalade, le classement et le conseiller ;
+  - un run ne reçoit ses décisions que si un usage est réglé : sans cela, aucun moteur
+    n'est construit et aucune clé n'est lue ; si les réglages ne peuvent être lus, le run
+    n'en a pas et continue ;
+  - avec Jev, la demande (2 000 caractères au plus) part chez TypeSafe ; un sous-agent
+    n'est pas routé et ne demande rien.
