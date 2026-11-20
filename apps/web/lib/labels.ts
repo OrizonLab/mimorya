@@ -6,6 +6,7 @@ import type {
   CaseOutcomeView,
   DeliveryOutcome,
   DocumentKind,
+  DocumentType,
   EvaluationStatus,
   MissionStatus,
   OccurrenceOutcome,
@@ -201,6 +202,20 @@ export const DOCUMENT_KINDS: Record<DocumentKind, string> = {
   docx: 'Word',
   markdown: 'Markdown',
   text: 'Texte',
+};
+
+/** A document's type, as a person sets it or the decision service
+ * proposes it (ADR-213, D4). */
+export const DOCUMENT_TYPES: Record<DocumentType, string> = {
+  contract: 'Contrat',
+  invoice: 'Facture',
+  quote: 'Devis',
+  procedure: 'Procédure',
+  minutes: 'Compte rendu',
+  report: 'Rapport',
+  letter: 'Courrier',
+  technical_sheet: 'Fiche technique',
+  other: 'Autre',
 };
 
 /** Who works a run: the agent, or one of its sub-agents (ADR-098). */
