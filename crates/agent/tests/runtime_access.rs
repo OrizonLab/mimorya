@@ -278,6 +278,8 @@ async fn rights_that_cannot_be_read_stop_the_run_before_the_model() {
             user_turn: "Fais la synthèse".into(),
             unavailable: Default::default(),
             evidence: Vec::new(),
+            decided: Vec::new(),
+            skills_shown: Vec::new(),
         })
         .await;
 

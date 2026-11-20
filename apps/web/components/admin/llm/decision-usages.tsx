@@ -39,7 +39,8 @@ export function DecisionUsagesFields({
         Le choix du modèle d’un run ne sert que là où le routeur de l’escalade classe la demande :
         actif, « escalade », ou « principal » avec une confiance sous le seuil, fait partir le run
         sur le modèle d’escalade, dans son budget ; sans décision, le classement par le modèle
-        principal s’applique comme avant.
+        principal s’applique comme avant. Le choix des compétences, actif, ne liste avec la demande
+        que celles qui lui sont utiles, toutes en cas de doute ; chacune reste chargeable.
       </p>
       {usages.map((usage, index) => {
         const value = values[index];

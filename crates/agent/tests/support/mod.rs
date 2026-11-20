@@ -282,6 +282,8 @@ impl Harness {
                     to_authorize: Vec::new(),
                 },
                 evidence: Vec::new(),
+                decided: Vec::new(),
+                skills_shown: Vec::new(),
             })
             .await
             .expect("run")
@@ -296,6 +298,8 @@ impl Harness {
                 user_turn: "Fais la synthèse".into(),
                 unavailable: Default::default(),
                 evidence,
+                decided: Vec::new(),
+                skills_shown: Vec::new(),
             })
             .await
             .expect("run")

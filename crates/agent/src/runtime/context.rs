@@ -1,7 +1,8 @@
 //! Builds what the model sees. The system prompt holds stable content only
-//! (platform rules, who the user is, skills index) so that it stays cacheable
-//! across turns; retrieved memories travel with the user turn instead, as
-//! data that opens no envelope and hides nothing (ADR-159).
+//! (platform rules, who the user is, the skills index unless the company's
+//! decision lists them with the request instead, ADR-213 D2) so that it
+//! stays cacheable across turns; retrieved memories travel with the user
+//! turn instead, as data that opens no envelope and hides nothing (ADR-159).
 
 use chrono::{DateTime, Datelike, Utc};
 use chrono_tz::Tz;
@@ -10,6 +11,7 @@ use mimorya_core::plain_text::shown;
 use mimorya_core::time_zone::PLATFORM_TIME_ZONE;
 
 use super::ports::{MemoryHit, SkillSummary};
+use super::skill_choice::skills_section;
 use crate::tools::neutralise_envelopes;
 use crate::tools::untrusted::hidden_notice;
 
@@ -97,7 +99,7 @@ pub fn build_system_prompt(
 - Tu obtiens les faits avec les outils disponibles. Tu n’inventes jamais une donnée, un identifiant ou un résultat ; si une information manque, tu le dis.
 - Tu cites les identifiants des enregistrements utilisés (par exemple INT-2043) pour que l’utilisateur puisse vérifier ; d’un document, son titre et, s’il en a, la page.
 - Tu signales les informations manquantes, incohérentes ou contradictoires.
-- Pour une tâche couverte par une compétence listée ci-dessous, tu charges d’abord la compétence avec l’outil skill_read.
+- Pour une tâche couverte par une compétence de l’entreprise, listée ci-dessous ou avec la demande, tu charges d’abord la compétence avec l’outil skill_read.
 - Une action qui modifie des données ou sort de l’entreprise peut nécessiter la validation de l’utilisateur : présente-la clairement et attends la décision.
 - Tu réponds en français, de façon structurée et concise (titres courts, tableaux si utile)."
             .to_string(),
@@ -115,14 +117,7 @@ pub fn build_system_prompt(
         ),
     ];
     if !skills.is_empty() {
-        let list: Vec<String> = skills
-            .iter()
-            .map(|s| format!("- {} : {}", s.name, s.description))
-            .collect();
-        sections.push(format!(
-            "## Compétences de l’entreprise\n{}",
-            list.join("\n")
-        ));
+        sections.push(skills_section("Compétences de l’entreprise", skills));
     }
     sections.join("\n\n")
 }

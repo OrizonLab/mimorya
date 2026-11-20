@@ -12,6 +12,7 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::skill_choice::without_skills;
 use crate::llm::{Effort, LlmError, LlmMessage, LlmProvider, LlmRequest, LlmToolSpec, LlmUsage};
 use crate::tools::untrusted::{neutralise_envelopes, wrap_untrusted};
 
@@ -77,7 +78,10 @@ pub fn lesson_transcript(messages: &[LlmMessage]) -> Option<String> {
     let mut lines = Vec::new();
     for message in &messages[start..] {
         match message {
-            LlmMessage::User { content } => lines.push(format!("[Demande]\n{content}")),
+            LlmMessage::User { content } => {
+                // Without the skills the platform listed before it (ADR-213).
+                lines.push(format!("[Demande]\n{}", without_skills(content)));
+            }
             LlmMessage::Assistant {
                 content,
                 tool_calls,

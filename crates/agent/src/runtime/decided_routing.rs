@@ -8,17 +8,14 @@
 //! budget, its escalations per run) are the only gate either way. Each call
 //! that answered is counted in the run.
 
+use super::decision_costs::count;
 use super::state::RunCheckpoint;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::decision::{
-    Counted, DecisionMode, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionState,
-    DecisionUsage,
+    DecisionMode, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionState, DecisionUsage,
+    MAX_DECIDED_REQUEST_CHARS,
 };
-use crate::runtime::ports::RunEvent;
 
-/// What the decision reads of the request, at most: as the main model's
-/// classification does.
-const MAX_ROUTED_CHARS: usize = 2_000;
 const QUESTION: &str = "niveau";
 const MAIN: &str = "principal";
 const ESCALATION: &str = "escalade";
@@ -79,11 +76,11 @@ fn hard(choice: &str, confidence: f64, threshold: f64) -> bool {
     choice == ESCALATION || confidence < threshold
 }
 
-/// The request alone, at most `MAX_ROUTED_CHARS` of it, and the choice.
+/// The request alone, at most `MAX_DECIDED_REQUEST_CHARS` of it, and the choice.
 fn routing_request(objective: &str) -> DecisionRequest {
     DecisionRequest {
         usage: DecisionUsage::ModelRouting.as_str(),
-        state: DecisionState::new().field("demande", objective, MAX_ROUTED_CHARS),
+        state: DecisionState::new().field("demande", objective, MAX_DECIDED_REQUEST_CHARS),
         questions: vec![DecisionQuestion::choice(
             QUESTION,
             "Quel modèle doit traiter la demande qu’une personne adresse à l’assistant de \
@@ -102,30 +99,6 @@ fn routing_request(objective: &str) -> DecisionRequest {
             ],
         )],
     }
-}
-
-/// The calls that answered, added to the run's totals as its other calls.
-async fn count(
-    deps: &RuntimeDeps,
-    state: &mut RunCheckpoint,
-    counted: &[Counted],
-) -> anyhow::Result<()> {
-    for call in counted {
-        state.usage.input_tokens += call.input_tokens;
-        state.usage.output_tokens += call.output_tokens;
-        state
-            .usage
-            .add_cost(call.cost_micros.unwrap_or(0), call.charged_micros);
-        deps.ports
-            .events
-            .emit(RunEvent::Usage {
-                input_tokens: call.input_tokens,
-                output_tokens: call.output_tokens,
-                cost_micros: call.cost_micros.map(|_| call.charged_micros),
-            })
-            .await?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -149,7 +122,7 @@ mod tests {
         };
         assert_eq!(name, "demande");
         assert!(
-            text.chars().count() <= MAX_ROUTED_CHARS,
+            text.chars().count() <= MAX_DECIDED_REQUEST_CHARS,
             "{}",
             text.chars().count()
         );

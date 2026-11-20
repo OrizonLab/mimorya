@@ -1,11 +1,10 @@
 //! What a run is given to work with: the tools in reach of the user (and
-//! the connectors in reach that could not start), the system prompt, and the
+//! the connectors in reach that could not start), who it works for and the
+//! skills it may read (its system prompt: `start_context`), and the
 //! memories relevant to the request.
 
-use chrono::{DateTime, Utc};
 use mimorya_agent::runtime::{
     EnginePorts, MemoryHit, SkillSummary, UnavailableConnectors, UserProfileContext,
-    build_system_prompt,
 };
 use mimorya_agent::tools::ToolRegistry;
 use mimorya_agent::tools::platform::platform_tools;
@@ -82,34 +81,26 @@ pub fn run_tools(
     })
 }
 
-/// The system prompt; the skills index only when the agent may read skills.
-pub async fn build_run_system_prompt(
+/// The company's active skills, when the agent may read skills for the
+/// person it serves; none otherwise.
+pub async fn readable_skills(
     db: &Database,
     access: &AccessContext,
     actor: &Actor,
-    assistant_name: &str,
-    now: DateTime<Utc>,
-) -> anyhow::Result<String> {
-    let skills = if access.engine.has(&access.subject, "skill:read", actor) {
-        let mut tx = db.begin(access.subject.tenant_id).await?;
-        let skills = list_active_skills(&mut tx).await?;
-        tx.commit().await?;
-        skills
-    } else {
-        Vec::new()
-    };
-    let skills: Vec<SkillSummary> = skills
+) -> anyhow::Result<Vec<SkillSummary>> {
+    if !access.engine.has(&access.subject, "skill:read", actor) {
+        return Ok(Vec::new());
+    }
+    let mut tx = db.begin(access.subject.tenant_id).await?;
+    let skills = list_active_skills(&mut tx).await?;
+    tx.commit().await?;
+    Ok(skills
         .into_iter()
         .map(|s| SkillSummary {
             name: s.name,
             description: s.description,
         })
-        .collect();
-    Ok(build_system_prompt(
-        &user_profile(access, assistant_name),
-        &skills,
-        now,
-    ))
+        .collect())
 }
 
 /// Who the agent works for, as the system prompt presents them.

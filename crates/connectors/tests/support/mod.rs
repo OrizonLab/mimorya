@@ -252,6 +252,8 @@ impl Scenario {
                 user_turn: build_user_turn(REQUEST, &memories),
                 unavailable: Default::default(),
                 evidence: Vec::new(),
+                decided: Vec::new(),
+                skills_shown: Vec::new(),
             })
             .await
             .unwrap()

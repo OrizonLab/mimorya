@@ -12,7 +12,7 @@ mod profile;
 mod prompt;
 mod store;
 
-pub use child::{SubAgentReport, SubAgents};
+pub use child::{Parent, SubAgentReport, SubAgents};
 pub use profile::SubAgentProfile;
 pub use prompt::{sub_agent_system, sub_agent_turn};
 pub use store::{SubRun, SubRunRequest, SubRunStore};

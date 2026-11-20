@@ -18,9 +18,11 @@ use super::store::{SubRunRequest, SubRunStore};
 use crate::llm::{Effort, ModelRouter, PriceTable};
 use crate::runtime::budget::BudgetLimits;
 use crate::runtime::ports::AccessSource;
-use crate::runtime::runtime::{AgentRuntime, StartInput};
+use crate::runtime::ports::SkillSummary;
+use crate::runtime::runtime::AgentRuntime;
 use crate::runtime::state::RunUsageTotals;
 use crate::runtime::supply::SupplyLimit;
+use crate::runtime::types::StartInput;
 use crate::runtime::types::{RunConfig, RunOutcome, RuntimeDeps, VerificationConfig};
 use crate::tools::ToolRegistry;
 use crate::tools::platform::{DelegateTaskInput, platform_tools};
@@ -58,6 +60,14 @@ pub struct SubAgentReport {
     pub duration_ms: u64,
 }
 
+/// What a child run takes of its parent's: its system prompt, and the
+/// skills its first turn listed, chosen by the company's decision
+/// (ADR-213, D2).
+pub struct Parent<'a> {
+    pub system: &'a str,
+    pub skills: &'a [SkillSummary],
+}
+
 impl SubAgents {
     pub fn new(deps: &RuntimeDeps, config: &RunConfig) -> Self {
         Self {
@@ -79,7 +89,7 @@ impl SubAgents {
     /// nothing is left of the parent's to share.
     pub async fn run(
         &self,
-        parent_system: &str,
+        parent: Parent<'_>,
         input: &DelegateTaskInput,
         budget: Option<BudgetLimits>,
     ) -> anyhow::Result<SubAgentReport> {
@@ -130,11 +140,14 @@ impl SubAgents {
         deps.supply = self.supply.clone();
         let runtime = AgentRuntime::new(deps, self.config(sub_run.run_id, input, budget));
         let start = StartInput {
-            system: sub_agent_system(parent_system, input.profile),
+            system: sub_agent_system(parent.system, input.profile),
             history: Vec::new(),
             user_turn: sub_agent_turn(&input.task, input.context.as_deref()),
             unavailable: Default::default(),
             evidence: Vec::new(),
+            decided: Vec::new(),
+            // Listed the skills its parent was (ADR-213, D2).
+            skills_shown: parent.skills.to_vec(),
         };
         let outcome = started_apart(&runtime, start).await?;
         Ok(SubAgentReport {

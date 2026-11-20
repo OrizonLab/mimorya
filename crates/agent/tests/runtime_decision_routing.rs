@@ -6,7 +6,7 @@
 //! an error, a timeout, an answer off its question — leaves the decision to
 //! the main model's classification, as before. Observed, it changes
 //! nothing. A decision never lifts a bound: the month's budget spent, it is
-//! not even asked. Each call that answered is counted in the run.
+//! not even asked; nor is it where the router does not classify. Each call that answered is counted in the run.
 
 mod support;
 
@@ -103,6 +103,9 @@ struct Setup {
     threshold: f64,
     /// Whether the month's escalation budget allows a call.
     allows: bool,
+    /// The router's rule for the run, and whether the company escalates.
+    route: Option<EscalationRoute>,
+    escalating: bool,
 }
 
 impl Setup {
@@ -113,6 +116,8 @@ impl Setup {
             mode: DecisionMode::Active,
             threshold: 0.5,
             allows: true,
+            route: Some(EscalationRoute::Classification),
+            escalating: true,
         }
     }
 }
@@ -124,7 +129,7 @@ fn run(setup_: Setup, main: Vec<ScriptedStep>) -> (Harness, Arc<ScriptedProvider
     let escalation = Escalation {
         provider: stronger.clone(),
         after_failure: false,
-        router: Some(EscalationRoute::Classification),
+        router: setup_.route,
         advisor: None,
         max_per_run: 5,
         budget: Arc::new(Budget(setup_.allows)),
@@ -147,7 +152,7 @@ fn run(setup_: Setup, main: Vec<ScriptedStep>) -> (Harness, Arc<ScriptedProvider
     let h = setup(
         main,
         Options {
-            escalation: Some(escalation),
+            escalation: setup_.escalating.then_some(escalation),
             decisions: Some(Arc::new(decisions)),
             ..Options::default()
         },
@@ -274,4 +279,29 @@ async fn a_decision_never_lifts_the_escalation_s_bounds() {
     assert_eq!(completed(&h).await.0, ANSWER);
     assert!(calls.0.lock().unwrap().is_empty());
     assert_eq!(roles(&h), [ModelRole::Classification, ModelRole::Main]);
+}
+
+#[tokio::test]
+async fn a_decision_is_asked_only_where_the_router_classifies() {
+    let elsewhere = [
+        // The rule names the main model.
+        (Some(EscalationRoute::Main), true),
+        // The router is off.
+        (None, true),
+        // The company does not escalate.
+        (Some(EscalationRoute::Classification), false),
+    ];
+    for (route, escalating) in elsewhere {
+        let setup_ = Setup {
+            route,
+            escalating,
+            ..Setup::answering(chose("niveau", "escalade", 0.99))
+        };
+        let (h, stronger, calls) = run(setup_, vec![ScriptedStep::text(ANSWER)]);
+        assert_eq!(completed(&h).await.0, ANSWER);
+        assert!(calls.0.lock().unwrap().is_empty(), "{route:?}");
+        assert!(stronger.requests().is_empty());
+        assert_eq!(roles(&h), [ModelRole::Main]);
+        assert!(started(&h).is_empty());
+    }
 }

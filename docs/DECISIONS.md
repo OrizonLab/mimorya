@@ -14876,7 +14876,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     le font, comme à l'étape 1. L'escalade après échec ne sert pas à un run déjà
     escaladé ;
   - **traces** : `model_escalation.started` porte la raison, `rule`, `classification`,
-    `skill` ou `after_failure`, sans contenu ;
+    `decision` (le service de décision, ADR-213, D1), `skill` ou `after_failure`, sans
+    contenu ;
   - **tests** :
     - `crates/agent/tests/runtime_escalation_router.rs`, avec des modèles simulés :
       - règle « escalade » et règle « principal » ;
@@ -15547,7 +15548,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 ## ADR-213 — Service de décision : jugements rapides et typés, Jev ou le modèle principal (chantier 7)
 
-- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
+- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 et D2 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
   ADR-207 (routeur en amont, dont il remplace le classement), ADR-208 à ADR-212
   (fourniture du modèle et montant payé).
 - **Contexte** : le moteur et plusieurs fonctionnalités ont besoin de jugements courts et
@@ -15710,3 +15711,39 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     n'en a pas et continue ;
   - avec Jev, la demande (2 000 caractères au plus) part chez TypeSafe ; un sous-agent
     n'est pas routé et ne demande rien.
+- **D2, choix des compétences (livré)** :
+  - au départ d'un run, pour les compétences actives que l'agent peut lire pour la
+    personne servie (`skill:read`), le service de décision reçoit un `noul` par
+    compétence (« sert-elle à traiter cette demande ? », son nom et sa description dans
+    la question) sur la demande seule (2 000 caractères au plus) ; au-delà de 20
+    compétences, rien n'est demandé et toutes sont listées ;
+  - une compétence dont le oui atteint le seuil est retenue ; une compétence aussi
+    sûrement inutile (oui + seuil ≤ 1, et un oui de 0,35 au plus, quel que soit le seuil,
+    pour qu'un « non » dit avec une certitude faible reste un doute, même au seuil de 0,5)
+    est laissée ; tout entre-deux, une réponse manquante ou un échec est un doute, et
+    toutes sont listées, comme aujourd'hui ;
+  - le prompt système doit rester stable d'un run à l'autre (règle d'architecture) :
+    actif, il ne liste jamais les compétences, et le premier tour, avec la demande, liste
+    celles retenues, ou toutes sur un doute, comme les mémoires voyagent avec le tour de
+    l'utilisateur ; désactivé ou observé, le prompt système les liste toutes, comme
+    avant ;
+  - observé, la décision est demandée, comptée et journalisée avec ce qu'elle aurait
+    laissé de côté (nombre de compétences, caractères de l'index complet et de celui
+    retenu), sans rien changer ; actif, la même mesure est journalisée ;
+  - la décision ne restreint rien : `skill_read` charge toujours toute compétence
+    active, en vérifiant `skill:read` ; une personne dont l'agent ne peut lire aucune
+    compétence n'en voit aucune et rien n'est demandé ;
+  - le coût de la décision entre dans le run, au rôle « décision » (`StartInput`) ;
+  - la liste est gardée dans le point de reprise du run : un sous-agent, même confié
+    après une validation, reçoit la même avant sa tâche (toutes sur un doute), comme il
+    reçoit le prompt système de son parent (ADR-098) ;
+  - une leçon relit la demande sans la liste que la plateforme y a placée (ADR-076) ;
+  - la décision ne lit que la demande du tour : une relance (« et pour la semaine
+    prochaine ? ») est jugée sans la conversation, et une compétence suivie au tour
+    précédent peut ne pas être listée ; c'est à mesurer en observation avant
+    d'activer, et la compétence reste chargeable par son nom ;
+  - les décisions d'un run ne sont construites qu'à son départ (jamais à sa reprise),
+    sur les modèles de son exécution (ADR-208), et ne sont données au routeur que là où
+    sa règle est « classement » ;
+  - avec Jev, la demande et le nom et la description de chaque compétence partent chez
+    TypeSafe.

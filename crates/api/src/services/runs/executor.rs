@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use futures::FutureExt;
-use mimorya_agent::llm::{Effort, LlmMessage, ModelRouter, PriceTable, RunKind};
+use mimorya_agent::decision::RunDecisions;
+use mimorya_agent::llm::{Effort, EscalationRoute, LlmMessage, ModelRouter, PriceTable, RunKind};
 
 use mimorya_agent::runtime::{
     AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, Escalation, InterruptedCall,
@@ -25,7 +26,7 @@ use mimorya_db::repositories::missions::mission_evidence;
 use mimorya_db::repositories::runs::{RunRow, RunStatus};
 
 use super::approval_notice::ApprovalNotifier;
-use super::context::{build_run_system_prompt, build_run_tools, recall_memories};
+use super::context::{build_run_tools, recall_memories};
 use super::db_ports::{RunScope, engine_ports};
 use super::escalation_budget::MonthlyBudget;
 use super::events::record_run_event;
@@ -34,6 +35,7 @@ use super::lesson_capture::LessonCapture;
 use super::outcome::{CRASH_MESSAGE, record_crash};
 use super::run_access::RunAccess;
 use super::run_kind::run_kind;
+use super::start_context::{Starting, start_context};
 use super::summaries::ConversationSummaries;
 use crate::services::access::{AccessContext, AccessService};
 use crate::services::account_links::AccountLinkService;
@@ -53,6 +55,8 @@ struct RunSetup {
     patient: bool,
     /// The company's models, taken once for the execution (ADR-208).
     models: Arc<Models>,
+    /// The company's decisions, asked as a run starts (ADR-213).
+    decisions: Option<Arc<RunDecisions>>,
 }
 
 pub struct RunExecutor {
@@ -173,42 +177,53 @@ impl RunExecutor {
         // then alone does it go without a connector still starting once its
         // patience is over. Not a resumed run, which does the actions that
         // were validated with every tool it had (ADR-177).
-        let patient = matches!(mode, ExecutionMode::Start { .. }) && kind == RunKind::Conversation;
+        let starting = matches!(mode, ExecutionMode::Start { .. });
+        let patient = starting && kind == RunKind::Conversation;
+        // The company's decisions, asked only as a run starts and if it set a
+        // usage of them, on this execution's models (ADR-213); a decision
+        // never blocks a run: unread, it asks none.
+        let decisions = match starting {
+            true => self.decisions(access, run, &models).await,
+            false => None,
+        };
         let setup = RunSetup {
             actor: actor.clone(),
             kind,
             patient,
             models,
+            decisions: decisions.clone(),
         };
         let (runtime, unavailable) = self.runtime_for(access, run, ports, fence, setup).await?;
         match mode {
             ExecutionMode::Start { history, text } => {
-                let system = build_run_system_prompt(
-                    &self.db,
-                    access,
-                    &actor,
-                    &self.assistant_name,
-                    Utc::now(),
-                )
-                .await?;
                 // A mission's later stage asks to go on: its objective says
-                // what to recall.
+                // what to recall, and which skills it needs.
                 let wanted = if run.mission_id.is_some() {
                     &run.objective
                 } else {
                     &text
                 };
+                let starting = Starting {
+                    access,
+                    actor: &actor,
+                    assistant_name: &self.assistant_name,
+                    request: wanted,
+                };
+                let start =
+                    start_context(&self.db, starting, decisions.as_deref(), Utc::now()).await?;
                 let memories =
                     recall_memories(&self.db, &self.embeddings, access, &actor, wanted, run.id)
                         .await?;
                 let evidence = self.earlier_sources(access, run).await?;
                 runtime
                     .start(StartInput {
-                        system,
+                        system: start.system,
                         history,
                         user_turn: build_user_turn(&text, &memories),
                         unavailable,
                         evidence,
+                        decided: start.decided,
+                        skills_shown: start.shown,
                     })
                     .await?;
             }
@@ -224,6 +239,28 @@ impl RunExecutor {
             }
         }
         Ok(())
+    }
+
+    /// The company's decisions for a run that starts, if it set a usage of
+    /// them; none when they cannot be read (ADR-213).
+    async fn decisions(
+        &self,
+        access: &AccessContext,
+        run: &RunRow,
+        models: &Arc<Models>,
+    ) -> Option<Arc<RunDecisions>> {
+        let scope = DecisionScope {
+            run_id: Some(run.id),
+            user_id: Some(access.subject.user_id),
+        };
+        let tenant_id = access.subject.tenant_id;
+        self.llm
+            .run_decisions(tenant_id, scope, models)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(error = %error, "Decisions unread: the run asks none");
+                None
+            })
     }
 
     /// The sources the earlier stages of the run's mission collected; none
@@ -260,6 +297,7 @@ impl RunExecutor {
             kind,
             patient,
             models,
+            decisions,
         } = setup;
         // A run awaiting approval may be resumed after a restart without a
         // provider, or after its company changed or removed its own.
@@ -309,20 +347,12 @@ impl RunExecutor {
             tenant_id,
             Arc::clone(&models),
         )));
-        // The company's decisions, if it set a usage of them (ADR-213); a
-        // decision never blocks a run: unread, the run asks none.
-        let scope = DecisionScope {
-            run_id: Some(run.id),
-            user_id: Some(access.subject.user_id),
-        };
-        deps.decisions = self
-            .llm
-            .run_decisions(tenant_id, scope)
-            .await
-            .unwrap_or_else(|error| {
-                tracing::warn!(error = %error, "Decisions unread: the run asks none");
-                None
-            });
+        // Asked by the router only where its rule classifies the request
+        // (ADR-213, D1).
+        let router = deps.escalation.as_ref().and_then(|e| e.router);
+        if router == Some(EscalationRoute::Classification) {
+            deps.decisions = decisions;
+        }
         let runtime = AgentRuntime::new(
             deps,
             RunConfig {
