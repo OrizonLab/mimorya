@@ -61,7 +61,8 @@ flowchart LR
   `all` (par défaut : sert le HTTP et exécute), `api` (sert le HTTP ; les runs qu'il
   lance attendent en file) ou `worker` (exécute les runs en file et les tâches de fond).
   Plusieurs `api` et plusieurs `worker` peuvent tourner ensemble : chaque balayage qui ne
-  doit tourner qu'une fois (demandes échues, relances, avis perdus, indexation) prend un
+  doit tourner qu'une fois (demandes échues, relances, avis perdus, indexation, classement
+  des documents déposés par le service de décision, ADR-213) prend un
   verrou consultatif PostgreSQL à son nom (ADR-086). Les
   caches que chaque processus garde (accès, modèle, modèle d'embeddings, connecteurs) se
   vident ensemble : une modification faite dans l'un est annoncée aux autres sur le canal

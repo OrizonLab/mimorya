@@ -53,7 +53,9 @@ Repères à l'intérieur des crates :
   unités lues par chacun et sensibilité, ce qu'un partage peut dire, `rules.rs`,
   ADR-143),
   `core/src/documents/` (documents déposés : types reconnus, nom et titre, limites,
-  refus, découpage en passages, qui lit et dépose où (`spaces.rs`), ADR-095),
+  refus, découpage en passages, qui lit et dépose où (`spaces.rs`), ADR-095 ; type et
+  confidentialité classés par le service de décision, niveau retenu au seuil, relevé ou
+  proposé, et qui règle les étiquettes (`labels.rs`), ADR-213, D4),
   `core/src/demo/` (entreprise fictive par thème), `core/src/gateways/` (passerelles de
   conversation : application Slack déclarée, signature de ses événements, messages
   pris, preuve qu'un utilisateur Slack est la personne d'un compte, ADR-125 ; texte
@@ -86,7 +88,9 @@ Repères à l'intérieur des crates :
   `author_notices.rs`, ADR-082, ADR-091, et d'un déclencheur, ADR-111 ; missions terminées à annoncer :
   `mission_end_notices.rs`, ADR-091 ; documents déposés, leur fichier et leurs passages,
   lus là où le filtre du lecteur atteint : `documents.rs`, ADR-095, et remplacés par une
-  nouvelle version de leur fichier : `document_versions.rs`, ADR-150 ; passages cherchés
+  nouvelle version de leur fichier : `document_versions.rs`, ADR-150, leur classement
+  attendu, leur niveau relevé, leurs propositions et leurs étiquettes réglées :
+  `document_labels.rs`, ADR-213, D4 ; passages cherchés
   par les mots et par le sens et lus dans l'ordre : `document_search.rs`, leurs vecteurs :
   `document_embeddings.rs`, ADR-096 ; runs des sous-agents, ouverts sous leur parent :
   `sub_runs.rs`, ADR-098 ; compétences proposées par l'agent : `skill_proposals.rs`,
@@ -116,7 +120,7 @@ Repères à l'intérieur des crates :
   invalidations, ADR-084, ADR-085), `db/src/sweep_lock.rs` (verrou d'un balayage qui ne
   tourne que dans un processus à la fois, ADR-086), `db/src/seed/` (organisation,
   connecteurs, mémoires, documents, compétences de démonstration), `db/src/testing.rs`.
-- `agent/src/decision/` (service de décision : questions typées `noul`, `choice` et `score` sur un état borné champ par champ (`question.rs`), réponses vérifiées (`answer.rs`), moteurs Jev de TypeSafe (`jev.rs`, `jev_wire.rs`) et modèle principal en JSON strict (`main_model.rs`), l'un après l'autre dans leur délai, jamais d'erreur mais une issue « échouée », chaque appel compté (`service.rs`), usages, modes et seuils (`usage.rs`), décisions qu'un run peut demander (`run.rs`), données sensibles d'une mémoire ou d'une leçon (`memory_guard.rs`, D3), ADR-213),
+- `agent/src/decision/` (service de décision : questions typées `noul`, `choice` et `score` sur un état borné champ par champ (`question.rs`), réponses vérifiées (`answer.rs`), moteurs Jev de TypeSafe (`jev.rs`, `jev_wire.rs`) et modèle principal en JSON strict (`main_model.rs`), l'un après l'autre dans leur délai, jamais d'erreur mais une issue « échouée », chaque appel compté (`service.rs`), usages, modes et seuils (`usage.rs`), décisions qu'un run peut demander (`run.rs`), données sensibles d'une mémoire ou d'une leçon (`memory_guard.rs`, D3), type et confidentialité d'un document déposé sur son titre et ses trois premières pages (`document_labels.rs`, D4), ADR-213),
   `agent/src/llm/<fournisseur>/`, `agent/src/llm/escalation.rs` (ce qu'une entreprise peut
   choisir comme escalade de modèle : modèle de son fournisseur propre, budget mensuel en USD,
   escalades par run, mécanismes livrés, règles du routeur par sorte de run (`escalation/routes.rs`), ADR-207), `agent/src/llm/advisor.rs` (advisor d'Anthropic : paires de modèles qu'Anthropic accepte, table datée, ce qui l'offre et l'outil donné à un run, ADR-207 ; son outil serveur, ses bêtas et ses consultations lues : `llm/anthropic/advisor.rs`), `agent/src/llm/pricing.rs` (prix datés,
@@ -184,7 +188,8 @@ Repères à l'intérieur des crates :
   oubliées, ADR-142, propositions de politiques décidées ou expirées, ADR-168, journal d'audit
   scellé, ADR-178 ; rétention appliquée chaque heure, `retention.rs`, sa boucle par lots `retention_batches.rs`, ADR-185, ADR-186, ADR-197, ADR-198 ; indexation de la
   mémoire et des passages des documents en arrière-plan, `memory_indexing.rs`, ADR-074,
-  ADR-096 ; tâches planifiées lancées
+  ADR-096 ; classement des documents déposés en arrière-plan, `document_labels.rs`,
+  ADR-213, D4 ; tâches planifiées lancées
   chaque minute, `scheduled_tasks.rs`, ADR-080 ; fin des missions annoncée à leur
   auteur, ADR-091, propositions de compétences à leurs administrateurs, ADR-102, et
   autorisations proposées aux autres administrateurs des politiques, ADR-170 ;
@@ -323,7 +328,12 @@ Repères à l'intérieur des crates :
   `extractor.rs`, fichier lu et refusé, commun au dépôt et au remplacement,
   `reading.rs` ; dépôt sous le quota de l'entreprise, `deposit.rs` ; nouvelle version
   d'un document, à la version nommée, `replace.rs`, ADR-150 ; liste, téléchargement et
-  suppression, `library.rs`, ADR-095),
+  suppression, `library.rs`, ADR-095 ; type et confidentialité réglés par qui peut écrire
+  le document à ses deux niveaux, ou la proposition ignorée, `labels.rs`, ADR-213, D4),
+  `api/src/services/document_labels/` (classement des documents déposés par le service
+  de décision : passe par entreprise, une à la fois (`pass.rs`), un document lu, décidé
+  hors transaction, niveau plus strict relevé, le reste proposé (`classify.rs`), ADR-213,
+  D4),
   `api/src/services/runs/` (historique remis à un run, résumé puis derniers messages
   (`history.rs`), et résumé tenu à la fin d'un run (`summaries.rs`), ADR-145, passes
   enchaînées tant qu'il est en retard, ADR-149 ; coût des appels
@@ -410,7 +420,8 @@ Repères à l'intérieur des crates :
   section « Absence » et son formulaire, commun, ADR-073 —, chat — dont la conversation tenue
   dans Slack, marquée et annoncée par une note, ADR-128, ou dans Telegram, ADR-135, ou dans
   Teams, ADR-140, et le résumé de ses premiers messages, ADR-146, et les connecteurs indisponibles, ceux à autoriser soi-même menant à « Mon compte » (`unavailable-notices.tsx`), ADR-174 —, documents — dépôt, liste
-  et téléchargement, ADR-097, nouvelle version et fichier glissé-déposé, ADR-151 —, memory, missions —
+  et téléchargement, ADR-097, nouvelle version et fichier glissé-déposé, ADR-151, type
+  du document et ce que son classement propose (`label-proposal.tsx`), ADR-213, D4 —, memory, missions —
   missions longues, ADR-090 —, operations — dont les sous-agents d'une demande, ADR-099 —,
   scheduled-tasks — tâches planifiées, ADR-081 —, second-factor — section « Second facteur » de « Mon compte », page `app/login/second-factor` de la connexion en deux temps et de l'enrôlement à la connexion, chemin d'après le mot de passe (`lib/sign-in.ts`), ADR-203 —, inbound-hooks — déclencheurs et leur
   jeton montré une fois, ADR-110 —,

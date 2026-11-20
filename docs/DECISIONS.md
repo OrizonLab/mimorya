@@ -15548,7 +15548,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 ## ADR-213 — Service de décision : jugements rapides et typés, Jev ou le modèle principal (chantier 7)
 
-- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1, D2 et D3 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
+- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 à D4 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
   ADR-207 (routeur en amont, dont il remplace le classement), ADR-208 à ADR-212
   (fourniture du modèle et montant payé).
 - **Contexte** : le moteur et plusieurs fonctionnalités ont besoin de jugements courts et
@@ -15783,3 +15783,51 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - avec Jev, le titre et le texte de la mémoire ou de la leçon partent chez TypeSafe ;
     c'est ce que l'usage cherche à protéger : à ne régler qu'avec un accord de
     traitement et la conservation nulle, ou avec le modèle principal.
+- **D4, classement des documents déposés (livré)** :
+  - un document déposé ou remplacé par une nouvelle version, là où l'usage n'est pas
+    désactivé, attend son classement (`document_label_requests`, écrite dans la
+    transaction du dépôt, la version nommée) ; une passe en arrière-plan, réveillée par le
+    dépôt dans tous les processus, et chaque minute, une à la fois quel que soit le nombre
+    de workers, demande au service de décision un `choice` de son type (contrat, facture,
+    devis, procédure, compte rendu, rapport, courrier, fiche technique, autre) et un
+    `score` de sa confidentialité (public, interne, confidentiel, restreint, décrits en
+    français) sur son titre et le texte de ses trois premières pages (le début d'un
+    document sans pages), 6 000 caractères au plus, et rien d'autre : ni son nom de
+    fichier, ni son espace, ni qui l'a déposé. La décision est demandée hors de toute
+    transaction ; son effet est appliqué au document verrouillé, à la version et au
+    niveau classés ;
+  - le niveau retenu est le plus strict qui réunit au moins le seuil de probabilité en
+    comptant depuis le plus strict : baisser le seuil retient plus souvent un niveau
+    strict, dans le sens de la prudence comme D3. Un type n'est proposé qu'avec une
+    confiance d'au moins 0,5, jamais « autre » ;
+  - actif, un niveau plus strict que celui du document est appliqué aussitôt et tracé
+    par la plateforme (`document.sensitivity_raised`) : un déposant qui n'a pas cette
+    habilitation ne lit plus le document, ce que le cahier des charges veut (« sauf si
+    le résultat est plus restrictif que l'existant ») ; un niveau plus bas et le type ne
+    sont que proposés (`document_label_proposals`, `document.labels_proposed`), avec le
+    niveau d'avant un relèvement, et montrés aux seules personnes qui peuvent écrire le
+    document ;
+  - « appliquée seulement après validation » : la validation est une personne qui
+    règle elle-même le type et le niveau du document (`PUT /documents/{id}/labels`), à la
+    version qu'elle a vue et au niveau contre lequel ses droits ont été vérifiés,
+    seulement si elle peut l'écrire à son niveau et au nouveau, comme un dépôt à l'un ou
+    l'autre l'exigerait ; sinon le document lui est absent (404) ou le niveau refusé
+    (403). C'est le chemin des propositions (« Appliquer ») et du retour d'un niveau relevé
+    à tort (« Rétablir ») ; sans lui, un relèvement erroné ne se corrigerait qu'en
+    désactivant l'usage. La proposition peut aussi être ignorée, à sa version ; les deux
+    sont tracés (`document.labels_set`, `document.proposal_dismissed`), jamais avec le
+    titre ni le texte du document ;
+  - « Appliquer » prend la proposition entière (le type, et le niveau plus bas s'il y en
+    a un) ; « Rétablir » rend le niveau d'avant le relèvement sans le type proposé ; un
+    choix plus fin attend un écran de réglage des étiquettes ;
+  - valeur prudente : une décision en échec, illisible ou sans niveau ne change rien, le
+    niveau choisi par le déposant reste, et n'est pas redemandée ; observé, la décision
+    est demandée, comptée et journalisée, sans effet ; l'usage désactivé depuis le dépôt,
+    la demande est abandonnée sans rien demander ;
+  - son coût est compté au rôle « décision », pour le déposant (ou l'auteur de la
+    dernière version), hors de tout run ;
+  - aucune donnée personnelle nouvelle : demandes et propositions ne nomment personne,
+    suivent le document et son entreprise ; un remplacement abandonne la proposition de
+    la version d'avant ;
+  - le type n'est pas encore lu par les outils de l'agent ni par sa recherche ;
+  - avec Jev, le titre et les premières pages du document partent chez TypeSafe.
