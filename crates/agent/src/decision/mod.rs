@@ -4,6 +4,7 @@
 //! fail safely to a value each usage writes in its code.
 
 mod answer;
+mod document_labels;
 mod engine;
 mod jev;
 mod jev_wire;
@@ -15,6 +16,9 @@ mod service;
 mod usage;
 
 pub use answer::{Decided, DecisionAnswer, EngineKind};
+pub use document_labels::{
+    FIRST_PAGES, MAX_FIRST_TEXT_CHARS, classified as classified_labels, document_labels_request,
+};
 pub use engine::{DecisionEngine, EngineAnswer, EngineFailure};
 pub use jev::{
     DEFAULT_JEV_MODEL, JEV_ENDPOINT, JEV_PROVIDER, JevClient, JevEngine, is_versioned_jev,

@@ -1,7 +1,9 @@
 //! The company's documents (ADR-095): listed, deposited (the file as the
 //! request's body, its name and space in a strict query string), read,
-//! downloaded, replaced by a new version of their file (ADR-150) and
-//! deleted, each where the person's rights reach; anything beyond answers
+//! downloaded, replaced by a new version of their file (ADR-150), their
+//! type and confidentiality set or what their classification proposed
+//! dismissed (ADR-213, D4), and deleted, each where the person's rights
+//! reach; anything beyond answers
 //! as absent. What a deposit or a replacement may do is checked before its
 //! file is read, and a file announced or found beyond its bound is not
 //! read on.
@@ -11,7 +13,7 @@ use axum::extract::State;
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, HeaderMap};
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use mimorya_core::DomainError;
 use mimorya_core::authz::Sensitivity;
@@ -20,10 +22,10 @@ use mimorya_core::documents::{DocumentSpace, Refusal};
 
 use crate::app::AppState;
 use crate::contract::{
-    DocumentCreated, DocumentItem, DocumentList, DocumentReplaced, DocumentReplacement,
-    DocumentUpload, Done,
+    DocumentCreated, DocumentItem, DocumentLabelsUpdate, DocumentList, DocumentProposalDismissal,
+    DocumentReplaced, DocumentReplacement, DocumentUpload, Done,
 };
-use crate::http::{ApiError, ApiResult, PathId, Query};
+use crate::http::{ApiError, ApiResult, Body, PathId, Query};
 use crate::plugins::Auth;
 use crate::services::documents::{Deposit, FileFailure, Replacement};
 
@@ -32,6 +34,8 @@ pub fn routes() -> Router<AppState> {
         .route("/documents", get(list).post(deposit))
         .route("/documents/{id}", get(read).delete(remove))
         .route("/documents/{id}/file", get(download).put(replace))
+        .route("/documents/{id}/labels", put(set_labels))
+        .route("/documents/{id}/proposal/dismiss", post(dismiss_proposal))
 }
 
 fn absent() -> ApiError {
@@ -173,6 +177,32 @@ async fn remove(
     } else {
         Err(absent())
     }
+}
+
+/// Its type and confidentiality, set by a person who may write it at both
+/// levels (ADR-213, D4).
+async fn set_labels(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+    Body(update): Body<DocumentLabelsUpdate>,
+) -> ApiResult<Json<Done>> {
+    let access = state.access.context(identity).await?;
+    state.documents.set_labels(&access, id, &update).await??;
+    Ok(Json(Done::OK))
+}
+
+/// What its classification proposed, dropped (ADR-213, D4).
+async fn dismiss_proposal(
+    State(state): State<AppState>,
+    Auth(identity): Auth,
+    PathId(id): PathId,
+    Body(dismissal): Body<DocumentProposalDismissal>,
+) -> ApiResult<Json<Done>> {
+    let access = state.access.context(identity).await?;
+    let dismissed = state.documents.dismiss_proposal(&access, id, &dismissal);
+    dismissed.await??;
+    Ok(Json(Done::OK))
 }
 
 /// `Content-Disposition` downloading as `name`: an ASCII fallback, and the

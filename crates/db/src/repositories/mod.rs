@@ -26,6 +26,7 @@ pub mod conversations;
 pub mod decision_settings;
 pub mod deliverables;
 pub mod document_embeddings;
+pub mod document_labels;
 pub mod document_search;
 pub mod document_versions;
 pub mod documents;

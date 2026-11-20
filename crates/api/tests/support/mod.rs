@@ -318,6 +318,9 @@ impl TestApi {
             provider_factory: Some(factory),
             embedding_factory: Some(embedding_factory),
             manual_indexing: !background_indexing,
+            // Classified by the tests (`classify_pending`), once they set
+            // what the decision answers.
+            manual_document_labels: true,
             // Fired by the tests (`fire_due_tasks`), when they make a task
             // due, unless started with `start_scheduling`.
             manual_scheduling: !background_scheduling,

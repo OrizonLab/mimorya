@@ -9,6 +9,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use super::admin::Sensitivity;
+use super::document_labels::{DocumentLabelProposal, DocumentType};
 
 /// The kind of a deposited file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -54,6 +55,10 @@ pub struct DocumentItem {
     /// The reader may replace or delete it: `document:write` over its space,
     /// at its sensitivity.
     pub can_write: bool,
+    /// Its type, once a person set it (ADR-213, D4).
+    pub document_type: Option<DocumentType>,
+    /// What its classification leaves for the reader, who may write it.
+    pub label_proposal: Option<DocumentLabelProposal>,
 }
 
 /// A space the reader may deposit into: the company's (no unit) or a unit's.

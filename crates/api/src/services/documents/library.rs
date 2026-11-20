@@ -3,7 +3,9 @@
 //! their clearance; anything else answers as absent. Deleting, as
 //! replacing (ADR-150), needs `document:write` over the document's space,
 //! at its sensitivity, as well. Downloads and
-//! deletions are audited, never with the document's name.
+//! deletions are audited, never with the document's name. What a
+//! document's classification left (ADR-213, D4) is shown to those who may
+//! write it only.
 
 use mimorya_core::authz::{Actor, Sensitivity};
 use mimorya_core::documents::limits::MAX_FILE_BYTES;
@@ -11,6 +13,7 @@ use mimorya_core::documents::{
     DocumentKind, DocumentSpace, can_write_document, document_read_filter, writable_spaces,
 };
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
+use mimorya_db::repositories::document_labels::{LabelProposal, label_proposals};
 use mimorya_db::repositories::documents::{
     DocumentRow, delete_document, document_bytes, get_visible_document, list_visible_documents,
     read_document_file,
@@ -19,6 +22,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::DocumentService;
+use super::labels::proposal_view;
 use crate::contract::{
     DocumentItem, DocumentList, DocumentQuota, DocumentSpaceOption, stored_text,
 };
@@ -45,6 +49,8 @@ impl DocumentService {
         let mut rows = list_visible_documents(&mut tx, &filter, LISTED as i64 + 1).await?;
         let truncated = rows.len() > LISTED;
         rows.truncate(LISTED);
+        let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+        let proposals = label_proposals(&mut tx, &ids).await?;
         let spaces = writable_spaces(&access.engine, &access.subject, &Actor::user());
         let quota = if spaces.is_empty() {
             None
@@ -57,7 +63,10 @@ impl DocumentService {
         tx.commit().await?;
         let documents = rows
             .iter()
-            .map(|row| item(access, row))
+            .map(|row| {
+                let proposal = proposals.iter().find(|p| p.document_id == row.id);
+                item(access, row, proposal)
+            })
             .collect::<anyhow::Result<_>>()?;
         let spaces = spaces
             .into_iter()
@@ -84,8 +93,10 @@ impl DocumentService {
         let filter = document_read_filter(&access.engine, &access.subject, &Actor::user());
         let mut tx = self.db.begin(access.subject.tenant_id).await?;
         let row = get_visible_document(&mut tx, &filter, id).await?;
+        let proposal = label_proposals(&mut tx, &[id]).await?.pop();
         tx.commit().await?;
-        row.map(|row| item(access, &row)).transpose()
+        row.map(|row| item(access, &row, proposal.as_ref()))
+            .transpose()
     }
 
     /// The file of the document `id`, if the person reads it; audited.
@@ -174,7 +185,17 @@ fn space_name(access: &AccessContext, space: DocumentSpace) -> String {
     }
 }
 
-fn item(access: &AccessContext, row: &DocumentRow) -> anyhow::Result<DocumentItem> {
+/// The document `row` as the person reads it, with what its classification
+/// left (`proposal`) if they may write it.
+fn item(
+    access: &AccessContext,
+    row: &DocumentRow,
+    proposal: Option<&LabelProposal>,
+) -> anyhow::Result<DocumentItem> {
+    let writes = can_write(access, row);
+    let document_type = (row.document_type.as_deref())
+        .map(|kind| stored_text("document type", kind))
+        .transpose()?;
     Ok(DocumentItem {
         id: row.id,
         title: row.title.clone(),
@@ -192,6 +213,8 @@ fn item(access: &AccessContext, row: &DocumentRow) -> anyhow::Result<DocumentIte
         created_at: crate::http::iso(&row.created_at),
         version: row.version,
         replaced_at: row.replaced_at.as_ref().map(crate::http::iso),
-        can_write: can_write(access, row),
+        can_write: writes,
+        document_type,
+        label_proposal: proposal.filter(|_| writes).map(proposal_view).transpose()?,
     })
 }

@@ -1,7 +1,8 @@
 //! TypeSafe's System One endpoint as Jev answers it, on a local port, for
 //! tests (feature `testing`, ADR-213): only `JEV_KEY` as a bearer opens it;
 //! each question answered of its type (yes at `JEV_YES`, the first option
-//! of a choice, the lowest level of a score), what it was asked noted
+//! of a choice, the lowest level of a score or the one a test sets), what
+//! it was asked noted
 //! without the key; and, on demand, overloaded, answering what is not
 //! System One, or never answering.
 
@@ -46,6 +47,8 @@ pub struct JevAsked {
 struct Inner {
     behaviour: Mutex<JevBehaviour>,
     asked: Mutex<Vec<JevAsked>>,
+    /// The level a score is answered at, the lowest without one.
+    score_level: Mutex<usize>,
 }
 
 /// The simulated Jev, served until the process ends.
@@ -79,6 +82,12 @@ impl FakeJev {
         *self.inner.behaviour.lock().expect("behaviour") = behaviour;
     }
 
+    /// Answers each score at `level` from now on (the highest there is,
+    /// if beyond).
+    pub fn score_at(&self, level: usize) {
+        *self.inner.score_level.lock().expect("score level") = level;
+    }
+
     pub fn asked(&self) -> Vec<JevAsked> {
         self.inner.asked.lock().expect("asked").clone()
     }
@@ -102,7 +111,10 @@ async fn system_one(
     }
     let behaviour = *inner.behaviour.lock().expect("behaviour");
     match behaviour {
-        JevBehaviour::Answers => axum::Json(answered(&body)).into_response(),
+        JevBehaviour::Answers => {
+            let level = *inner.score_level.lock().expect("score level");
+            axum::Json(answered(&body, level)).into_response()
+        }
         JevBehaviour::Overloaded => refused(
             StatusCode::from_u16(529).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
             "overloaded_error",
@@ -121,12 +133,12 @@ fn refused(status: StatusCode, kind: &str) -> Response {
 }
 
 /// Each question answered of its type.
-fn answered(body: &Value) -> Value {
+fn answered(body: &Value, level: usize) -> Value {
     let empty = Map::new();
     let questions = body["questions"].as_object().unwrap_or(&empty);
     let answers: Map<String, Value> = questions
         .iter()
-        .map(|(name, question)| (name.clone(), answer(question)))
+        .map(|(name, question)| (name.clone(), answer(question, level)))
         .collect();
     json!({
         "model": body["model"],
@@ -135,7 +147,7 @@ fn answered(body: &Value) -> Value {
     })
 }
 
-fn answer(question: &Value) -> Value {
+fn answer(question: &Value, level: usize) -> Value {
     match question["type"].as_str() {
         Some("choice") => {
             let options: Vec<&String> = question["criteria"]
@@ -163,19 +175,20 @@ fn answer(question: &Value) -> Value {
         }
         Some("score") => {
             let levels = question["criteria"].as_array().map_or(1, Vec::len).max(1);
+            let said = level.min(levels - 1);
             let probabilities: Map<String, Value> = (0..levels)
-                .map(|level| {
-                    let p = if level == 0 {
+                .map(|at| {
+                    let p = if at == said {
                         0.9
                     } else {
                         0.1 / (levels - 1) as f64
                     };
-                    (level.to_string(), json!(p))
+                    (at.to_string(), json!(p))
                 })
                 .collect();
             json!({
                 "type": "score",
-                "score": 0.0,
+                "score": said as f64,
                 "confidence": 0.9,
                 "probabilities": probabilities,
             })

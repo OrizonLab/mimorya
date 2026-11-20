@@ -35,6 +35,9 @@ pub enum Invalidation {
     Embeddings(Uuid),
     /// A memory was written or approved: a pass of the indexer is due.
     Indexing,
+    /// A document awaits its classification (ADR-213, D4): a pass of the
+    /// classifier is due.
+    DocumentLabels,
     /// The connector instance changed, was disabled or deleted.
     Connector(Uuid),
     /// The connector instance answered a test: tried again at once.
@@ -128,6 +131,7 @@ mod tests {
         for invalidation in [
             Invalidation::Access(tenant),
             Invalidation::Indexing,
+            Invalidation::DocumentLabels,
             Invalidation::ConnectorRetry(tenant),
         ] {
             let payload = payload(there, invalidation);

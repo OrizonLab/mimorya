@@ -2,10 +2,13 @@
 //! text read by the extraction process (`extractor`, `reading`), deposited
 //! under the company's quota (`deposit`), replaced by a new version of
 //! their file (`replace`, ADR-150), listed, downloaded and deleted
-//! (`library`), each where the person's rights reach only.
+//! (`library`), their type and confidentiality set by a person who may
+//! write them (`labels`, ADR-213, D4), each where the person's rights reach
+//! only.
 
 mod deposit;
 mod extractor;
+mod labels;
 mod library;
 mod reading;
 mod replace;
@@ -22,6 +25,7 @@ pub use library::{DocumentFile, LISTED};
 pub use reading::FileFailure;
 pub use replace::Replacement;
 
+use super::document_labels::DocumentLabelService;
 use super::embeddings::EmbeddingService;
 
 pub struct DocumentService {
@@ -31,6 +35,8 @@ pub struct DocumentService {
     quota_bytes: i64,
     /// Told of each deposit: its passages await their vectors (ADR-096).
     embeddings: Arc<EmbeddingService>,
+    /// Told of each deposit the company classifies (ADR-213, D4).
+    labels: Arc<DocumentLabelService>,
 }
 
 impl DocumentService {
@@ -39,12 +45,14 @@ impl DocumentService {
         extractor: Extractor,
         quota_bytes: i64,
         embeddings: Arc<EmbeddingService>,
+        labels: Arc<DocumentLabelService>,
     ) -> Self {
         Self {
             db,
             extractor,
             quota_bytes,
             embeddings,
+            labels,
         }
     }
 }

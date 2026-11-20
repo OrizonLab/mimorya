@@ -2,11 +2,14 @@
 //! are taken and how they are recognised (`kinds`), their name and title
 //! (`names`), the limits their reading keeps to (`limits`), what reading one
 //! gives or why it is refused (`reading`), the passages its text is cut into
-//! (`chunking`), and who reads or writes where (`spaces`). Pure: the file is
-//! read by a process of its own (`mimorya-extract`).
+//! (`chunking`), who reads or writes where (`spaces`), and their type and
+//! confidentiality as the decision service classifies them (`labels`,
+//! ADR-213). Pure: the file is read by a process of its own
+//! (`mimorya-extract`).
 
 mod chunking;
 mod kinds;
+pub mod labels;
 pub mod limits;
 mod names;
 mod reading;
@@ -14,6 +17,9 @@ mod spaces;
 
 pub use chunking::{PASSAGE_MAX_CHARS, PASSAGE_TARGET_CHARS, Passage, passages};
 pub use kinds::DocumentKind;
+pub use labels::{
+    Classified, DocumentType, LabelsOutcome, can_set_labels, labels_outcome, level_at,
+};
 pub use names::{MAX_FILE_NAME_CHARS, MAX_TITLE_CHARS, file_name, title_of};
 pub use reading::{Extracted, Reading, Refusal};
 pub use spaces::{

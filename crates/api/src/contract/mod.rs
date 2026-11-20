@@ -11,6 +11,7 @@ mod approvals;
 mod audit_export;
 mod common;
 mod conversations;
+mod document_labels;
 mod documents;
 mod errors;
 mod gateways;
@@ -43,6 +44,9 @@ pub use conversations::{
     Citation, ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
     ConversationSummary, HistorySummary, Message, MessageAccepted, MessageMetadata, MessageRole,
     MissionPart, NewConversation, NewMessage,
+};
+pub use document_labels::{
+    DocumentLabelProposal, DocumentLabelsUpdate, DocumentProposalDismissal, DocumentType,
 };
 pub use documents::{
     DocumentCreated, DocumentItem, DocumentKind, DocumentList, DocumentQuota, DocumentReplaced,
@@ -238,6 +242,8 @@ macro_rules! request_bodies {
             ManualMemory,
             MemoryReview,
             DocumentUpload,
+            DocumentLabelsUpdate,
+            DocumentProposalDismissal,
             DocumentReplacement,
             admin::NewAccount,
             admin::AccountUpdate,

@@ -210,6 +210,7 @@ async fn main() -> anyhow::Result<()> {
             provider_factory: Some(factory),
             embedding_factory: Some(embedding_factory),
             manual_indexing: false,
+            manual_document_labels: false,
             manual_scheduling: false,
             manual_gateway_replies: false,
             run_leases: None,

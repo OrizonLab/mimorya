@@ -20,6 +20,7 @@ use crate::config::AppConfig;
 use crate::mail::{Mailer, SmtpMailer};
 use crate::plugins::RateLimits;
 use crate::plugins::csrf::csrf_protection;
+use crate::plugins::document_labels::spawn_document_labels;
 use crate::plugins::gateway_replies::spawn_gateway_replies;
 use crate::plugins::maintenance::spawn_maintenance;
 use crate::plugins::memory_indexing::spawn_memory_indexing;
@@ -38,6 +39,7 @@ use crate::services::account_links::AccountLinkService;
 use crate::services::audit_chain::ChainChecks;
 use crate::services::background::BackgroundTasks;
 use crate::services::connectors::ConnectorSettings;
+use crate::services::document_labels::DocumentLabelService;
 use crate::services::documents::{DocumentService, Extractor};
 use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
 use crate::services::gateways::{GatewayService, GatewaySettings};
@@ -66,6 +68,9 @@ pub struct Services {
     /// The documents companies deposit, read by the extraction process
     /// (ADR-095).
     pub documents: Arc<DocumentService>,
+    /// Their type and confidentiality classified by the decision service
+    /// (ADR-213, D4).
+    pub document_labels: Arc<DocumentLabelService>,
     /// What this process changed in the caches, announced to the others.
     pub invalidations: Invalidations,
     pub runs: RunService,
@@ -111,6 +116,7 @@ pub struct App {
 struct Background {
     maintenance: Option<JoinHandle<()>>,
     indexing: Option<JoinHandle<()>>,
+    document_labels: Option<JoinHandle<()>>,
     scheduling: Option<JoinHandle<()>>,
     gateway_replies: Option<JoinHandle<()>>,
     lease_renewal: Option<JoinHandle<()>>,
@@ -252,14 +258,21 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
     };
     let global = options.global_rate_limit_per_minute;
     let limits = RateLimits::new(&db, &config, global.unwrap_or(GLOBAL_RATE_LIMIT_PER_MINUTE))?;
+    let document_labels = Arc::new(DocumentLabelService::new(
+        db.clone(),
+        llm.clone(),
+        invalidations.clone(),
+    ));
     let documents = Arc::new(DocumentService::new(
         db.clone(),
         Extractor::new(config.document_extractor.clone()),
         config.document_quota_bytes,
         embeddings.clone(),
+        document_labels.clone(),
     ));
     let services = Arc::new(Services {
         documents,
+        document_labels,
         runs: RunService::new(
             db.clone(),
             access.clone(),
@@ -314,6 +327,8 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         background.maintenance = Some(spawn_maintenance(services.clone()));
         background.indexing =
             (!options.manual_indexing).then(|| spawn_memory_indexing(services.clone()));
+        background.document_labels =
+            (!options.manual_document_labels).then(|| spawn_document_labels(services.clone()));
         background.scheduling =
             (!options.manual_scheduling).then(|| spawn_scheduled_tasks(services.clone()));
         background.gateway_replies =
@@ -378,6 +393,9 @@ impl App {
         wait(background.lease_takeover).await;
         wait(background.run_queue).await;
         abort(background.indexing).await;
+        // A document being classified keeps its request: asked again by the
+        // next process that starts.
+        abort(background.document_labels).await;
         // A Slack message being answered may start a run as it ends: awaited
         // first, so that its run is awaited with the others.
         self.services.background.idle().await;
