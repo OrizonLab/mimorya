@@ -16,7 +16,7 @@ use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::document_labels::{LabelProposal, label_proposals};
 use mimorya_db::repositories::documents::{
     DocumentRow, delete_document, document_bytes, get_visible_document, list_visible_documents,
-    read_document_file,
+    lock_document, read_document_file,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -135,6 +135,8 @@ impl DocumentService {
         let filter = document_read_filter(&access.engine, &access.subject, &Actor::user());
         let tenant_id = access.subject.tenant_id;
         let mut tx = self.db.begin(tenant_id).await?;
+        // Its level raised or set since (ADR-213, D4) is the one checked.
+        lock_document(&mut tx, id).await?;
         let Some(row) = get_visible_document(&mut tx, &filter, id).await? else {
             return Ok(false);
         };
