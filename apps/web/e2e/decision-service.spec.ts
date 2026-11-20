@@ -63,7 +63,7 @@ test('a company chooses Jev for its decisions, then its main model again', async
     form.getByLabel('Mode : Instructions cachées dans les contenus externes'),
   ).toBeEnabled();
   await expect(form.getByLabel('Mode : Tri des e-mails entrants')).toBeDisabled();
-  await expect(form.getByText('(bientôt disponible)')).toHaveCount(1);
+  await expect(form.getByText('(non disponible)')).toHaveCount(1);
 
   await jev.check();
   await expect(form).toContainText('sous-traitant situé hors de l’Union européenne');

@@ -64,9 +64,7 @@ export function DecisionUsagesFields({
           <div key={usage.key} className="grid gap-2 sm:grid-cols-[1fr_14rem_8rem] sm:items-end">
             <p className="text-sm">
               {usage.label}
-              {!usage.available && (
-                <span className="text-xs text-muted"> (bientôt disponible)</span>
-              )}
+              {!usage.available && <span className="text-xs text-muted"> (non disponible)</span>}
             </p>
             <Field label="Mode">
               <Select

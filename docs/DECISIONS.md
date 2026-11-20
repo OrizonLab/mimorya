@@ -15630,7 +15630,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - chaque usage a trois modes : désactivé (par défaut), observation (la décision est
       calculée et journalisée, sans effet, pour calibrer) ou actif, et un seuil réglable
       entre 0 et 1. Un usage dont l'étape n'est pas livrée est refusé par le serveur et
-      grisé, « bientôt disponible » ;
+      grisé, « non disponible » ;
     - stockage sous RLS (`tenant_decision_settings`, `tenant_decision_usages`), API
       (`/admin/decisions`), section « Service de décision » de l'onglet « Modèle d'IA »,
       journal d'audit de chaque changement (`decision_service.configured`, `.reset`),
@@ -15936,7 +15936,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - conception proposée, à décider avec sa propre ADR : un relevé des boîtes reliées
     (IMAP IDLE ou relevé périodique pour la messagerie standard, abonnements de Microsoft
     Graph et notifications de Gmail), avec l'accord de chaque personne et la rétention de
-    ce qui est relevé ; chaque e-mail entrant reçu par le service de décision (`choice` de
+    ce qui est relevé, son export et sa suppression ; chaque e-mail entrant reçu par le service de décision (`choice` de
     sa catégorie, `noul` de son urgence, `score` de son agacement, sur son expéditeur, son
     objet et son début seuls) ; l'agent n'est éveillé, par un run au nom de la personne
     comme un déclencheur (ADR-109), que pour les e-mails au-dessus du seuil, les autres
