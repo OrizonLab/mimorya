@@ -96,11 +96,11 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
   */10 * * * * cd /srv/mimorya && infra/backup/archive-status.sh --base-within 26 >/dev/null || votre-alerte "archive des WAL"
   ```
 
-- [ ] Deux clés SSH de l'hôte de secours admises pour `root`, chacune limitée à la lecture
-      d'un seul dossier par `rrsync` (`/usr/bin/rrsync` depuis rsync 3.2.4, qui demande
-      `python3` ; avant, à installer depuis `/usr/share/doc/rsync/scripts/`), dans
-      `/root/.ssh/authorized_keys`, `PermitRootLogin prohibit-password` dans la
-      configuration de `sshd` :
+- [ ] Les deux clés SSH publiques faites sur l'hôte de secours (voir plus bas, à faire
+      d'abord) admises pour `root`, chacune limitée à la lecture d'un seul dossier par
+      `rrsync` (`/usr/bin/rrsync` depuis rsync 3.2.4, qui demande `python3` ; avant, à
+      installer depuis `/usr/share/doc/rsync/scripts/`), dans `/root/.ssh/authorized_keys`,
+      `PermitRootLogin forced-commands-only` dans la configuration de `sshd` :
 
   ```text
   command="rrsync -ro /srv/mimorya/wal-archive/",restrict ssh-ed25519 AAAA… archive@secours
@@ -108,7 +108,7 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
   ```
 
 - [ ] Avec `MIMORYA_TLS=internal`, une copie de la racine locale de Caddy, faite hors du
-      dépôt, sortie de l'hôte puis effacée :
+      dépôt, sortie de l'hôte (gardée avec la clé maître) puis effacée :
 
   ```bash
   (umask 077 && docker compose run --rm --no-deps -T --entrypoint tar proxy -czf - -C /data/caddy pki \
@@ -129,17 +129,21 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
   ```
 
 - [ ] La copie hors site, **tirée** par l'hôte de secours, en `root`, une destination par
-      verrou. `--numeric-ids` garde à l'archive son propriétaire, la base (uid 999) ;
+      verrou, un transfert bloqué abandonné au bout de dix minutes (`--timeout`).
+      `--numeric-ids` garde à l'archive son propriétaire, la base (uid 999) ;
       `--no-devices --no-specials` refuse les fichiers spéciaux qu'un hôte compromis
       enverrait. La copie suit l'hôte, suppressions comprises (`--delete`) : un intrus sur
-      l'hôte de production peut la vider. Seuls les instantanés déjà faits sont hors de sa
-      portée. Ils sont datés par eux-mêmes et gardés 90 jours ici, ce qui borne aussi ce
-      que la copie garde des données supprimées. Gardez `rsync` à jour.
+      l'hôte de production peut la vider. Seul le contenu des instantanés déjà faits est
+      hors de sa portée : ils partagent leurs fichiers avec la copie (`cp -al`), dont il
+      peut changer le propriétaire ou les droits, que le placement rétablit (§ 4). Ils
+      sont datés par eux-mêmes et gardés 90 jours ici, ce qui borne aussi ce que la copie
+      garde des données supprimées. L'instantané prend le verrou des sauvegardes avant
+      celui de l'archive, hors de la grille des cinq minutes. Gardez `rsync` à jour.
 
   ```cron
-  */5 * * * *  flock -n /run/copie-archive.lock rsync -a --numeric-ids --no-devices --no-specials --delete --exclude '.*' -e 'ssh -i /root/.ssh/archive' root@production:./ /srv/mimorya-copie/wal-archive/ || votre-alerte "copie de l'archive"
-  10 3 * * *   flock /run/copie-sauvegardes.lock rsync -a --numeric-ids --no-devices --no-specials --delete --exclude '*.partial.*' --exclude '*.probe.*' -e 'ssh -i /root/.ssh/sauvegardes' root@production:./ /srv/mimorya-copie/backups/ || votre-alerte "copie des sauvegardes"
-  50 4 * * *   flock /run/copie-archive.lock flock /run/copie-sauvegardes.lock sh -c 'd=/srv/mimorya-instantanes/$(date +\%F) && cp -al /srv/mimorya-copie "$d" && touch "$d" && find /srv/mimorya-instantanes -mindepth 1 -maxdepth 1 -mtime +90 -exec rm -rf {} +' || votre-alerte "instantané"
+  */5 * * * *  flock -n /run/copie-archive.lock rsync -a --timeout=600 --numeric-ids --no-devices --no-specials --delete --exclude '.*' -e 'ssh -i /root/.ssh/archive' root@production:./ /srv/mimorya-copie/wal-archive/ || votre-alerte "copie de l'archive"
+  10 3 * * *   flock /run/copie-sauvegardes.lock rsync -a --timeout=600 --numeric-ids --no-devices --no-specials --delete --exclude '*.partial.*' --exclude '*.probe.*' -e 'ssh -i /root/.ssh/sauvegardes' root@production:./ /srv/mimorya-copie/backups/ || votre-alerte "copie des sauvegardes"
+  52 4 * * *   flock /run/copie-sauvegardes.lock flock /run/copie-archive.lock sh -c 'd=/srv/mimorya-instantanes/$(date +\%F) && cp -al /srv/mimorya-copie "$d" && touch "$d" && find /srv/mimorya-instantanes -mindepth 1 -maxdepth 1 -mtime +90 -exec rm -rf {} +' || votre-alerte "instantané"
   ```
 
 - [ ] Un premier exercice de reprise fait et minuté (§ 6).
@@ -161,18 +165,22 @@ Deux règles valent pour toutes :
 L'identité `age` est apportée sur l'hôte le temps de la restauration, puis retirée.
 
 Sur l'hôte de secours, l'archive se place dans un dossier vidé de ce qu'une restauration
-précédente y a laissé, à la base (uid 999, en 700), depuis la copie ou un instantané :
+précédente y a laissé, depuis la copie (la copie de l'archive en pause le temps de le
+faire) ou un instantané. Propriétaire et droits sont rendus à la base, quoi qu'en dise
+la source :
 
 ```bash
-rsync -a --numeric-ids --delete /srv/mimorya-copie/wal-archive/ /srv/mimorya/wal-archive/
+flock /run/copie-archive.lock rsync -a --delete --chown=999:999 --chmod=D700,F600 \
+  /srv/mimorya-copie/wal-archive/ /srv/mimorya/wal-archive/
 ```
 
-Après une copie faite autrement, `chown -R 999:999 /srv/mimorya/wal-archive` et `chmod 700`.
-Avec `MIMORYA_TLS=internal`, la racine de Caddy gardée au § 3 se remet dans le volume
-`caddy-data` de la nouvelle pile, avant son démarrage, sauf après une intrusion (4.4) :
+Avec `MIMORYA_TLS=internal`, la racine de Caddy gardée au § 3, apportée comme l'identité,
+se remet dans le volume `caddy-data` de la nouvelle pile, avant son démarrage, sauf après
+une intrusion (4.4), puis se retire :
 
 ```bash
-docker compose run --rm --no-deps -T --entrypoint tar proxy -xzf - -C /data/caddy <caddy-pki.tar.gz
+docker compose run --rm --no-deps -T --entrypoint tar proxy -xzf - -C /data/caddy </root/caddy-pki.tar.gz
+rm /root/caddy-pki.tar.gz
 ```
 
 ### 4.1 Erreur dans les données
@@ -194,25 +202,29 @@ Des données supprimées ou modifiées par erreur, par une personne, un agent ou
 5. Choisir :
    - **réintégrer** les seules données perdues dans la pile en service, par un export
      ciblé depuis la base restaurée : réservé à qui connaît le schéma, à faire relire.
-     Puis jeter la pile restaurée et l'archive qu'elle a laissée :
-     `docker compose down -v && rm -rf /srv/mimorya/wal-archive` ;
+     Puis, **sur l'hôte de secours seulement** (les chemins sont les mêmes sur l'hôte de
+     production ; `secours` est ici le nom de l'hôte de secours), jeter la pile restaurée et
+     l'archive qu'elle a laissée :
+     `[ "$(hostname)" = secours ] && docker compose down -v && rm -rf /srv/mimorya/wal-archive` ;
    - **reprendre sur la pile restaurée** : arrêter l'ancienne (`docker compose stop` sur
      son hôte), remettre la racine de Caddy le cas échéant, démarrer la nouvelle
      (`docker compose up -d`), faire pointer le domaine vers elle, et vérifier (§ 5). Ce
      qui a été fait entre l'instant et la bascule est à refaire : dites-le aux
      entreprises. Au démarrage, une occurrence de tâche planifiée en retard d'une heure
      au plus est lancée (ADR-080), même si l'ancienne pile l'a déjà fait ; ses auteurs
-     peuvent la mettre en pause avant. Un jeton OAuth renouvelé par l'ancienne pile depuis
-     l'instant est à autoriser de nouveau.
+     peuvent la mettre en pause avant. De même, un run en file ou interrompu à l'instant
+     repart si la bascule vient moins d'une heure après lui. Un jeton OAuth renouvelé par
+     l'ancienne pile depuis l'instant est à autoriser de nouveau.
 
 ### 4.2 Perte de l'hôte
 
 L'hôte est détruit, inaccessible ou son disque perdu :
 
-1. S'assurer que l'ancien hôte ne peut plus faire tourner sa pile : arrêté, ou coupé du
-   réseau depuis la console de l'hébergeur. Un hôte seulement injoignable peut encore
-   tourner. S'il revient, arrêter sa pile (`docker compose stop`) tant qu'il est isolé,
-   avant de le reconnecter.
+1. S'assurer que l'ancien hôte ne peut plus joindre le réseau : coupé depuis la console
+   de l'hébergeur. Un hôte seulement injoignable peut encore tourner, et un hôte
+   seulement éteint redémarre sa pile, connectée, quand on le rallume (ses services
+   redémarrent d'eux-mêmes). Ne le reconnecter qu'après avoir arrêté sa pile
+   (`docker compose stop`), isolé ou démarré en mode de secours.
 2. Sur l'hôte de secours : `.env.production` et la clé maître repris de leur copie ;
    l'archive placée (voir plus haut), depuis la copie ou son dernier instantané.
 3. Rejouer toute l'archive, sans instant :
@@ -270,7 +282,9 @@ Le volume de la base est corrompu, ou la base ne démarre plus :
 Un accès illégitime à l'hôte ou à l'application est suspecté :
 
 1. Isoler l'hôte (réseau), sans l'éteindre si une analyse est prévue ; garder ses
-   journaux.
+   journaux. Sur l'hôte de secours, suspendre les tâches de la copie et des instantanés
+   jusqu'à ce que la reprise soit vérifiée : sinon la copie suivrait l'hôte compromis, et
+   le nettoyage des instantanés pourrait retirer celui dont la reprise a besoin.
 2. Reprendre sur un hôte neuf, comme en 4.1, à un instant antérieur à l'intrusion, depuis
    un instantané fait avant elle : la copie elle-même suit l'hôte compromis, et l'intrus a
    pu y faire entrer des fichiers ou en retirer. Jamais sur l'hôte compromis.
@@ -341,8 +355,10 @@ rien démarrer d'autre que la base restaurée :
 3. Vérifier les entreprises et leurs dernières données (`psql`), et le journal d'audit
    (`docker compose run --rm --no-deps api mimorya-admin verify-audit`, une commande qui ne
    lance aucune tâche de fond).
-4. Minuter chaque étape du § 2, puis jeter la pile et l'archive qu'elle a laissée
-   (`docker compose down -v && rm -rf /srv/mimorya/wal-archive`), et retirer l'identité.
+4. Minuter chaque étape du § 2, puis, sur l'hôte de secours, jeter la pile et l'archive
+   qu'elle a laissée
+   (`[ "$(hostname)" = secours ] && docker compose down -v && rm -rf /srv/mimorya/wal-archive`),
+   et retirer l'identité.
 5. Noter le résultat ci-dessous et corriger l'objectif ou la préparation.
 
 | Date | Taille de la base | Durée totale | Écarts constatés | Suite donnée |
