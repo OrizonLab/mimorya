@@ -1,5 +1,8 @@
 //! Composition root of the API: services, cross-cutting layers, routes and
-//! lifecycle. No business rule lives here.
+//! lifecycle; what runs in the background, in `background`. No business
+//! rule lives here.
+
+mod background;
 
 use std::sync::Arc;
 
@@ -13,24 +16,17 @@ use mimorya_connectors::teams::TeamsEndpoints;
 use mimorya_connectors::telegram::TELEGRAM_API;
 use mimorya_db::{Database, PoolOptions};
 use tokio::sync::watch;
-use tokio::task::JoinHandle;
+
+use background::{Background, OnDemand};
 
 pub use crate::build_options::BuildOptions;
 use crate::config::AppConfig;
 use crate::mail::{Mailer, SmtpMailer};
 use crate::plugins::RateLimits;
 use crate::plugins::csrf::csrf_protection;
-use crate::plugins::document_labels::spawn_document_labels;
-use crate::plugins::gateway_replies::spawn_gateway_replies;
-use crate::plugins::maintenance::spawn_maintenance;
-use crate::plugins::memory_indexing::spawn_memory_indexing;
 use crate::plugins::rate_limit::GLOBAL_RATE_LIMIT_PER_MINUTE;
 use crate::plugins::rate_limit::global_rate_limit;
 use crate::plugins::request_context::request_context;
-use crate::plugins::run_event_relay::{spawn_delta_outbox, spawn_run_event_relay};
-use crate::plugins::run_leases::{spawn_lease_renewal, spawn_lease_takeover};
-use crate::plugins::run_queue::spawn_run_queue;
-use crate::plugins::scheduled_tasks::spawn_scheduled_tasks;
 use crate::plugins::security_headers::security_headers;
 use crate::plugins::session::resolve_identity;
 use crate::routes;
@@ -43,7 +39,7 @@ use crate::services::document_labels::DocumentLabelService;
 use crate::services::documents::{DocumentService, Extractor};
 use crate::services::embeddings::{EmbeddingServiceOptions, default_embedding_factory};
 use crate::services::gateways::{GatewayService, GatewaySettings};
-use crate::services::invalidations::{Invalidations, share_invalidations};
+use crate::services::invalidations::Invalidations;
 use crate::services::llm::{DecisionConfig, LlmServiceOptions, default_factory};
 use crate::services::personal_export::Exports;
 use crate::services::runs::{ApprovalNotifier, ConversationSummaries, LessonCapture, RunExecutor};
@@ -110,21 +106,6 @@ pub struct App {
     /// process, which executes no runs; no relay in a `worker`, which
     /// serves no event stream (ADR-085).
     background: Background,
-}
-
-#[derive(Default)]
-struct Background {
-    maintenance: Option<JoinHandle<()>>,
-    indexing: Option<JoinHandle<()>>,
-    document_labels: Option<JoinHandle<()>>,
-    scheduling: Option<JoinHandle<()>>,
-    gateway_replies: Option<JoinHandle<()>>,
-    lease_renewal: Option<JoinHandle<()>>,
-    lease_takeover: Option<JoinHandle<()>>,
-    run_queue: Option<JoinHandle<()>>,
-    event_relay: Option<JoinHandle<()>>,
-    delta_outbox: Option<JoinHandle<()>>,
-    invalidations: Option<JoinHandle<()>>,
 }
 
 pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Result<App> {
@@ -312,53 +293,18 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         .layer(from_fn(security_headers))
         .with_state(services.clone());
 
-    let role = services.config.role;
-    let mut background = Background {
-        invalidations: Some(tokio::spawn(share_invalidations(
-            services.clone(),
-            outgoing,
-        ))),
-        ..Background::default()
+    let on_demand = OnDemand {
+        indexing: options.manual_indexing,
+        document_labels: options.manual_document_labels,
+        scheduling: options.manual_scheduling,
+        gateway_replies: options.manual_gateway_replies,
     };
-    if role.serves_http() {
-        background.event_relay = Some(spawn_run_event_relay(services.clone()));
-    }
-    if role.executes_runs() {
-        background.maintenance = Some(spawn_maintenance(services.clone()));
-        background.indexing =
-            (!options.manual_indexing).then(|| spawn_memory_indexing(services.clone()));
-        background.document_labels =
-            (!options.manual_document_labels).then(|| spawn_document_labels(services.clone()));
-        background.scheduling =
-            (!options.manual_scheduling).then(|| spawn_scheduled_tasks(services.clone()));
-        background.gateway_replies =
-            (!options.manual_gateway_replies).then(|| spawn_gateway_replies(services.clone()));
-        background.lease_renewal = Some(spawn_lease_renewal(services.clone()));
-        background.lease_takeover = Some(spawn_lease_takeover(services.clone()));
-        background.run_queue = Some(spawn_run_queue(services.clone()));
-        let listens = role.serves_http();
-        background.delta_outbox = Some(spawn_delta_outbox(&services, outbox, listens));
-    }
+    let background = Background::start(&services, on_demand, outgoing, outbox);
     Ok(App {
         router,
         services,
         background,
     })
-}
-
-/// Stops `task`, if any, at once.
-async fn abort(task: Option<JoinHandle<()>>) {
-    if let Some(task) = task {
-        task.abort();
-        let _ = task.await;
-    }
-}
-
-/// Waits for `task`, if any, to stop by itself.
-async fn wait(task: Option<JoinHandle<()>>) {
-    if let Some(task) = task {
-        let _ = task.await;
-    }
 }
 
 impl App {
@@ -380,35 +326,7 @@ impl App {
     /// releases connectors and connections.
     pub async fn shutdown(self) {
         self.begin_shutdown();
-        let background = self.background;
-        // The streams it fed end now.
-        abort(background.event_relay).await;
-        // Ended before the runs are awaited: its expiry sweep may start one.
-        abort(background.maintenance).await;
-        // So is this one, which starts runs: it stops between two tasks,
-        // never in the middle of firing one.
-        wait(background.scheduling).await;
-        // Nor do these: they take up or claim no other run once the
-        // service stops.
-        wait(background.lease_takeover).await;
-        wait(background.run_queue).await;
-        abort(background.indexing).await;
-        // A document being classified keeps its request: asked again by the
-        // next process that starts.
-        abort(background.document_labels).await;
-        // A Slack message being answered may start a run as it ends: awaited
-        // first, so that its run is awaited with the others.
-        self.services.background.idle().await;
-        self.services.runs.idle().await;
-        // The runs ended: what remains to answer in Slack is answered by
-        // the next process that starts.
-        abort(background.gateway_replies).await;
-        // The runs ended: no lease left to renew, nor text to send.
-        abort(background.lease_renewal).await;
-        abort(background.delta_outbox).await;
-        self.services.background.idle().await;
-        // Nothing left to change in the caches.
-        abort(background.invalidations).await;
+        self.background.stop(&self.services).await;
         self.services.connectors.close().await;
         self.services.db.close().await;
     }

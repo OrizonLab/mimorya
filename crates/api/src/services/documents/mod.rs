@@ -15,6 +15,7 @@ mod replace;
 
 use std::sync::Arc;
 
+use mimorya_core::authz::Sensitivity;
 use mimorya_db::Database;
 
 pub use deposit::Deposit;
@@ -37,6 +38,12 @@ pub struct DocumentService {
     embeddings: Arc<EmbeddingService>,
     /// Told of each deposit the company classifies (ADR-213, D4).
     labels: Arc<DocumentLabelService>,
+}
+
+/// A document's stored level: kept under a check constraint, an unknown
+/// one reads as the highest.
+pub(crate) fn stored_sensitivity(stored: &str) -> Sensitivity {
+    stored.parse().unwrap_or(Sensitivity::Restricted)
 }
 
 impl DocumentService {

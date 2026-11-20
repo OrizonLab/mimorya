@@ -197,7 +197,7 @@ Repères à l'intérieur des crates :
   bail expiré repris, `run_leases.rs`, ADR-083 ; événements des autres processus écoutés
   et fragments de texte envoyés, `run_event_relay.rs`, ADR-084 ; runs en file réservés
   par le worker, `run_queue.rs`, ADR-085 ; tâches de fond lancées selon le rôle du
-  processus, `MIMORYA_ROLE`, dans `app.rs` (`Background`), ADR-085 ; réponses écrites
+  processus, `MIMORYA_ROLE`, et arrêtées dans l'ordre, dans `app/background.rs` (`Background`), ADR-085 ; réponses écrites
   dans Slack, dans Telegram et dans Teams toutes les trois secondes, et demandes
   annoncées aux responsables, `gateway_replies.rs`, ADR-127, ADR-130, ADR-135, ADR-137,
   ADR-140),

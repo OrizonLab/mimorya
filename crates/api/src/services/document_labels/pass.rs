@@ -67,10 +67,21 @@ impl DocumentLabelService {
         }
         let requests = label_requests(&mut tx, BATCH).await?;
         tx.commit().await?;
-        for request in &requests {
-            self.classify(tenant_id, policy, *request).await?;
+        let mut classified = 0;
+        for request in requests {
+            match self.classify(tenant_id, policy, request).await {
+                Ok(()) => classified += 1,
+                // Its request stays: tried again at the next pass, the
+                // company's others meanwhile.
+                Err(error) => tracing::warn!(
+                    %tenant_id,
+                    document_id = %request.document_id,
+                    error = format!("{error:#}"),
+                    "Document classification failed"
+                ),
+            }
         }
-        Ok(requests.len())
+        Ok(classified)
     }
 }
 

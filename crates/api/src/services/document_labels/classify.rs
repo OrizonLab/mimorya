@@ -23,6 +23,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use super::DocumentLabelService;
+use crate::services::documents::stored_sensitivity;
 use crate::services::llm::DecisionScope;
 
 const RAISED: &str = "document.sensitivity_raised";
@@ -63,7 +64,7 @@ impl DocumentLabelService {
             && policy.mode == DecisionMode::Active
             && let Some(document) = current(&mut tx, request).await?
         {
-            let level = sensitivity(&document.sensitivity);
+            let level = stored_sensitivity(&document.sensitivity);
             let kind = document
                 .document_type
                 .as_deref()
@@ -96,11 +97,6 @@ async fn current(
 ) -> anyhow::Result<Option<LabelledDocument>> {
     let document = labelled_document(tx, request.document_id).await?;
     Ok(document.filter(|document| document.version == request.version))
-}
-
-fn sensitivity(stored: &str) -> Sensitivity {
-    // Stored under a check constraint: an unknown level reads as the highest.
-    stored.parse().unwrap_or(Sensitivity::Restricted)
 }
 
 /// Raises a stricter level and records what waits for a person, audited by

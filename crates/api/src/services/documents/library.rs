@@ -21,8 +21,8 @@ use mimorya_db::repositories::documents::{
 use serde_json::json;
 use uuid::Uuid;
 
-use super::DocumentService;
 use super::labels::proposal_view;
+use super::{DocumentService, stored_sensitivity};
 use crate::contract::{
     DocumentItem, DocumentList, DocumentQuota, DocumentSpaceOption, stored_text,
 };
@@ -156,8 +156,7 @@ fn space_of(row: &DocumentRow) -> Option<DocumentSpace> {
 }
 
 fn sensitivity_of(row: &DocumentRow) -> Sensitivity {
-    // Stored under a check constraint: an unknown level reads as the highest.
-    row.sensitivity.parse().unwrap_or(Sensitivity::Restricted)
+    stored_sensitivity(&row.sensitivity)
 }
 
 /// The person may replace or delete the document `row`.

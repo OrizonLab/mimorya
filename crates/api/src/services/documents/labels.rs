@@ -18,8 +18,8 @@ use serde_json::json;
 use sqlx::PgConnection;
 use uuid::Uuid;
 
-use super::DocumentService;
 use super::library::can_write;
+use super::{DocumentService, stored_sensitivity};
 use crate::contract::{
     DocumentLabelProposal, DocumentLabelsUpdate, DocumentProposalDismissal, stored_text,
 };
@@ -50,7 +50,7 @@ impl DocumentService {
         let Some(row) = writable(&mut tx, access, id).await? else {
             return Ok(Err(absent()));
         };
-        let from = level(&row);
+        let from = stored_sensitivity(&row.sensitivity);
         let to = CoreSensitivity::from(update.sensitivity);
         let space = DocumentSpace::stored(&row.scope, row.org_unit_id);
         let (engine, subject) = (&access.engine, &access.subject);
@@ -132,13 +132,6 @@ async fn writable(
     let filter = document_read_filter(&access.engine, &access.subject, &Actor::user());
     let row = get_visible_document(conn, &filter, id).await?;
     Ok(row.filter(|row| can_write(access, row)))
-}
-
-fn level(row: &DocumentRow) -> CoreSensitivity {
-    // Stored under a check constraint: an unknown level reads as the highest.
-    row.sensitivity
-        .parse()
-        .unwrap_or(CoreSensitivity::Restricted)
 }
 
 /// What a classification left, as its writer reads it.
