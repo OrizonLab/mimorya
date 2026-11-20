@@ -184,13 +184,19 @@ start=${newest_base:0:24}
 as_root find "$folder" -maxdepth 1 -type f -printf '%T@ %p\n' | while read -r stamp file; do
   as_root touch -d "@$((${stamp%.*} - 40 * 86400))" "$file"
 done
+# The folder's files, their names short, with their ages in days.
+shown() {
+  as_root find "$folder" -maxdepth 1 -type f -printf '%T@ %f\n' | sort -n |
+    awk -v now="$(date +%s)" '{ sub(/\.[0-9a-f]{64}\.gz\.age$/, "", $2); printf "%s(%dd) ", $2, (now - $1) / 86400 }'
+}
+aged=$(shown)
 said=$(infra/backup/prune.sh 30) || fail "the pruning of an aged archive failed: $said"
 [[ -d $folder && -n $(archived "$start") && -n $(as_root find "$folder" -name "$newest_base") ]] ||
-  fail "the current system's last base or its first segment was removed"
+  fail "the current system's last base ($newest_base) or its first segment was removed: $said; before: $aged; after: $(shown)"
 older=$(as_root find "$folder" -maxdepth 1 -type f -printf '%f\n' | awk -v first="${start:8}" '
   /^\./ { next }
   substr($0, 9, 9) != ".history." && (substr($0, 9, 16) "") < (first "")')
-[[ -z $older ]] || fail "files before the last base's start were kept: $older"
+[[ -z $older ]] || fail "files before the last base's start were kept: $older; after: $(shown)"
 sql "insert into retention_marks values (2)" >/dev/null
 await_archived "$(sql "select pg_walfile_name(pg_switch_wal())")" >/dev/null
 said=$(status_becomes 5 1 --base-within 24)
