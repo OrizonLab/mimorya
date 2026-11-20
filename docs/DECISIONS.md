@@ -16278,3 +16278,52 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       `ln` qui échoue toujours à sa place), sans données ni fichier d'essai laissés, et sur
       un dossier où elle ne peut écrire (un `touch` qui échoue toujours), avec sa propre
       raison.
+
+## ADR-216 — Plan de reprise de l'installation de production (chantier 4, lot 70c)
+
+- **Statut** : accepté (2026-11-20) · complète ADR-166, ADR-206, ADR-214 et ADR-215, et
+  termine le chantier 4.
+- **Contexte** : les sauvegardes, l'archive des WAL, la restauration à un instant précis,
+  la conservation et l'état de l'archivage sont en place et vérifiés en CI. Il manque à
+  l'exploitant ce qui les relie le jour d'un incident :
+  - combien de données il peut perdre (RPO), et en combien de temps l'installation
+    repart (RTO) ;
+  - ce qu'il doit avoir préparé ;
+  - quoi faire, dans l'ordre, selon ce qui est arrivé.
+- **Décision** :
+  - **document** : `docs/RECOVERY_PLAN.md`, en français, pour l'exploitant, cité par le
+    README parmi la documentation ;
+  - **objectifs** :
+    - perte de données : au plus `archive_timeout` (cinq minutes) plus l'intervalle de la
+      copie hors site de l'archive, soit dix minutes avec une copie toutes les cinq ;
+      24 heures sans archive (dump de la nuit) ;
+    - pour une erreur dans les données, retour à l'instant choisi, juste avant elle ;
+    - durée : quatre heures proposées pour une installation de quelques dizaines de Go.
+      Le plan la décompose étape par étape, et la donne comme un objectif à confirmer par
+      un exercice, pas comme une mesure ;
+  - **préparation** : une liste à cocher et une table `cron` de référence :
+    - chaque nuit, dump, sauvegarde de base puis conservation ;
+    - copie hors site de l'archive et des sauvegardes toutes les cinq minutes, sans
+      suppression ;
+    - état de l'archive toutes les dix minutes, avec une alerte sur toute sortie non
+      nulle ;
+  - **procédures** : erreur dans les données, perte de l'hôte (avec ou sans archive),
+    base abîmée sur un hôte intact, intrusion, identité `age` perdue, archivage en échec.
+    Chacune commence par ne rien jeter de l'installation en panne ;
+  - **après une reprise** : archivage vérifié, sauvegarde de base aussitôt, ligne
+    temporelle notée, journal d'audit vérifié, entreprises informées ;
+  - **exercices** : chaque trimestre, une restauration minutée dans une pile jetable sur
+    un autre hôte, depuis la copie hors site, notée dans le plan ;
+  - **précision d'ADR-215** : une restauration abandonnée avant son premier segment retient
+    son dossier une période de plus. Ce qu'il garde remonte alors jusqu'à deux périodes,
+    plus l'intervalle entre deux sauvegardes de base (et non « jusqu'à deux périodes »
+    pour la retenue elle-même).
+- **Conséquences** :
+  - le chantier 4 est terminé : lots 70a (ADR-206), 70b (ADR-214) et 70c (ADR-215 et
+    celui-ci) ;
+  - le plan lui-même n'est pas testé. Les commandes qu'il donne sont celles que la CI
+    joue : `backup-test.sh`, `wal-archive-test.sh`, `point-in-time-test.sh` et
+    `archive-retention-test.sh`. Ses durées restent à mesurer par l'exercice de chaque
+    exploitant ;
+  - un changement des scripts de sauvegarde ou de restauration met le plan à jour dans la
+    même contribution.
