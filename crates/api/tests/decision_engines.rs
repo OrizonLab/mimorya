@@ -76,6 +76,9 @@ async fn jev_decides_on_the_company_s_key_and_is_counted_on_it() {
     assert!(journaled.contains("decided"), "{journaled}");
     assert!(!journaled.contains(TEST_STATE), "{journaled}");
     assert!(!audit.contains(TEST_STATE), "{audit}");
+    // Nor the key it was sent.
+    assert!(!journaled.contains(JEV_KEY), "{journaled}");
+    assert!(!audit.contains(JEV_KEY), "{audit}");
     assert_eq!(paul.delete(DECISIONS).await.status, StatusCode::OK);
 }
 
@@ -232,10 +235,12 @@ async fn the_main_model_decides_charged_as_the_company_s_other_calls() {
     );
     assert_eq!(decision_calls(&api).await.len(), 2);
 
-    // Past its supply, the main model is not asked.
+    // Past its supply, the main model is not asked: the test says why, and
+    // is traced as a run's start would be.
     supply(&owner, capped(CapChoice::Amount(CAP))).await;
     spent(&owner, SupplyFormula::Capped, CAP).await;
     let before = api.model.as_ref().unwrap().requests().len();
+    let since = latest_entry(&api).await;
     let stopped = paul.post(TEST, json!({})).await;
     assert_eq!(
         stopped.status,
@@ -243,8 +248,73 @@ async fn the_main_model_decides_charged_as_the_company_s_other_calls() {
         "{}",
         stopped.text()
     );
+    assert!(
+        stopped.error_message().contains("plafond mensuel"),
+        "{}",
+        stopped.text()
+    );
     assert_eq!(api.model.as_ref().unwrap().requests().len(), before);
+    let audit = entries_since(&api, since).await;
+    assert!(audit.contains("model_supply.limited"), "{audit}");
     spent(&owner, SupplyFormula::Capped, 0).await;
     supply(&owner, capped(CapChoice::Default)).await;
     supply(&owner, SupplyChange::Markup { bps: 0 }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn jev_closed_by_the_operator_after_a_company_chose_it_is_never_asked() {
+    let jev = FakeJev::serve().await;
+    let opened = TestApi::start_with_jev(&jev, true).await;
+    forget_decision_calls().await;
+    set(
+        &opened.sign_in(user::PAUL).await,
+        settings("jev", Some(JEV_KEY)),
+    )
+    .await;
+    // The operator closes Jev: its DPA ended, say.
+    let api = TestApi::start_with_jev(&jev, false).await;
+    let paul = api.sign_in(user::PAUL).await;
+    let shown = paul.get(DECISIONS).await.json();
+    assert_eq!(
+        (&shown["engine"], &shown["jevAvailable"]),
+        (&json!("jev"), &json!(false))
+    );
+    assert!(
+        shown["problem"]
+            .as_str()
+            .unwrap()
+            .contains("n’a pas ouvert"),
+        "{shown}"
+    );
+    // Decisions go to the main model alone…
+    let service = api
+        .app
+        .services
+        .llm
+        .decision_service(tenant::ID, DecisionScope::default())
+        .await
+        .unwrap();
+    assert_eq!(service.engines(), [EngineKind::MainModel]);
+    api.script(vec![ScriptedStep::text(main_model_yes("forte"))]);
+    let DecisionOutcome::Decided(decided) = service.decide(&salutation()).await else {
+        panic!("no decision");
+    };
+    assert_eq!(decided.engine, EngineKind::MainModel);
+    // …the engine chosen is not tested…
+    let refused = paul.post(TEST, json!({})).await;
+    assert_eq!(
+        refused.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        refused.text()
+    );
+    assert!(
+        refused.error_message().contains("n’a pas ouvert"),
+        "{}",
+        refused.text()
+    );
+    // …and Jev is never asked.
+    assert!(jev.asked().is_empty(), "{:?}", jev.asked());
+    assert_eq!(paul.delete(DECISIONS).await.status, StatusCode::OK);
 }

@@ -11,7 +11,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use mimorya_agent::decision::{
-    DecisionEngine, DecisionQuestion, DecisionRequest, DecisionState, EngineFailure, JevEngine,
+    DecisionEngine, DecisionQuestion, DecisionRequest, DecisionState, EngineFailure, JevClient,
+    JevEngine,
 };
 use serde_json::{Value, json};
 
@@ -65,7 +66,7 @@ fn answered() -> String {
 #[tokio::test]
 async fn the_pinned_version_is_asked_with_the_key_as_a_bearer_alone() {
     let (url, seen) = serve(StatusCode::OK, answered()).await;
-    let jev = JevEngine::new(KEY.into(), "jev-1.14.0", &url);
+    let jev = JevEngine::new(JevClient::new(), KEY.into(), "jev-1.14.0", &url);
     let answer = jev.answer(&request()).await.unwrap();
     assert_eq!(
         (answer.provider.as_str(), answer.model.as_str()),
@@ -121,11 +122,16 @@ async fn each_failure_is_read_as_such() {
         ),
     ] {
         let (url, _) = serve(status, body).await;
-        let jev = JevEngine::new(KEY.into(), "jev-1.14.0", &url);
+        let jev = JevEngine::new(JevClient::new(), KEY.into(), "jev-1.14.0", &url);
         assert_eq!(jev.answer(&request()).await, Err(failure), "{status}");
     }
     // Unreachable.
-    let jev = JevEngine::new(KEY.into(), "jev-1.14.0", "http://127.0.0.1:9");
+    let jev = JevEngine::new(
+        JevClient::new(),
+        KEY.into(),
+        "jev-1.14.0",
+        "http://127.0.0.1:9",
+    );
     assert_eq!(
         jev.answer(&request()).await,
         Err(EngineFailure::Unavailable)

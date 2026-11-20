@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use mimorya_agent::decision::{
-    DecisionCall, DecisionRecorder, DecisionService, EngineKind, JEV_ENDPOINT, JevEngine,
-    MainModelEngine,
+    DecisionCall, DecisionRecorder, DecisionService, EngineKind, JEV_ENDPOINT, JevClient,
+    JevEngine, MainModelEngine,
 };
 use mimorya_agent::llm::ModelRole;
 use mimorya_db::Database;
@@ -35,6 +35,8 @@ pub struct DecisionConfig {
     /// TypeSafe's API, a local one in the tests.
     pub jev_api: String,
     pub jev_timeout: Duration,
+    /// Shared by every Jev engine, its connections kept.
+    pub jev_http: JevClient,
 }
 
 impl DecisionConfig {
@@ -44,6 +46,7 @@ impl DecisionConfig {
             jev_model: config.jev_model.clone(),
             jev_api: jev_api.unwrap_or_else(|| JEV_ENDPOINT.to_string()),
             jev_timeout: config.decision_timeout,
+            jev_http: JevClient::new(),
         }
     }
 }
@@ -164,7 +167,12 @@ impl LlmService {
 
     fn jev(&self, key: String) -> Arc<JevEngine> {
         let config = &self.decisions;
-        Arc::new(JevEngine::new(key, &config.jev_model, &config.jev_api))
+        Arc::new(JevEngine::new(
+            config.jev_http.clone(),
+            key,
+            &config.jev_model,
+            &config.jev_api,
+        ))
     }
 
     fn main_model(&self, tenant_id: Uuid, models: &Arc<Models>) -> Option<Arc<MainModelEngine>> {

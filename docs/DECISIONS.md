@@ -15637,7 +15637,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - un essai du moteur choisi, depuis l'écran, pose une question fixe sur un état fixe
       au seul moteur enregistré, sans repli, et dit le modèle, la latence et la réponse,
       ou qu'il n'a pas répondu (`decision_service.tested`, avec son issue) ;
-  - **comptage** : chaque appel d'un moteur est enregistré dans la consommation avec le
+  - **comptage** : chaque appel d'un moteur qui a répondu est enregistré dans la consommation avec le
     rôle « décision », son fournisseur et son modèle. Le modèle principal est compté
     comme ses autres appels, sur sa clé : sur celle de l'exploitant, au montant
     refacturé, dans le plafond ou le crédit (ADR-208), la fourniture relue avant chaque
@@ -15679,6 +15679,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     comptés au rôle « décision » suivent la rétention, l'export et la suppression de la
     consommation (ADR-186, ADR-187) ; aucun état de décision n'est gardé ;
   - les tests simulent les moteurs : réponse sûre, confiance basse, erreur, délai
-    dépassé, JSON invalide ; ils vérifient le repli et la valeur prudente, qu'aucune
-    décision ne lève une règle existante, que le mode observation n'a aucun effet, que Jev
-    est refusé sans l'accord de l'exploitant et que sa clé n'apparaît dans aucun journal.
+    dépassé, JSON invalide ; dès D0, ils vérifient le repli et l'issue « échouée », que
+    Jev est refusé sans l'accord de l'exploitant, à l'écriture comme à l'usage quand il le
+    referme après qu'une entreprise l'a choisi, et que sa clé n'apparaît dans aucun
+    journal ; à chaque étape, pour ses usages, qu'aucune décision ne lève une règle
+    existante, que le mode observation n'a aucun effet et que l'échec applique la valeur
+    prudente ;
+  - l'essai du moteur principal, sur la clé de l'exploitant au-delà de sa fourniture,
+    est refusé et tracé comme le lancement d'un run (`model_supply.limited`, ADR-208).

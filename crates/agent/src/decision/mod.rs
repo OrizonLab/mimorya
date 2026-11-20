@@ -14,7 +14,9 @@ mod usage;
 
 pub use answer::{Decided, DecisionAnswer, EngineKind};
 pub use engine::{DecisionEngine, EngineAnswer, EngineFailure};
-pub use jev::{DEFAULT_JEV_MODEL, JEV_ENDPOINT, JEV_PROVIDER, JevEngine, is_versioned_jev};
+pub use jev::{
+    DEFAULT_JEV_MODEL, JEV_ENDPOINT, JEV_PROVIDER, JevClient, JevEngine, is_versioned_jev,
+};
 pub use main_model::MainModelEngine;
 pub use question::{
     DecisionQuestion, DecisionRequest, DecisionState, MAX_LEVELS, MAX_OPTIONS, MAX_STATE_CHARS,

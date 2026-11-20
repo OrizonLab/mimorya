@@ -10,7 +10,7 @@ use mimorya_agent::decision::{
     DecisionMode, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionState, DecisionUsage,
     ENGINE_TEST, EngineKind, UsagePolicy, usage_problem,
 };
-use mimorya_agent::llm::api_key_problem;
+use mimorya_agent::llm::{ModelRole, api_key_problem};
 use mimorya_core::DomainError;
 use mimorya_db::Database;
 use mimorya_db::repositories::audit::append_audit;
@@ -23,7 +23,9 @@ use serde_json::json;
 use super::{audit_entry, begin_change};
 use crate::contract::admin::{DecisionEngineChoice, DecisionSettingsUpdate};
 use crate::secrets::TYPESAFE_API_KEY;
-use crate::services::llm::{DecisionEngines, DecisionScope, JEV_CLOSED};
+use crate::services::llm::{
+    DecisionEngines, DecisionScope, JEV_CLOSED, supply_stopped, trace_held_back,
+};
 use crate::services::{AccessContext, LlmService};
 
 const PERMISSION: &str = "settings:manage";
@@ -207,6 +209,15 @@ pub async fn test_company_decisions(
         .chosen_decision_engine(tenant_id, scope)
         .await?
         .map_err(DomainError::validation)?;
+    // The main model asks nothing on the operator's key past its supply: the
+    // test is refused and traced as a run's start would be (ADR-208).
+    if service.engines() == [EngineKind::MainModel] {
+        let models = llm.resolve(tenant_id).await?;
+        if let Some(stop) = supply_stopped(db, &models, tenant_id, ModelRole::Decision).await? {
+            trace_held_back(db, tenant_id, access.subject.user_id, stop).await?;
+            return Err(DomainError::unavailable(stop.message()).into());
+        }
+    }
     let outcome = service.decide(&test_request()).await;
     let decided = match &outcome {
         DecisionOutcome::Decided(decided) => decided.yes("salutation").map(|yes| (decided, yes)),

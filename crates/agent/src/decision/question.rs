@@ -99,7 +99,7 @@ impl DecisionQuestion {
 
 /// What a decision is asked about: named fields of text, each cut to its
 /// bound, the whole to `MAX_STATE_CHARS`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct DecisionState {
     fields: Vec<(String, String)>,
 }
@@ -151,6 +151,18 @@ impl DecisionState {
             .iter()
             .map(|(name, text)| (name.clone(), serde_json::Value::String(text.clone())));
         serde_json::Value::Object(fields.collect())
+    }
+}
+
+/// Its fields' names and sizes alone: what a state holds is never printed,
+/// should a request reach a journal (ADR-213).
+impl std::fmt::Debug for DecisionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut fields = f.debug_map();
+        for (name, text) in &self.fields {
+            fields.entry(name, &format_args!("{} caractères", text.chars().count()));
+        }
+        fields.finish()
     }
 }
 

@@ -41,14 +41,34 @@ pub struct JevEngine {
     model: String,
 }
 
-impl JevEngine {
-    /// Jev at `base_url` (`JEV_ENDPOINT` outside the tests).
-    pub fn new(api_key: String, model: &str, base_url: &str) -> Self {
-        Self {
-            http: reqwest::Client::builder()
+/// The HTTP client Jev is asked with, built once and shared by every
+/// engine, so that its connections are kept from one decision to the next.
+#[derive(Debug, Clone)]
+pub struct JevClient(reqwest::Client);
+
+impl JevClient {
+    pub fn new() -> Self {
+        Self(
+            reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(5))
                 .build()
                 .expect("HTTP client"),
+        )
+    }
+}
+
+impl Default for JevClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl JevEngine {
+    /// Jev at `base_url` (`JEV_ENDPOINT` outside the tests), asked with
+    /// `http`.
+    pub fn new(http: JevClient, api_key: String, model: &str, base_url: &str) -> Self {
+        Self {
+            http: http.0,
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key,
             model: model.to_string(),
