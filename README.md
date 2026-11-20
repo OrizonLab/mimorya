@@ -307,15 +307,24 @@ MIMORYA_WAL_ARCHIVE=/srv/mimorya/wal      # facultatif : ./wal-archive par défa
 ```
 
 Au démarrage, la base fait vérifier ces clés par `age` et refuse de démarrer, sans rien
-créer, si l'une est refusée. Elle prend le dossier de l'archive pour elle (uid 999, mode 700) : sur l'hôte, seuls `root` et le compte qui y porte l'uid 999, s'il en est un
+créer, si l'une est refusée, ou si le dossier de l'archive n'accepte pas les liens
+physiques (FAT, exFAT, certains montages CIFS ou FUSE), dont chaque archivage a besoin.
+Elle prend le dossier de l'archive pour elle (uid 999, mode 700) : sur l'hôte, seuls `root` et le compte qui y porte l'uid 999, s'il en est un
 (`getent passwd 999`), y accèdent ; copiez-le hors site en `root`. Chaque fichier y est
 compressé, chiffré, et n'en remplace jamais un autre, dans un dossier par système de
 base : `wal-archive/<identifiant>/<nom>.<sha256>.gz.age`. Un segment est archivé au plus
 tard cinq minutes après sa première écriture. C'est la perte maximale de données tant que
 l'archive survit : une archive restée sur l'hôte se perd avec lui, ajoutez-y l'intervalle
 de sa copie hors site. Un archivage qui échoue (dossier plein ou en lecture seule) ne perd
-rien : PostgreSQL garde ses WAL et réessaie, au prix de son propre disque ; la vue
-`pg_stat_archiver` le montre.
+rien : PostgreSQL garde ses WAL et réessaie, au prix de son propre disque. Surveillez-le
+(ADR-215) : `infra/backup/archive-status.sh` dit où en est l'archive et sort en erreur
+(1) si l'archivage est désactivé, si le dernier a échoué, si un WAL attend depuis plus de
+dix minutes, ou, avec `--base-within <heures>`, si aucune sauvegarde de base n'a été
+archivée depuis ce délai :
+
+```bash
+COMPOSE_ENV_FILES=.env.production infra/backup/archive-status.sh --base-within 26
+```
 
 L'archive se rejoue sur une sauvegarde de base, la copie des fichiers de la base,
 chiffrée de même, à refaire régulièrement (chaque nuit, par exemple) :
@@ -325,21 +334,36 @@ COMPOSE_ENV_FILES=.env.production MIMORYA_BACKUP_RECIPIENTS='age1… age1…' \
   infra/backup/backup.sh --base     # écrit backups/mimorya-<heure UTC>.base.tar.gz.age (600)
 ```
 
-L'archive grossit sans limite tant que vous ne l'élaguez pas (environ 300 fichiers par
-jour, jusqu'à quelques Mo chacun quand la base est active), sur le disque de l'hôte par
-défaut, et garde, chiffrées, les données supprimées depuis de la plateforme. En attendant
-la conservation automatique (lot 70c), seuls peuvent partir les segments antérieurs, sur
-leur ligne temporelle, au segment de départ de la plus ancienne sauvegarde de base que
-vous gardez : son fichier `<segment>.<décalage>.backup…` le nomme. Gardez toujours les
-fichiers `.history`. Ne démarrez jamais une base restaurée depuis une sauvegarde de base
+L'archive grossit sans limite tant qu'elle n'est pas élaguée (environ 300 fichiers par
+jour, jusqu'à quelques Mo chacun quand la base est active), et garde, chiffrées, les
+données supprimées depuis de la plateforme. Choisissez combien de jours la base doit
+pouvoir remonter, et élaguez chaque jour, après la sauvegarde de base (ADR-215) :
+
+```bash
+COMPOSE_ENV_FILES=.env.production infra/backup/prune.sh 30 --dry-run   # dit ce qui partirait
+COMPOSE_ENV_FILES=.env.production infra/backup/prune.sh 30
+```
+
+Dans le dossier des sauvegardes (`MIMORYA_BACKUPS_DIR`, `backups/` par défaut), les dumps
+et sauvegardes de base nommés par `backup.sh` restent s'ils ont moins de 30 jours, plus,
+de chaque sorte, le dernier d'avant ; les autres partent, un fichier autrement nommé
+jamais. Dans l'archive, la base, qui doit tourner, ne garde que ce dont ces sauvegardes de
+base ont besoin : les fichiers depuis le départ de la plus ancienne d'entre elles, et
+toujours les historiques des lignes temporelles. L'archive d'un autre système (une base
+refaite par un dump) part entière quand son dernier fichier a plus de 30 jours ; jamais
+celle de la base en service. L'âge d'un fichier de l'archive est l'heure de son archivage,
+qu'une copie garde avec `cp -p` ou `rsync -a`. Une copie hors site synchronisée sans
+suppression (`rsync -a` sans `--delete`) garde plus longtemps ce que l'élagage retire ici,
+à votre rythme. Ne démarrez jamais une base restaurée depuis une sauvegarde de base
 autrement que par `restore-base.sh` (voir plus bas), sur le dossier d'archive de la base
 copiée : elle archiverait sous les mêmes noms qu'elle et bloquerait son archivage.
 
 La base de la pile de production est l'image `mimorya-db` (PostgreSQL 16, pgvector et
 `age`) : une installation antérieure qui se met à jour voit son conteneur de base remplacé,
 sur le même volume. La CI vérifie l'archive et la
-sauvegarde de base de la pile qu'elle installe (`infra/docker/wal-archive-test.sh`). La
-conservation de l'archive et le plan de reprise restent à faire (lot 70c).
+sauvegarde de base de la pile qu'elle installe (`infra/docker/wal-archive-test.sh`), sa
+conservation et son état (`infra/docker/archive-retention-test.sh`). Le plan de reprise
+reste à écrire (lot 70c).
 
 #### Restauration à un instant précis
 

@@ -77,7 +77,7 @@ if ((${#found[@]} == 0)); then
     if ((segments == 0)); then
       for file in "$folder/$timeline.history".*.gz.age; do
         archived "$file" "$timeline.history" &&
-          stop "la ligne temporelle $((16#$timeline)) n'a dans l'archive que son historique, aucun segment : la récupération suivrait au-delà de sa bifurcation la ligne dont elle part"
+          stop "la ligne temporelle $((16#$timeline)) n'a dans l'archive que son historique, aucun segment : la récupération suivrait au-delà de sa bifurcation la ligne dont elle part ; restaurez le long de celle-ci (son numéro, ou current), à un instant antérieur à la bifurcation"
       done
     fi
   fi

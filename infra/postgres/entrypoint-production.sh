@@ -9,7 +9,9 @@
 # With the backups' recipients given (MIMORYA_BACKUP_RECIPIENTS, ADR-166),
 # every WAL segment is archived, encrypted for them (ADR-206): they are
 # checked by age before anything is created or changed, as the passwords
-# are, and the archive's folder is made the database's own. PostgreSQL then
+# are, and the archive's folder is made the database's own; it must take
+# hard links (ADR-215), which archive-wal.sh names each file by, before the
+# database is created. PostgreSQL then
 # starts with its archive command and a segment switched at least every five
 # minutes, from the command line, which the settings of ALTER SYSTEM do not
 # override.
@@ -38,6 +40,16 @@ if [[ -n ${MIMORYA_BACKUP_RECIPIENTS:-} ]]; then
   archive=/var/lib/postgresql/wal-archive
   if ! said=$(chown postgres:postgres "$archive" 2>&1 && chmod 700 "$archive" 2>&1); then
     echo "Archive des WAL : le dossier monté sur $archive est inutilisable ($said)" >&2
+    exit 1
+  fi
+  # A folder that takes no hard links (FAT, exFAT, some CIFS or FUSE
+  # mounts) would fail every archiving while the database runs: tried once,
+  # as the database, before anything is created.
+  probe=$archive/.mimorya-link-probe-$$
+  said=$(gosu postgres bash -c 'touch "$1" && ln "$1" "$1-link"' probe "$probe" 2>&1) || linked=no
+  rm -f "$probe" "$probe-link"
+  if [[ ${linked:-yes} == no ]]; then
+    echo "Archive des WAL : le dossier monté sur $archive n'accepte pas les liens physiques, rien n'y serait archivé (${said%%$'\n'*})" >&2
     exit 1
   fi
   archiving=(

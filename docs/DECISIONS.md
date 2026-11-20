@@ -16095,3 +16095,117 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       entreprises, sur une ligne au-delà des autres. L'archiveur n'a plus rien à
       archiver et n'a échoué sur rien ;
   - découpage du chantier 4 (ADR-206) : lots 70a et 70b faits ; reste le lot 70c.
+
+## ADR-215 — Conservation des sauvegardes et de l'archive, état de l'archivage (chantier 4, lot 70c)
+
+- **Statut** : accepté (2026-11-20) · complète ADR-166 (sauvegardes), ADR-206 (archive des
+  WAL) et ADR-214 (restauration à un instant précis).
+- **Contexte** : l'archive des WAL grossit sans limite et garde, chiffrées, les données
+  supprimées depuis de la plateforme ; les sauvegardes aussi. L'exploitant doit pouvoir
+  borner ce qu'il garde, sans jamais retirer ce dont une restauration de la période gardée
+  a besoin. Il doit aussi savoir que l'archivage marche : un archivage en échec ne perd
+  rien tant que le disque de la base tient, mais plus rien n'est restaurable au-delà.
+  ADR-206 laissait au lot 70c la surveillance de `pg_stat_archiver` et l'essai d'un lien
+  physique au démarrage ; le dernier audit d'ADR-214, deux suites.
+- **Décision** :
+  - **conservation** : `infra/backup/prune.sh <jours> [--dry-run]`, chaque jour après la
+    sauvegarde de base. La base doit pouvoir remonter à tout instant des `<jours>` derniers
+    jours, et pas au-delà ;
+    - **sauvegardes** : dans leur dossier (`MIMORYA_BACKUPS_DIR`, `backups/` par défaut),
+      les dumps et sauvegardes de base nommés par `backup.sh` restent s'ils ont été faits
+      dans la période, plus, de chaque sorte, le dernier d'avant : le plus ancien instant
+      de la période vient après lui. Leur âge est l'heure UTC de leur nom, pas celle du
+      fichier, qu'une copie change. Un fichier autrement nommé, un lien symbolique ou un
+      fichier partiel ne sont jamais touchés ;
+    - **archive** : élaguée dans le conteneur de la base, en tant qu'elle
+      (`infra/postgres/prune-wal.sh`, monté comme la commande d'archivage), la base
+      démarrée. Le serveur ne peut lire les sauvegardes de base, chiffrées, ni savoir où
+      elles sont gardées : il s'en tient à leurs historiques dans l'archive
+      (`<segment>.<décalage>.backup`), dont le nom dit le segment de départ et l'heure
+      d'archivage la fin. Dans le dossier de chaque système, les sauvegardes de base
+      gardées sont celles archivées dans la période, plus la dernière d'avant ; les
+      segments, segments partiels et historiques de sauvegardes antérieurs au plus
+      ancien départ parmi elles partent, quelle que soit leur ligne temporelle. Après une
+      restauration à un instant passé, une ligne nouvelle repart d'un segment plus
+      ancien que ceux de la ligne d'avant : le plus ancien départ, non le plus récent,
+      borne donc ce qui part. Les historiques des lignes temporelles restent toujours :
+      petits, une restauration les lit pour choisir sa ligne. Un dossier sans historique
+      de sauvegarde garde tout. Les numéros de segment se comparent en chaînes de même
+      largeur, jamais en nombres (awk lirait `00000000000001E1` comme 10). Les fichiers
+      partent du plus ancien segment au plus récent : ce qui reste d'une ligne n'a jamais
+      de trou ;
+    - le dossier d'un autre système (une base refaite par un dump, ADR-166) part entier
+      quand son dernier fichier est plus vieux que la période : rien de la période n'y
+      est. Celui du système en service, jamais, même si la base a été arrêtée plus
+      longtemps ;
+    - `--dry-run` dit ce qui partirait, sans rien retirer. L'âge d'un fichier de l'archive
+      est l'heure de son archivage, qu'une copie garde avec `cp -p` ou `rsync -a` ; une
+      copie qui ne la garde pas paraît récente, et l'élagage retire moins ;
+    - les deux côtés concordent : une sauvegarde de base gardée par son nom (heure de
+      départ) l'est aussi par son historique (heure de fin, plus tardive), l'archive
+      gardant donc au moins ce dont les sauvegardes gardées ont besoin, sauf pour deux
+      sauvegardes de base menées en même temps ;
+  - **état de l'archivage** : `infra/backup/archive-status.sh [--base-within <heures>]`,
+    pour la surveillance de l'exploitant (`cron`, supervision). Il lit
+    `pg_stat_archiver`, les WAL qui attendent leur archivage (`pg_ls_archive_statusdir`)
+    et, dans le conteneur, les historiques des sauvegardes de base archivés. Il dit où en
+    est l'archive et sort avec 1 quand elle demande un regard :
+    - l'archivage est désactivé (aucun destinataire) ;
+    - le dernier archivage a échoué : son WAL est nommé ;
+    - un WAL attend depuis plus de dix minutes, alors qu'un segment est fermé toutes les
+      cinq au plus ;
+    - avec `--base-within`, aucune sauvegarde de base n'a été archivée depuis ce délai.
+      Il sort avec 2 s'il ne peut lire la base : une supervision tient toute sortie non
+      nulle pour une alerte ;
+  - **liens physiques** : au démarrage, la base essaie, en tant qu'elle, un lien physique
+    dans le dossier de l'archive, après l'avoir pris et avant de rien créer. Un dossier
+    qui n'en accepte pas (FAT, exFAT, certains montages CIFS ou FUSE) ferait échouer
+    chaque archivage, chacun étant nommé par un lien : la base refuse de démarrer, avec
+    la raison de `ln`, et n'y laisse rien ;
+  - **suites d'ADR-214** :
+    - la limite de la règle du trou se dit précisément ainsi. Le long d'une ligne nommée
+      par son numéro, le rejeu ne s'écourte sans un mot que si l'archive de la ligne
+      parente s'arrête avant la bifurcation, sans aucun segment de cette ligne au-delà :
+      une copie de l'archive incomplète, par exemple. Le « jamais » d'ADR-214 se lit avec
+      cette limite. La conservation ne la crée pas : ce qu'elle retire précède le départ
+      d'une sauvegarde de base gardée ;
+    - le message d'une ligne qui n'a dans l'archive que son historique dit quoi faire :
+      restaurer le long de la ligne dont elle part, à un instant antérieur à la
+      bifurcation ;
+    - le test de la restauration écrit le second instant en `UTC` par son nom.
+- **Conséquences** :
+  - une donnée supprimée de la plateforme quitte les sauvegardes et l'archive au plus
+    tard après la période, plus l'intervalle entre deux sauvegardes de base (la dernière
+    d'avant la période reste). Une copie hors site synchronisée sans suppression la garde
+    plus longtemps : sa conservation est celle de l'exploitant ;
+  - une pile arrêtée n'est pas élaguée : `prune.sh` le dit et ne retire que les
+    sauvegardes ;
+  - une sauvegarde de base gardée ailleurs plus longtemps que la période ne se restaure
+    plus qu'à son propre instant : l'archive de sa suite est partie ;
+  - le plan de reprise (objectifs de perte et de durée, procédures) suit, en second temps
+    du lot 70c ;
+  - test (`infra/docker/archive-retention-test.sh`, en CI le dernier de la pile de
+    production, dont il vieillit l'archive) :
+    - l'état dit l'archive à jour, puis, avec `--base-within`, la sauvegarde de base
+      faite ; un archivage en échec (dossier du système en lecture seule) est dit avec son
+      WAL, puis l'archive de nouveau à jour une fois l'archivage reparti ;
+    - un `--dry-run` ne retire rien et dit ce qui partirait ;
+    - dans le dossier des sauvegardes, à 30 jours : les plus récentes et la dernière
+      d'avant de chaque sorte restent, les autres partent ; un fichier autrement nommé et
+      un fichier partiel restent ;
+    - dans l'archive :
+      - le dossier d'un autre système aux fichiers tous anciens part entier ;
+      - dans un dossier à sauvegardes de base, ce qui précède le plus ancien départ gardé
+        part, d'une ligne comme d'une autre, et les historiques des lignes et un fichier
+        partiel caché restent ;
+      - un numéro de segment qui se lit comme un nombre en notation scientifique se
+        compare en hexadécimal ;
+      - un dossier sans sauvegarde de base reste entier ;
+      - dans le dossier du système en service, toute sauvegarde de base et ce dont elle a
+        besoin restent ;
+    - les fichiers du système en service, tous vieillis de 40 jours dans leur ordre : son
+      dossier reste, avec la dernière sauvegarde de base et ce qui la suit, rien d'avant
+      que les historiques des lignes, et la base archive toujours ; `--base-within 24`
+      dit alors qu'aucune sauvegarde de base n'est récente ;
+    - la base refuse de démarrer sur un dossier d'archive sans liens physiques (CI, un
+      `ln` qui échoue toujours à sa place), sans données ni fichier d'essai laissés.
