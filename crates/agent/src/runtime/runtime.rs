@@ -19,7 +19,7 @@ use serde_json::json;
 
 use super::answer_review::present_answer;
 use super::budget::check_budget;
-use super::decided_routing::count;
+use super::decision_costs::count;
 use super::escalation::escalate_after_failure;
 use super::model_call::{ModelTurn, call_model};
 use super::ports::{CurrentAccess, RunEvent, StepAccess};
@@ -53,8 +53,10 @@ impl AgentRuntime {
 
     pub async fn start(&self, input: StartInput) -> anyhow::Result<RunOutcome> {
         let mut messages = input.history;
-        let turn = with_skills(input.user_turn, &input.skills_shown);
-        messages.push(LlmMessage::user(input.unavailable.note(turn)));
+        // The skills listed come first, so that a lesson finds the request
+        // after them (ADR-213, D2).
+        let turn = with_skills(input.unavailable.note(input.user_turn), &input.skills_shown);
+        messages.push(LlmMessage::user(turn));
         let mut state = RunCheckpoint::new(input.system, messages);
         state.evidence = input.evidence;
         state.skills_shown = input.skills_shown;

@@ -8,13 +8,13 @@
 //! budget, its escalations per run) are the only gate either way. Each call
 //! that answered is counted in the run.
 
+use super::decision_costs::count;
 use super::state::RunCheckpoint;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::decision::{
-    Counted, DecisionMode, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionState,
-    DecisionUsage, MAX_DECIDED_REQUEST_CHARS,
+    DecisionMode, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionState, DecisionUsage,
+    MAX_DECIDED_REQUEST_CHARS,
 };
-use crate::runtime::ports::RunEvent;
 
 const QUESTION: &str = "niveau";
 const MAIN: &str = "principal";
@@ -99,30 +99,6 @@ fn routing_request(objective: &str) -> DecisionRequest {
             ],
         )],
     }
-}
-
-/// The calls that answered, added to the run's totals as its other calls.
-pub(super) async fn count(
-    deps: &RuntimeDeps,
-    state: &mut RunCheckpoint,
-    counted: &[Counted],
-) -> anyhow::Result<()> {
-    for call in counted {
-        state.usage.input_tokens += call.input_tokens;
-        state.usage.output_tokens += call.output_tokens;
-        state
-            .usage
-            .add_cost(call.cost_micros.unwrap_or(0), call.charged_micros);
-        deps.ports
-            .events
-            .emit(RunEvent::Usage {
-                input_tokens: call.input_tokens,
-                output_tokens: call.output_tokens,
-                cost_micros: call.cost_micros.map(|_| call.charged_micros),
-            })
-            .await?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]

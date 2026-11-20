@@ -48,7 +48,7 @@ impl TypedTool for SkillRead {
         ToolInfo::new(
             SKILL_READ,
             "Lecture d’une compétence",
-            "Charge le contenu complet d’une compétence (procédure validée par l’entreprise) listée dans les consignes. À utiliser avant d’exécuter une tâche couverte par une compétence.",
+            "Charge le contenu complet d’une compétence (procédure validée par l’entreprise) listée dans les consignes ou avec la demande. À utiliser avant d’exécuter une tâche couverte par une compétence.",
             ToolRisk::Read,
         )
         .requires(["skill:read"])

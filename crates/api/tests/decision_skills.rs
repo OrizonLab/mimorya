@@ -3,8 +3,9 @@
 //! none and the first turn lists those said useful, or every one when the
 //! decision fails; observed, the decision is asked and counted, the system
 //! prompt lists them all as before and the first turn none; a sub-agent is
-//! listed what its parent was; a person whose agent may not read skills is
-//! listed none, and nothing is asked. (The
+//! listed what its parent was, even one entrusted once the run resumes
+//! after a validation; a person whose agent may not read skills is listed
+//! none, and nothing is asked. (The
 //! rules of the choice itself: `crates/agent/src/runtime/skill_choice.rs`.)
 
 mod support;
@@ -16,6 +17,7 @@ use mimorya_db::repositories::skills::list_active_skills;
 use serde_json::{Map, Value, json};
 use support::decisions::{DECISIONS, set, settings};
 use support::llm::SCRIPTED_CALL_MICROS;
+use support::planning::{apply_proposal, propose};
 use support::runs::start_run;
 use support::usage_roles::recorded_roles;
 use support::{Client, TestApi};
@@ -191,6 +193,65 @@ async fn a_sub_agent_is_listed_the_skills_its_parent_was() {
         .find(|request| request.system.contains("sous-agent"))
         .expect("the sub-agent's request");
     assert!(!child.system.contains(FULL_INDEX), "{}", child.system);
+    let turn = format!("{:?}", child.messages.last().unwrap());
+    assert!(turn.contains(CHOSEN), "{turn}");
+    for name in &names {
+        assert!(turn.contains(name.as_str()), "{name}: {turn}");
+    }
+    assert_eq!(paul.delete(DECISIONS).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_sub_agent_entrusted_after_a_validation_is_listed_them_too() {
+    let api = TestApi::start_priced().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let names = skill_names(&api).await;
+    set(&paul, choosing("active")).await;
+    // The decision failing, every skill is listed; the run pauses on an
+    // action to validate, and entrusts a task once it resumes, from the
+    // checkpoint read back from the database.
+    let delegated = ScriptedStep::calls(
+        "",
+        vec![call(
+            "delegate_task",
+            json!({ "profile": "research", "task": "Vérifier le planning de la semaine" }),
+        )],
+    );
+    api.script(vec![
+        ScriptedStep::text("Je ne sais pas."),
+        propose("INT-2052", "16:00"),
+        apply_proposal(""),
+        delegated,
+        ScriptedStep::text("Planning vérifié."),
+        ScriptedStep::text(ANSWER),
+    ]);
+    let run = start_run(&marc).await;
+    api.idle().await;
+    let approvals = marc.get("/approvals").await.json();
+    let approval = approvals["approvals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["runId"] == json!(run))
+        .expect("an action to validate")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let decided = marc
+        .post(
+            &format!("/approvals/{approval}/decision"),
+            json!({ "approved": true }),
+        )
+        .await;
+    assert_eq!(decided.status, StatusCode::OK, "{}", decided.text());
+    api.idle().await;
+    let requests = api.model.as_ref().unwrap().requests();
+    let child = requests
+        .iter()
+        .find(|request| request.system.contains("sous-agent"))
+        .expect("the sub-agent's request, once the run resumed");
     let turn = format!("{:?}", child.messages.last().unwrap());
     assert!(turn.contains(CHOSEN), "{turn}");
     for name in &names {
