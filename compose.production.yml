@@ -88,6 +88,8 @@ services:
       - ./infra/postgres/entrypoint-production.sh:/usr/local/bin/entrypoint-production.sh:ro
       - ./infra/postgres/init-production.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
       - ./infra/postgres/archive-wal.sh:/usr/local/bin/archive-wal.sh:ro
+      # Read from the archive in a restore to a point in time (ADR-214).
+      - ./infra/postgres/restore-wal.sh:/usr/local/bin/restore-wal.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U mimorya']
       interval: 5s

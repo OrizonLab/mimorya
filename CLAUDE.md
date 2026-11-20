@@ -463,15 +463,21 @@ Repères à l'intérieur des crates :
   `age`, `db.Dockerfile`, ADR-206, liste des images publiées
   `images.json`, test de fumée de la démonstration, test d'installation de la production,
   archive des WAL et sauvegarde de base vérifiées, `wal-archive-test.sh`, ADR-206,
+  restauration à un instant précis vérifiée, trois fois depuis la même archive,
+  `point-in-time-test.sh`, ADR-214, vérifications de l'archive partagées
+  `archive-checks.sh`,
   sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166, son
   journal d'audit vérifié avant et après par l'exploitant et l'entreprise, ancres lues
   dans les journaux des processus, `audit-chain.sh`, ADR-180,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base),
   `backup/` (sauvegarde de la base chiffrée par age pour des clés publiques, dump ou
-  sauvegarde de base (`--base`, ADR-206), restauration dans une pile nouvelle, ADR-166), `caddy/`
+  sauvegarde de base (`--base`, ADR-206), restauration dans une pile nouvelle, ADR-166, et
+  à un instant précis, sauvegarde de base et WAL de l'archive rejoués, `restore-base.sh`,
+  ADR-214), `caddy/`
   (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
   mots de passe et les destinataires de l'archive des WAL et l'active, `archive-wal.sh`
-  chiffre chaque WAL archivé, un dossier par système de base, ADR-206,
+  chiffre chaque WAL archivé, un dossier par système de base, ADR-206, `restore-wal.sh`
+  rend chacun à une restauration à un instant, déchiffré et vérifié, ADR-214,
   `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
   (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,
   ADR-034) et `compose.demo.yml` (pile de démonstration,

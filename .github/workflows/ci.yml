@@ -549,6 +549,16 @@ jobs:
           BACKUPS_IDENTITY: ${{ runner.temp }}/backups-identity.txt
           FORMER_WAL_FOLDER: ${{ steps.wal-archive.outputs.folder }}
         run: infra/docker/wal-archive-test.sh
+      # A base backup, then the archive replayed into the stack's database
+      # thrown away, three times: up to two instants, then along a timeline
+      # named by its number (ADR-214).
+      - name: Restore of the production stack to a point in time
+        env:
+          # The test throws the stack's database away.
+          DISPOSABLE_STACK: 'yes'
+          COMPOSE_FILE: compose.production.yml:compose.production.build.yml
+          BACKUPS_IDENTITY: ${{ runner.temp }}/backups-identity.txt
+        run: infra/docker/point-in-time-test.sh https://localhost
       - name: Logs of the production stack
         if: always()
         run: docker compose -f compose.production.yml -f compose.production.build.yml logs --no-color | tail -n 200

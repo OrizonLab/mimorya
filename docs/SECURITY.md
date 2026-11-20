@@ -1128,7 +1128,9 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   ouvre restant hors du serveur, et restauration dans une pile nouvelle vérifiée en CI
   (ADR-166, `infra/backup/`) ; archive continue des WAL et sauvegarde de base, chiffrées
   de même, l'archive jamais en clair ni remplacée (ADR-206) ; restauration à un instant
-  précis en phase 3.
+  précis dans une pile nouvelle, chaque WAL vérifié contre le SHA-256 de son nom avant
+  d'être rejoué, l'identité remise à la base pour la seule récupération, dans sa mémoire
+  (ADR-214).
 
 ## 11. Liste de contrôle pour chaque contribution
 

@@ -18,7 +18,8 @@
 #   - FORMER_WAL_FOLDER, the folder a former run printed, if given: a
 #     database made anew archives in another folder, the former one's kept.
 # What it adds to the archive, it removes. It reads the archive as root
-# (sudo unless root): the folder is the database's (uid 999), its own only.
+# (sudo unless root, archive-checks.sh): the folder is the database's (uid
+# 999), its own only.
 # The stack's variables and compose files as for production-test.sh. Needs
 # age, age-keygen, gzip and tar.
 #   BACKUPS_IDENTITY=identity.txt infra/docker/wal-archive-test.sh
@@ -27,6 +28,7 @@ identity=${BACKUPS_IDENTITY:-}
 [[ -z $identity || $identity == /* ]] || identity=$PWD/$identity
 cd "$(dirname "$0")/../.."
 source infra/docker/checks.sh
+source infra/docker/archive-checks.sh
 
 check_name="WAL archive test"
 export COMPOSE_FILE=${COMPOSE_FILE:-compose.production.yml}
@@ -36,27 +38,8 @@ recipient=$(age-keygen -y "$identity") || fail "cannot read the identity's recip
 archive=${MIMORYA_WAL_ARCHIVE:-./wal-archive}
 [[ $archive == /* ]] || archive=$PWD/${archive#./}
 
-as_root() { if ((EUID)); then sudo "$@"; else "$@"; fi; }
 sql() {
   docker compose exec -T db psql -U mimorya -d mimorya -tAc "$1" || fail "cannot run: $1"
-}
-# The archived files named <name>.<64 hex digits>.gz.age in the system's folder.
-archived() {
-  as_root find "$folder" -maxdepth 1 -regextype posix-extended \
-    -regex ".*/$1\.[0-9a-f]{64}\.gz\.age" | sort
-}
-# Waits a minute at most for the file named $1 to be archived; prints it.
-await_archived() {
-  local found
-  for _ in $(seq 1 60); do
-    found=$(archived "$1")
-    [[ -z $found ]] || {
-      echo "$found"
-      return
-    }
-    sleep 1
-  done
-  fail "$1 was not archived within a minute: $(sql 'select failed_count, last_failed_wal from pg_stat_archiver')"
 }
 # The archive command run by hand, as the archiver runs it.
 archive_again() {

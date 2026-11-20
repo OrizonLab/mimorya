@@ -15941,3 +15941,157 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     objet et son début seuls) ; l'agent n'est éveillé, par un run au nom de la personne
     comme un déclencheur (ADR-109), que pour les e-mails au-dessus du seuil, les autres
     seulement classés ; la détection d'instructions (D6) lit l'e-mail avant tout run.
+
+## ADR-214 — Restauration à un instant précis dans une pile nouvelle (chantier 4, lot 70b)
+
+- **Statut** : accepté (2026-11-20) · complète ADR-206 (archive des WAL, sauvegarde de
+  base) et ADR-166 (sauvegardes chiffrées).
+- **Contexte** : ADR-206 archive chaque WAL, chiffré pour les clés publiques des
+  sauvegardes, et fait des sauvegardes de base. Il reste à les rejouer : ramener la base à
+  un instant choisi, juste avant une erreur (des données supprimées par mégarde) ou une
+  panne, dans une pile nouvelle. La copie restaurée ne doit pas gêner l'archive de la base
+  copiée, ni l'identité qui ouvre l'archive rester où que ce soit.
+- **Décision** :
+  - **script** : `infra/backup/restore-base.sh <sauvegarde de base> <identité> [instant]`,
+    lancé sur l'hôte de la pile nouvelle. Sa base doit être arrêtée et vide (jamais
+    démarrée, ou `down -v`), et le dossier de son archive (`MIMORYA_WAL_ARCHIVE`) doit
+    tenir une copie de celle de la base sauvegardée, ramenée de hors site. Il refuse :
+    - une base démarrée, ou qui contient déjà des fichiers ;
+    - un instant qui n'est pas une date, une heure et son fuseau, une fraction de seconde
+      seulement après les secondes : il ne peut sortir de son réglage, et PostgreSQL le
+      lit comme le script, quel que soit son propre fuseau (il lirait `14:30.5` en
+      minutes et secondes). Seuls les fuseaux que PostgreSQL prend sur sa ligne de
+      commande sont acceptés : `UTC`, `GMT`, ou un décalage jusqu'à ±15:59 (`+01`,
+      `-05:30`) ; jamais `Z`, qu'il ne lit qu'en session ;
+    - une sauvegarde que l'identité n'ouvre pas ;
+    - un dossier d'archive sans celui du système de la base sauvegardée, lu dans la
+      sauvegarde (`pg_controldata`) ;
+    - une sauvegarde dont l'étiquette (`backup_label`) ne date pas son début en UTC ou
+      par un décalage : dans le `log_timezone` de la base, UTC par défaut, une autre
+      abréviation pourrait en désigner plusieurs (IST) ;
+    - un instant qui ne vient pas au moins une seconde après le début de la sauvegarde
+      (`START TIME`, à la seconde), avant toute récupération. Les deux sont comparés en
+      secondes depuis 1970 par l'image de la base (`date` de GNU). Une sauvegarde
+      commencée après l'instant tient déjà ce qui a été validé depuis, que la
+      récupération ne peut défaire : sans transaction validée pendant la copie,
+      PostgreSQL s'arrêterait sans un mot au premier commit suivant, la base revenue à
+      la fin de la copie et non à l'instant. Le début est écrit après le checkpoint de
+      la sauvegarde : un instant d'une seconde plus tard suit tout commit que la
+      récupération ne rejoue pas, ceux d'avant le point de reprise du checkpoint. Ceux
+      de la copie sont rejoués, et un commit postérieur à l'instant y fait échouer la
+      récupération, ce qui est dit. Une vérification faite pendant la récupération, à
+      une pause à l'instant, a été écartée : PostgreSQL ne s'y arrête que si la lecture
+      y est ouverte (hot standby), ce qu'une transaction de plus de 64
+      sous-transactions pendant la copie peut retarder au-delà de l'instant ;
+  - **déballage** : la sauvegarde est déchiffrée par `age` sur l'hôte, puis décompressée et
+    dépaquetée dans le volume de la base par un conteneur de son image, et rendue à la base
+    (uid 999, 700). Rien en clair ne touche le disque de l'hôte ;
+  - **récupération** : la base démarre dans un conteneur à part, avec `recovery.signal`.
+    Ses réglages de récupération sont passés en ligne de commande, jamais écrits dans sa
+    configuration : `restore_command` et `recovery_target_timeline`, et avec un instant
+    `recovery_target_time` et `recovery_target_action=promote`.
+    - Elle rejoue les WAL jusqu'au premier commit après l'instant, ou tous sans instant,
+      puis sort de récupération sur une nouvelle ligne temporelle.
+    - Le script attend qu'elle en soit sortie, au plus `MIMORYA_RESTORE_TIMEOUT` secondes
+      (une heure par défaut, au-delà de quoi elle est arrêtée). Il lit sa ligne
+      temporelle, qu'il dit en décimal, comme `MIMORYA_RESTORE_TIMELINE` la prend, puis
+      l'arrête en lui laissant le temps d'écrire ce qu'elle tient en mémoire, et dit de
+      démarrer la pile (`up -d`).
+    - Une récupération qui s'arrête (un commit postérieur à l'instant pendant la copie,
+      un instant au-delà de l'archive, un WAL inutilisable, un trou dans l'archive) est
+      dite, avec la fin de son journal ;
+  - **ligne temporelle rejouée** : par défaut, celle de la sauvegarde de base (`current`).
+    `MIMORYA_RESTORE_TIMELINE` en nomme une autre par son numéro, quand la base
+    sauvegardée a elle-même changé de ligne temporelle après la sauvegarde (une
+    restauration antérieure mise en production) : la récupération suit alors son
+    histoire. `latest` est refusé : il suivrait la plus récente ligne temporelle de
+    l'archive, qu'une restauration antérieure a pu ouvrir, et ramènerait sans un mot la
+    base à l'instant de cette restauration-là ;
+  - **commande de restauration** (`infra/postgres/restore-wal.sh`) : PostgreSQL la lance
+    pour chaque fichier qu'il demande, segment ou historique d'une ligne temporelle, dont
+    le nom est vérifié.
+    - Le fichier est cherché dans le dossier du système de la base
+      (`<nom>.<sha256>.gz.age`), déchiffré, décompressé à côté de sa destination, comparé
+      au SHA-256 de son nom, puis renommé. PostgreSQL ne lit donc jamais un fichier à
+      moitié écrit, ni un autre contenu que celui archivé.
+    - Absent, la commande échoue sans bruit : PostgreSQL demande des fichiers au-delà de
+      la fin de l'archive, et des historiques qui n'existent pas pour choisir sa nouvelle
+      ligne temporelle.
+    - Ce qui écourterait la restauration sans un mot l'arrête au contraire (statut 126,
+      que PostgreSQL tient pour fatal) : un fichier présent mais illisible (une autre
+      identité, un fichier abîmé, une somme qui diffère) ou en double ; un segment absent
+      quand un segment suivant de sa ligne temporelle est archivé, un trou où le rejeu
+      s'arrêterait ; un segment d'une ligne temporelle dont l'historique est archivé et
+      aucun segment (sa base disparue avant d'en fermer un) : PostgreSQL lirait à la
+      place le segment de la ligne dont elle part, et rejouerait celle-ci au-delà de
+      leur bifurcation ; un dossier de l'archive qui n'est pas à la base (uid 999),
+      copié en `root` ou renuméroté par un autre hôte, dont les fichiers sembleraient
+      absents.
+      Une archive à laquelle on ne peut se fier n'écourte jamais une restauration en
+      silence ;
+  - **identité** : elle est remise au conteneur de la récupération sur son entrée standard
+    et écrite dans sa mémoire (`/dev/shm`, lisible par la base seule), jamais sur un volume
+    ni dans son environnement ; elle part avec lui. La pile démarrée ensuite ne l'a pas et
+    n'en a pas besoin : elle archive pour les clés publiques ;
+  - **archive après la restauration** : la base restaurée garde l'identifiant de système de
+    la base sauvegardée, donc archive dans son dossier, sous sa nouvelle ligne temporelle.
+    PostgreSQL choisit celle-ci au-delà des historiques déjà archivés. Les segments
+    restaurés depuis l'archive sont notés comme déjà archivés : la récupération n'en
+    archive aucun, ni segment partiel de l'ancienne ligne. Deux restaurations de la même
+    archive, à deux instants, archivent ainsi côte à côte sans se gêner, ni gêner la base
+    sauvegardée si elle tourne encore ;
+  - la pile nouvelle garde la clé maître (`MIMORYA_MASTER_KEY`) de la pile sauvegardée, qui
+    scelle les secrets de la base, et ses mots de passe de base : les rôles font partie
+    d'une sauvegarde de base, contrairement au dump d'ADR-166.
+- **Conséquences** :
+  - l'instant est celui de PostgreSQL (`timestamptz`), avec son fuseau : la base revient à
+    son dernier commit qui le précède. Il faut une sauvegarde de base commencée avant lui,
+    au mieux la plus récente terminée avant lui : entre son début et sa fin, un commit
+    postérieur à l'instant fait échouer la récupération, ce qui est dit ;
+  - la perte de données reste celle d'ADR-206 : jusqu'à cinq minutes (`archive_timeout`),
+    plus l'intervalle de la copie hors site de l'archive. Le plan de reprise les fixe (lot
+    70c) ;
+  - la durée d'une restauration croît avec les WAL à rejouer depuis la sauvegarde de base :
+    des sauvegardes de base fréquentes la bornent ;
+  - une restauration qui échoue laisse les fichiers déballés : `down -v` vide la base avant
+    de réessayer, comme le dit chaque refus ;
+  - la règle du trou ne regarde que la ligne temporelle du segment demandé. Restaurée le
+    long d'une ligne nommée par son numéro, une archive qui aurait perdu des segments de
+    la ligne parente, avant la bifurcation, tout en gardant ceux de la ligne nommée,
+    s'arrêterait au trou sans le dire. Cela suppose des fichiers retirés à la main de
+    l'archive après la bifurcation ; la conservation du lot 70c ne retire que des
+    segments antérieurs à la plus ancienne sauvegarde de base gardée ;
+  - restaurer dans la pile même de la base sauvegardée, une fois sa base arrêtée et vidée,
+    est possible mais perd ce qu'elle tenait : la procédure du plan de reprise le dira (lot
+    70c) ;
+  - test (`infra/docker/point-in-time-test.sh`, en CI après les tests de l'archive) : sur
+    la pile de production, un instant noté, puis une sauvegarde de base. Ensuite trois
+    entreprises sont ouvertes l'une après l'autre, un instant noté entre chacune, et le
+    segment qui les tient archivé, puis un autre :
+    - la restauration est refusée base démarrée, base qui contient des fichiers, pour un
+      instant à apostrophe, sans fuseau, à fraction sans secondes, en `Z` ou à décalage
+      de 16 heures, avec une autre identité, sans l'archive de la base dans le dossier,
+      et pour la ligne temporelle `latest` ;
+    - ce qui écourterait la récupération l'arrête, et sa raison est dite : le premier
+      segment lu remplacé par un autre contenu, chiffré pour la même clé ; le segment des
+      entreprises retiré, sans instant ; une copie de l'archive faite en `root` ;
+    - l'instant noté avant la sauvegarde, écrit à l'heure de UTC+1 (`+01`), est refusé
+      avant toute récupération, sans ligne temporelle nouvelle : la première
+      restauration prend la suivante, au premier instant écrit à l'heure de UTC-5
+      (`-05`) ;
+    - restaurée au premier instant, la pile sert la première entreprise, dont
+      l'administrateur se connecte, et aucune des deux autres. La base est le même
+      système, sur la ligne temporelle suivante, dite en décimal, sans les réglages de la
+      récupération ni son conteneur. Une quatrième entreprise y est ouverte, et sa ligne
+      temporelle est archivée à côté de l'ancienne, avec son historique ;
+    - le long de la ligne de la première restauration, une copie de l'archive qui n'en
+      tient que l'historique, aucun segment, arrête la récupération, et la raison est
+      dite ;
+    - restaurée de nouveau au second instant, depuis la même sauvegarde et la même
+      archive : les deux premières entreprises, pas les autres, sur une ligne temporelle
+      au-delà des deux autres ;
+    - restaurée une troisième fois, toute l'archive rejouée le long de la ligne de la
+      première restauration, nommée par son numéro : la première et la quatrième
+      entreprises, sur une ligne au-delà des autres. L'archiveur n'a plus rien à
+      archiver et n'a échoué sur rien ;
+  - découpage du chantier 4 (ADR-206) : lots 70a et 70b faits ; reste le lot 70c.
