@@ -46,7 +46,11 @@ if [[ -n ${MIMORYA_BACKUP_RECIPIENTS:-} ]]; then
   # mounts) would fail every archiving while the database runs: tried once,
   # as the database, before anything is created.
   probe=$archive/.mimorya-link-probe-$$
-  said=$(gosu postgres bash -c 'touch "$1" && ln "$1" "$1-link"' probe "$probe" 2>&1) || linked=no
+  if ! said=$(gosu postgres touch "$probe" 2>&1); then
+    echo "Archive des WAL : la base ne peut écrire dans le dossier monté sur $archive, rien n'y serait archivé (${said%%$'\n'*})" >&2
+    exit 1
+  fi
+  said=$(gosu postgres ln "$probe" "$probe-link" 2>&1) || linked=no
   rm -f "$probe" "$probe-link"
   if [[ ${linked:-yes} == no ]]; then
     echo "Archive des WAL : le dossier monté sur $archive n'accepte pas les liens physiques, rien n'y serait archivé (${said%%$'\n'*})" >&2

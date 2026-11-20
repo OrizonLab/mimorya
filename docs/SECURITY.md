@@ -940,7 +940,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   pas les sauvegardes déjà faites (ADR-166), ni l'archive des WAL (ADR-206) : la donnée y
   reste, chiffrée, jusqu'à ce que la conservation fixée par l'exploitant les retire
   (`infra/backup/prune.sh <jours>`, ADR-215) : au plus ce nombre de jours, plus
-  l'intervalle entre deux sauvegardes de base.
+  l'intervalle entre deux sauvegardes de base, et plus longtemps après une restauration
+  à un instant passé ou pour une archive sans sauvegarde de base, que
+  `archive-status.sh --base-within` signale.
 - **Export du journal d'audit** (ADR-181) : le SIEM de l'entreprise reçoit les
   identifiants des comptes, les adresses IP et les identifiants des personnes chez
   Slack, Telegram ou Teams que le journal porte ; l'entreprise,

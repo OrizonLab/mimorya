@@ -5,18 +5,27 @@
 #     --base-within, a base archived since; an archiving that fails (the
 #     system's folder made read-only) said with its WAL (1), then up to date
 #     once it archives again;
-#   - prune.sh 30, after a --dry-run that removes nothing:
-#       - in the backups' folder, the dumps and bases made in the last 30
-#         days kept, and of each kind the last one before; the older ones
-#         removed; a file named otherwise, a partial file, kept;
-#       - in the archive, the folder of another system whose files are all
-#         older removed whole; in a folder with bases, the files before the
-#         earliest start among the bases kept removed, whatever their
-#         timeline, the timelines' histories and a hidden partial file
-#         kept; a segment number that reads as a number in scientific
-#         notation (…01E1) compared as hexadecimal; a folder without any
-#         base left whole; in the current system's folder, every base and
-#         what it needs kept;
+#   - prune.sh 30, after a --dry-run that removes nothing, on made-up
+#     folders of the archive:
+#       - the folder of another system whose files are all older, removed
+#         whole;
+#       - in a folder with bases, the files before the earliest start among
+#         the bases kept (those archived since the cutoff, the last before)
+#         removed, whatever their timeline; the timelines' histories and a
+#         hidden partial file kept;
+#       - a timeline begun by a restore inside the period, forked before
+#         bases of its parent's abandoned branch: the parent's last base
+#         before the fork kept, and what follows it, which the new
+#         timeline's first instants need;
+#       - a segment number that reads as a number in scientific notation
+#         (…01E1) compared as hexadecimal; a folder without any base left
+#         whole; in the current system's folder, every base and what it
+#         needs kept;
+#     and in the backups' folder: of the base backups, those made since the
+#     cutoff and the last made before each base the archive keeps ended (one
+#     begun before the cutoff and ended after it among them); of the dumps,
+#     those made since and the last before; a file named otherwise, a
+#     partial file, kept;
 #   - the current system's folder, its files all made 40 days older, is
 #     never removed: the last base before the cutoff and what follows it
 #     are kept, nothing before it but the timelines' histories, and it
@@ -69,9 +78,16 @@ owner=$(as_root stat -c %u "$folder") || fail "the stack archives nothing in $fo
 said=$(status_becomes 5 0)
 [[ $said == "Archive à jour : "* ]] || fail "unexpected state: $said"
 age-keygen -o "$work/identity.txt" 2>/dev/null
+count_bases() { archived '[0-9A-F]{24}\.[0-9A-F]{8}\.backup' | wc -l; }
+bases_before=$(count_bases)
 MIMORYA_BACKUP_RECIPIENTS=$(age-keygen -y "$work/identity.txt") \
   infra/backup/backup.sh --base "$work/base.tar.gz.age" >/dev/null
-said=$(status_becomes 60 0 --base-within 1)
+# Its history is archived after the base ends.
+for _ in $(seq 1 60); do
+  (($(count_bases) > bases_before)) && break
+  sleep 1
+done
+said=$(status_becomes 5 0 --base-within 1)
 grep -q 'dernière sauvegarde de base archivée il y a 0 min' <<<"$said" || fail "no recent base said: $said"
 as_root chmod 500 "$folder"
 sql "create table if not exists retention_marks (x int); insert into retention_marks values (1)" >/dev/null
@@ -86,48 +102,81 @@ sql "select pg_switch_wal()" >/dev/null
 await_archived "$segment" >/dev/null
 said=$(status_becomes 60 0)
 
-# Made-up files, as the database's, aged: name, then age in days.
+# Made-up files, as the database's, aged: folder, name, age in minutes.
 sum=$(printf '%064d' 0 | tr 0 a)
-day() { date -u -d "$1 days ago" +%Y%m%dT%H%M%SZ; }
+day=1440
+named() { date -u -d "$1 minutes ago" +%Y%m%dT%H%M%SZ; }
 made_up() {
   local in=$archive/$1 name=$2 age=$3
   as_root install -d -m 700 -o "$owner" -g "$owner" "$in"
   as_root install -m 600 -o "$owner" -g "$owner" /dev/null "$in/$name"
-  as_root touch -d "$age days ago" "$in/$name"
+  as_root touch -d "$age minutes ago" "$in/$name"
 }
 segment_of() { printf '%08X%016X' "$1" "$2"; }
+segment() { made_up "$1" "$(segment_of "$2" "$3").$sum.gz.age" "$4"; }
+base() { made_up "$1" "$(segment_of "$2" "$3").00000028.backup.$sum.gz.age" "$4"; }
 gone=1000000000000000001
 pruned=1000000000000000002
 notation=1000000000000000003
 baseless=1000000000000000004
-made_up $gone "$(segment_of 1 1).$sum.gz.age" 40
-made_up $gone "$(segment_of 1 1).00000028.backup.$sum.gz.age" 40
-made_up $gone "00000002.history.$sum.gz.age" 40
+forked=1000000000000000005
+straddling=1000000000000000006
+segment $gone 1 1 $((40 * day))
+base $gone 1 1 $((40 * day))
+made_up $gone "00000002.history.$sum.gz.age" $((40 * day))
 for n in 1 2 3 4 5 6 7 8 9 10; do
-  made_up $pruned "$(segment_of 1 "$n").$sum.gz.age" $((55 - n * 5))
+  segment $pruned 1 "$n" $(((55 - n * 5) * day))
 done
-made_up $pruned "$(segment_of 1 2).00000028.backup.$sum.gz.age" 50
-made_up $pruned "$(segment_of 1 5).00000028.backup.$sum.gz.age" 40
-made_up $pruned "$(segment_of 1 8).00000028.backup.$sum.gz.age" 10
-made_up $pruned "$(segment_of 1 3).partial.$sum.gz.age" 45
-made_up $pruned "$(segment_of 2 4).$sum.gz.age" 44
-made_up $pruned "00000002.history.$sum.gz.age" 45
-made_up $pruned ".$(segment_of 1 9).partial-AbCdEf" 45
-made_up $notation "$(segment_of 1 255).$sum.gz.age" 45
-made_up $notation "$(segment_of 1 256).00000028.backup.$sum.gz.age" 40
-made_up $notation "$(segment_of 1 256).$sum.gz.age" 40
-made_up $notation "$(segment_of 1 481).00000028.backup.$sum.gz.age" 10
-made_up $notation "$(segment_of 1 481).$sum.gz.age" 10
-made_up $baseless "$(segment_of 1 1).$sum.gz.age" 40
-made_up $baseless "$(segment_of 1 2).$sum.gz.age" 1
+base $pruned 1 2 $((50 * day))
+base $pruned 1 5 $((40 * day))
+base $pruned 1 8 $((10 * day))
+made_up $pruned "$(segment_of 1 3).partial.$sum.gz.age" $((45 * day))
+segment $pruned 2 4 $((44 * day))
+made_up $pruned "00000002.history.$sum.gz.age" $((45 * day))
+made_up $pruned ".$(segment_of 1 9).partial-AbCdEf" $((45 * day))
+segment $notation 1 255 $((45 * day))
+base $notation 1 256 $((40 * day))
+segment $notation 1 256 $((40 * day))
+base $notation 1 481 $((10 * day))
+segment $notation 1 481 $((10 * day))
+segment $baseless 1 1 $((40 * day))
+segment $baseless 1 2 $((1 * day))
+# Timeline 1, its bases at segments 2, 5 and 8, all older than the cutoff;
+# 20 days ago, a restore to an instant of segment 3 began timeline 2.
+for n in 1 2 3 4 5 6 7 8 9; do
+  segment $forked 1 "$n" $(((47 - n) * day))
+done
+base $forked 1 2 $((45 * day))
+base $forked 1 5 $((40 * day))
+base $forked 1 8 $((33 * day))
+made_up $forked "00000002.history.$sum.gz.age" $((20 * day))
+for n in 3 4 5 6; do
+  segment $forked 2 "$n" $(((35 - n * 5) * day))
+done
+base $forked 2 5 $((10 * day))
+# A base that ended a day before the cutoff, one begun before it and ended
+# after it.
+segment $straddling 1 15 $((32 * day))
+segment $straddling 1 16 $((31 * day + 5))
+base $straddling 1 16 $((31 * day))
+segment $straddling 1 17 $((30 * day + 30))
+base $straddling 1 18 $((30 * day - 20))
+segment $straddling 1 18 $((30 * day - 25))
+segment $straddling 1 19 $((1 * day))
 
 backups=$work/backups
 mkdir "$backups"
-# Named once: the names' times, not the files', tell their ages.
-kept_backups=("mimorya-$(day 35).dump.age" "mimorya-$(day 5).dump.age"
-  "mimorya-$(day 40).base.tar.gz.age" "mimorya-$(day 10).base.tar.gz.age"
-  "mimorya-$(day 40).dump.age.partial.AbCdEf" mimorya-custom.dump.age notes.txt)
-for name in "${kept_backups[@]}" "mimorya-$(day 40).dump.age" "mimorya-$(day 50).base.tar.gz.age"; do
+# Named once, when they began: the names' times, not the files', tell their
+# ages. A base's file is kept when it is the last begun before a base the
+# archive keeps ended: 45 days (forked), 40 (pruned, notation), 31 and
+# 30 less 20 minutes (straddling), 10 and now.
+kept_backups=("mimorya-$(named $((35 * day))).dump.age" "mimorya-$(named $((5 * day))).dump.age"
+  "mimorya-$(named $((45 * day + 10))).base.tar.gz.age" "mimorya-$(named $((40 * day + 30))).base.tar.gz.age"
+  "mimorya-$(named $((31 * day + 10))).base.tar.gz.age" "mimorya-$(named $((30 * day + 10))).base.tar.gz.age"
+  "mimorya-$(named $((10 * day + 10))).base.tar.gz.age"
+  "mimorya-$(named $((40 * day))).dump.age.partial.AbCdEf" mimorya-custom.dump.age notes.txt)
+for name in "${kept_backups[@]}" "mimorya-$(named $((40 * day))).dump.age" \
+  "mimorya-$(named $((50 * day))).base.tar.gz.age" "mimorya-$(named $((35 * day))).base.tar.gz.age"; do
   touch "$backups/$name"
 done
 listing() {
@@ -167,18 +216,33 @@ expected=$(printf '%s\n' "$(segment_of 1 256)" "$(segment_of 1 256).00000028.bac
 [[ $(remaining $notation) == "$expected" ]] ||
   fail "segment numbers were not compared as hexadecimal: $(remaining $notation), not $expected"
 [[ $(remaining $baseless | wc -w) == 2 ]] || fail "a folder without bases lost files: $(remaining $baseless)"
-grep -q "Archive du système $baseless : aucune sauvegarde de base archivée, rien n'est retiré" <<<"$said" ||
+grep -q "Archive du système $baseless : aucune sauvegarde de base n'y sert la période, rien n'est retiré" <<<"$said" ||
   fail "the folder without bases was not said: $said"
+# Timeline 2's first instants need timeline 1's base at segment 2, before
+# the fork: only segment 1 goes.
+expected="00000002.history $(segment_of 1 2).00000028.backup $(segment_of 1 5).00000028.backup"
+expected+=" $(segment_of 1 8).00000028.backup $(segment_of 2 5).00000028.backup"
+for n in 2 3 4 5 6 7 8 9; do expected+=" $(segment_of 1 "$n")"; done
+for n in 3 4 5 6; do expected+=" $(segment_of 2 "$n")"; done
+expected=$(tr ' ' '\n' <<<"$expected" | sort | tr '\n' ' ')
+[[ $(remaining $forked) == "$expected" ]] ||
+  fail "a restored timeline's first instants lost their base: $(remaining $forked), not $expected"
+expected=$(printf '%s\n' "$(segment_of 1 16)" "$(segment_of 1 16).00000028.backup" "$(segment_of 1 17)" \
+  "$(segment_of 1 18).00000028.backup" "$(segment_of 1 18)" "$(segment_of 1 19)" | sort | tr '\n' ' ')
+[[ $(remaining $straddling) == "$expected" ]] ||
+  fail "unexpected files kept around the cutoff: $(remaining $straddling), not $expected"
 lost=$(comm -23 <(echo "$needed_before") <(needed "$earliest"))
 [[ -z $lost ]] || fail "files the current system's bases need were pruned: $lost"
 kept=$(find "$backups" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' ')
 expected=$(printf '%s\n' "${kept_backups[@]}" | sort | tr '\n' ' ')
 [[ $kept == "$expected" ]] || fail "unexpected backups kept: $kept, not $expected"
-as_root rm -rf "${archive:?}/$pruned" "${archive:?}/$notation" "${archive:?}/$baseless"
+as_root rm -rf "${archive:?}/$pruned" "${archive:?}/$notation" "${archive:?}/$baseless" \
+  "${archive:?}/$forked" "${archive:?}/$straddling"
 
 # The current system's folder, its files all made 40 days older, in the
-# order they were archived: kept, the last base before the cutoff (the one
-# made above, the newest) and what follows it too; it archives on.
+# order they were archived, then a segment archived now, as the database
+# does all the time: kept, the last base before the cutoff (the one made
+# above, the newest) and what follows it too; it archives on.
 newest_base=$(as_root find "$folder" -maxdepth 1 -name '*.backup.*' -printf '%T@ %f\n' | sort -n | tail -n 1)
 newest_base=${newest_base#* }
 start=${newest_base:0:24}
@@ -190,8 +254,11 @@ shown() {
   as_root find "$folder" -maxdepth 1 -type f -printf '%T@ %f\n' | sort -n |
     awk -v now="$(date +%s)" '{ sub(/\.[0-9a-f]{64}\.gz\.age$/, "", $2); printf "%s(%dd) ", $2, (now - $1) / 86400 }'
 }
+sql "insert into retention_marks values (3)" >/dev/null
+await_archived "$(sql "select pg_walfile_name(pg_switch_wal())")" >/dev/null
 aged=$(shown)
-said=$(infra/backup/prune.sh 30) || fail "the pruning of an aged archive failed: $said"
+mkdir "$work/none"
+said=$(MIMORYA_BACKUPS_DIR=$work/none infra/backup/prune.sh 30) || fail "the pruning of an aged archive failed: $said"
 as_root test -d "$folder" && [[ -n $(archived "$start") && -n $(as_root find "$folder" -name "$newest_base") ]] ||
   fail "the current system's last base ($newest_base) or its first segment was removed: $said; before: $aged; after: $(shown)"
 older=$(as_root find "$folder" -maxdepth 1 -type f -printf '%f\n' | awk -v first="${start:8}" '
