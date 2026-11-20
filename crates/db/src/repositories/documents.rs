@@ -92,6 +92,17 @@ pub async fn get_visible_document(
         .await
 }
 
+/// Locks the document `id` until the end of the transaction: its level, set
+/// by a person or raised by its classification (ADR-213, D4), is read as it
+/// stays until then.
+pub async fn lock_document(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<()> {
+    sqlx::query("select 1 from documents where id = $1 for update")
+        .bind(id)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
 /// Locks the company's documents until the end of the transaction, so that
 /// two deposits count each other; the bytes they hold.
 pub async fn lock_document_quota(conn: &mut PgConnection, tenant_id: Uuid) -> sqlx::Result<i64> {

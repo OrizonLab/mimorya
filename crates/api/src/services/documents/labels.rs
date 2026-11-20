@@ -11,7 +11,8 @@ use mimorya_core::authz::{Actor, Sensitivity as CoreSensitivity};
 use mimorya_core::documents::{DocumentSpace, DocumentType, can_set_labels, document_read_filter};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::document_labels::{
-    LabelProposal, drop_label_proposal, label_proposals, set_document_labels,
+    LabelProposal, dismiss_label_proposal, drop_label_proposal, label_proposals,
+    set_document_labels,
 };
 use mimorya_db::repositories::documents::{DocumentRow, get_visible_document};
 use serde_json::json;
@@ -109,10 +110,10 @@ impl DocumentService {
                 "Aucune proposition n’attend pour ce document",
             )));
         };
-        if proposal.version != dismissal.version {
+        // Held to its version: a later classification is not dismissed unseen.
+        if !dismiss_label_proposal(&mut tx, id, dismissal.version).await? {
             return Ok(Err(changed()));
         }
-        drop_label_proposal(&mut tx, id).await?;
         let entry = AuditEntry::new(tenant_id, "user", "document.proposal_dismissed", "success")
             .by_user(access.subject.user_id)
             .resource("document", id)

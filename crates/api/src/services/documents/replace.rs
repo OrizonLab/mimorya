@@ -17,7 +17,9 @@ use mimorya_core::documents::document_read_filter;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
 use mimorya_db::repositories::document_labels::{drop_label_proposal, request_document_labels};
 use mimorya_db::repositories::document_versions::{NewVersion, replace_document_file};
-use mimorya_db::repositories::documents::{DocumentRow, get_visible_document, lock_document_quota};
+use mimorya_db::repositories::documents::{
+    DocumentRow, get_visible_document, lock_document, lock_document_quota,
+};
 use serde_json::json;
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -70,6 +72,8 @@ impl DocumentService {
         // Replacements and deposits wait for one another here: the
         // document read next is the one replaced.
         let used = lock_document_quota(&mut tx, tenant_id).await?;
+        // Its level raised or set since (ADR-213, D4) is the one checked.
+        lock_document(&mut tx, id).await?;
         let current = replaceable(&mut tx, access, id, replaces).await?;
         let former = i64::from(current.byte_size);
         // A smaller file is always taken, even over a quota lowered since.
@@ -88,7 +92,7 @@ impl DocumentService {
             content: bytes,
             passages: &file.passages,
         };
-        // Only a deletion, which takes no lock, can come in between.
+        // Nothing can come in between: the document is locked.
         let version = (replace_document_file(&mut tx, version).await?).ok_or_else(absent)?;
         let entry = AuditEntry::new(tenant_id, "user", "document.replaced", "success")
             .by_user(access.subject.user_id)

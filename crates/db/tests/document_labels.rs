@@ -10,9 +10,9 @@ mod support;
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::TenantTx;
 use mimorya_db::repositories::document_labels::{
-    LabelProposal, LabelRequest, drop_label_proposal, drop_label_request, label_proposals,
-    label_requests, put_label_proposal, raise_document_sensitivity, request_document_labels,
-    set_document_labels,
+    LabelProposal, LabelRequest, dismiss_label_proposal, drop_label_proposal, drop_label_request,
+    label_proposals, label_requests, put_label_proposal, raise_document_sensitivity,
+    request_document_labels, set_document_labels,
 };
 use mimorya_db::repositories::documents::{NewDocument, insert_document};
 use uuid::Uuid;
@@ -141,7 +141,16 @@ async fn requests_levels_and_proposals_hold_to_the_version_and_level_decided() {
     put_label_proposal(&mut tx, tenant::ID, &proposal)
         .await
         .unwrap();
-    assert_eq!(label_proposals(&mut tx, &[id]).await.unwrap(), [proposal]);
+    assert_eq!(
+        label_proposals(&mut tx, &[id]).await.unwrap(),
+        [proposal.clone()]
+    );
+    // Dismissed only at the version classified.
+    assert!(!dismiss_label_proposal(&mut tx, id, 1).await.unwrap());
+    assert!(dismiss_label_proposal(&mut tx, id, 2).await.unwrap());
+    put_label_proposal(&mut tx, tenant::ID, &proposal)
+        .await
+        .unwrap();
     assert!(drop_label_proposal(&mut tx, id).await.unwrap());
     assert!(!drop_label_proposal(&mut tx, id).await.unwrap());
 }

@@ -235,6 +235,22 @@ pub async fn drop_label_proposal(conn: &mut PgConnection, document_id: Uuid) -> 
     Ok(dropped.rows_affected() > 0)
 }
 
+/// Dismisses what awaits a person for the document, if it is the
+/// classification of `version`; whether it was.
+pub async fn dismiss_label_proposal(
+    conn: &mut PgConnection,
+    document_id: Uuid,
+    version: i32,
+) -> sqlx::Result<bool> {
+    let dismissed =
+        sqlx::query("delete from document_label_proposals where document_id = $1 and version = $2")
+            .bind(document_id)
+            .bind(version)
+            .execute(conn)
+            .await?;
+    Ok(dismissed.rows_affected() > 0)
+}
+
 /// Sets the document's type and level, where it is still at `version` and
 /// at the level `seen` its writer was checked at; whether it was.
 pub async fn set_document_labels(
