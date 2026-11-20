@@ -20,6 +20,7 @@ mod recovery;
 mod routing;
 #[allow(clippy::module_inception)]
 pub mod runtime;
+pub mod skill_choice;
 pub mod state;
 pub mod supply;
 pub mod tool_calls;
@@ -50,6 +51,9 @@ pub use ports::{
 };
 pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
 pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
+pub use skill_choice::{
+    MAX_ASKED_SKILLS, SkillsShown, chosen_skills, skill_choice_request, skills_section, with_skills,
+};
 pub use state::{
     AdvisorState, EscalationState, PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals,
 };

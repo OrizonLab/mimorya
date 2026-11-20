@@ -77,22 +77,34 @@ impl LlmService {
         scope: DecisionScope,
     ) -> anyhow::Result<DecisionService> {
         let models = self.resolve(tenant_id).await?;
-        let mut service = self.decisions_of(tenant_id, scope, &models);
+        self.decision_service_on(tenant_id, scope, &models).await
+    }
+
+    /// The same, on `models` taken already (a run's execution, ADR-208).
+    pub async fn decision_service_on(
+        &self,
+        tenant_id: Uuid,
+        scope: DecisionScope,
+        models: &Arc<Models>,
+    ) -> anyhow::Result<DecisionService> {
+        let mut service = self.decisions_of(tenant_id, scope, models);
         if let Chosen::Jev(Ok(key)) = self.chosen(tenant_id).await? {
             service = service.then(self.jev(key), self.decisions.jev_timeout);
         }
-        if let Some(main_model) = self.main_model(tenant_id, &models) {
+        if let Some(main_model) = self.main_model(tenant_id, models) {
             service = service.then(main_model, MAIN_MODEL_TIMEOUT);
         }
         Ok(service)
     }
 
-    /// The decisions a run of the company may ask: none while no usage is
-    /// set, so that no engine is built nor key read for nothing (D1).
+    /// The decisions a run of the company may ask, on its execution's
+    /// `models`: none while no usage is set, so that no engine is built nor
+    /// key read for nothing.
     pub async fn run_decisions(
         &self,
         tenant_id: Uuid,
         scope: DecisionScope,
+        models: &Arc<Models>,
     ) -> anyhow::Result<Option<Arc<RunDecisions>>> {
         let mut tx = self.db.begin(tenant_id).await?;
         let rows = decision_usages(&mut tx).await?;
@@ -115,7 +127,7 @@ impl LlmService {
         if policies.is_empty() {
             return Ok(None);
         }
-        let service = self.decision_service(tenant_id, scope).await?;
+        let service = self.decision_service_on(tenant_id, scope, models).await?;
         Ok(Some(Arc::new(RunDecisions::new(
             Arc::new(service),
             policies,

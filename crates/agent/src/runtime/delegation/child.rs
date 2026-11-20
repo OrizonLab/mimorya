@@ -135,6 +135,7 @@ impl SubAgents {
             user_turn: sub_agent_turn(&input.task, input.context.as_deref()),
             unavailable: Default::default(),
             evidence: Vec::new(),
+            decided: Vec::new(),
         };
         let outcome = started_apart(&runtime, start).await?;
         Ok(SubAgentReport {

@@ -470,8 +470,11 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   demandée avant (`SupplyLimit`). Chaque usage est désactivé, observé (décidé et
   journalisé, sans effet) ou actif, avec son seuil ; une décision ne peut que rendre
   l'agent plus prudent. Fait : le service, ses moteurs, ses réglages et son essai (D0) ;
-  le choix du modèle d'un run par le routeur (D1) ; les autres usages viennent un à un
-  (D2 à D7).
+  le choix du modèle d'un run par le routeur (D1) ; le choix des compétences listées au
+  départ d'un run (D2) : actif, le prompt système ne les liste plus et le premier tour
+  liste celles que la décision retient, toutes sur un doute (`runtime/skill_choice.rs`,
+  `services/runs/start_context.rs`), `skill_read` chargeant toujours toute compétence
+  active ; les autres usages viennent un à un (D3 à D7).
 - **Fourniture du modèle** (ADR-208) : un run est compté par les modèles de l'entreprise
   que son exécution a prises. Sur la clé de l'exploitant, avant chaque appel au modèle,
   le moteur demande si un appel de ce rôle peut encore partir (port `SupplyLimit`, relu en

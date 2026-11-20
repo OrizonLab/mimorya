@@ -20,6 +20,7 @@ use serde_json::json;
 
 use super::answer_review::present_answer;
 use super::budget::check_budget;
+use super::decided_routing::count;
 use super::escalation::escalate_after_failure;
 use super::model_call::{ModelTurn, call_model};
 use super::ports::{CurrentAccess, RunEvent, StepAccess};
@@ -30,6 +31,7 @@ use super::tool_refusals::{Since, since, why_not_run};
 use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
 use super::unavailable::UnavailableConnectors;
 use super::verification::correction_message;
+use crate::decision::Counted;
 use crate::llm::{LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, StopReason};
 
 /// Why a run stops when its user's account is no longer active.
@@ -45,6 +47,9 @@ pub struct StartInput {
     /// Sources a mission's earlier stages collected (ADR-089): an answer
     /// may cite them.
     pub evidence: Vec<Citation>,
+    /// What the decisions made for its start cost (ADR-213, D2), counted in
+    /// the run as its own calls.
+    pub decided: Vec<Counted>,
 }
 
 pub struct AgentRuntime {
@@ -68,6 +73,7 @@ impl AgentRuntime {
         messages.push(LlmMessage::user(input.unavailable.note(input.user_turn)));
         let mut state = RunCheckpoint::new(input.system, messages);
         state.evidence = input.evidence;
+        count(&self.deps, &mut state, &input.decided).await?;
         let events = &self.deps.ports.events;
         let objective = self.config.objective.clone();
         events.emit(RunEvent::RunStarted { objective }).await?;

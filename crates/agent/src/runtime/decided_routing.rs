@@ -105,7 +105,7 @@ fn routing_request(objective: &str) -> DecisionRequest {
 }
 
 /// The calls that answered, added to the run's totals as its other calls.
-async fn count(
+pub(super) async fn count(
     deps: &RuntimeDeps,
     state: &mut RunCheckpoint,
     counted: &[Counted],

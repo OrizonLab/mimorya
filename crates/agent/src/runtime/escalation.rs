@@ -5,7 +5,8 @@
 //! event is journaled once. A run escalates after a failed review, once,
 //! from where it stands: one message is appended, nothing done is done
 //! again; or, while the company's router is on, from its start (by the
-//! company's rule or a classification, `routing`) or once it loads a skill
+//! company's rule, a classification, or the decision service's choice,
+//! ADR-213, `routing`) or once it loads a skill
 //! that asks for the escalation model. Its main model may also consult it
 //! as Anthropic's advisor (`advisor`).
 

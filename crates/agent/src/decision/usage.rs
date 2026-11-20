@@ -23,7 +23,8 @@ pub enum DecisionUsage {
 }
 
 /// The usages delivered so far.
-pub const AVAILABLE_USAGES: &[DecisionUsage] = &[DecisionUsage::ModelRouting];
+pub const AVAILABLE_USAGES: &[DecisionUsage] =
+    &[DecisionUsage::ModelRouting, DecisionUsage::SkillChoice];
 
 /// What the engine's test asks, journaled as such.
 pub const ENGINE_TEST: &str = "engine_test";

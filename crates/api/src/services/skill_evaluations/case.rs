@@ -224,6 +224,7 @@ async fn answer_and_judge(
             user_turn: format!("{}\n\n{READ_ONLY}", case.request),
             unavailable: tools.unavailable,
             evidence: Vec::new(),
+            decided: Vec::new(),
         })
         .await?;
     let mut usage = outcome.checkpoint().usage;
