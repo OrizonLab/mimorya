@@ -11,7 +11,14 @@ pub const USAGE_KINDS: [&str; 3] = ["llm", "embedding", "tool"];
 /// The role of a model call (`usage_records_role_check`, ADR-207): the main
 /// model, the escalation model, a classification, the advisor, or the
 /// review of an answer. Other uses are the main model's.
-pub const USAGE_ROLES: [&str; 5] = ["main", "escalation", "classification", "advisor", "review"];
+pub const USAGE_ROLES: [&str; 6] = [
+    "main",
+    "escalation",
+    "classification",
+    "advisor",
+    "review",
+    "decision",
+];
 
 #[derive(Debug, Clone)]
 pub struct NewUsage {

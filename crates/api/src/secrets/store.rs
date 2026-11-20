@@ -15,6 +15,8 @@ pub const LLM_API_KEY: &str = "llm.api_key";
 pub const EMBEDDING_API_KEY: &str = "embedding.api_key";
 /// The API key of the model the company chose to review its answers (ADR-108).
 pub const VERIFICATION_API_KEY: &str = "verification.api_key";
+/// The company's key to TypeSafe's API, for Jev (ADR-213).
+pub const TYPESAFE_API_KEY: &str = "typesafe.api_key";
 
 /// A secret as found: a failure to open it is an answer, not an error (only
 /// the database failing is).

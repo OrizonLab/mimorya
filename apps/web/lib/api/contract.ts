@@ -630,6 +630,64 @@ export type CreditPayment = { amountMicros: number,
  */
 reference: string, recordedAt: string, };
 
+export type DecisionEngineChoice = "mainModel" | "jev";
+
+export type DecisionModeChoice = "off" | "observe" | "active";
+
+/**
+ * Body of `PUT /admin/decisions`.
+ */
+export type DecisionSettingsUpdate = { engine: DecisionEngineChoice,
+/**
+ * A new key to TypeSafe's API; the stored one kept when absent.
+ */
+jevApiKey?: string, usages: Array<DecisionUsageUpdate>, };
+
+/**
+ * `GET /admin/decisions`.
+ */
+export type DecisionSettingsView = {
+/**
+ * The engine chosen: the main model without a choice.
+ */
+engine: DecisionEngineChoice,
+/**
+ * Whether the operator opened Jev, and why not otherwise (in French).
+ */
+jevAvailable: boolean, jevReason: string | null,
+/**
+ * The version of Jev the operator pins.
+ */
+jevModel: string, hasJevKey: boolean,
+/**
+ * Why the engine chosen cannot decide now (in French): decisions go to
+ * the main model meanwhile.
+ */
+problem: string | null,
+/**
+ * The model of the company's runs, if it has one.
+ */
+mainModel: string | null, usages: Array<DecisionUsageView>, updatedAt: string | null, };
+
+/**
+ * `POST /admin/decisions/test`: the engine chosen asked a fixed question.
+ */
+export type DecisionTestResult = { engine: DecisionEngineChoice, model: string, latencyMs: number,
+/**
+ * The probability of yes to the test's question.
+ */
+yes: number, };
+
+export type DecisionUsageKey = "modelRouting" | "skillChoice" | "memoryGuard" | "documentLabels" | "actionGuard" | "injectionDetection" | "mailTriage";
+
+export type DecisionUsageUpdate = { key: DecisionUsageKey, mode: DecisionModeChoice, threshold: number, };
+
+export type DecisionUsageView = { key: DecisionUsageKey, label: string,
+/**
+ * Whether its step is delivered: otherwise it may only be off.
+ */
+available: boolean, mode: DecisionModeChoice, threshold: number, };
+
 /**
  * A permission a tool may require: one an agent can hold.
  */
@@ -1477,6 +1535,12 @@ link: string | null,
  * Why no e-mail went out.
  */
 problem: string | null, };
+
+/**
+ * A version of Jev's price in USD per million tokens, as read on a date
+ * at a source.
+ */
+export type JevPrice = { model: string, inputPerMtok: number, outputPerMtok: number, readOn: string, source: string, };
 
 /**
  * A unit's knowledge shared with another.
@@ -3554,7 +3618,7 @@ export type UsageKind = "llm" | "embedding" | "tool";
 /**
  * The role of a model call (ADR-207); other uses are the main model's.
  */
-export type UsageRole = "main" | "escalation" | "classification" | "advisor" | "review";
+export type UsageRole = "main" | "escalation" | "classification" | "advisor" | "review" | "decision";
 
 /**
  * Usage of one model, summed over the period.
@@ -3583,7 +3647,12 @@ since: string, rows: Array<UsageRow>,
  * What the company's model escalation spent this month, against its
  * budget, if it chose one (ADR-207).
  */
-escalation: EscalationSpending | null, };
+escalation: EscalationSpending | null,
+/**
+ * Jev's prices, where the operator opens it or the company asked it
+ * (ADR-213).
+ */
+jevPrices: Array<JevPrice>, };
 
 /**
  * `POST /admin/users`.

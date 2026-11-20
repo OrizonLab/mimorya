@@ -461,7 +461,7 @@ qu'au-delà de ce que PostgreSQL tient.
   désactivé par défaut (ADR-074) ; vecteurs de 1024 dimensions calculés en arrière-plan
   pour les mémoires actives, et pour chaque demande au moment de chercher.
 - Suivi des coûts : chaque appel enregistre fournisseur, modèle, rôle (principal,
-  escalade, classement, conseiller, contrôle), tokens et coût estimé dans
+  escalade, classement, conseiller, contrôle, décision), tokens et coût estimé dans
   `usage_records`, avec la formule sous laquelle il est fait et, sur la clé de
   l'exploitant, son montant refacturé (ADR-208).
 - **Formules de fourniture du modèle** (ADR-208) : la clé de l'entreprise (formule 1), la

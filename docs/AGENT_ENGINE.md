@@ -410,7 +410,7 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
 - Coûts : table de prix par modèle (configurable, prix d'Anthropic relevés et datés, dont
   le palier de Claude Haiku 5.5 au-delà de 100 000 jetons de demande) → `cost_micros` par
   appel, enregistré avec le rôle de l'appel (principal, escalade, classement, conseiller,
-  contrôle) ; budgets par run et quotas mensuels par entreprise (phase 3 pour la
+  contrôle, décision) ; budgets par run et quotas mensuels par entreprise (phase 3 pour la
   facturation).
 - **Escalade de modèle** (ADR-207) : un modèle plus puissant du fournisseur des runs de
   l'entreprise (même clé, même adresse : le sien, ou celui de la plateforme en formule 2
@@ -447,6 +447,26 @@ Nord ; envoyé par Lucas (technicien), sur ses propres interventions ; envoyé p
   passer le run avant son appel suivant, une fois par run, dans les mêmes bornes. La
   décision est gardée dans le point de reprise ; un run repris n'est pas routé de
   nouveau.
+- **Service de décision** (ADR-213, `agent/src/decision/`) : jugements courts et typés,
+  plusieurs questions sur un même état : `noul` (probabilité du oui), `choice` (une
+  option parmi 255 au plus) et `score` (un niveau parmi 10 au plus), avec probabilités et
+  confiance. Deux moteurs en chaîne, chacun dans son délai : Jev de TypeSafe, si
+  l'exploitant l'ouvre et que l'entreprise le choisit, sur sa clé (`jev.rs`, une version
+  épinglée, jamais un alias), puis le modèle principal en JSON strict, l'état remis comme
+  donnée non fiable, sa certitude (« faible », « moyenne », « forte ») traduite par une
+  table fixe, ce qui n'est pas une probabilité calibrée (`main_model.rs`). Chaque réponse
+  est vérifiée contre ses questions ; une réponse invalide est comptée et ne décide
+  rien ; tous en échec, l'issue est « échouée » et l'usage applique la valeur prudente de
+  son code : le service ne renvoie jamais d'erreur et ne bloque jamais un run
+  (`service.rs`). L'état ne porte que les champs que l'usage déclare, chacun borné et
+  tronqué explicitement, l'ensemble à 20 000 caractères (`question.rs`). La décision est
+  journalisée (cible `mimorya::decision` : usage, moteur, modèle, réponses, latence,
+  issue), jamais l'état. Chaque appel qui a répondu est compté au rôle « décision » : Jev
+  sur la clé de l'entreprise, le modèle principal comme ses autres appels, sa fourniture
+  demandée avant (`SupplyLimit`). Chaque usage est désactivé, observé (décidé et
+  journalisé, sans effet) ou actif, avec son seuil ; une décision ne peut que rendre
+  l'agent plus prudent. Fait : le service, ses moteurs, ses réglages et son essai (D0) ;
+  les usages viennent un à un (D1 à D7).
 - **Fourniture du modèle** (ADR-208) : un run est compté par les modèles de l'entreprise
   que son exécution a prises. Sur la clé de l'exploitant, avant chaque appel au modèle,
   le moteur demande si un appel de ce rôle peut encore partir (port `SupplyLimit`, relu en

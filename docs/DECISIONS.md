@@ -15544,3 +15544,146 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     coût et ce que l'entreprise en a payé, à part ;
   - `crates/api/src/contract/tests/records.rs` : un run relu avec ou sans montant payé,
     l'entreprise ne lisant que celui-ci.
+
+## ADR-213 — Service de décision : jugements rapides et typés, Jev ou le modèle principal (chantier 7)
+
+- **Statut** : accepté (2026-11-19) · s'appuie sur ADR-024 (modèle par entreprise),
+  ADR-207 (routeur en amont, dont il remplace le classement), ADR-208 à ADR-212
+  (fourniture du modèle et montant payé).
+- **Contexte** : le moteur et plusieurs fonctionnalités ont besoin de jugements courts et
+  typés (oui ou non, une option parmi plusieurs, un niveau sur une échelle) : choisir le
+  niveau du modèle, les compétences à charger, ne pas mémoriser une donnée sensible,
+  classer un document déposé, exiger une validation avant une action, signaler une
+  injection, trier les e-mails. Les demander au modèle des conversations coûte cher et
+  ne donne pas de probabilités calibrées. Jev, le modèle « System One » de TypeSafe AI,
+  répond à ces questions typées, rapidement, avec des probabilités et une confiance.
+- **Décision** :
+  - **un service de décision neutre** dans `crates/agent` (`decision/`), calqué sur les
+    trois primitives de Jev, plusieurs questions par appel sur le même état :
+    - `noul` : la probabilité du oui ;
+    - `choice` : l'option retenue parmi 255 au plus, ses probabilités et une confiance ;
+    - `score` : la position sur une échelle ordonnée de 10 niveaux au plus, ses
+      probabilités et une confiance.
+
+    Deux moteurs interchangeables : Jev, en option, et le modèle principal de
+    l'entreprise, en repli et pour le mode souverain ;
+
+  - **principes, non négociables, pour chaque usage** :
+    1. une décision ne peut que rendre Mimorya plus prudent (ajouter une validation
+       humaine, bloquer, signaler, ne pas stocker), jamais lever une règle existante
+       (permissions, autonomie, validations, refus d'outils) ; un test le vérifie pour
+       chaque usage ;
+    2. échec sûr : sur une erreur, un délai dépassé, une réponse invalide ou un moteur
+       indisponible, l'usage applique la valeur prudente écrite dans son code ; une
+       décision ne bloque jamais un run (le service ne renvoie jamais d'erreur, mais une
+       issue « échouée ») ;
+    3. minimisation : chaque usage déclare exactement les champs envoyés dans l'état,
+       chacun borné en caractères avec une troncature explicite (« […] tronqué »), l'état
+       entier borné à 20 000 caractères (`MAX_STATE_CHARS`), bien sous les limites de Jev
+       (64 000 jetons par requête, 32 000 par question), un champ qui ne tient plus laissé
+       de côté ; jamais toute la conversation, de secret, de pièce jointe binaire ni de
+       jeton ;
+    4. les journaux enregistrent la décision (usage, moteur, modèle, réponse,
+       probabilités, confiance, latence, issue), jamais le contenu de l'état ;
+  - **moteur Jev** (documentation officielle relevée le 2026-11-19,
+    <https://docs.typesafe.ai>) :
+    - appel REST direct, `POST https://api.typesafe.ai/v1/systemone`, clé en
+      `Authorization: Bearer`, avec le client HTTP du projet (`reqwest`), sans crate
+      tiers ;
+    - corps `{ model, state, questions }`, chaque question nommée
+      (`{ type, instructions, criteria }`) ; réponse `{ model, answers, usage }`, chaque
+      réponse du type de sa question (`noul` ; `choice`, `confidence`, `probabilities` ;
+      `score`, `confidence`, `legend`, `probabilities`) ;
+    - version épinglée par l'exploitant (`MIMORYA_JEV_MODEL`, `jev-1.14.0` par défaut),
+      un identifiant versionné seulement : un alias (`jev-latest`, `jev-preview`) est
+      refusé au démarrage, ses réponses pouvant changer sans que rien ne change ici ;
+    - délai court réglable par l'exploitant (`MIMORYA_DECISION_TIMEOUT_MS`, 2 000 par
+      défaut, de 100 à 30 000) ;
+    - une réponse est vérifiée avant d'être lue : une réponse par question posée, du
+      même type, des probabilités finies entre 0 et 1, une option ou un niveau qui
+      existe ; sinon elle est invalide ;
+    - erreurs lues par leur statut (`401`, `413`, `422`, `429`, `529`…) : toutes
+      mènent au repli, aucune n'est montrée telle quelle ;
+  - **moteur du modèle principal** : le modèle des runs de l'entreprise (le sien, ou
+    celui de la plateforme en formule 2 ou 3) répond aux mêmes questions en JSON strict,
+    validé contre leur schéma. Il donne, pour chacune, sa réponse et une certitude
+    (« faible », « moyenne », « forte ») ; la probabilité du oui et la confiance en sont
+    dérivées par une table fixe. Ce ne sont **pas** des probabilités calibrées : les
+    seuils réglés pour Jev ne valent pas pour lui, et l'écran le dit. L'état lui est
+    remis comme une donnée non fiable, dans une enveloppe qu'il ne peut ni ouvrir ni
+    fermer (`neutralise_envelopes`), avec la consigne de ne suivre aucune instruction
+    qu'il contient ;
+  - **repli** : le moteur choisi d'abord ; Jev en échec, le modèle principal (30 s au
+    plus) ; lui en échec ou absent, l'issue « échouée », et l'usage applique sa valeur
+    prudente. Jev choisi mais fermé par l'exploitant, ou sans clé lisible, n'est pas
+    demandé : les décisions vont au modèle principal, et l'écran dit pourquoi. Une
+    réponse invalide est comptée, puisqu'elle a été payée, et ne décide rien ;
+  - **réglages** :
+    - l'exploitant autorise ou non Jev (`MIMORYA_TYPESAFE_JEV`, faux par défaut) ;
+    - un administrateur des réglages de toute l'entreprise (`settings:manage`) choisit
+      le moteur, « modèle principal » par défaut ou « Jev ». Choisir Jev demande la clé
+      d'API TypeSafe de l'entreprise, scellée comme les autres secrets et jamais
+      journalisée ni montrée, et affiche un avertissement : TypeSafe est un sous-traitant
+      hors de l'Union européenne. Sans l'accord de l'exploitant, ni Jev ni une clé ne
+      sont acceptés ; revenir aux réglages par défaut efface la clé ;
+    - chaque usage a trois modes : désactivé (par défaut), observation (la décision est
+      calculée et journalisée, sans effet, pour calibrer) ou actif, et un seuil réglable
+      entre 0 et 1. Un usage dont l'étape n'est pas livrée est refusé par le serveur et
+      grisé, « bientôt disponible » ;
+    - stockage sous RLS (`tenant_decision_settings`, `tenant_decision_usages`), API
+      (`/admin/decisions`), section « Service de décision » de l'onglet « Modèle d'IA »,
+      journal d'audit de chaque changement (`decision_service.configured`, `.reset`),
+      sous le verrou d'administration ; messages en français ;
+    - un essai du moteur choisi, depuis l'écran, pose une question fixe sur un état fixe
+      au seul moteur enregistré, sans repli, et dit le modèle, la latence et la réponse,
+      ou qu'il n'a pas répondu (`decision_service.tested`, avec son issue) ;
+  - **comptage** : chaque appel d'un moteur qui a répondu est enregistré dans la consommation avec le
+    rôle « décision », son fournisseur et son modèle. Le modèle principal est compté
+    comme ses autres appels, sur sa clé : sur celle de l'exploitant, au montant
+    refacturé, dans le plafond ou le crédit (ADR-208), la fourniture relue avant chaque
+    appel. Jev est compté sur la clé de l'entreprise, au tarif relevé le 2026-11-19 sur la
+    page des modèles de TypeSafe (0,042 USD le million de jetons d'entrée, la sortie
+    gratuite), constante datée avec sa source dans `pricing.rs`, que l'onglet
+    « Consommation » montre là où l'exploitant ouvre Jev ou là où il a servi ;
+  - **découpage** (une PR par étape, fusionnée la CI verte avant la suivante) :
+
+    | Étape | Contenu                                                                      |
+    | ----- | ---------------------------------------------------------------------------- |
+    | D0    | Service, moteurs, repli, réglages, écran, essai, comptage                    |
+    | D1    | Routeur de modèle : un `choice` principal/escalade, sous le seuil l'escalade |
+    | D2    | Choix des compétences à charger, la réduction de contexte observée           |
+    | D3    | Mémoire et leçons : données sensibles stockées seulement après validation    |
+    | D4    | Documents déposés : type et confidentialité proposés, appliqués validés      |
+    | D5    | Actions sensibles : une validation humaine ajoutée au-dessus du seuil        |
+    | D6    | Injection dans les contenus externes : signalée, outils sensibles validés    |
+    | D7    | Tri des e-mails entrants, si un connecteur de messagerie est opérationnel    |
+- **Alternatives écartées** :
+  - le SDK de TypeSafe : il n'existe qu'en Python et en JavaScript ; un appel REST direct
+    suffit et ne fait dépendre la plateforme d'aucun crate tiers ;
+  - `jev-latest` : ses réponses changeraient avec une nouvelle version, et les seuils
+    réglés ne vaudraient plus ;
+  - un journal des décisions en base dès D0 : aucune décision n'y est prise encore ; il
+    viendra, s'il faut qu'une entreprise calibre elle-même ses seuils, avec sa rétention,
+    son export et sa suppression ;
+  - des probabilités demandées en nombres au modèle principal : un modèle de langage
+    écrit des nombres qui ont l'air précis sans l'être ; trois niveaux de certitude le
+    disent plus honnêtement.
+- **Conséquences** :
+  - avec Jev, l'état d'une décision (les seuls champs déclarés par l'usage) part chez
+    TypeSafe, hors de l'UE : SECURITY.md l'inscrit parmi les sous-traitants, avec le ZDR à
+    demander à TypeSafe (réservé à ses clients entreprise) et le DPA à signer ;
+  - en mode souverain (le modèle principal), rien ne part ailleurs que chez le
+    fournisseur des runs ;
+  - données personnelles : les réglages ne gardent que l'auteur du dernier changement
+    (`updated_by_user_id`), vidé à l'effacement de son compte (ADR-189) ; les appels
+    comptés au rôle « décision » suivent la rétention, l'export et la suppression de la
+    consommation (ADR-186, ADR-187) ; aucun état de décision n'est gardé ;
+  - les tests simulent les moteurs : réponse sûre, confiance basse, erreur, délai
+    dépassé, JSON invalide ; dès D0, ils vérifient le repli et l'issue « échouée », que
+    Jev est refusé sans l'accord de l'exploitant, à l'écriture comme à l'usage quand il le
+    referme après qu'une entreprise l'a choisi, et que sa clé n'apparaît dans aucun
+    journal ; à chaque étape, pour ses usages, qu'aucune décision ne lève une règle
+    existante, que le mode observation n'a aucun effet et que l'échec applique la valeur
+    prudente ;
+  - l'essai du moteur principal, sur la clé de l'exploitant au-delà de sa fourniture,
+    est refusé et tracé comme le lancement d'un run (`model_supply.limited`, ADR-208).

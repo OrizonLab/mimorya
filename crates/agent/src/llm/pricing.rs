@@ -1,5 +1,5 @@
 //! Cost estimation in micro-dollars (1e-6 USD). Prices are per million
-//! tokens. Anthropic list prices are built in; any other model must be priced
+//! tokens. Anthropic's list prices and Jev's are built in; any other model must be priced
 //! through configuration (unknown models are reported as unpriced, never
 //! guessed).
 
@@ -83,6 +83,18 @@ pub const ANTHROPIC_PRICES: &[(&str, ModelPrice)] = &[
     ("claude-haiku-4-5", price(1.0, 5.0, None)),
 ];
 
+/// When Jev's prices were read (`JEV_PRICES`), shown with them.
+pub const JEV_PRICES_READ_ON: &str = "2026-11-19";
+/// Where they were read.
+pub const JEV_PRICES_SOURCE: &str = "https://docs.typesafe.ai/models";
+
+/// Jev's prices, read on `JEV_PRICES_READ_ON` at `JEV_PRICES_SOURCE`: per
+/// input token only, the output free (ADR-213).
+pub const JEV_PRICES: &[(&str, ModelPrice)] = &[
+    ("jev-1.14.0", price(0.042, 0.0, Some(0.042))),
+    ("jev-1.13.0", price(0.042, 0.0, Some(0.042))),
+];
+
 #[derive(Debug, Clone)]
 pub struct PriceTable {
     prices: HashMap<String, ModelPrice>,
@@ -99,6 +111,7 @@ impl PriceTable {
     pub fn new(extra: HashMap<String, ModelPrice>) -> Self {
         let mut prices: HashMap<String, ModelPrice> = ANTHROPIC_PRICES
             .iter()
+            .chain(JEV_PRICES)
             .map(|(model, p)| ((*model).to_string(), *p))
             .collect();
         prices.extend(extra);

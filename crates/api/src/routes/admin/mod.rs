@@ -14,6 +14,7 @@ mod audit_export;
 mod connector_applications;
 mod connector_oauth;
 pub(crate) mod connectors;
+mod decisions;
 mod embedding;
 mod evaluation_settings;
 mod gateways;
@@ -144,6 +145,13 @@ pub fn routes(state: &AppState) -> Router<AppState> {
                 .delete(evaluation_settings::reset),
         )
         .route("/admin/model-supply", get(model_supply::show))
+        .route(
+            "/admin/decisions",
+            get(decisions::show)
+                .put(decisions::update)
+                .delete(decisions::reset),
+        )
+        .route("/admin/decisions/test", post(decisions::test))
         .route(
             "/admin/model-escalation",
             get(model_escalation::show)

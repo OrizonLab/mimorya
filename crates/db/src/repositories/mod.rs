@@ -23,6 +23,7 @@ pub mod connector_renewals;
 pub mod connectors;
 pub mod conversation_summaries;
 pub mod conversations;
+pub mod decision_settings;
 pub mod deliverables;
 pub mod document_embeddings;
 pub mod document_search;

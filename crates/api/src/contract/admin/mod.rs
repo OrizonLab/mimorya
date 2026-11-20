@@ -9,6 +9,7 @@ mod audit_chain;
 mod audit_export;
 mod bearer_tokens;
 mod connectors;
+mod decisions;
 mod domain_proofs;
 mod embedding;
 mod evaluation_settings;
@@ -41,7 +42,8 @@ mod users;
 pub use absences::{AbsenceRecorded, CollaboratorAbsence};
 pub use account_erasure::{AccountErasure, ErasedAccount};
 pub use activity::{
-    AuditActor, AuditEntry, AuditLog, AuditOutcome, UsageKind, UsageRole, UsageRow, UsageSummary,
+    AuditActor, AuditEntry, AuditLog, AuditOutcome, JevPrice, UsageKind, UsageRole, UsageRow,
+    UsageSummary,
 };
 pub use approval_routing::{ApprovalRoutingUpdate, ApprovalRoutingView};
 pub use assignments::{Assignment, AssignmentScope, RoleGrant};
@@ -55,6 +57,10 @@ pub use connectors::{
     ConnectorDetails, ConnectorStatus, ConnectorTest, ConnectorTrial, ConnectorType,
     ConnectorUpdate, ConnectorView, Connectors, DelegablePermission, McpEndpoint, NewConnector,
     TestedTool, ToolPolicy, ToolPolicyChange, risks,
+};
+pub use decisions::{
+    DecisionEngineChoice, DecisionModeChoice, DecisionSettingsUpdate, DecisionSettingsView,
+    DecisionTestResult, DecisionUsageKey, DecisionUsageUpdate, DecisionUsageView,
 };
 pub use domain_proofs::{DomainProofRequest, DomainProofView};
 pub use embedding::{

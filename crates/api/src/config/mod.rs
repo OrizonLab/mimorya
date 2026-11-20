@@ -101,6 +101,16 @@ pub struct AppConfig {
     /// is in beta, and an agreement not to retain data does not cover every
     /// model.
     pub anthropic_advisor: bool,
+    /// Whether a company may have Jev make its decisions
+    /// (`MIMORYA_TYPESAFE_JEV`, off by default, ADR-213): TypeSafe is a
+    /// subprocessor outside the EU.
+    pub typesafe_jev: bool,
+    /// The version of Jev asked (`MIMORYA_JEV_MODEL`, `jev-1.14.0` by
+    /// default): a versioned identifier, never an alias.
+    pub jev_model: String,
+    /// How long Jev may take to decide (`MIMORYA_DECISION_TIMEOUT_MS`, 2,000
+    /// by default, from 100 to 30,000).
+    pub decision_timeout: Duration,
     /// Login attempts allowed per client address and per minute.
     pub login_rate_limit_per_minute: u32,
     /// The program that reads deposited documents (`MIMORYA_EXTRACTOR`;
@@ -140,6 +150,9 @@ impl std::fmt::Debug for AppConfig {
             .field("mail", &self.mail)
             .field("llm_judge", &self.llm_judge)
             .field("anthropic_advisor", &self.anthropic_advisor)
+            .field("typesafe_jev", &self.typesafe_jev)
+            .field("jev_model", &self.jev_model)
+            .field("decision_timeout", &self.decision_timeout)
             .field(
                 "login_rate_limit_per_minute",
                 &self.login_rate_limit_per_minute,
@@ -224,6 +237,7 @@ impl AppConfig {
         let mail = reader.mail();
         let llm_judge = reader.boolean("MIMORYA_LLM_JUDGE", false);
         let anthropic_advisor = reader.boolean("MIMORYA_ANTHROPIC_ADVISOR", false);
+        let (typesafe_jev, jev_model, decision_timeout) = reader.decisions();
         let login_rate_limit_per_minute = reader.parsed("LOGIN_RATE_LIMIT_PER_MINUTE", 10_u32);
         if login_rate_limit_per_minute == 0 {
             reader.issue("LOGIN_RATE_LIMIT_PER_MINUTE", "entier positif attendu");
@@ -263,6 +277,9 @@ impl AppConfig {
             mail,
             llm_judge,
             anthropic_advisor,
+            typesafe_jev,
+            jev_model,
+            decision_timeout,
             login_rate_limit_per_minute,
             document_extractor,
             document_quota_bytes,

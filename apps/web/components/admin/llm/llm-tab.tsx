@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Loaded } from '@/components/ui';
 import { useApiData, type LlmView } from '@/lib/api';
 import { ConversationModel } from './conversation-model';
+import { DecisionSection } from './decision-section';
 import { EmbeddingSection } from './embedding-section';
 import { EscalationSection } from './escalation-section';
 import { EvaluationLimitSection } from './evaluation-limit-section';
@@ -19,8 +20,8 @@ import { ReviewModel } from './review-model';
  * (ADR-074); whether the first rereads finished conversations for a lesson
  * (ADR-076); how far a mission may go (ADR-093); what the skill
  * evaluations may cost over thirty days (ADR-154); and the stronger model
- * called when needed (ADR-207), read again whenever the conversations'
- * model changes. */
+ * called when needed (ADR-207), and the engine of its decisions (ADR-213),
+ * both read again whenever the conversations' model changes. */
 export function LlmTab() {
   const [conversations, setConversations] = useState(0);
   return (
@@ -28,6 +29,7 @@ export function LlmTab() {
       <ModelSupplySection key={`supply-${conversations}`} />
       <Models onConversationsChanged={() => setConversations((n) => n + 1)} />
       <EscalationSection key={conversations} />
+      <DecisionSection key={`decision-${conversations}`} />
       <EmbeddingSection />
       <LessonSection />
       <MissionSection />

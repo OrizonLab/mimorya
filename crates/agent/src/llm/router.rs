@@ -22,15 +22,18 @@ pub enum ModelRole {
     Classification,
     Advisor,
     Review,
+    /// A question of the decision service (ADR-213).
+    Decision,
 }
 
 impl ModelRole {
-    pub const ALL: [ModelRole; 5] = [
+    pub const ALL: [ModelRole; 6] = [
         ModelRole::Main,
         ModelRole::Escalation,
         ModelRole::Classification,
         ModelRole::Advisor,
         ModelRole::Review,
+        ModelRole::Decision,
     ];
 
     /// As recorded (`usage_records_role_check`).
@@ -41,6 +44,7 @@ impl ModelRole {
             ModelRole::Classification => "classification",
             ModelRole::Advisor => "advisor",
             ModelRole::Review => "review",
+            ModelRole::Decision => "decision",
         }
     }
 }
