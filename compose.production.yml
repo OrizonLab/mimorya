@@ -90,6 +90,8 @@ services:
       - ./infra/postgres/archive-wal.sh:/usr/local/bin/archive-wal.sh:ro
       # Read from the archive in a restore to a point in time (ADR-214).
       - ./infra/postgres/restore-wal.sh:/usr/local/bin/restore-wal.sh:ro
+      # Prunes the archive to what the base backups kept need (ADR-215).
+      - ./infra/postgres/prune-wal.sh:/usr/local/bin/prune-wal.sh:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U mimorya']
       interval: 5s

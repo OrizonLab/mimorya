@@ -938,7 +938,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   lire, avec ses droits du moment ; un document hors de portée lui répond comme
   inexistant, et ses passages lui sont remis comme données. Une suppression n'atteint
   pas les sauvegardes déjà faites (ADR-166), ni l'archive des WAL (ADR-206) : la donnée y
-  reste, chiffrée, jusqu'à ce que la conservation fixée par l'exploitant les retire.
+  reste, chiffrée, jusqu'à ce que la conservation fixée par l'exploitant les retire
+  (`infra/backup/prune.sh <jours>`, ADR-215) : au plus ce nombre de jours, plus
+  l'intervalle entre deux sauvegardes de base, et plus longtemps après une restauration
+  à un instant passé ou pour une archive sans sauvegarde de base, que
+  `archive-status.sh --base-within` signale.
 - **Export du journal d'audit** (ADR-181) : le SIEM de l'entreprise reçoit les
   identifiants des comptes, les adresses IP et les identifiants des personnes chez
   Slack, Telegram ou Teams que le journal porte ; l'entreprise,
@@ -1130,7 +1134,8 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   de même, l'archive jamais en clair ni remplacée (ADR-206) ; restauration à un instant
   précis dans une pile nouvelle, chaque WAL vérifié contre le SHA-256 de son nom avant
   d'être rejoué, l'identité remise à la base pour la seule récupération, dans sa mémoire
-  (ADR-214).
+  (ADR-214) ; conservation des sauvegardes et de l'archive bornée en jours, et état de
+  l'archivage pour la surveillance de l'exploitant (ADR-215).
 
 ## 11. Liste de contrôle pour chaque contribution
 

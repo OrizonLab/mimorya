@@ -518,6 +518,36 @@ jobs:
           test "$mode" = off || { echo "archive_mode is $mode" >&2; exit 1; }
           test "$(stat -c %u wal-archive)" = 0 || { echo "the archive's folder was taken" >&2; exit 1; }
           docker compose down -v
+      # An ln that always fails stands for a folder without hard links (ADR-215).
+      - name: The production database refuses an archive's folder without hard links or that it cannot write, creating nothing
+        run: |
+          printf '#!/bin/sh\necho "ln: Operation not permitted" >&2\nexit 1\n' > "$RUNNER_TEMP/ln"
+          chmod +x "$RUNNER_TEMP/ln"
+          if output=$(timeout 120 docker compose -f compose.production.yml -f compose.production.build.yml \
+            run --rm --no-deps -T -v "$RUNNER_TEMP/ln:/usr/local/bin/ln:ro" db 2>&1); then
+            echo "the database started without hard links in its archive's folder" >&2
+            exit 1
+          fi
+          grep -q "n'accepte pas les liens physiques, rien n'y serait archivé (ln: Operation not permitted)" <<<"$output" ||
+            { echo "$output" >&2; exit 1; }
+          left=$(docker run --rm --entrypoint ls -v mimorya-production_db-data:/data \
+            pgvector/pgvector:pg16 -A /data)
+          test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
+          left=$(sudo find wal-archive -name '.mimorya-link-probe*')
+          test -z "$left" || { echo "probe left behind: $left" >&2; exit 1; }
+          # A touch that always fails stands for a folder the database cannot write.
+          printf '#!/bin/sh\necho "touch: Permission denied" >&2\nexit 1\n' > "$RUNNER_TEMP/touch"
+          chmod +x "$RUNNER_TEMP/touch"
+          if output=$(timeout 120 docker compose -f compose.production.yml -f compose.production.build.yml \
+            run --rm --no-deps -T -v "$RUNNER_TEMP/touch:/usr/local/bin/touch:ro" db 2>&1); then
+            echo "the database started on an archive's folder it cannot write" >&2
+            exit 1
+          fi
+          grep -q "la base ne peut écrire dans le dossier monté sur .*(touch: Permission denied)" <<<"$output" ||
+            { echo "$output" >&2; exit 1; }
+          left=$(docker run --rm --entrypoint ls -v mimorya-production_db-data:/data \
+            pgvector/pgvector:pg16 -A /data)
+          test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
       - name: Start the production stack
         run: docker compose -f compose.production.yml -f compose.production.build.yml up -d
       - name: Installation test of the production stack
@@ -559,6 +589,12 @@ jobs:
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
           BACKUPS_IDENTITY: ${{ runner.temp }}/backups-identity.txt
         run: infra/docker/point-in-time-test.sh https://localhost
+      # The last of the stack's tests: it ages its archive (ADR-215).
+      - name: Conservation of the backups and the archive, and its state
+        env:
+          DISPOSABLE_STACK: 'yes'
+          COMPOSE_FILE: compose.production.yml:compose.production.build.yml
+        run: infra/docker/archive-retention-test.sh
       - name: Logs of the production stack
         if: always()
         run: docker compose -f compose.production.yml -f compose.production.build.yml logs --no-color | tail -n 200
