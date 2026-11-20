@@ -66,7 +66,7 @@ impl AgentRuntime {
         if let Some(unavailable) = input.unavailable.event() {
             events.emit(unavailable).await?;
         }
-        count(&self.deps, &mut state, &input.decided).await?;
+        count(&self.deps.ports, &mut state, &input.decided).await?;
         // Saved before the first model call: a run the service stops from
         // here on can be taken up again (ADR-053).
         self.deps.ports.runs.checkpoint(&state).await?;

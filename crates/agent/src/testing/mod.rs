@@ -6,6 +6,7 @@ mod access;
 mod concept_embedder;
 mod in_memory_accounts;
 mod in_memory_documents;
+mod in_memory_guard;
 mod in_memory_memory;
 mod in_memory_ports;
 mod in_memory_skills;

@@ -1,5 +1,5 @@
 // The company's decision service (ADR-213): Paul finds its main model chosen
-// and every usage off, the usages delivered so far enabled (D1 to D4); chooses
+// and every usage off, the usages delivered so far enabled (D1 to D5); chooses
 // TypeSafe's Jev, which the operator opens here, warned that it is a
 // subprocessor outside the European Union, with the company's key, and sets
 // the model's routing active at a threshold; reads it back once the page is
@@ -46,9 +46,9 @@ test('a company chooses Jev for its decisions, then its main model again', async
   // The main model's probabilities are said not to be calibrated.
   const uncalibrated = form.getByText(/cette probabilité n’est pas calibrée/);
   await expect(uncalibrated).toBeVisible();
-  // The model's routing, the skill choice, the memory guard and the
-  // documents' labels are delivered (D1 to D4), off until set; the others
-  // wait for their step.
+  // The model's routing, the skill choice, the memory guard, the
+  // documents' labels and the actions' guard are delivered (D1 to D5), off
+  // until set; the others wait for their step.
   const routing = form.getByLabel('Mode : Choix du modèle d’un run');
   await expect(routing).toBeEnabled();
   await expect(routing).toHaveValue('off');
@@ -59,8 +59,11 @@ test('a company chooses Jev for its decisions, then its main model again', async
   await expect(
     form.getByLabel('Mode : Type et confidentialité des documents déposés'),
   ).toBeEnabled();
-  await expect(form.getByLabel('Mode : Validation des actions sensibles')).toBeDisabled();
-  await expect(form.getByText('(bientôt disponible)')).toHaveCount(3);
+  await expect(form.getByLabel('Mode : Validation des actions sensibles')).toBeEnabled();
+  await expect(
+    form.getByLabel('Mode : Instructions cachées dans les contenus externes'),
+  ).toBeDisabled();
+  await expect(form.getByText('(bientôt disponible)')).toHaveCount(2);
 
   await jev.check();
   await expect(form).toContainText('sous-traitant situé hors de l’Union européenne');

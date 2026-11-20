@@ -21,7 +21,7 @@ use crate::runtime::ports::{
     NewMemory, RunEvent, RunEventSink, RunStore, ToolInvocationLog, ToolInvocationRecord,
     UsageRecord, UsageSink,
 };
-use crate::runtime::{RunCheckpoint, RunOutcome};
+use crate::runtime::{GuardVerdict, RunCheckpoint, RunOutcome};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredMemory {
@@ -66,6 +66,10 @@ pub(super) struct State {
     pub(super) mail_account: Option<MailLink>,
     /// When the accounts a tool reported refused were linked.
     pub(super) refused_mail_accounts: Vec<(DateTime<Utc>, MailServerRole)>,
+    /// What the guard of the actions says of each (ADR-213, D5).
+    pub(super) guard_verdict: GuardVerdict,
+    /// The tools the guard was asked of, in order.
+    pub(super) guarded: Vec<String>,
 }
 
 pub struct InMemoryPorts {
@@ -146,6 +150,7 @@ impl InMemoryPorts {
             deliverables: self.clone(),
             accounts: self.clone(),
             sub_runs: self.clone(),
+            action_guard: self.clone(),
         }
     }
 

@@ -1,10 +1,12 @@
 //! Handling of the tool calls of one assistant turn: each call goes through
-//! the policy enforcement point, with the rights of the current step, then is
-//! denied, queued for human validation or executed; an allowed delegation
-//! runs a sub-agent (`delegated.rs`, ADR-098). Every outcome is logged,
-//! audited and streamed (`record.rs`).
+//! the policy enforcement point, with the rights of the current step, then
+//! the company's guard of the actions when it acts (`guard.rs`, ADR-213,
+//! D5), then is denied, queued for human validation or executed; an allowed
+//! delegation runs a sub-agent (`delegated.rs`, ADR-098). Every outcome is
+//! logged, audited and streamed (`record.rs`).
 
 mod delegated;
+mod guard;
 mod record;
 
 use std::sync::Arc;
@@ -113,6 +115,8 @@ impl ToolCallProcessor {
                     reason: TOO_MANY_AT_ONCE.into(),
                 };
             }
+            // It can only add a validation, or say why one is asked.
+            let evaluation = self.guard(state, evaluation).await?;
             let (title, reason, risk) = match &evaluation {
                 ToolCallEvaluation::Allow { tool, .. } => {
                     (tool.info.title.clone(), None, Some(tool.info.risk))

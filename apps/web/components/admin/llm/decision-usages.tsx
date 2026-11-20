@@ -47,7 +47,11 @@ export function DecisionUsagesFields({
         : après chaque dépôt, le service lit le titre et les trois premières pages ; une
         confidentialité plus stricte est appliquée aussitôt, une plus basse et le type sont
         seulement proposés à qui peut écrire le document ; baisser son seuil retient plus souvent un
-        niveau strict.
+        niveau strict. Les actions sensibles, actif : avant qu’une action qui agit parte ou soit
+        mise en validation, le service lit l’outil et ses paramètres ; ce qu’il signale
+        (destinataire externe, montant élevé, données personnelles, action irréversible, risque
+        élevé) s’ajoute à la raison de la validation, et une action qui partirait seule attend une
+        validation ; baisser son seuil le rend plus strict.
       </p>
       {usages.map((usage, index) => {
         const value = values[index];

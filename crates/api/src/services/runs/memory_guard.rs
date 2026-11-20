@@ -24,9 +24,10 @@ use mimorya_core::memory::{MemoryScope, MemoryStatus};
 use super::db_ports::RunScope;
 use crate::services::llm::{DecisionScope, LlmService, Models};
 
-/// How long a write waits for the decision's engines: half a tool call's
-/// own delay, so that the call ends with the memory saved.
-const MAX_WAIT: Duration = Duration::from_secs(DEFAULT_TOOL_TIMEOUT.as_secs() / 2);
+/// How long a write, or an action (D5), waits for the decision's engines:
+/// half a tool call's own delay, so that the call ends with the memory
+/// saved.
+pub(super) const MAX_WAIT: Duration = Duration::from_secs(DEFAULT_TOOL_TIMEOUT.as_secs() / 2);
 
 /// What the decision said of a text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

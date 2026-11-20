@@ -1,6 +1,7 @@
 //! Agent runs started from conversations: opening a turn, executing it in the
 //! background, recording approvals and resuming, persisting the outcome.
 
+mod action_guard;
 mod approval_decision;
 mod approval_delegation;
 mod approval_notice;

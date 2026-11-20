@@ -46,7 +46,7 @@ pub(super) async fn decided_level(
         .service
         .decide_counted(&routing_request(&config.objective))
         .await;
-    count(deps, state, &counted).await?;
+    count(&deps.ports, state, &counted).await?;
     let escalate = match &outcome {
         DecisionOutcome::Decided(decided) => decided
             .choice(QUESTION)

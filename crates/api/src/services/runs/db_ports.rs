@@ -25,6 +25,7 @@ use mimorya_db::repositories::{approvals, audit, runs, tool_invocations, usage};
 use mimorya_db::{Database, TenantTx};
 use uuid::Uuid;
 
+use super::action_guard::DbActionGuard;
 use super::approval_notice::ApprovalNotifier;
 use super::approval_routing::{NOBODY_VALIDATES, Route, route};
 use super::deliverables::DbDeliverables;
@@ -92,8 +93,8 @@ pub struct DbPorts {
     pub(super) sub_run: bool,
     /// The accounts the run's user linked, for its tools (ADR-117).
     account_links: Arc<AccountLinkService>,
-    /// Reads a memory before it is saved, when the company set it (ADR-213,
-    /// D3).
+    /// Reads a memory before it is saved, and an action before it runs or
+    /// is put to validation, when the company set it (ADR-213, D3, D5).
     pub(super) llm: Arc<LlmService>,
     /// The company's models the execution took: what each of its model
     /// calls is charged, on whose key (ADR-208).
@@ -156,6 +157,12 @@ impl DbPorts {
             self.scope.tenant_id,
             self.scope.user_id,
         );
+        let action_guard = DbActionGuard {
+            db: self.db.clone(),
+            llm: self.llm.clone(),
+            models: self.models.clone(),
+            scope: self.scope,
+        };
         let ports = Arc::new(self);
         EnginePorts {
             events: ports.clone(),
@@ -170,6 +177,7 @@ impl DbPorts {
             runs: ports,
             deliverables: Arc::new(deliverables),
             accounts: Arc::new(accounts),
+            action_guard: Arc::new(action_guard),
         }
     }
 

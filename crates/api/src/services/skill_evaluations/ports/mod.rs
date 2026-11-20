@@ -9,7 +9,7 @@ mod withheld;
 
 use std::sync::Arc;
 
-use mimorya_agent::runtime::EnginePorts;
+use mimorya_agent::runtime::{EnginePorts, no_action_guard};
 use uuid::Uuid;
 
 pub use journal::{Journal, ToolTrace};
@@ -63,6 +63,9 @@ pub fn case_ports(
         deliverables: withheld.clone(),
         accounts: withheld.clone(),
         sub_runs: withheld,
+        // An evaluation's actions are withheld, never run nor put to
+        // validation: no guard to ask (ADR-213, D5).
+        action_guard: no_action_guard(),
     };
     CasePorts {
         ports,
