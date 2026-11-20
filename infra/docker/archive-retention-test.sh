@@ -154,7 +154,8 @@ grep -q "Archive du système $gone serait retiré entière" <<<"$said" &&
 
 said=$(MIMORYA_BACKUPS_DIR=$backups infra/backup/prune.sh 30) || fail "the pruning failed: $said"
 remaining() { as_root find "$archive/$1" -mindepth 1 -printf '%f\n' | sed "s/\\.$sum\\.gz\\.age$//" | sort | tr '\n' ' '; }
-[[ ! -e $archive/$gone ]] || fail "the other system's old folder was kept: $(remaining $gone)"
+# Looked at as root: the archive is the database's (700), even to see a name.
+! as_root test -e "$archive/$gone" || fail "the other system's old folder was kept: $(remaining $gone)"
 expected=".$(segment_of 1 9).partial-AbCdEf 00000002.history"
 for n in 5 6 7 8 9 10; do expected+=" $(segment_of 1 "$n")"; done
 expected+=" $(segment_of 1 5).00000028.backup $(segment_of 1 8).00000028.backup"
@@ -191,7 +192,7 @@ shown() {
 }
 aged=$(shown)
 said=$(infra/backup/prune.sh 30) || fail "the pruning of an aged archive failed: $said"
-[[ -d $folder && -n $(archived "$start") && -n $(as_root find "$folder" -name "$newest_base") ]] ||
+as_root test -d "$folder" && [[ -n $(archived "$start") && -n $(as_root find "$folder" -name "$newest_base") ]] ||
   fail "the current system's last base ($newest_base) or its first segment was removed: $said; before: $aged; after: $(shown)"
 older=$(as_root find "$folder" -maxdepth 1 -type f -printf '%f\n' | awk -v first="${start:8}" '
   /^\./ { next }
