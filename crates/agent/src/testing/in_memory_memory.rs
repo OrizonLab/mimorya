@@ -92,14 +92,15 @@ impl MemoryStore for InMemoryPorts {
         Ok(hits)
     }
 
-    async fn create(&self, memory: NewMemory) -> anyhow::Result<Uuid> {
+    async fn create(&self, memory: NewMemory) -> anyhow::Result<(Uuid, MemoryStatus)> {
         let id = Uuid::new_v4();
+        let status = memory.status;
         self.state().memories.push(StoredMemory {
             id,
             memory,
             use_count: 0,
         });
-        Ok(id)
+        Ok((id, status))
     }
 
     async fn mark_used(&self, ids: &[Uuid]) -> anyhow::Result<()> {

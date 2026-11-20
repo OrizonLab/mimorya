@@ -185,7 +185,8 @@ impl TypedTool for MemoryRemember {
         } else {
             MemoryStatus::Proposed
         };
-        let id = self
+        // Saved as said, or held for validation by the platform (D3).
+        let (id, status) = self
             .memory
             .create(NewMemory {
                 scope: target.scope,

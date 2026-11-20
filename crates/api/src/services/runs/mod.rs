@@ -20,6 +20,7 @@ mod history;
 mod knowledge_ports;
 mod leases;
 mod lesson_capture;
+mod memory_guard;
 mod outcome;
 mod queue;
 mod reads;

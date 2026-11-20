@@ -22,6 +22,7 @@ use uuid::Uuid;
 
 use super::background_usage::{BackgroundCall, record_background_usage};
 use super::db_ports::RunScope;
+use super::memory_guard::lesson_kept;
 use crate::services::background::BackgroundTasks;
 use crate::services::llm::{LlmService, supply_stopped};
 
@@ -93,6 +94,11 @@ impl LessonCapture {
         let Some(lesson) = answer.lesson else {
             return Ok(None);
         };
+        // Not kept when the company's decision says it holds sensitive data
+        // (ADR-213, D3).
+        if !lesson_kept(&self.llm, &models, scope, &lesson.title, &lesson.content).await {
+            return Ok(None);
+        }
         let mut tx = self.db.begin(scope.tenant_id).await?;
         if personal_lesson_titled(&mut tx, scope.user_id, &lesson.title).await? {
             return Ok(None);

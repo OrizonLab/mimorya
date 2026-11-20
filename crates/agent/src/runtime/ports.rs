@@ -248,7 +248,9 @@ pub trait MemoryStore: Send + Sync {
         limit: u32,
         clearance: Sensitivity,
     ) -> anyhow::Result<Vec<MemoryHit>>;
-    async fn create(&self, memory: NewMemory) -> anyhow::Result<Uuid>;
+    /// Saves `memory`: its id, and the status it was saved with, which the
+    /// platform may make a proposal awaiting validation (ADR-213, D3).
+    async fn create(&self, memory: NewMemory) -> anyhow::Result<(Uuid, MemoryStatus)>;
     async fn mark_used(&self, ids: &[Uuid]) -> anyhow::Result<()>;
 }
 

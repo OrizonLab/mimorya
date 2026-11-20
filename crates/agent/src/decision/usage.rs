@@ -23,8 +23,11 @@ pub enum DecisionUsage {
 }
 
 /// The usages delivered so far.
-pub const AVAILABLE_USAGES: &[DecisionUsage] =
-    &[DecisionUsage::ModelRouting, DecisionUsage::SkillChoice];
+pub const AVAILABLE_USAGES: &[DecisionUsage] = &[
+    DecisionUsage::ModelRouting,
+    DecisionUsage::SkillChoice,
+    DecisionUsage::MemoryGuard,
+];
 
 /// What a usage reads of a person's request, at most.
 pub const MAX_DECIDED_REQUEST_CHARS: usize = 2_000;
