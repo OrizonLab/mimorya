@@ -942,7 +942,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   (`infra/backup/prune.sh <jours>`, ADR-215) : au plus ce nombre de jours, plus
   l'intervalle entre deux sauvegardes de base, et plus longtemps après une restauration
   à un instant passé ou pour une archive sans sauvegarde de base, que
-  `archive-status.sh --base-within` signale.
+  `archive-status.sh --base-within` signale. Les instantanés de la copie hors site que
+  recommande le plan de reprise (ADR-216) la gardent en plus la durée que l'exploitant
+  leur fixe, 90 jours dans son exemple.
 - **Export du journal d'audit** (ADR-181) : le SIEM de l'entreprise reçoit les
   identifiants des comptes, les adresses IP et les identifiants des personnes chez
   Slack, Telegram ou Teams que le journal porte ; l'entreprise,

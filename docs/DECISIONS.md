@@ -16310,22 +16310,30 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       données à la base) en tête ; chaque nuit, le dump, puis la sauvegarde de base et, si
       elle a réussi, la conservation ; l'état de l'archive toutes les dix minutes, une
       alerte sur toute sortie non nulle ;
-    - la copie hors site **tirée par l'hôte de secours**, que l'hôte de production ne peut
-      ni réécrire ni supprimer. Sa clé SSH n'y ouvre qu'une lecture (`rrsync -ro`), et
-      `--numeric-ids` garde à l'archive son propriétaire, la base. Elle suit la
-      conservation de l'hôte (`--delete`), et des instantanés datés (`cp -al`) gardent ce
-      qu'elle retire, pour une durée que l'exploitant fixe, qui borne aussi ce que la
-      copie garde des données supprimées ;
+    - la copie hors site **tirée par l'hôte de secours**, par deux clés SSH limitées
+      chacune à la lecture d'un dossier (`rrsync -ro`), l'archive et les sauvegardes, un
+      verrou par destination. `--numeric-ids` garde à l'archive son propriétaire, la base ;
+      `--no-devices --no-specials` refuse les fichiers spéciaux. La copie suit l'hôte,
+      suppressions comprises (`--delete`) : un intrus sur l'hôte de production peut la
+      vider. Seuls les instantanés déjà faits (`cp -al`, datés par eux-mêmes) sont hors de
+      sa portée. Leur durée, que l'exploitant fixe, borne aussi ce que la copie garde des
+      données supprimées ;
     - avec `MIMORYA_TLS=internal`, une copie de la racine locale de Caddy ;
   - **procédures** : erreur dans les données, perte de l'hôte (avec ou sans archive),
     base abîmée sur un hôte intact, intrusion, identité `age` perdue, archivage en échec.
     Deux règles valent pour toutes :
     - ne rien jeter de l'installation en panne avant vérification. Le volume abîmé est
       mis de côté et relu avant que le seul volume de la base soit retiré ;
-    - une pile restaurée ne tourne jamais entière à côté de celle en service : elle a les
-      mêmes réglages et les mêmes jetons, et ses workers relanceraient tâches planifiées,
-      e-mails, messages des passerelles et renouvellements OAuth. À côté, seule sa base
-      démarre ; la pile entière ne démarre qu'une fois l'ancienne arrêtée, à la bascule ;
+    - une pile restaurée ne tourne jamais entière en même temps que l'ancienne : elle a
+      les mêmes réglages et les mêmes jetons, et ses workers relanceraient tâches
+      planifiées, e-mails, messages des passerelles et renouvellements OAuth. Tant que
+      l'ancienne peut tourner, seule sa base démarre. Un hôte seulement injoignable peut
+      encore tourner : il est arrêté ou coupé du réseau par son hébergeur avant que la
+      pile restaurée démarre entière. Sur l'hôte de secours, l'archive est placée dans un
+      dossier vidé, et retirée après un exercice : sinon les fichiers d'une restauration
+      précédente se mêleraient à ceux de la suivante ;
+    - après une intrusion, les clés TLS sont refaites (certificat public révoqué ; racine
+      `internal` nouvelle, jamais remise depuis la copie) avec les autres secrets ;
   - **après une reprise** : archivage vérifié, sauvegarde de base aussitôt, tâches de la
     préparation remises en place, ligne temporelle notée, journal d'audit vérifié,
     entreprises informées ;

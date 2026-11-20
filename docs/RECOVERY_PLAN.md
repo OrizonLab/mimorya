@@ -7,15 +7,19 @@ dans l'ordre, selon ce qui est arrivé (ADR-216). Il s'appuie sur les sauvegarde
 (ADR-214) et la conservation de l'archive (ADR-215).
 
 Les commandes se lancent en `root`, depuis le dépôt extrait à la version de l'installation
-(ici `/srv/mimorya`), la pile désignée une fois pour toutes :
+(ici `/srv/mimorya`, l'archive dans `/srv/mimorya/wal-archive` et les sauvegardes dans
+`/srv/mimorya/backups`, les emplacements par défaut), la pile désignée une fois pour
+toutes :
 
 ```bash
 cd /srv/mimorya
 export COMPOSE_FILE=compose.production.yml COMPOSE_ENV_FILES=/srv/mimorya/.env.production
+export MIMORYA_BACKUP_RECIPIENTS_FILE=/srv/mimorya/destinataires.txt
 ```
 
-Sans ces deux variables, `docker compose` lirait `docker-compose.yml`, la base de
-développement.
+Sans les deux premières, `docker compose` lirait `docker-compose.yml`, la base de
+développement ; sans la troisième, `backup.sh` n'aurait aucun destinataire. Si vous avez
+déplacé l'archive (`MIMORYA_WAL_ARCHIVE`), remplacez ses chemins partout ci-dessous.
 
 ## 1. Ce qui est protégé, et où
 
@@ -23,14 +27,14 @@ Tout ce que la plateforme garde (entreprises, comptes, conversations, mémoires,
 documents déposés, journal d'audit, secrets scellés) est dans la base PostgreSQL. Le
 reste, sur l'hôte, se refait ou se garde à part :
 
-| Élément                                              | Protection                                                                                                                                                        | Où le garder                                              |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Base                                                 | dump et sauvegarde de base chaque nuit, archive continue des WAL, chiffrés par `age` pour des clés publiques                                                      | copie hors site, tirée par l'hôte de secours (§ 3)        |
-| Clé maître (`MIMORYA_MASTER_KEY`)                    | aucune dans les sauvegardes : sans elle, les secrets de la base (jetons, mots de passe) sont illisibles                                                           | hors du serveur, avec les identités `age`                 |
-| Identités `age` (clés privées)                       | deux destinataires au moins, l'un gardé à part : une identité perdue rend ses sauvegardes illisibles                                                              | hors du serveur ; apportées le temps d'une restauration   |
-| `.env.production` (mots de passe, domaine, réglages) | les mots de passe de la base font partie d'une sauvegarde de base : la pile restaurée garde les mêmes                                                             | hors du serveur, avec la clé maître                       |
-| Version de l'installation (`MIMORYA_VERSION`)        | images publiées par version (ADR-051) ; le dépôt extrait à la même version                                                                                        | noter la version en service (§ 7)                         |
-| Certificats TLS (Caddy)                              | avec un certificat public (ACME), refaits au démarrage ; avec `MIMORYA_TLS=internal`, la racine locale que les postes ont adoptée est dans le volume `caddy-data` | avec `internal`, une copie de `/data/caddy/pki` du volume |
+| Élément                                              | Protection                                                                                                                                                        | Où le garder                                                |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Base                                                 | dump et sauvegarde de base chaque nuit, archive continue des WAL, chiffrés par `age` pour des clés publiques                                                      | copie hors site, tirée par l'hôte de secours (§ 3)          |
+| Clé maître (`MIMORYA_MASTER_KEY`)                    | aucune dans les sauvegardes : sans elle, les secrets de la base (jetons, mots de passe) sont illisibles                                                           | hors du serveur, avec les identités `age`                   |
+| Identités `age` (clés privées)                       | deux destinataires au moins, l'un gardé à part : une identité perdue rend ses sauvegardes illisibles                                                              | hors du serveur ; apportées le temps d'une restauration     |
+| `.env.production` (mots de passe, domaine, réglages) | les mots de passe de la base font partie d'une sauvegarde de base : la pile restaurée garde les mêmes                                                             | hors du serveur, avec la clé maître                         |
+| Version de l'installation (`MIMORYA_VERSION`)        | images publiées par version (ADR-051) ; le dépôt extrait à la même version                                                                                        | noter la version en service (§ 7)                           |
+| Certificats TLS (Caddy)                              | avec un certificat public (ACME), refaits au démarrage ; avec `MIMORYA_TLS=internal`, la racine locale que les postes ont adoptée est dans le volume `caddy-data` | avec `internal`, une copie de sa racine, avec la clé maître |
 
 ## 2. Objectifs
 
@@ -44,8 +48,8 @@ reste, sur l'hôte, se refait ou se garde à part :
   cinq, tant que l'archivage et la copie sont à jour. L'un et l'autre alertent quand ils
   échouent (§ 3), l'état de l'archive après dix minutes de retard.
 - **Base abîmée, hôte intact** : l'archive est sur l'hôte, à jour à cinq minutes près.
-- **Sans archive** (destinataires non donnés à la base) : le dernier dump, jusqu'à **24
-  heures**.
+- **Sans archive** (destinataires non donnés à la base) : le dernier dump copié, soit
+  **environ un jour**, plus le délai de sa copie hors site.
 
 La période gardée par la conservation (`prune.sh <jours>`, ADR-215) borne jusqu'où la base
 peut remonter : 30 jours dans l'exemple du § 3.
@@ -69,14 +73,16 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
 
 ## 3. Préparation
 
-À faire une fois l'installation en service, et à revoir à chaque exercice :
+À faire une fois l'installation en service, et à revoir à chaque exercice.
+
+### Sur l'hôte de production
 
 - [ ] Destinataires des sauvegardes (deux au moins) donnés à la base dans `.env.production`
       (`MIMORYA_BACKUP_RECIPIENTS`), et les mêmes clés publiques, une par ligne, dans
       `/srv/mimorya/destinataires.txt`, que lit `backup.sh`. Identités gardées hors du
       serveur, avec la clé maître et `.env.production`.
-- [ ] Sur l'hôte de production, les tâches planifiées de `root` (`crontab -e`) ;
-      `votre-alerte` est votre commande d'alerte :
+- [ ] Tâches planifiées de `root` (`crontab -e`) ; `votre-alerte` est votre commande
+      d'alerte :
 
   ```cron
   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -90,31 +96,52 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
   */10 * * * * cd /srv/mimorya && infra/backup/archive-status.sh --base-within 26 >/dev/null || votre-alerte "archive des WAL"
   ```
 
-- [ ] Une copie hors site **tirée par l'hôte de secours**, hors de portée d'un intrus sur
-      l'hôte de production. Sur celui-ci, la clé SSH de l'hôte de secours n'ouvre qu'une
-      lecture du dossier de l'installation (`rrsync`, fourni avec `rsync`), dans
-      `/root/.ssh/authorized_keys` :
+- [ ] Deux clés SSH de l'hôte de secours admises pour `root`, chacune limitée à la lecture
+      d'un seul dossier par `rrsync` (`/usr/bin/rrsync` depuis rsync 3.2.4, qui demande
+      `python3` ; avant, à installer depuis `/usr/share/doc/rsync/scripts/`), dans
+      `/root/.ssh/authorized_keys`, `PermitRootLogin prohibit-password` dans la
+      configuration de `sshd` :
 
   ```text
-  command="rrsync -ro /srv/mimorya/",restrict ssh-ed25519 AAAA… copie@secours
+  command="rrsync -ro /srv/mimorya/wal-archive/",restrict ssh-ed25519 AAAA… archive@secours
+  command="rrsync -ro /srv/mimorya/backups/",restrict ssh-ed25519 AAAA… sauvegardes@secours
   ```
 
-  Sur l'hôte de secours, en `root`. `--numeric-ids` garde à l'archive son propriétaire, la
-  base (uid 999). La copie suit la conservation de l'hôte (`--delete`) ; des instantanés
-  datés gardent ce qu'elle retire, 90 jours ici, et bornent ce qu'elle garde des données
-  supprimées :
+- [ ] Avec `MIMORYA_TLS=internal`, une copie de la racine locale de Caddy, faite hors du
+      dépôt, sortie de l'hôte puis effacée :
+
+  ```bash
+  (umask 077 && docker compose run --rm --no-deps -T --entrypoint tar proxy -czf - -C /data/caddy pki \
+    >/root/caddy-pki.tar.gz)
+  ```
+
+### Sur l'hôte de secours
+
+- [ ] Docker, `age`, `rsync`, le dépôt extrait à la version de l'installation,
+      `.env.production` et la clé maître à portée.
+- [ ] Les dossiers de la copie et des instantanés, les deux clés SSH, et l'empreinte de
+      l'hôte de production connue :
+
+  ```bash
+  mkdir -p /srv/mimorya-copie/wal-archive /srv/mimorya-copie/backups /srv/mimorya-instantanes
+  ssh-keygen -t ed25519 -N '' -f /root/.ssh/archive && ssh-keygen -t ed25519 -N '' -f /root/.ssh/sauvegardes
+  ssh-keyscan production >>/root/.ssh/known_hosts   # empreinte à vérifier
+  ```
+
+- [ ] La copie hors site, **tirée** par l'hôte de secours, en `root`, une destination par
+      verrou. `--numeric-ids` garde à l'archive son propriétaire, la base (uid 999) ;
+      `--no-devices --no-specials` refuse les fichiers spéciaux qu'un hôte compromis
+      enverrait. La copie suit l'hôte, suppressions comprises (`--delete`) : un intrus sur
+      l'hôte de production peut la vider. Seuls les instantanés déjà faits sont hors de sa
+      portée. Ils sont datés par eux-mêmes et gardés 90 jours ici, ce qui borne aussi ce
+      que la copie garde des données supprimées. Gardez `rsync` à jour.
 
   ```cron
-  */5 * * * *  flock -n /run/mimorya-copie.lock rsync -a --numeric-ids --delete --exclude '.*' root@production:wal-archive/ /srv/mimorya-copie/wal-archive/ || votre-alerte "copie de l'archive"
-  10 3 * * *   flock /run/mimorya-copie.lock rsync -a --numeric-ids --delete --exclude '*.partial.*' --exclude '*.probe.*' root@production:backups/ /srv/mimorya-copie/backups/ || votre-alerte "copie des sauvegardes"
-  40 3 * * *   mkdir -p /srv/mimorya-instantanes && cp -al /srv/mimorya-copie /srv/mimorya-instantanes/$(date +\%F) && find /srv/mimorya-instantanes -mindepth 1 -maxdepth 1 -mtime +90 -exec rm -rf {} +
+  */5 * * * *  flock -n /run/copie-archive.lock rsync -a --numeric-ids --no-devices --no-specials --delete --exclude '.*' -e 'ssh -i /root/.ssh/archive' root@production:./ /srv/mimorya-copie/wal-archive/ || votre-alerte "copie de l'archive"
+  10 3 * * *   flock /run/copie-sauvegardes.lock rsync -a --numeric-ids --no-devices --no-specials --delete --exclude '*.partial.*' --exclude '*.probe.*' -e 'ssh -i /root/.ssh/sauvegardes' root@production:./ /srv/mimorya-copie/backups/ || votre-alerte "copie des sauvegardes"
+  50 4 * * *   flock /run/copie-archive.lock flock /run/copie-sauvegardes.lock sh -c 'd=/srv/mimorya-instantanes/$(date +\%F) && cp -al /srv/mimorya-copie "$d" && touch "$d" && find /srv/mimorya-instantanes -mindepth 1 -maxdepth 1 -mtime +90 -exec rm -rf {} +' || votre-alerte "instantané"
   ```
 
-- [ ] Avec `MIMORYA_TLS=internal`, une copie de la racine locale de Caddy, gardée avec la
-      clé maître :
-      `docker compose run --rm --no-deps -T --entrypoint tar proxy -czf - -C /data/caddy pki >caddy-pki.tar.gz`.
-- [ ] L'hôte de secours prêt : Docker, `age`, `rsync`, le dépôt extrait à la version de
-      l'installation, `.env.production` et la clé maître à portée.
 - [ ] Un premier exercice de reprise fait et minuté (§ 6).
 
 ## 4. Procédures
@@ -123,13 +150,30 @@ Deux règles valent pour toutes :
 
 - **Ne rien jeter de l'installation en panne** avant que la reprise soit vérifiée : son
   volume de base, son archive et ses journaux peuvent encore servir.
-- **Une pile restaurée ne tourne jamais entière à côté de celle en service.** Elle a les
+- **Une pile restaurée ne tourne jamais entière en même temps que l'ancienne.** Elle a les
   mêmes réglages et les mêmes jetons : ses workers relanceraient les tâches planifiées,
   enverraient des e-mails et des messages aux passerelles, et renouvelleraient les jetons
-  OAuth d'hier. À côté de la pile en service, seule sa base démarre ; la pile entière ne
-  démarre qu'une fois l'ancienne arrêtée.
+  OAuth d'hier. Tant que l'ancienne peut tourner, seule la base de la nouvelle démarre
+  (`docker compose up -d db`) ; la pile entière ne démarre qu'une fois l'ancienne
+  arrêtée. `restore-base.sh` termine en disant de démarrer la pile : dans ce cas, ne
+  démarrez que la base.
 
 L'identité `age` est apportée sur l'hôte le temps de la restauration, puis retirée.
+
+Sur l'hôte de secours, l'archive se place dans un dossier vidé de ce qu'une restauration
+précédente y a laissé, à la base (uid 999, en 700), depuis la copie ou un instantané :
+
+```bash
+rsync -a --numeric-ids --delete /srv/mimorya-copie/wal-archive/ /srv/mimorya/wal-archive/
+```
+
+Après une copie faite autrement, `chown -R 999:999 /srv/mimorya/wal-archive` et `chmod 700`.
+Avec `MIMORYA_TLS=internal`, la racine de Caddy gardée au § 3 se remet dans le volume
+`caddy-data` de la nouvelle pile, avant son démarrage, sauf après une intrusion (4.4) :
+
+```bash
+docker compose run --rm --no-deps -T --entrypoint tar proxy -xzf - -C /data/caddy <caddy-pki.tar.gz
+```
 
 ### 4.1 Erreur dans les données
 
@@ -138,10 +182,7 @@ Des données supprimées ou modifiées par erreur, par une personne, un agent ou
 1. Noter l'instant de l'erreur, au plus juste, avec son fuseau : `UTC`, `GMT` ou un
    décalage (`+01`, `-05:30`), jamais `Z` ni un nom de fuseau. Le journal d'audit le dit
    souvent.
-2. Sur l'hôte de secours, placer une copie de l'archive dans le dossier de son
-   installation (`MIMORYA_WAL_ARCHIVE`, `./wal-archive` par défaut), à la base (uid 999,
-   en 700) : `rsync -a --numeric-ids /srv/mimorya-copie/wal-archive/ wal-archive/` depuis la
-   copie tirée, ou `chown -R 999:999` après une autre copie.
+2. Sur l'hôte de secours, placer l'archive (voir plus haut).
 3. Restaurer la plus récente sauvegarde de base terminée avant l'instant, jusqu'à lui :
 
    ```bash
@@ -153,35 +194,38 @@ Des données supprimées ou modifiées par erreur, par une personne, un agent ou
 5. Choisir :
    - **réintégrer** les seules données perdues dans la pile en service, par un export
      ciblé depuis la base restaurée : réservé à qui connaît le schéma, à faire relire.
-     Puis jeter la pile restaurée (`docker compose down -v`) ;
+     Puis jeter la pile restaurée et l'archive qu'elle a laissée :
+     `docker compose down -v && rm -rf /srv/mimorya/wal-archive` ;
    - **reprendre sur la pile restaurée** : arrêter l'ancienne (`docker compose stop` sur
-     son hôte), démarrer la nouvelle (`docker compose up -d`), faire pointer le domaine
-     vers elle, et vérifier (§ 5). Ce qui a été fait entre l'instant et la bascule est à
-     refaire : dites-le aux entreprises. Au démarrage, une tâche planifiée échue depuis
-     l'instant est lancée une fois (ADR-081), même si l'ancienne pile l'a déjà fait ; ses
-     auteurs peuvent la mettre en pause avant. Un jeton OAuth renouvelé par l'ancienne
-     pile depuis l'instant est à autoriser de nouveau.
+     son hôte), remettre la racine de Caddy le cas échéant, démarrer la nouvelle
+     (`docker compose up -d`), faire pointer le domaine vers elle, et vérifier (§ 5). Ce
+     qui a été fait entre l'instant et la bascule est à refaire : dites-le aux
+     entreprises. Au démarrage, une occurrence de tâche planifiée en retard d'une heure
+     au plus est lancée (ADR-080), même si l'ancienne pile l'a déjà fait ; ses auteurs
+     peuvent la mettre en pause avant. Un jeton OAuth renouvelé par l'ancienne pile depuis
+     l'instant est à autoriser de nouveau.
 
 ### 4.2 Perte de l'hôte
 
 L'hôte est détruit, inaccessible ou son disque perdu :
 
-1. Sur l'hôte de secours : `.env.production` et la clé maître repris de leur copie ;
-   l'archive placée comme en 4.1 étape 2, depuis la copie ou son dernier instantané.
-2. Rejouer toute l'archive, sans instant :
+1. S'assurer que l'ancien hôte ne peut plus faire tourner sa pile : arrêté, ou coupé du
+   réseau depuis la console de l'hébergeur. Un hôte seulement injoignable peut encore
+   tourner. S'il revient, arrêter sa pile (`docker compose stop`) tant qu'il est isolé,
+   avant de le reconnecter.
+2. Sur l'hôte de secours : `.env.production` et la clé maître repris de leur copie ;
+   l'archive placée (voir plus haut), depuis la copie ou son dernier instantané.
+3. Rejouer toute l'archive, sans instant :
 
    ```bash
    infra/backup/restore-base.sh /srv/mimorya-copie/backups/mimorya-….base.tar.gz.age identite.txt
    ```
 
-3. Avec `MIMORYA_TLS=internal`, remettre la racine de Caddy gardée au § 3 dans le volume
-   `caddy-data` :
-   `docker compose run --rm --no-deps -T --entrypoint tar proxy -xzf - -C /data/caddy <caddy-pki.tar.gz`.
-4. Démarrer la pile (`docker compose up -d`) : l'ancienne n'est plus. Faire pointer le
-   domaine vers l'hôte de secours, et vérifier (§ 5).
+4. Remettre la racine de Caddy le cas échéant, démarrer la pile (`docker compose up -d`),
+   faire pointer le domaine vers l'hôte de secours, et vérifier (§ 5).
 
 Sans archive, le dernier dump se restaure dans la base démarrée seule, puis la pile
-(ADR-166) :
+(ADR-166), après l'étape 1 et la racine de Caddy remise :
 
 ```bash
 docker compose up -d db
@@ -210,10 +254,16 @@ Le volume de la base est corrompu, ou la base ne démarre plus :
    docker volume rm mimorya-production_db-data
    ```
 
-3. Rejouer toute l'archive, sur l'hôte, sur la dernière sauvegarde de base, comme en 4.2
-   étape 2, puis démarrer la pile et vérifier (§ 5). Les WAL du volume abîmé qui
-   n'étaient pas encore archivés (cinq minutes au plus) restent dans la copie mise de
-   côté, pour l'analyse.
+3. Rejouer toute l'archive, sur l'hôte même, sur la dernière sauvegarde de base, puis
+   démarrer la pile et vérifier (§ 5) :
+
+   ```bash
+   infra/backup/restore-base.sh /srv/mimorya/backups/mimorya-….base.tar.gz.age identite.txt
+   docker compose up -d
+   ```
+
+   Les WAL du volume abîmé qui n'étaient pas encore archivés (cinq minutes au plus)
+   restent dans la copie mise de côté, pour l'analyse.
 
 ### 4.4 Intrusion
 
@@ -222,9 +272,8 @@ Un accès illégitime à l'hôte ou à l'application est suspecté :
 1. Isoler l'hôte (réseau), sans l'éteindre si une analyse est prévue ; garder ses
    journaux.
 2. Reprendre sur un hôte neuf, comme en 4.1, à un instant antérieur à l'intrusion, depuis
-   un instantané de la copie fait avant elle. La copie tirée par l'hôte de secours est
-   hors de portée de l'intrus, mais il a pu y faire entrer des fichiers avant d'être vu.
-   Jamais sur l'hôte compromis.
+   un instantané fait avant elle : la copie elle-même suit l'hôte compromis, et l'intrus a
+   pu y faire entrer des fichiers ou en retirer. Jamais sur l'hôte compromis.
 3. Changer tout ce que l'intrus a pu lire :
    - les mots de passe de la base (`ALTER ROLE` sur la base restaurée, puis
      `.env.production`) ;
@@ -232,6 +281,9 @@ Un accès illégitime à l'hôte ou à l'application est suspecté :
      identifiants du relais SMTP ;
    - les identités `age` et leurs destinataires (4.5), puis une sauvegarde de base
      aussitôt ;
+   - les clés TLS : avec un certificat public, révoquer l'ancien auprès de son autorité,
+     la pile neuve en obtenant un autre ; avec `internal`, une racine nouvelle, l'ancienne
+     retirée des postes, et la copie du § 3 jamais remise ;
    - chez leurs fournisseurs, les secrets déclarés par les entreprises (applications,
      jetons des passerelles, clés de modèle) ;
    - la clé maître ne se change pas sans re-sceller les secrets : la tenir pour exposée.
@@ -268,7 +320,7 @@ Un accès illégitime à l'hôte ou à l'application est suspecté :
       nouvelle ligne temporelle.
 - [ ] Une sauvegarde de base est faite aussitôt (`backup.sh --base`), et un dump.
 - [ ] Les tâches du § 3 tournent pour la pile reprise : sauvegardes, conservation, état
-      de l'archive, copie tirée par l'hôte de secours.
+      de l'archive, et la copie tirée, sur l'hôte qui sert désormais de secours.
 - [ ] Le numéro de ligne temporelle dit par la restauration est noté : une restauration
       ultérieure qui partirait d'une sauvegarde de base antérieure le nomme
       (`MIMORYA_RESTORE_TIMELINE`).
@@ -283,14 +335,14 @@ Un accès illégitime à l'hôte ou à l'application est suspecté :
 Chaque trimestre, et après tout changement de l'installation, sur l'hôte de secours, sans
 rien démarrer d'autre que la base restaurée :
 
-1. Placer l'archive et prendre la sauvegarde de base de la nuit depuis le dernier
-   instantané de la copie, comme en 4.1 étape 2.
-2. Restaurer à un instant de la veille (4.1 étape 3), puis démarrer la seule base.
+1. Placer l'archive depuis le dernier instantané de la copie (§ 4).
+2. Choisir un instant de la veille et restaurer la plus récente sauvegarde de base
+   terminée avant lui (4.1 étape 3), puis démarrer la seule base.
 3. Vérifier les entreprises et leurs dernières données (`psql`), et le journal d'audit
    (`docker compose run --rm --no-deps api mimorya-admin verify-audit`, une commande qui ne
    lance aucune tâche de fond).
-4. Minuter chaque étape du § 2, jeter la pile (`docker compose down -v`), retirer
-   l'identité.
+4. Minuter chaque étape du § 2, puis jeter la pile et l'archive qu'elle a laissée
+   (`docker compose down -v && rm -rf /srv/mimorya/wal-archive`), et retirer l'identité.
 5. Noter le résultat ci-dessous et corriger l'objectif ou la préparation.
 
 | Date | Taille de la base | Durée totale | Écarts constatés | Suite donnée |
@@ -299,8 +351,9 @@ rien démarrer d'autre que la base restaurée :
 
 La CI joue, à chaque changement, les sauvegardes et les restaurations d'une pile qu'elle
 installe (`infra/docker/backup-test.sh`, `point-in-time-test.sh`,
-`archive-retention-test.sh`). Elle ne joue ni les tâches planifiées, ni la copie hors site,
-ni la bascule : l'exercice les vérifie, avec les identités et les accès de l'exploitant.
+`archive-retention-test.sh`). Elle ne joue ni les tâches planifiées, ni la copie hors site
+et ses instantanés, ni la bascule : l'exercice les vérifie, avec les identités et les
+accès de l'exploitant.
 
 ## 7. Registre de l'installation
 
