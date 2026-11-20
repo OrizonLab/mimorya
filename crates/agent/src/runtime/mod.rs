@@ -2,6 +2,7 @@
 //! uses to persist and report its progress, the lesson drawn from it and the
 //! summary of its conversation's older messages.
 
+mod action_guard;
 mod advisor;
 pub mod answer_review;
 pub mod budget;
@@ -30,6 +31,9 @@ pub mod types;
 mod unavailable;
 pub mod verification;
 
+pub use action_guard::{
+    ActionGuard, GuardReview, GuardVerdict, GuardedCall, NoActionGuard, no_action_guard,
+};
 pub use budget::{BudgetLimits, DEFAULT_BUDGET, MISSION_STAGE_BUDGET, check_budget, share_left};
 pub use context::{UserProfileContext, build_system_prompt, build_user_turn, french_date};
 pub use conversation_summary::{

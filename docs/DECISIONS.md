@@ -15548,7 +15548,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 ## ADR-213 — Service de décision : jugements rapides et typés, Jev ou le modèle principal (chantier 7)
 
-- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 à D4 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
+- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 à D5 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
   ADR-207 (routeur en amont, dont il remplace le classement), ADR-208 à ADR-212
   (fourniture du modèle et montant payé).
 - **Contexte** : le moteur et plusieurs fonctionnalités ont besoin de jugements courts et
@@ -15831,3 +15831,49 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     la version d'avant ;
   - le type n'est pas encore lu par les outils de l'agent ni par sa recherche ;
   - avec Jev, le titre et les premières pages du document partent chez TypeSafe.
+- **D5, garde-fou des actions sensibles (livré)** :
+  - constat : sur la plateforme telle qu'elle est, aucune action qui agit (écriture, envoi,
+    action irréversible) ne part sans validation humaine. `decide_execution` (`core/src/autonomy.rs`)
+    l'exige à tous les niveaux, sauf pour un outil déclaré autonome au niveau « autonome
+    limité », et aucune entreprise ne peut encore en déclarer un. Le garde-fou tel que le
+    cahier des charges le décrit, une validation exigée au-dessus du seuil, n'aurait donc
+    aucun effet aujourd'hui. Variante retenue (le cahier demande d'en proposer une quand
+    un point contredit l'architecture ; le choix revient à la meilleure option faute de
+    décision contraire) : le garde-fou lit chaque action qui agit avant qu'elle parte
+    **ou** qu'elle soit mise en validation ;
+  - un port du moteur (`ActionGuard`, `runtime/action_guard.rs`), demandé dans le
+    traitement des appels d'outils (`tool_calls/guard.rs`) après le point de décision
+    (PEP), pour un appel à effet (`write`, `external`, `irreversible`) qu'il laisse partir
+    ou met en validation ; jamais pour une lecture, un brouillon, une délégation, un
+    appel que le PEP refuse, ni pour un appel qu'une personne a validé, exécuté tel
+    quel. Seule exception : une validation qu'aucun responsable ne peut prendre
+    (ADR-059) n'est refusée qu'en la demandant, après lui ; il a alors été demandé (et
+    compté) pour rien, sans rien lever ;
+  - l'état envoyé : l'outil, l'action telle que l'outil la décrit, ses paramètres
+    (4 000 caractères au plus) et le domaine de l'adresse de la personne servie, rien
+    d'autre ; quatre `noul` (destinataire externe, montant élevé, données personnelles,
+    action irréversible) et un `score` du risque (faible, modéré, élevé, critique) ;
+  - un oui au seuil, un risque au moins « élevé » réunissant le seuil de probabilité en
+    comptant depuis « critique », ou une question sans réponse, est un signal ; le seuil
+    se lit dans le sens de la prudence (le baisser rend le garde-fou plus strict) ;
+  - actif, une action que le PEP laisserait partir seule et que le garde-fou signale, ou
+    dont aucun moteur ne décide dans le délai (15 s, comme D3), attend une validation, sa
+    raison disant pourquoi ; une action déjà mise en validation la garde, et sa raison
+    dit les signaux, sans rien changer d'autre ; un échec n'y ajoute rien. La raison
+    d'une validation n'est montrée que sur la page « Validations » de l'application :
+    les passerelles (Slack, Telegram, Teams) et l'e-mail au responsable montrent
+    l'action, son risque et ses paramètres, pas sa raison ; les y montrer est laissé à
+    une étape à part ;
+  - il ne lève jamais rien : un refus reste un refus, une validation reste une
+    validation ; l'autonomie et le PEP décident avant lui ;
+  - observé, il est demandé, compté et journalisé, sans effet ; ses réglages sont relus
+    à chaque appel (un run repris après une validation en tient compte), et s'ils ne
+    peuvent être lus, l'action suit la décision du PEP, comme sans décision ;
+  - son coût est compté dans le run (totaux, budget, consommation), au rôle
+    « décision » ; une évaluation de compétence, dont les actions ne partent jamais, ne
+    le demande pas ;
+  - avec Jev, l'action et ses paramètres (un e-mail, ses destinataires et son texte, par
+    exemple) partent chez TypeSafe ;
+  - tant qu'aucun outil n'est autonome, son effet visible est la raison enrichie des
+    validations, sur la page « Validations » ; la validation ajoutée à une action
+    autonome est testée sur le moteur.

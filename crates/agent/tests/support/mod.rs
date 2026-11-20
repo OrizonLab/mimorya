@@ -255,6 +255,8 @@ pub struct Options {
     pub prices: Option<PriceTable>,
     /// The company's decisions (ADR-213).
     pub decisions: Option<Arc<RunDecisions>>,
+    /// The run's autonomy (by default, every action validated).
+    pub autonomy: Option<AutonomyPolicy>,
 }
 
 pub struct Harness {
@@ -372,7 +374,8 @@ pub fn setup(steps: Vec<ScriptedStep>, options: Options) -> Harness {
         run_id,
         actor,
         objective: "Synthèse des interventions".into(),
-        autonomy: AutonomyPolicy::new(AutonomyLevel::ExecuteWithApproval),
+        autonomy: (options.autonomy)
+            .unwrap_or_else(|| AutonomyPolicy::new(AutonomyLevel::ExecuteWithApproval)),
         budget: options.budget.unwrap_or(DEFAULT_BUDGET),
         success_criteria: options.criteria,
         verification: VerificationConfig {

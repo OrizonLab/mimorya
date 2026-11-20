@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::action_guard::ActionGuard;
 use super::delegation::SubRunStore;
 use super::document_store::DocumentStore;
 use super::state::RunCheckpoint;
@@ -332,4 +333,6 @@ pub struct EnginePorts {
     pub accounts: Arc<dyn LinkedAccounts>,
     /// Where the run opens its sub-agents' runs (ADR-098).
     pub sub_runs: Arc<dyn SubRunStore>,
+    /// The company's guard of the actions (ADR-213, D5).
+    pub action_guard: Arc<dyn ActionGuard>,
 }
