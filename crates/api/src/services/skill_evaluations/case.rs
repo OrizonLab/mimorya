@@ -225,6 +225,7 @@ async fn answer_and_judge(
             unavailable: tools.unavailable,
             evidence: Vec::new(),
             decided: Vec::new(),
+            skills_shown: Vec::new(),
         })
         .await?;
     let mut usage = outcome.checkpoint().usage;

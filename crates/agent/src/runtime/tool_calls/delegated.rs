@@ -11,7 +11,7 @@ use uuid::Uuid;
 use super::{Call, ToolCallProcessor};
 use crate::llm::LlmToolResult;
 use crate::runtime::budget::share_left;
-use crate::runtime::delegation::{SUB_AGENT_BUDGET, SubAgentReport};
+use crate::runtime::delegation::{Parent, SUB_AGENT_BUDGET, SubAgentReport};
 use crate::runtime::state::{RunCheckpoint, RunUsageTotals};
 use crate::tools::RegisteredTool;
 use crate::tools::executor::INVALID_INPUT;
@@ -41,13 +41,17 @@ impl ToolCallProcessor {
             &SUB_AGENT_BUDGET,
         );
         let system = state.system.clone();
+        let skills = state.skills_shown.clone();
         let runs = delegations.iter().map(|delegated| {
-            let system = &system;
+            let parent = Parent {
+                system: &system,
+                skills: &skills,
+            };
             async move {
                 match serde_json::from_value::<DelegateTaskInput>(delegated.input.clone()) {
                     Ok(input) => self
                         .sub_agents
-                        .run(system, &input, share)
+                        .run(parent, &input, share)
                         .await
                         .map(|report| (Some(input), report)),
                     Err(error) => Ok((None, unreadable(&error))),

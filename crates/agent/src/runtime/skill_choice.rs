@@ -7,14 +7,21 @@
 //! `skill_read` still loads any active skill, and checks the reader's
 //! right, so a decision restricts nothing.
 
-use crate::decision::{Decided, DecisionQuestion, DecisionRequest, DecisionState, DecisionUsage};
+use crate::decision::{
+    Decided, DecisionQuestion, DecisionRequest, DecisionState, DecisionUsage,
+    MAX_DECIDED_REQUEST_CHARS,
+};
 
 use super::ports::SkillSummary;
 
 /// At most so many skills are asked about at once; more, and all are listed.
 pub const MAX_ASKED_SKILLS: usize = 20;
-/// What the decision reads of the request, at most.
-const MAX_REQUEST_CHARS: usize = 2_000;
+/// A yes above this is never sure enough to leave a skill out, whatever the
+/// threshold: the main model's « non » said with a weak certainty is a
+/// doubt.
+const DOUBT_ABOVE: f64 = 0.35;
+/// The heading of the skills the first turn lists.
+const SHOWN_TITLE: &str = "Compétences de l’entreprise utiles à cette demande";
 
 /// Which skills a run lists.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,13 +58,14 @@ pub fn skill_choice_request(objective: &str, skills: &[SkillSummary]) -> Option<
         .collect();
     Some(DecisionRequest {
         usage: DecisionUsage::SkillChoice.as_str(),
-        state: DecisionState::new().field("demande", objective, MAX_REQUEST_CHARS),
+        state: DecisionState::new().field("demande", objective, MAX_DECIDED_REQUEST_CHARS),
         questions,
     })
 }
 
 /// The skills said useful at `threshold`; all of them on a doubt: one said
-/// neither useful nor useless as surely, or unanswered.
+/// neither useful nor useless as surely, nor surely below `DOUBT_ABOVE`, or
+/// unanswered.
 pub fn chosen_skills(decided: &Decided, skills: &[SkillSummary], threshold: f64) -> SkillsShown {
     let mut chosen = Vec::new();
     for (at, skill) in skills.iter().enumerate() {
@@ -66,7 +74,7 @@ pub fn chosen_skills(decided: &Decided, skills: &[SkillSummary], threshold: f64)
         };
         if yes >= threshold {
             chosen.push(skill.clone());
-        } else if yes + threshold > 1.0 {
+        } else if yes + threshold > 1.0 || yes > DOUBT_ABOVE {
             return SkillsShown::All;
         }
     }
@@ -87,8 +95,19 @@ pub fn with_skills(turn: String, shown: &[SkillSummary]) -> String {
     if shown.is_empty() {
         return turn;
     }
-    let section = skills_section("Compétences de l’entreprise utiles à cette demande", shown);
+    let section = skills_section(SHOWN_TITLE, shown);
     format!("{section}\n\n{turn}")
+}
+
+/// A first turn without the skills listed before it: what was asked, as a
+/// lesson rereads it (ADR-076). Each skill is one line, the list ends with
+/// the first blank line.
+pub fn without_skills(turn: &str) -> &str {
+    let heading = format!("## {SHOWN_TITLE}\n");
+    match turn.strip_prefix(heading.as_str()) {
+        Some(listed) => listed.split_once("\n\n").map_or(turn, |(_, asked)| asked),
+        None => turn,
+    }
 }
 
 #[cfg(test)]
@@ -131,7 +150,7 @@ mod tests {
             panic!("the request alone")
         };
         assert_eq!(name, "demande");
-        assert!(text.chars().count() <= MAX_REQUEST_CHARS);
+        assert!(text.chars().count() <= MAX_DECIDED_REQUEST_CHARS);
         assert!(skill_choice_request("x", &[]).is_none());
         assert!(skill_choice_request("x", &skills(MAX_ASKED_SKILLS + 1)).is_none());
     }
@@ -150,6 +169,15 @@ mod tests {
             chosen_skills(&decided(&[0.9, 0.5, 0.1]), &all, 0.8),
             SkillsShown::All
         );
+        // At the default threshold, a « non » said weakly is a doubt too.
+        assert_eq!(
+            chosen_skills(&decided(&[0.9, 0.4, 0.1]), &all, 0.5),
+            SkillsShown::All
+        );
+        assert_eq!(
+            chosen_skills(&decided(&[0.9, 0.3, 0.1]), &all, 0.5),
+            SkillsShown::Chosen(vec![all[0].clone()])
+        );
         // A skill unanswered: a doubt.
         assert_eq!(
             chosen_skills(&decided(&[0.9, 0.1]), &all, 0.8),
@@ -165,5 +193,8 @@ mod tests {
         ));
         assert!(turn.ends_with("Synthèse des interventions"));
         assert_eq!(with_skills("Bonjour".into(), &[]), "Bonjour");
+        // What was asked, as a lesson rereads it.
+        assert_eq!(without_skills(&turn), "Synthèse des interventions");
+        assert_eq!(without_skills("Bonjour"), "Bonjour");
     }
 }

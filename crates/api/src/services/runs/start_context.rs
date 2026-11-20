@@ -12,8 +12,8 @@ use mimorya_agent::decision::{
     Counted, DecisionMode, DecisionOutcome, DecisionUsage, RunDecisions, UsagePolicy,
 };
 use mimorya_agent::runtime::{
-    SkillSummary, SkillsShown, build_system_prompt, chosen_skills, skill_choice_request,
-    skills_section,
+    MAX_ASKED_SKILLS, SkillSummary, SkillsShown, build_system_prompt, chosen_skills,
+    skill_choice_request, skills_section,
 };
 use mimorya_core::authz::Actor;
 use mimorya_db::Database;
@@ -55,12 +55,12 @@ pub async fn start_context(
             decided: Vec::new(),
         });
     };
-    let (chosen, decided) = choose(decisions, policy, starting.request, &skills).await;
+    let (chosen, why, decided) = choose(decisions, policy, starting.request, &skills).await;
     let shown = match chosen {
         SkillsShown::All => skills.clone(),
         SkillsShown::Chosen(chosen) => chosen,
     };
-    journal(policy.mode, &skills, &shown);
+    journal(policy.mode, why, &skills, &shown);
     Ok(match policy.mode {
         DecisionMode::Active => StartContext {
             system: build_system_prompt(&profile, &[], now),
@@ -76,27 +76,37 @@ pub async fn start_context(
 }
 
 /// The skills said useful; all of them when nothing is to be asked, or
-/// nothing decided.
+/// nothing decided; and why, as journaled.
 async fn choose(
     decisions: &RunDecisions,
     policy: UsagePolicy,
     request: &str,
     skills: &[SkillSummary],
-) -> (SkillsShown, Vec<Counted>) {
+) -> (SkillsShown, &'static str, Vec<Counted>) {
     let Some(asked) = skill_choice_request(request, skills) else {
-        return (SkillsShown::All, Vec::new());
+        let why = if skills.len() > MAX_ASKED_SKILLS {
+            "too_many"
+        } else {
+            "none"
+        };
+        return (SkillsShown::All, why, Vec::new());
     };
     let (outcome, counted) = decisions.service.decide_counted(&asked).await;
-    let chosen = match outcome {
-        DecisionOutcome::Decided(decided) => chosen_skills(&decided, skills, policy.threshold),
-        DecisionOutcome::Failed => SkillsShown::All,
+    let (chosen, why) = match outcome {
+        DecisionOutcome::Decided(decided) => {
+            match chosen_skills(&decided, skills, policy.threshold) {
+                SkillsShown::All => (SkillsShown::All, "doubt"),
+                chosen => (chosen, "decided"),
+            }
+        }
+        DecisionOutcome::Failed => (SkillsShown::All, "failed"),
     };
-    (chosen, counted)
+    (chosen, why, counted)
 }
 
 /// What the choice leaves out of the context, measured: counts and sizes,
 /// never the request.
-fn journal(mode: DecisionMode, skills: &[SkillSummary], shown: &[SkillSummary]) {
+fn journal(mode: DecisionMode, why: &str, skills: &[SkillSummary], shown: &[SkillSummary]) {
     if skills.is_empty() {
         return;
     }
@@ -105,6 +115,7 @@ fn journal(mode: DecisionMode, skills: &[SkillSummary], shown: &[SkillSummary]) 
         target: "mimorya::decision",
         usage = DecisionUsage::SkillChoice.as_str(),
         mode = mode.as_str(),
+        reason = why,
         skills = skills.len(),
         shown = shown.len(),
         index_chars = chars(skills),

@@ -253,6 +253,7 @@ impl Scenario {
                 unavailable: Default::default(),
                 evidence: Vec::new(),
                 decided: Vec::new(),
+                skills_shown: Vec::new(),
             })
             .await
             .unwrap()

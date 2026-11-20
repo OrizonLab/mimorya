@@ -50,9 +50,10 @@ pub use ports::{
     ToolInvocationRecord, UsageRecord, UsageSink,
 };
 pub use recovery::{InterruptedCall, MAX_RESUMPTIONS, unknown_effect};
-pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime, StartInput};
+pub use runtime::{ACCOUNT_INACTIVE, AgentRuntime};
 pub use skill_choice::{
-    MAX_ASKED_SKILLS, SkillsShown, chosen_skills, skill_choice_request, skills_section, with_skills,
+    MAX_ASKED_SKILLS, SkillsShown, chosen_skills, skill_choice_request, skills_section,
+    with_skills, without_skills,
 };
 pub use state::{
     AdvisorState, EscalationState, PendingApproval, PendingCalls, RunCheckpoint, RunUsageTotals,
@@ -60,7 +61,7 @@ pub use state::{
 pub use supply::SupplyLimit;
 pub use types::{
     ApprovalDecision, ApprovalDecisions, DEFAULT_TOOL_TIMEOUT, RunConfig, RunOutcome, RuntimeDeps,
-    VerificationConfig,
+    StartInput, VerificationConfig,
 };
 pub use unavailable::UnavailableConnectors;
 pub use verification::VerificationReport;

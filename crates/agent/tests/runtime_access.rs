@@ -279,6 +279,7 @@ async fn rights_that_cannot_be_read_stop_the_run_before_the_model() {
             unavailable: Default::default(),
             evidence: Vec::new(),
             decided: Vec::new(),
+            skills_shown: Vec::new(),
         })
         .await;
 

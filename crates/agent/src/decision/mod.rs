@@ -26,7 +26,8 @@ pub use question::{
 pub use run::RunDecisions;
 pub use service::{Counted, DecisionCall, DecisionOutcome, DecisionRecorder, DecisionService};
 pub use usage::{
-    AVAILABLE_USAGES, DecisionMode, DecisionUsage, ENGINE_TEST, UsagePolicy, usage_problem,
+    AVAILABLE_USAGES, DecisionMode, DecisionUsage, ENGINE_TEST, MAX_DECIDED_REQUEST_CHARS,
+    UsagePolicy, usage_problem,
 };
 
 #[cfg(test)]

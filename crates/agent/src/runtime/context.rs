@@ -1,7 +1,8 @@
 //! Builds what the model sees. The system prompt holds stable content only
-//! (platform rules, who the user is, skills index) so that it stays cacheable
-//! across turns; retrieved memories travel with the user turn instead, as
-//! data that opens no envelope and hides nothing (ADR-159).
+//! (platform rules, who the user is, the skills index unless the company's
+//! decision lists them with the request instead, ADR-213 D2) so that it
+//! stays cacheable across turns; retrieved memories travel with the user
+//! turn instead, as data that opens no envelope and hides nothing (ADR-159).
 
 use chrono::{DateTime, Datelike, Utc};
 use chrono_tz::Tz;

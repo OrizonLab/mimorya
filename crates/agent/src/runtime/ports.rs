@@ -252,7 +252,7 @@ pub trait MemoryStore: Send + Sync {
     async fn mark_used(&self, ids: &[Uuid]) -> anyhow::Result<()>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillSummary {
     pub name: String,
     pub description: String,

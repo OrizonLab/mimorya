@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::ports::SkillSummary;
 use crate::llm::{AdvisorTool, LlmMessage, LlmToolResult};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,6 +92,11 @@ pub struct RunCheckpoint {
     /// said once a run.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub supply_stopped: bool,
+    /// The skills its first turn listed, chosen by the company's decision
+    /// (ADR-213, D2): its sub-agents are listed the same, even those a
+    /// person validates after a pause.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skills_shown: Vec<SkillSummary>,
 }
 
 /// A run's model escalation (ADR-207).
@@ -167,6 +173,7 @@ impl RunCheckpoint {
             skill_criteria: Vec::new(),
             escalation: EscalationState::default(),
             supply_stopped: false,
+            skills_shown: Vec::new(),
         }
     }
 }

@@ -283,6 +283,7 @@ impl Harness {
                 },
                 evidence: Vec::new(),
                 decided: Vec::new(),
+                skills_shown: Vec::new(),
             })
             .await
             .expect("run")
@@ -298,6 +299,7 @@ impl Harness {
                 unavailable: Default::default(),
                 evidence,
                 decided: Vec::new(),
+                skills_shown: Vec::new(),
             })
             .await
             .expect("run")

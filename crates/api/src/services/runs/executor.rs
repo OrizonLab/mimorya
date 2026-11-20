@@ -16,7 +16,7 @@ use mimorya_agent::llm::{Effort, EscalationRoute, LlmMessage, ModelRouter, Price
 use mimorya_agent::runtime::{
     AgentRuntime, ApprovalDecisions, BudgetLimits, EnginePorts, Escalation, InterruptedCall,
     RunCheckpoint, RunConfig, RunEvent, RuntimeDeps, StartInput, UnavailableConnectors,
-    VerificationConfig, build_user_turn, with_skills,
+    VerificationConfig, build_user_turn,
 };
 use mimorya_core::authz::Actor;
 use mimorya_core::autonomy::{AutonomyLevel, AutonomyPolicy};
@@ -219,10 +219,11 @@ impl RunExecutor {
                     .start(StartInput {
                         system: start.system,
                         history,
-                        user_turn: with_skills(build_user_turn(&text, &memories), &start.shown),
+                        user_turn: build_user_turn(&text, &memories),
                         unavailable,
                         evidence,
                         decided: start.decided,
+                        skills_shown: start.shown,
                     })
                     .await?;
             }

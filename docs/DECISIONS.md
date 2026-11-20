@@ -15718,8 +15718,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     la question) sur la demande seule (2 000 caractères au plus) ; au-delà de 20
     compétences, rien n'est demandé et toutes sont listées ;
   - une compétence dont le oui atteint le seuil est retenue ; une compétence aussi
-    sûrement inutile (oui + seuil ≤ 1) est laissée ; tout entre-deux, une réponse
-    manquante ou un échec est un doute, et toutes sont listées, comme aujourd'hui ;
+    sûrement inutile (oui + seuil ≤ 1, et un oui de 0,35 au plus, quel que soit le seuil,
+    pour qu'un « non » dit avec une certitude faible reste un doute, même au seuil de 0,5)
+    est laissée ; tout entre-deux, une réponse manquante ou un échec est un doute, et
+    toutes sont listées, comme aujourd'hui ;
   - le prompt système doit rester stable d'un run à l'autre (règle d'architecture) :
     actif, il ne liste jamais les compétences, et le premier tour, avec la demande, liste
     celles retenues, ou toutes sur un doute, comme les mémoires voyagent avec le tour de
@@ -15732,6 +15734,14 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     active, en vérifiant `skill:read` ; une personne dont l'agent ne peut lire aucune
     compétence n'en voit aucune et rien n'est demandé ;
   - le coût de la décision entre dans le run, au rôle « décision » (`StartInput`) ;
+  - la liste est gardée dans le point de reprise du run : un sous-agent, même confié
+    après une validation, reçoit la même avant sa tâche (toutes sur un doute), comme il
+    reçoit le prompt système de son parent (ADR-098) ;
+  - une leçon relit la demande sans la liste que la plateforme y a placée (ADR-076) ;
+  - la décision ne lit que la demande du tour : une relance (« et pour la semaine
+    prochaine ? ») est jugée sans la conversation, et une compétence suivie au tour
+    précédent peut ne pas être listée ; c'est à mesurer en observation avant
+    d'activer, et la compétence reste chargeable par son nom ;
   - les décisions d'un run ne sont construites qu'à son départ (jamais à sa reprise),
     sur les modèles de son exécution (ADR-208), et ne sont données au routeur que là où
     sa règle est « classement » ;

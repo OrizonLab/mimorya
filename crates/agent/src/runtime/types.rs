@@ -10,12 +10,15 @@ use uuid::Uuid;
 
 use super::budget::BudgetLimits;
 use super::escalation::Escalation;
-use super::ports::{AccessSource, EnginePorts};
+use super::ports::{AccessSource, EnginePorts, SkillSummary};
 use super::state::{PendingApproval, RunCheckpoint};
 use super::supply::SupplyLimit;
 use super::verification::VerificationReport;
-use crate::decision::RunDecisions;
-use crate::llm::{Effort, ModelRouter, PriceTable};
+use mimorya_core::tools::Citation;
+
+use super::unavailable::UnavailableConnectors;
+use crate::decision::{Counted, RunDecisions};
+use crate::llm::{Effort, LlmMessage, ModelRouter, PriceTable};
 use crate::tools::ToolRegistry;
 
 #[derive(Clone)]
@@ -173,4 +176,24 @@ impl RunOutcome {
             | Self::Handoff { checkpoint, .. } => checkpoint,
         }
     }
+}
+
+/// What a run starts with.
+pub struct StartInput {
+    pub system: String,
+    /// Previous turns of the conversation (text only).
+    pub history: Vec<LlmMessage>,
+    pub user_turn: String,
+    /// Connectors in reach of the user that could not start (ADR-048).
+    pub unavailable: UnavailableConnectors,
+    /// Sources a mission's earlier stages collected (ADR-089): an answer
+    /// may cite them.
+    pub evidence: Vec<Citation>,
+    /// What the decisions made for its start cost (ADR-213, D2), counted in
+    /// the run as its own calls.
+    pub decided: Vec<Counted>,
+    /// The skills the company's decision chose to list before the request
+    /// (ADR-213, D2), kept for its sub-agents; none when the system prompt
+    /// lists them.
+    pub skills_shown: Vec<SkillSummary>,
 }

@@ -2,14 +2,15 @@
 //! (ADR-213, D2), its main model the engine: active, the system prompt lists
 //! none and the first turn lists those said useful, or every one when the
 //! decision fails; observed, the decision is asked and counted, the system
-//! prompt lists them all as before and the first turn none; a person whose
-//! agent may not read skills is listed none, and nothing is asked. (The
+//! prompt lists them all as before and the first turn none; a sub-agent is
+//! listed what its parent was; a person whose agent may not read skills is
+//! listed none, and nothing is asked. (The
 //! rules of the choice itself: `crates/agent/src/runtime/skill_choice.rs`.)
 
 mod support;
 
 use axum::http::StatusCode;
-use mimorya_agent::testing::ScriptedStep;
+use mimorya_agent::testing::{ScriptedStep, call};
 use mimorya_core::demo::{tenant, user};
 use mimorya_db::repositories::skills::list_active_skills;
 use serde_json::{Map, Value, json};
@@ -158,4 +159,42 @@ async fn a_decision_never_shows_skills_to_whom_may_not_read_them() {
     for removed in [format!("/admin/policies/{id}"), DECISIONS.to_string()] {
         assert_eq!(paul.delete(&removed).await.status, StatusCode::OK);
     }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_sub_agent_is_listed_the_skills_its_parent_was() {
+    let api = TestApi::start_priced().await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let names = skill_names(&api).await;
+    set(&paul, choosing("active")).await;
+    // The decision failing: every skill, to the parent and to its sub-agent.
+    let delegated = ScriptedStep::calls(
+        "",
+        vec![call(
+            "delegate_task",
+            json!({ "profile": "research", "task": "Lister les interventions de la semaine" }),
+        )],
+    );
+    let steps = vec![
+        ScriptedStep::text("Je ne sais pas."),
+        delegated,
+        ScriptedStep::text("Trois interventions."),
+        ScriptedStep::text(ANSWER),
+    ];
+    let roles = run(&api, &marc, steps).await;
+    assert_eq!(roles, ["decision", "main", "main"]);
+    let requests = api.model.as_ref().unwrap().requests();
+    let child = requests
+        .iter()
+        .find(|request| request.system.contains("sous-agent"))
+        .expect("the sub-agent's request");
+    assert!(!child.system.contains(FULL_INDEX), "{}", child.system);
+    let turn = format!("{:?}", child.messages.last().unwrap());
+    assert!(turn.contains(CHOSEN), "{turn}");
+    for name in &names {
+        assert!(turn.contains(name.as_str()), "{name}: {turn}");
+    }
+    assert_eq!(paul.delete(DECISIONS).await.status, StatusCode::OK);
 }

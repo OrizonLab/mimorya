@@ -15,7 +15,6 @@
 
 use std::time::Instant;
 
-use mimorya_core::tools::Citation;
 use serde_json::json;
 
 use super::answer_review::present_answer;
@@ -25,32 +24,16 @@ use super::escalation::escalate_after_failure;
 use super::model_call::{ModelTurn, call_model};
 use super::ports::{CurrentAccess, RunEvent, StepAccess};
 use super::routing::route_at_start;
+use super::skill_choice::with_skills;
 use super::state::{PendingCalls, RunCheckpoint};
 use super::tool_calls::{ToolCallProcessor, order_by_request};
 use super::tool_refusals::{Since, since, why_not_run};
-use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps};
-use super::unavailable::UnavailableConnectors;
+use super::types::{ApprovalDecisions, RunConfig, RunOutcome, RuntimeDeps, StartInput};
 use super::verification::correction_message;
-use crate::decision::Counted;
 use crate::llm::{LlmMessage, LlmResponse, LlmToolCall, LlmToolResult, StopReason};
 
 /// Why a run stops when its user's account is no longer active.
 pub const ACCOUNT_INACTIVE: &str = "Arrêt : le compte de l’utilisateur n’est plus actif";
-
-pub struct StartInput {
-    pub system: String,
-    /// Previous turns of the conversation (text only).
-    pub history: Vec<LlmMessage>,
-    pub user_turn: String,
-    /// Connectors in reach of the user that could not start (ADR-048).
-    pub unavailable: UnavailableConnectors,
-    /// Sources a mission's earlier stages collected (ADR-089): an answer
-    /// may cite them.
-    pub evidence: Vec<Citation>,
-    /// What the decisions made for its start cost (ADR-213, D2), counted in
-    /// the run as its own calls.
-    pub decided: Vec<Counted>,
-}
 
 pub struct AgentRuntime {
     pub(super) deps: RuntimeDeps,
@@ -70,16 +53,18 @@ impl AgentRuntime {
 
     pub async fn start(&self, input: StartInput) -> anyhow::Result<RunOutcome> {
         let mut messages = input.history;
-        messages.push(LlmMessage::user(input.unavailable.note(input.user_turn)));
+        let turn = with_skills(input.user_turn, &input.skills_shown);
+        messages.push(LlmMessage::user(input.unavailable.note(turn)));
         let mut state = RunCheckpoint::new(input.system, messages);
         state.evidence = input.evidence;
-        count(&self.deps, &mut state, &input.decided).await?;
+        state.skills_shown = input.skills_shown;
         let events = &self.deps.ports.events;
         let objective = self.config.objective.clone();
         events.emit(RunEvent::RunStarted { objective }).await?;
         if let Some(unavailable) = input.unavailable.event() {
             events.emit(unavailable).await?;
         }
+        count(&self.deps, &mut state, &input.decided).await?;
         // Saved before the first model call: a run the service stops from
         // here on can be taken up again (ADR-053).
         self.deps.ports.runs.checkpoint(&state).await?;

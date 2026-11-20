@@ -12,13 +12,10 @@ use super::state::RunCheckpoint;
 use super::types::{RunConfig, RuntimeDeps};
 use crate::decision::{
     Counted, DecisionMode, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionState,
-    DecisionUsage,
+    DecisionUsage, MAX_DECIDED_REQUEST_CHARS,
 };
 use crate::runtime::ports::RunEvent;
 
-/// What the decision reads of the request, at most: as the main model's
-/// classification does.
-const MAX_ROUTED_CHARS: usize = 2_000;
 const QUESTION: &str = "niveau";
 const MAIN: &str = "principal";
 const ESCALATION: &str = "escalade";
@@ -79,11 +76,11 @@ fn hard(choice: &str, confidence: f64, threshold: f64) -> bool {
     choice == ESCALATION || confidence < threshold
 }
 
-/// The request alone, at most `MAX_ROUTED_CHARS` of it, and the choice.
+/// The request alone, at most `MAX_DECIDED_REQUEST_CHARS` of it, and the choice.
 fn routing_request(objective: &str) -> DecisionRequest {
     DecisionRequest {
         usage: DecisionUsage::ModelRouting.as_str(),
-        state: DecisionState::new().field("demande", objective, MAX_ROUTED_CHARS),
+        state: DecisionState::new().field("demande", objective, MAX_DECIDED_REQUEST_CHARS),
         questions: vec![DecisionQuestion::choice(
             QUESTION,
             "Quel modèle doit traiter la demande qu’une personne adresse à l’assistant de \
@@ -149,7 +146,7 @@ mod tests {
         };
         assert_eq!(name, "demande");
         assert!(
-            text.chars().count() <= MAX_ROUTED_CHARS,
+            text.chars().count() <= MAX_DECIDED_REQUEST_CHARS,
             "{}",
             text.chars().count()
         );
