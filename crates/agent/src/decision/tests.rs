@@ -237,3 +237,16 @@ fn a_usage_not_delivered_may_only_be_off() {
         assert!(usage_problem(usage, &beyond).unwrap().contains("de 0 à 1"));
     }
 }
+
+#[test]
+fn a_state_prints_its_fields_names_and_sizes_never_their_text() {
+    let state = DecisionState::new().field("message", "secret", 100);
+    let printed = format!("{state:?}");
+    assert!(!printed.contains("secret"), "{printed}");
+    assert!(
+        printed.contains("message") && printed.contains("6 caractères"),
+        "{printed}"
+    );
+    let request = DecisionRequest { state, ..request() };
+    assert!(!format!("{request:?}").contains("secret"));
+}

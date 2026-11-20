@@ -100,6 +100,13 @@ function DecisionForm({ data, onSaved }: { data: DecisionSettingsView; onSaved: 
             {data.jevReason && <span className="text-xs text-muted">({data.jevReason})</span>}
           </label>
         </fieldset>
+        {!jev && (
+          <p className="text-xs text-muted">
+            Le modèle principal dit sa certitude (faible, moyenne ou forte), traduite en probabilité
+            par une table fixe : cette probabilité n’est pas calibrée, et un seuil réglé pour Jev ne
+            vaut pas pour lui.
+          </p>
+        )}
         {jev && (
           <>
             <p className="text-sm">
@@ -118,7 +125,7 @@ function DecisionForm({ data, onSaved }: { data: DecisionSettingsView; onSaved: 
         )}
         {tested && (
           <p className="text-sm text-ok">
-            {`${tested.model} a répondu en ${tested.latencyMs} ms : le message d’essai est une salutation avec une probabilité de ${Math.round(tested.yes * 100)} %.`}
+            {`${tested.model} a répondu en ${tested.latencyMs} ms : le message d’essai est une salutation avec une probabilité de ${Math.round(tested.yes * 100)} %${tested.engine === 'mainModel' ? ' (déduite de sa certitude, non calibrée)' : ''}.`}
           </p>
         )}
         {action.error && <ErrorNote message={action.error} />}

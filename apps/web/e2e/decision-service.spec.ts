@@ -42,6 +42,9 @@ test('a company chooses Jev for its decisions, then its main model again', async
   const main = form.getByRole('radio', { name: /^Modèle principal/ });
   const jev = form.getByRole('radio', { name: /^Jev de TypeSafe \(jev-1\.14\.0\)/ });
   await expect(main).toBeChecked();
+  // The main model's probabilities are said not to be calibrated.
+  const uncalibrated = form.getByText(/cette probabilité n’est pas calibrée/);
+  await expect(uncalibrated).toBeVisible();
   // No usage is delivered yet: each stays off.
   const routing = form.getByLabel('Mode : Choix du modèle d’un run');
   await expect(routing).toBeDisabled();
@@ -50,6 +53,7 @@ test('a company chooses Jev for its decisions, then its main model again', async
 
   await jev.check();
   await expect(form).toContainText('sous-traitant situé hors de l’Union européenne');
+  await expect(uncalibrated).toHaveCount(0);
   await form.getByLabel(/^Clé d’API TypeSafe/).fill(JEV_KEY);
   await form.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(form.getByLabel(/laisser vide pour conserver la clé enregistrée/)).toBeVisible();

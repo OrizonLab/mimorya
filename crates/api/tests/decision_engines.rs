@@ -318,3 +318,31 @@ async fn jev_closed_by_the_operator_after_a_company_chose_it_is_never_asked() {
     assert!(jev.asked().is_empty(), "{:?}", jev.asked());
     assert_eq!(paul.delete(DECISIONS).await.status, StatusCode::OK);
 }
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn jev_s_price_is_shown_where_it_served_even_once_closed() {
+    let jev = FakeJev::serve().await;
+    let closed = TestApi::start_with_jev(&jev, false).await;
+    forget_decision_calls().await;
+    let usage = "/admin/usage?days=30";
+    let shown = closed.sign_in(user::PAUL).await.get(usage).await.json();
+    // Closed and never asked: no price of it.
+    assert_eq!(shown["jevPrices"], json!([]), "{shown}");
+    let opened = TestApi::start_with_jev(&jev, true).await;
+    let paul = opened.sign_in(user::PAUL).await;
+    // Opened: its dated price, with its source.
+    let shown = paul.get(usage).await.json();
+    let price = &shown["jevPrices"][0];
+    assert_eq!(price["model"], "jev-1.14.0", "{shown}");
+    assert_eq!(price["inputPerMtok"], 0.042);
+    assert_eq!(price["outputPerMtok"], 0.0);
+    assert_eq!(price["readOn"], "2026-11-19");
+    assert_eq!(price["source"], "https://docs.typesafe.ai/models");
+    set(&paul, settings("jev", Some(JEV_KEY))).await;
+    assert_eq!(paul.post(TEST, json!({})).await.status, StatusCode::OK);
+    assert_eq!(paul.delete(DECISIONS).await.status, StatusCode::OK);
+    // Closed again after it served: still shown beside its calls.
+    let shown = closed.sign_in(user::PAUL).await.get(usage).await.json();
+    assert_eq!(shown["jevPrices"][0]["model"], "jev-1.14.0", "{shown}");
+}
