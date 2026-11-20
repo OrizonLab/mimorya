@@ -7,6 +7,7 @@ mod approval_delegation;
 mod approval_notice;
 mod approval_routing;
 mod background_usage;
+mod content_screen;
 mod context;
 mod conversation_turn;
 mod db_ports;
@@ -33,6 +34,7 @@ mod start_context;
 mod sub_runs;
 mod summaries;
 mod turn_start;
+mod usage_decisions;
 
 pub use approval_decision::{DecisionInput, NOT_FOUND as APPROVAL_NOT_FOUND};
 pub use approval_delegation::{

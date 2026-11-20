@@ -29,6 +29,7 @@ pub const AVAILABLE_USAGES: &[DecisionUsage] = &[
     DecisionUsage::MemoryGuard,
     DecisionUsage::DocumentLabels,
     DecisionUsage::ActionGuard,
+    DecisionUsage::InjectionDetection,
 ];
 
 /// What a usage reads of a person's request, at most.

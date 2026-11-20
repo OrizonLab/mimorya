@@ -45,7 +45,9 @@ impl ToolRisk {
         Self::ALL.into_iter().find(|r| r.as_str() == value)
     }
 
-    fn has_side_effect(self) -> bool {
+    /// Whether a call of this risk acts: one that only reads or drafts
+    /// does not.
+    pub fn has_side_effect(self) -> bool {
         !matches!(self, Self::Read | Self::Draft)
     }
 }

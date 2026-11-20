@@ -51,7 +51,11 @@ export function DecisionUsagesFields({
         mise en validation, le service lit l’outil et ses paramètres ; ce qu’il signale
         (destinataire externe, montant élevé, données personnelles, action irréversible, risque
         élevé) s’ajoute à la raison de la validation, lue dans « Validations », et une action qui
-        partirait seule attend une validation ; baisser son seuil le rend plus strict.
+        partirait seule attend une validation ; baisser son seuil le rend plus strict. Les
+        instructions cachées, actif : le début de chaque contenu externe qu’un outil rapporte
+        (connecteurs, documents) est lu ; un contenu qui contient des instructions destinées à l’IA
+        est signalé et remis à l’agent comme une donnée, et chaque action suivante du run attend une
+        validation. Ce n’est pas une protection absolue.
       </p>
       {usages.map((usage, index) => {
         const value = values[index];

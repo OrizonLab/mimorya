@@ -13,21 +13,16 @@
 //! saved as asked, as without decisions.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use mimorya_agent::decision::{
     DecisionMode, DecisionOutcome, DecisionUsage, holds_sensitive_data, memory_guard_request,
 };
-use mimorya_agent::runtime::{DEFAULT_TOOL_TIMEOUT, NewMemory};
+use mimorya_agent::runtime::NewMemory;
 use mimorya_core::memory::{MemoryScope, MemoryStatus};
 
 use super::db_ports::RunScope;
-use crate::services::llm::{DecisionScope, LlmService, Models};
-
-/// How long a write, or an action (D5), waits for the decision's engines:
-/// half a tool call's own delay, so that the call ends with the memory
-/// saved.
-pub(super) const MAX_WAIT: Duration = Duration::from_secs(DEFAULT_TOOL_TIMEOUT.as_secs() / 2);
+use super::usage_decisions::{MAX_WAIT, usage_decisions};
+use crate::services::llm::{LlmService, Models};
 
 /// What the decision said of a text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,26 +86,8 @@ async fn read(
     title: &str,
     text: &str,
 ) -> Option<(DecisionMode, Verdict)> {
-    let asked = DecisionScope {
-        run_id: Some(scope.run_id),
-        user_id: Some(scope.user_id),
-    };
-    let decisions = llm
-        .run_decisions(
-            scope.tenant_id,
-            asked,
-            models,
-            &[DecisionUsage::MemoryGuard],
-        )
-        .await
-        .unwrap_or_else(|error| {
-            tracing::warn!(error = %error, "Decisions unread: the memory is saved as asked");
-            None
-        })?;
-    let policy = decisions.policy(DecisionUsage::MemoryGuard);
-    if policy.mode == DecisionMode::Off {
-        return None;
-    }
+    let usage = DecisionUsage::MemoryGuard;
+    let (decisions, policy) = usage_decisions(llm, models, scope, usage).await?;
     // Each engine within what is left of the wait: a call that answered is
     // counted, whatever follows.
     let request = memory_guard_request(title, text);

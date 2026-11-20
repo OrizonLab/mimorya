@@ -8,6 +8,7 @@
 mod delegated;
 mod guard;
 mod record;
+mod screen;
 
 use std::sync::Arc;
 use std::time::Duration;

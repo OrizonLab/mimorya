@@ -21,7 +21,7 @@ use crate::runtime::ports::{
     NewMemory, RunEvent, RunEventSink, RunStore, ToolInvocationLog, ToolInvocationRecord,
     UsageRecord, UsageSink,
 };
-use crate::runtime::{GuardVerdict, RunCheckpoint, RunOutcome};
+use crate::runtime::{GuardVerdict, RunCheckpoint, RunOutcome, ScreenVerdict};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredMemory {
@@ -70,6 +70,10 @@ pub(super) struct State {
     pub(super) guard_verdict: GuardVerdict,
     /// The tools the guard was asked of, in order.
     pub(super) guarded: Vec<String>,
+    /// What the detection says of each content (ADR-213, D6).
+    pub(super) screen_verdict: ScreenVerdict,
+    /// The tools whose results were screened, in order.
+    pub(super) screened: Vec<String>,
 }
 
 pub struct InMemoryPorts {
@@ -151,6 +155,7 @@ impl InMemoryPorts {
             accounts: self.clone(),
             sub_runs: self.clone(),
             action_guard: self.clone(),
+            content_screen: self.clone(),
         }
     }
 
