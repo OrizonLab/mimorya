@@ -359,7 +359,8 @@ L'âge d'un fichier de l'archive est l'heure de son archivage, qu'une copie gard
 `--delete`) garde plus longtemps ce que l'élagage retire ici, à votre rythme : une
 sauvegarde de base gardée plus longtemps ne se restaure qu'avec une telle copie de
 l'archive. Une archive sans aucune sauvegarde de base (des dumps seulement) n'est pas
-élaguée : `archive-status.sh --base-within` le signale. Ne démarrez jamais une base
+élaguée : `archive-status.sh --base-within` le signale. Ne menez qu'une sauvegarde de base
+à la fois : la conservation suppose qu'elles se suivent. Ne démarrez jamais une base
 restaurée depuis une sauvegarde de base autrement que par `restore-base.sh` (voir plus
 bas), sur le dossier d'archive de la base copiée : elle archiverait sous les mêmes noms
 qu'elle et bloquerait son archivage.

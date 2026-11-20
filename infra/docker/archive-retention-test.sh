@@ -167,14 +167,16 @@ base $straddling 1 18 $((30 * day - 20))
 segment $straddling 1 18 $((30 * day - 25))
 segment $straddling 1 19 $((1 * day))
 # Two restores in a row: timeline 2 forked at segment 4, after timeline 1's
-# base at 2, before its base at 6; timeline 3 forked from timeline 2 at
-# segment 8, before timeline 2's base at 9, within the period. Timeline 3's
-# first instants need timeline 1's base at 2, not the one at 6, which began
-# after timeline 2 forked.
+# base at 2, before its bases at 5 and 6; timeline 3 forked from timeline 2
+# at segment 8, before timeline 2's base at 9, within the period. Timeline
+# 3's first instants need timeline 1's base at 2, not those at 5 and 6,
+# which began after timeline 2 forked: two of them, so that keeping only the
+# last two bases before timeline 3's own fork would lose it.
 for n in 1 2 3 4 5 6 7; do
   segment $chained 1 "$n" $(((46 - n) * day))
 done
 base $chained 1 2 $((44 * day))
+base $chained 1 5 $((41 * day))
 base $chained 1 6 $((40 * day))
 made_up $chained "00000002.history.$sum.gz.age" $((38 * day))
 for n in 4 5 6 7 8 9 10; do
@@ -192,18 +194,20 @@ for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
   segment $overlapping 1 "$n" $(((47 - n) * day))
 done
 base $overlapping 1 2 $((45 * day))
-base $overlapping 1 10 $((40 * day))
+base $overlapping 1 10 $((34 * day + 720))
 made_up $overlapping "00000002.history.$sum.gz.age" $((25 * day))
 for n in 12 13 14; do
   segment $overlapping 2 "$n" $(((85 - n * 5) * day))
 done
 base $overlapping 2 14 $((10 * day))
 # A timeline that just began, none of its segments archived yet: its fork
-# is unknown, nothing is removed.
-for n in 1 2 3; do
-  segment $fresh 1 "$n" $(((45 - n * 5) * day))
-done
-base $fresh 1 1 $((40 * day))
+# is unknown, nothing is removed, and every base's file is kept, its
+# oldest one's too. Timeline 1 is active: without the timeline that just
+# began, its files before its last base before the cutoff would go.
+segment $fresh 1 1 $((48 * day))
+segment $fresh 1 2 $((40 * day))
+segment $fresh 1 3 $((1 * day))
+base $fresh 1 1 $((48 * day))
 base $fresh 1 3 $((30 * day + 60))
 made_up $fresh "00000002.history.$sum.gz.age" 1
 # What two of them keep: all but the files before the earliest base kept,
@@ -219,15 +223,18 @@ backups=$work/backups
 mkdir "$backups"
 # Named once, when they began: the names' times, not the files', tell their
 # ages. A base's file is kept when it is the last begun before a base the
-# archive keeps ended: 45 days (forked), 40 (pruned, notation), 31 and
-# 30 less 20 minutes (straddling), 10 and now.
+# archive keeps ended: 48 days (fresh, only it), 45 and 44 (forked,
+# chained, overlapping), 41 and 40 (chained, pruned, notation), 34 and a
+# half (overlapping), 31 and 30 (straddling, fresh), 15, 10 and now. Those
+# begun 50 and 47 days ago serve none.
 kept_backups=("mimorya-$(named $((35 * day))).dump.age" "mimorya-$(named $((5 * day))).dump.age"
-  "mimorya-$(named $((45 * day + 10))).base.tar.gz.age" "mimorya-$(named $((40 * day + 30))).base.tar.gz.age"
+  "mimorya-$(named $((48 * day + 10))).base.tar.gz.age" "mimorya-$(named $((45 * day + 10))).base.tar.gz.age"
+  "mimorya-$(named $((40 * day + 30))).base.tar.gz.age" "mimorya-$(named $((35 * day))).base.tar.gz.age"
   "mimorya-$(named $((31 * day + 10))).base.tar.gz.age" "mimorya-$(named $((30 * day + 10))).base.tar.gz.age"
   "mimorya-$(named $((10 * day + 10))).base.tar.gz.age"
   "mimorya-$(named $((40 * day))).dump.age.partial.AbCdEf" mimorya-custom.dump.age notes.txt)
 for name in "${kept_backups[@]}" "mimorya-$(named $((40 * day))).dump.age" \
-  "mimorya-$(named $((50 * day))).base.tar.gz.age" "mimorya-$(named $((35 * day))).base.tar.gz.age"; do
+  "mimorya-$(named $((50 * day))).base.tar.gz.age" "mimorya-$(named $((47 * day))).base.tar.gz.age"; do
   touch "$backups/$name"
 done
 listing() {

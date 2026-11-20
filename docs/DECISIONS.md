@@ -16137,8 +16137,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         bifurcation et fini après. Les lignes dont elle ne descend pas ajoutent des
         sauvegardes gardées pour rien ;
       - une ligne qui vient de commencer (son historique archivé dans la période, aucun
-        de ses segments encore) retient tout son dossier : sa bifurcation n'est pas encore
-        connue ;
+        de ses segments encore) retient tout son dossier, et chacune de ses sauvegardes de
+        base y est gardée, avec son fichier : sa bifurcation n'est pas encore connue. Une
+        restauration abandonnée avant son premier segment n'en aura jamais : son dossier
+        est retenu jusqu'à ce que son historique soit plus vieux que la limite, jusqu'à
+        deux périodes ;
     - **ce qui part** :
       - les segments, segments partiels et historiques de sauvegardes antérieurs au plus
         ancien départ parmi les sauvegardes gardées, quelle que soit leur ligne ;
@@ -16163,7 +16166,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
         quand la plus récente la chevauche, et les sauvegardes des lignes nouvelles ;
       - un dump reste s'il a été fait depuis la limite, ou s'il est le dernier d'avant :
         il vaut pour l'instant où il a commencé ;
-      - sans archive (archivage désactivé, ou aucun historique de sauvegarde), une
+      - sans archive (archivage désactivé, ou aucun historique de sauvegarde gardé), une
         sauvegarde de base est gardée comme un dump ;
       - un fichier autrement nommé, un lien symbolique ou un fichier partiel ne sont
         jamais touchés ;
@@ -16218,10 +16221,17 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     une copie de l'archive gardée à part restaurerait. Une sauvegarde de base gardée
     ailleurs plus longtemps que la période ne se restaure plus avec l'archive élaguée :
     son début en est parti, et la restauration s'arrête au trou (ADR-214). Si plus aucun
-    segment de sa ligne ne reste, la restauration sans instant finit sans un mot à la fin
-    de la sauvegarde, sur les WAL qu'elle tient ; avec un instant au-delà, elle échoue et
-    le dit. Il faut une copie de l'archive qui garde ses segments, élaguée avec autant de
-    jours ;
+    segment de sa ligne ne reste : sur la ligne 1, sans historique, la restauration sans
+    instant finit sans un mot à la fin de la sauvegarde, sur les WAL qu'elle tient (avec
+    un instant au-delà, elle échoue et le dit) ; sur une ligne suivante, dont
+    l'historique reste, elle s'arrête sur la règle de la ligne qui n'a que son historique
+    (ADR-214), dont le conseil ne s'applique pas ici. Il faut une copie de l'archive qui
+    garde ses segments, élaguée avec autant de jours ;
+  - la règle suppose une sauvegarde de base à la fois, ce que fait une tâche planifiée
+    chaque nuit : deux menées en même temps (une à la main pendant celle de la nuit),
+    toutes deux à cheval sur une bifurcation, feraient partir celle d'avant ; le
+    rapprochement d'une fin de sauvegarde avec son fichier suppose aussi qu'elles se
+    suivent ;
   - le plan de reprise (objectifs de perte et de durée, procédures) suit, en second temps
     du lot 70c ;
   - test (`infra/docker/archive-retention-test.sh`, en CI le dernier de la pile de
@@ -16240,12 +16250,15 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       - une ligne commencée par une restauration dans la période, à un instant antérieur
         à des sauvegardes de la ligne d'avant : la sauvegarde de celle-ci d'avant la
         bifurcation reste, et ce qui la suit ; seul part ce qui la précède ;
-      - deux restaurations enchaînées, la seconde le long de la ligne de la première, une
-        sauvegarde de la branche abandonnée entre les deux bifurcations : la sauvegarde
-        d'avant la première bifurcation reste ;
+      - deux restaurations enchaînées, la seconde le long de la ligne de la première, deux
+        sauvegardes de la branche abandonnée entre les deux bifurcations : la sauvegarde
+        d'avant la première bifurcation reste (vérifié par mutation : ne regarder que la
+        bifurcation de la ligne active la perd) ;
       - une sauvegarde commencée avant une bifurcation et finie après : celle d'avant
         reste aussi ;
-      - une ligne qui vient de commencer, sans segment : rien ne part de son dossier ;
+      - une ligne qui vient de commencer, sans segment, la ligne 1 active : rien ne part
+        de son dossier, et le fichier de sa plus ancienne sauvegarde de base, que seule
+        elle justifie, reste ;
       - autour de la limite : la sauvegarde terminée la veille reste, et celle commencée
         avant la limite et terminée après ;
       - un dossier sans sauvegarde de base reste entier ;

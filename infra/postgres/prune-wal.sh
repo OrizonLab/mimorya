@@ -22,8 +22,10 @@
 #     second for a last one that began before a fork and ended after it.
 #     Timelines it does not descend from add bases kept for nothing.
 # A timeline that just began (its history archived since the cutoff, none
-# of its segments yet) holds back its folder: nothing is removed until its
-# first segment tells where it forked.
+# of its segments yet) holds back its folder, all its bases kept: nothing is
+# removed until its first segment tells where it forked. A restore given up
+# before its first segment never gets one: its folder is held back until its
+# history is older than the cutoff, up to twice the period.
 # The segments, partial segments and bases' histories before the earliest
 # start among the bases kept go, whatever their timeline. Timelines'
 # histories are always kept: tiny, a restore reads them to choose its
@@ -136,6 +138,8 @@ for folder in "$root"/*/; do
   fi
   kept=$(kept_bases <<<"$files")
   if [[ $kept == fresh ]]; then
+    read -ra system_ends <<<"$(awk '$2 == "backup" { print $1 }' <<<"$files" | tr '\n' ' ')"
+    ends+=("${system_ends[@]}")
     echo "Archive du système $system : une ligne temporelle vient de commencer, sans segment encore archivé ; rien n'est retiré"
     continue
   fi
