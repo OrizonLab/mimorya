@@ -30,10 +30,10 @@ fn guarding(mode: &str) -> Value {
 async fn requested(
     api: &TestApi,
     marc: &Client<'_>,
-    intervention: &str,
+    (intervention, start_time): (&str, &str),
     decided: Option<ScriptedStep>,
 ) -> (String, String) {
-    let mut steps = vec![propose(intervention, "09:00"), apply_proposal("")];
+    let mut steps = vec![propose(intervention, start_time), apply_proposal("")];
     steps.extend(decided);
     api.script(steps);
     let conversation = marc.post("/conversations", json!({})).await.json();
@@ -83,12 +83,12 @@ async fn active_its_signals_are_told_to_whoever_decides() {
 
     // Off: nothing asked, the policy's own reason.
     set(&paul, guarding("off")).await;
-    let (_, policy_reason) = requested(&api, &marc, "INT-0001", None).await;
+    let (_, policy_reason) = requested(&api, &marc, ("INT-2049", "09:00"), None).await;
     assert!(jev.asked().is_empty());
 
     // Active: Jev says yes to every question, the lowest risk.
     set(&paul, guarding("active")).await;
-    let (run_id, reason) = requested(&api, &marc, "INT-0002", None).await;
+    let (run_id, reason) = requested(&api, &marc, ("INT-2052", "10:00"), None).await;
     assert_eq!(
         reason,
         format!(
@@ -119,11 +119,11 @@ async fn observed_or_failed_the_reason_is_the_policy_s_own() {
     let paul = api.sign_in(user::PAUL).await;
     let marc = api.sign_in(user::MARC).await;
     set(&paul, guarding("off")).await;
-    let (_, policy_reason) = requested(&api, &marc, "INT-0001", None).await;
+    let (_, policy_reason) = requested(&api, &marc, ("INT-2049", "11:00"), None).await;
 
     // Observed: asked and counted, without effect.
     set(&paul, guarding("observe")).await;
-    let (run_id, reason) = requested(&api, &marc, "INT-0002", None).await;
+    let (run_id, reason) = requested(&api, &marc, ("INT-2052", "13:00"), None).await;
     assert_eq!(reason, policy_reason);
     assert_eq!(jev.asked().len(), 1);
     assert_eq!(decisions_of(&api, &run_id).await, 1);
@@ -133,6 +133,6 @@ async fn observed_or_failed_the_reason_is_the_policy_s_own() {
     set(&paul, guarding("active")).await;
     jev.behave(JevBehaviour::Overloaded);
     let failed = Some(ScriptedStep::fails("surchargé"));
-    let (_, reason) = requested(&api, &marc, "INT-0003", failed).await;
+    let (_, reason) = requested(&api, &marc, ("INT-2049", "14:00"), failed).await;
     assert_eq!(reason, policy_reason);
 }
