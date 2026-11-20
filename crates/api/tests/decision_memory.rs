@@ -4,16 +4,20 @@
 //! decision cannot read, is saved as a proposal its owner validates, and the
 //! agent is told so; a clear one is saved at once; a lesson said sensitive
 //! is not kept, one the decision cannot read is proposed as every lesson
-//! is. Observed or off, nothing changes; a team memory, which already
-//! awaits a validation, asks nothing.
+//! is. Observed or off, nothing changes, and the decision is journaled
+//! without the text; a team memory, which already awaits a validation, asks
+//! nothing. An engine slower than the guard's wait never loses the memory:
+//! active, it awaits validation; observed, it is saved as asked.
 
 mod support;
 
 use mimorya_agent::testing::{ScriptedStep, call};
+use mimorya_connectors::testing::{FakeJev, JEV_KEY, JevBehaviour};
 use mimorya_core::demo::{tenant, user};
 use serde_json::{Value, json};
 use support::decisions::{DECISIONS, set, settings};
 use support::lessons::{capture_lessons, lesson, lessons, run_with_tools};
+use support::mcp::capture_logs;
 use support::runs::start_run;
 use support::usage_roles::recorded_roles;
 use support::{Client, TestApi};
@@ -123,11 +127,20 @@ async fn a_personal_memory_said_sensitive_waits_for_its_owner() {
     assert_eq!(roles, ["main", "main"]);
     assert_eq!(status_of(&api, "Consigne d’équipe").await, "proposed");
 
-    // Observed: asked and counted, saved as without it.
+    // Observed: asked and counted, saved as without it, journaled without
+    // its text.
     set(&paul, guarding("observe")).await;
+    let logs = capture_logs();
     let roles = saved(&api, &marc, "personal", "Observée", Some(read(true))).await;
     assert_eq!(roles, ["main", "decision", "main"]);
     assert_eq!(status_of(&api, "Observée").await, "active");
+    let journaled = logs.text();
+    for said in ["memory_guard", "observe", "verdict=\"sensitive\""] {
+        assert!(journaled.contains(said), "{said}: {journaled}");
+    }
+    for kept in ["Observée", "Contenu de la mémoire de test"] {
+        assert!(!journaled.contains(kept), "{kept}: {journaled}");
+    }
 
     // Off: nothing asked.
     assert_eq!(paul.delete(DECISIONS).await.status.as_u16(), 200);
@@ -164,6 +177,38 @@ async fn a_lesson_said_sensitive_is_not_kept() {
 
     run_with_tools(&api, &marc, vec![lesson("Leçon claire"), read(false)]).await;
     assert!(lessons(&api).await.iter().any(titled("Leçon claire")));
+
+    // Observed: a lesson said sensitive is kept, as without it.
+    set(&paul, guarding("observe")).await;
+    run_with_tools(&api, &marc, vec![lesson("Leçon observée"), read(true)]).await;
+    assert!(lessons(&api).await.iter().any(titled("Leçon observée")));
     assert_eq!(paul.delete(DECISIONS).await.status.as_u16(), 200);
     capture_lessons(&paul, false).await;
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn an_engine_too_slow_never_loses_the_memory() {
+    // Jev silent, given up on only after 30 s: the guard's own wait ends first.
+    let jev = FakeJev::serve().await;
+    jev.behave(JevBehaviour::Silent);
+    let api = TestApi::start_with_jev_waiting(&jev, true, "30000").await;
+    let paul = api.sign_in(user::PAUL).await;
+    let marc = api.sign_in(user::MARC).await;
+    let mut jev_guarding = settings("jev", Some(JEV_KEY));
+    jev_guarding["usages"][2] = json!({ "key": "memoryGuard", "mode": "active", "threshold": 0.5 });
+    set(&paul, jev_guarding.clone()).await;
+
+    // Active: not read in time, it awaits its owner's validation.
+    let roles = saved(&api, &marc, "personal", "Lente active", None).await;
+    assert_eq!(roles, ["main", "main"]);
+    assert_eq!(status_of(&api, "Lente active").await, "proposed");
+    assert!(told(&api).contains("proposé"), "{}", told(&api));
+
+    // Observed: saved as asked.
+    jev_guarding["usages"][2]["mode"] = json!("observe");
+    set(&paul, jev_guarding).await;
+    saved(&api, &marc, "personal", "Lente observée", None).await;
+    assert_eq!(status_of(&api, "Lente observée").await, "active");
+    assert_eq!(paul.delete(DECISIONS).await.status.as_u16(), 200);
 }

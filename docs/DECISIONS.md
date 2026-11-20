@@ -15765,9 +15765,21 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     d'un déclencheur) ne demande rien : la décision ne peut qu'en ajouter une ;
   - observé, la décision est demandée, comptée et journalisée (`verdict` : `clear`,
     `sensitive` ou `unread`), sans rien changer ;
-  - la décision est demandée hors de toute transaction, avant l'écriture ; son coût est
-    enregistré au rôle « décision » pour le run (consommation, export), mais n'entre pas
-    dans les totaux du run en mémoire, que le port de la mémoire n'atteint pas ;
+  - la décision est demandée hors de toute transaction, avant l'écriture, et attendue
+    15 s au plus, la moitié du délai d'un appel d'outil : au-delà, elle compte comme
+    illisible (proposition en mode actif, mémoire enregistrée telle quelle en mode
+    observé), pour qu'un moteur lent ne fasse jamais perdre la mémoire ;
+  - les réglages sont relus à chaque écriture (un réglage changé en cours de run vaut
+    aussitôt), seuls ceux de la garde, sans construire de moteur si elle est
+    désactivée ; s'ils ne peuvent être lus, la mémoire est enregistrée comme demandée,
+    comme sans décision ;
+  - son coût est enregistré au rôle « décision » pour le run (consommation, export,
+    plafond ou crédit de l'exploitant relu avant l'appel), mais n'entre pas dans les
+    totaux du run en mémoire, que le port de la mémoire n'atteint pas : il échappe au
+    budget de coût du run, à la limite d'une mission et au coût montré dans
+    « Opérations » ; il est borné par le nombre d'appels à `memory_remember` du run ;
+  - le seuil s'y lit dans le sens de la prudence : le baisser rend la garde plus
+    stricte (un oui plus faible suffit), à l'inverse du choix du modèle (D1) ;
   - avec Jev, le titre et le texte de la mémoire ou de la leçon partent chez TypeSafe ;
     c'est ce que l'usage cherche à protéger : à ne régler qu'avec un accord de
     traitement et la conservation nulle, ou avec le modèle principal.

@@ -337,7 +337,10 @@ qu'un déclencheur a lancé (canal `hook`, ADR-109) n'écrit directement dans au
 espace, pas même personnel : ce qu'il retiendrait est une proposition à la personne.
 Un run que la personne lance en écrivant à l'application Slack de l'entreprise (canal
 `slack`, ADR-127), ou à son bot Telegram (canal `telegram`, ADR-135), est sa propre
-demande : il retient comme un tour de l'application.
+demande : il retient comme un tour de l'application. Là où l'entreprise a réglé le
+service de décision (ADR-213, D3), une mémoire personnelle que l'agent écrirait
+directement est d'abord lue : dite sensible (santé, bancaire, personnel sensible), ou
+illisible à temps, elle devient une proposition que la personne valide.
 
 ### 9.2 Recherche
 
@@ -369,7 +372,8 @@ Si l'entreprise l'a choisi (désactivé par défaut, dans « Modèle d'IA », AD
 chaque demande dont la réponse a appelé un outil est relue, une fois la réponse donnée, par le
 modèle des conversations : il reçoit le run comme donnée et propose au plus une leçon
 générale, dans la mémoire personnelle de la personne servie, qui seule la valide
-(« Propositions à valider » de la page « Mémoire »).
+(« Propositions à valider » de la page « Mémoire »). Là où l'entreprise a réglé le service de décision
+(ADR-213, D3), une leçon dite sensible n'est pas même proposée.
 
 ### 9.4 Cycle de vie
 

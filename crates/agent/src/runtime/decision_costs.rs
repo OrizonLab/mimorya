@@ -1,6 +1,7 @@
 //! What a run's decisions cost (ADR-213), added to its totals as its own
-//! calls are, and told to its listeners: whatever the usage that asked them
-//! (the router's choice, D1; the skills listed, D2).
+//! calls are, and told to its listeners: the router's choice (D1) and the
+//! skills listed (D2). A memory read before it is saved (D3) is counted in
+//! the company's consumption only, its port reaching no run's totals.
 
 use super::ports::RunEvent;
 use super::state::RunCheckpoint;

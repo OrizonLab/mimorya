@@ -5,9 +5,14 @@
 //! proposal its owner validates; a lesson said so is not kept (one it could
 //! not read is proposed, as every lesson is). Observed, the decision is
 //! journaled and nothing changes. A memory that already awaits a
-//! validation asks nothing: the decision can only add one.
+//! validation asks nothing: the decision can only add one. The decision is
+//! awaited within `MAX_WAIT`, well within a tool call's own delay: past it,
+//! it counts as unread, so that a slow engine never loses the memory.
+//! The company's settings are read at each write: none read, the memory is
+//! saved as asked, as without decisions.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use mimorya_agent::decision::{
     DecisionMode, DecisionOutcome, DecisionUsage, holds_sensitive_data, memory_guard_request,
@@ -17,6 +22,10 @@ use mimorya_core::memory::{MemoryScope, MemoryStatus};
 
 use super::db_ports::RunScope;
 use crate::services::llm::{DecisionScope, LlmService, Models};
+
+/// How long a write waits for the decision: half a tool call's own delay
+/// (`DEFAULT_TOOL_TIMEOUT`), so that the call ends with the memory saved.
+const MAX_WAIT: Duration = Duration::from_secs(15);
 
 /// What the decision said of a text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,7 +94,12 @@ async fn read(
         user_id: Some(scope.user_id),
     };
     let decisions = llm
-        .run_decisions(scope.tenant_id, asked, models)
+        .run_decisions(
+            scope.tenant_id,
+            asked,
+            models,
+            Some(DecisionUsage::MemoryGuard),
+        )
         .await
         .unwrap_or_else(|error| {
             tracing::warn!(error = %error, "Decisions unread: the memory is saved as asked");
@@ -95,16 +109,16 @@ async fn read(
     if policy.mode == DecisionMode::Off {
         return None;
     }
-    let (outcome, _) = decisions
-        .service
-        .decide_counted(&memory_guard_request(title, text))
-        .await;
-    let verdict = match outcome {
-        DecisionOutcome::Decided(decided) if holds_sensitive_data(&decided, policy.threshold) => {
+    let request = memory_guard_request(title, text);
+    let verdict = match tokio::time::timeout(MAX_WAIT, decisions.service.decide(&request)).await {
+        Ok(DecisionOutcome::Decided(decided))
+            if holds_sensitive_data(&decided, policy.threshold) =>
+        {
             Verdict::Sensitive
         }
-        DecisionOutcome::Decided(_) => Verdict::Clear,
-        DecisionOutcome::Failed => Verdict::Unread,
+        Ok(DecisionOutcome::Decided(_)) => Verdict::Clear,
+        // No engine decided, or not in time.
+        Ok(DecisionOutcome::Failed) | Err(_) => Verdict::Unread,
     };
     tracing::info!(
         target: "mimorya::decision",

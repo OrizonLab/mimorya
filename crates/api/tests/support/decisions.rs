@@ -26,13 +26,18 @@ impl TestApi {
     /// The app able to keep a company's key, priced, Jev asked at the local
     /// `jev`, opened by the operator when `opened`.
     pub async fn start_with_jev(jev: &FakeJev, opened: bool) -> Self {
+        // A silent Jev given up on quickly.
+        Self::start_with_jev_waiting(jev, opened, "300").await
+    }
+
+    /// The same, Jev given up on after `millis`.
+    pub async fn start_with_jev_waiting(jev: &FakeJev, opened: bool, millis: &str) -> Self {
         let opened = if opened { "true" } else { "false" };
         Self::scripted(Setup {
             env: &[
                 ("MIMORYA_MASTER_KEY", MASTER_KEY),
                 ("MIMORYA_TYPESAFE_JEV", opened),
-                // A silent Jev given up on quickly.
-                ("MIMORYA_DECISION_TIMEOUT_MS", "300"),
+                ("MIMORYA_DECISION_TIMEOUT_MS", millis),
             ],
             typesafe_api: Some(jev.url.clone()),
             priced: true,
