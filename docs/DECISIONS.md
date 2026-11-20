@@ -15957,32 +15957,38 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     démarrée, ou `down -v`), et le dossier de son archive (`MIMORYA_WAL_ARCHIVE`) doit
     tenir une copie de celle de la base sauvegardée, ramenée de hors site. Il refuse :
     - une base démarrée, ou qui contient déjà des fichiers ;
-    - un instant qui pourrait sortir de son réglage (seuls chiffres, lettres, espaces et
-      `:.+/-`) ;
+    - un instant qui n'est pas une date, une heure et son fuseau (un décalage comme
+      `+01`, ou `UTC`) : il ne peut sortir de son réglage, et PostgreSQL le lit de même
+      quel que soit son propre fuseau ;
     - une sauvegarde que l'identité n'ouvre pas ;
     - un dossier d'archive sans celui du système de la base sauvegardée, lu dans la
       sauvegarde (`pg_controldata`) ;
-    - une sauvegarde sans étiquette lisible (`backup_label`) ;
+    - une sauvegarde dont l'étiquette (`backup_label`) ne date pas son début en UTC ou
+      par un décalage : dans le `log_timezone` de la base, UTC par défaut, une autre
+      abréviation pourrait en désigner plusieurs (IST) ;
+    - un instant qui ne vient pas au moins une seconde après le début de la sauvegarde
+      (`START TIME`, à la seconde), avant toute récupération. Les deux sont comparés en
+      secondes depuis 1970 par l'image de la base (`date` de GNU). Une sauvegarde
+      commencée après l'instant tient déjà ce qui a été validé depuis, que la
+      récupération ne peut défaire : sans transaction validée pendant la copie,
+      PostgreSQL s'arrêterait sans un mot au premier commit suivant, la base revenue à
+      la fin de la copie et non à l'instant. Le début est écrit après le checkpoint de
+      la sauvegarde : un instant d'une seconde plus tard suit tout ce qu'elle tient.
+      Une vérification faite pendant la récupération, à une pause à l'instant, a été
+      écartée : PostgreSQL ne s'y arrête que si la lecture y est ouverte (hot standby),
+      ce qu'une transaction de plus de 64 sous-transactions pendant la copie empêche ;
   - **déballage** : la sauvegarde est déchiffrée par `age` sur l'hôte, puis décompressée et
     dépaquetée dans le volume de la base par un conteneur de son image, et rendue à la base
     (uid 999, 700). Rien en clair ne touche le disque de l'hôte ;
   - **récupération** : la base démarre dans un conteneur à part, avec `recovery.signal`.
     Ses réglages de récupération sont passés en ligne de commande, jamais écrits dans sa
     configuration : `restore_command` et `recovery_target_timeline`, et avec un instant
-    `recovery_target_time`, `recovery_target_action=pause` et `hot_standby=on`.
+    `recovery_target_time` et `recovery_target_action=promote`.
     - Elle rejoue les WAL jusqu'au premier commit après l'instant, ou tous sans instant,
       puis sort de récupération sur une nouvelle ligne temporelle.
-    - Avec un instant, elle s'arrête d'abord là, ouverte en lecture. Le script vérifie,
-      par PostgreSQL qui lit les deux, que l'instant vient au moins une seconde après le
-      début de la sauvegarde de base (`START TIME` de son étiquette, à la seconde). Une
-      sauvegarde commencée après l'instant tient déjà ce qui a été validé depuis, que la
-      récupération ne peut défaire : sans transaction validée pendant la copie,
-      PostgreSQL s'arrêterait sans un mot au premier commit suivant, la base revenue à
-      la fin de la copie et non à l'instant. L'instant refusé, la base est arrêtée sans
-      nouvelle ligne temporelle ; accepté, la récupération reprend et se termine
-      (`pg_wal_replay_resume`).
-    - Le script attend qu'elle en soit sortie, au plus `MIMORYA_RESTORE_TIMEOUT` (une
-      heure par défaut, au-delà de quoi elle est arrêtée), lit sa ligne temporelle,
+    - Le script attend qu'elle en soit sortie, au plus `MIMORYA_RESTORE_TIMEOUT` secondes
+      (une heure par défaut, au-delà de quoi elle est arrêtée). Il lit sa ligne
+      temporelle, qu'il dit en décimal, comme `MIMORYA_RESTORE_TIMELINE` la prend, puis
       l'arrête en lui laissant le temps d'écrire ce qu'elle tient en mémoire, et dit de
       démarrer la pile (`up -d`).
     - Une récupération qui s'arrête (un commit postérieur à l'instant pendant la copie,
@@ -16038,30 +16044,38 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - la durée d'une restauration croît avec les WAL à rejouer depuis la sauvegarde de base :
     des sauvegardes de base fréquentes la bornent ;
   - une restauration qui échoue laisse les fichiers déballés : `down -v` vide la base avant
-    de réessayer, comme le dit chaque refus. Seul un instant refusé à la pause laisse une
-    base qu'une nouvelle tentative pourrait reprendre ; elle est vidée de même ;
+    de réessayer, comme le dit chaque refus ;
+  - la règle du trou ne regarde que la ligne temporelle du segment demandé. Restaurée le
+    long d'une ligne nommée par son numéro, une archive qui aurait perdu des segments de
+    la ligne parente, avant la bifurcation, tout en gardant ceux de la ligne nommée,
+    s'arrêterait au trou sans le dire. Cela suppose des fichiers retirés à la main de
+    l'archive après la bifurcation ; la conservation du lot 70c ne retire que des
+    segments antérieurs à la plus ancienne sauvegarde de base gardée ;
   - restaurer dans la pile même de la base sauvegardée, une fois sa base arrêtée et vidée,
     est possible mais perd ce qu'elle tenait : la procédure du plan de reprise le dira (lot
     70c) ;
   - test (`infra/docker/point-in-time-test.sh`, en CI après les tests de l'archive) : sur
-    la pile de production, un instant noté, l'API et les workers arrêtés, puis une
-    sauvegarde de base. Ensuite trois entreprises sont ouvertes l'une après l'autre, un
-    instant noté entre chacune, et le segment qui les tient archivé, puis un autre :
+    la pile de production, un instant noté, puis une sauvegarde de base. Ensuite trois
+    entreprises sont ouvertes l'une après l'autre, un instant noté entre chacune, et le
+    segment qui les tient archivé, puis un autre :
     - la restauration est refusée base démarrée, base qui contient des fichiers, pour un
-      instant à apostrophe, avec une autre identité, sans l'archive de la base dans le
-      dossier, et pour la ligne temporelle `latest` ;
+      instant à apostrophe ou sans fuseau, avec une autre identité, sans l'archive de la
+      base dans le dossier, et pour la ligne temporelle `latest` ;
     - ce qui écourterait la récupération l'arrête, et sa raison est dite : le premier
       segment lu remplacé par un autre contenu, chiffré pour la même clé ; le segment des
       entreprises retiré, sans instant ; une copie de l'archive faite en `root` ;
-    - l'instant noté avant la sauvegarde est refusé à la pause, sans ligne temporelle
-      nouvelle : la première restauration prend la suivante ;
+    - l'instant noté avant la sauvegarde est refusé avant toute récupération, sans
+      ligne temporelle nouvelle : la première restauration prend la suivante ;
     - restaurée au premier instant, la pile sert la première entreprise, dont
       l'administrateur se connecte, et aucune des deux autres. La base est le même
-      système, sur une ligne temporelle nouvelle, sans les réglages de la récupération ni
-      son conteneur ; sa ligne temporelle est archivée à côté de l'ancienne, avec son
-      historique ;
+      système, sur la ligne temporelle suivante, dite en décimal, sans les réglages de la
+      récupération ni son conteneur. Une quatrième entreprise y est ouverte, et sa ligne
+      temporelle est archivée à côté de l'ancienne, avec son historique ;
     - restaurée de nouveau au second instant, depuis la même sauvegarde et la même
-      archive : les deux premières entreprises, pas la troisième, sur une ligne temporelle
-      au-delà des deux autres ; l'archiveur n'a plus rien à archiver et n'a échoué sur
-      rien ;
+      archive : les deux premières entreprises, pas les autres, sur une ligne temporelle
+      au-delà des deux autres ;
+    - restaurée une troisième fois, toute l'archive rejouée le long de la ligne de la
+      première restauration, nommée par son numéro : la première et la quatrième
+      entreprises, sur une ligne au-delà des autres. L'archiveur n'a plus rien à
+      archiver et n'a échoué sur rien ;
   - découpage du chantier 4 (ADR-206) : lots 70a et 70b faits ; reste le lot 70c.

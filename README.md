@@ -357,10 +357,11 @@ COMPOSE_ENV_FILES=.env.production infra/backup/restore-base.sh \
 docker compose --env-file .env.production -f compose.production.yml up -d
 ```
 
-L'instant, avec son fuseau, est celui de PostgreSQL : la base revient à son dernier commit
-qui le précède ; sans instant, toute l'archive est rejouée. Prenez la plus récente
-sauvegarde de base terminée avant l'instant : un instant qui ne vient pas au moins une
-seconde après son début est refusé. Le script refuse aussi une base démarrée ou qui
+L'instant est une date, une heure et son fuseau (un décalage comme `+01`, ou `UTC`) : la
+base revient à son dernier commit qui le précède ; sans instant, toute l'archive est
+rejouée. Prenez la plus récente sauvegarde de base terminée avant l'instant : un instant
+qui ne vient pas au moins une seconde après son début est refusé, avant toute
+récupération. Le script refuse aussi une base démarrée ou qui
 contient déjà des fichiers, et une archive sans le dossier de la base sauvegardée. Ce
 dossier doit être à la base (uid 999) : une copie faite en `root` arrête la restauration,
 comme un WAL illisible, dont le contenu diffère de son nom, ou qui manque alors qu'un
@@ -371,7 +372,7 @@ au-delà de quoi elle est arrêtée.
 La restauration rejoue la ligne temporelle de la sauvegarde de base. Si la base sauvegardée
 en a elle-même changé après la sauvegarde, parce qu'elle vient d'une restauration
 antérieure, nommez sa ligne temporelle par son numéro (`MIMORYA_RESTORE_TIMELINE=3`, que
-la restauration avait dit) : la récupération suit son histoire.
+cette restauration avait dit) : la récupération suit son histoire.
 
 La base restaurée prend une nouvelle ligne temporelle et archive à côté des fichiers de la
 base sauvegardée, sans jamais les remplacer : plusieurs restaurations de la même archive ne
