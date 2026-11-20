@@ -42,9 +42,9 @@ async fn a_company_decides_with_its_main_model_until_the_operator_opens_jev() {
     assert_eq!(usages.len(), USAGES.len());
     for (usage, key) in usages.iter().zip(USAGES) {
         assert_eq!(usage["key"], key);
-        // Each off, at its default threshold; only the model's routing and
-        // the skill choice are delivered (D1, D2).
-        let delivered = matches!(key, "modelRouting" | "skillChoice");
+        // Each off, at its default threshold; only the model's routing, the
+        // skill choice and the memory guard are delivered (D1 to D3).
+        let delivered = matches!(key, "modelRouting" | "skillChoice" | "memoryGuard");
         assert_eq!(
             (&usage["available"], &usage["mode"], &usage["threshold"]),
             (&json!(delivered), &json!("off"), &json!(0.5)),
@@ -70,7 +70,7 @@ async fn a_company_decides_with_its_main_model_until_the_operator_opens_jev() {
     // A usage not delivered stays off; a threshold stays within 0 and 1;
     // each usage is set once; nothing else is read.
     let mut early = settings("mainModel", None);
-    early["usages"][2]["mode"] = json!("observe");
+    early["usages"][3]["mode"] = json!("observe");
     refused(
         &paul,
         early,

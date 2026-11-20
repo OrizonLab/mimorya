@@ -1004,7 +1004,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
     en fait autant pour sa propre clé. Ne lui part que l'état minimal de chaque décision,
     les champs que l'usage déclare, chacun borné, l'état entier à 20 000 caractères (le
     choix du modèle d'un run, D1 : la demande seule, 2 000 caractères au plus ; le choix
-    des compétences, D2 : la même, et le nom et la description de chaque compétence) :
+    des compétences, D2 : la même, et le nom et la description de chaque compétence ; les
+    données sensibles d'une mémoire, D3 : le titre et le texte de la mémoire ou de la
+    leçon, ce que l'usage protège, à ne confier à Jev qu'avec la conservation nulle) :
     jamais toute la conversation, de secret, de pièce jointe binaire ni de jeton. Le mode
     souverain (le modèle principal, par défaut) n'envoie rien ailleurs que chez le
     fournisseur des runs.

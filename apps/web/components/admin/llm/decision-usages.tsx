@@ -40,7 +40,10 @@ export function DecisionUsagesFields({
         actif, « escalade », ou « principal » avec une confiance sous le seuil, fait partir le run
         sur le modèle d’escalade, dans son budget ; sans décision, le classement par le modèle
         principal s’applique comme avant. Le choix des compétences, actif, ne liste avec la demande
-        que celles qui lui sont utiles, toutes en cas de doute ; chacune reste chargeable.
+        que celles qui lui sont utiles, toutes en cas de doute ; chacune reste chargeable. Les
+        données sensibles, actif : une mémoire personnelle qui en contient, ou que la décision ne
+        peut lire, attend la validation de son propriétaire, et une leçon qui en contient n’est pas
+        gardée.
       </p>
       {usages.map((usage, index) => {
         const value = values[index];
