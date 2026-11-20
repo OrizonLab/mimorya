@@ -2,14 +2,21 @@
 # Restores a running production stack to a point in time (ADR-214), as an
 # operator would after a mistake: a base backup (backup.sh --base), then the
 # archived WAL (ADR-206) replayed up to a chosen instant, into the stack's
-# database thrown away. Three companies are opened one after the other, an
-# instant noted between each, and the segment that holds them archived.
+# database thrown away. An instant is noted before the base, the API and
+# its workers stopped so that nothing is committed during it; then three
+# companies are opened one after the other, an instant noted between each,
+# and the segment that holds them archived, then another.
 #   - The restore is refused while the stack's database runs, while it holds
 #     files, for an instant that could end its setting, with an identity
-#     that does not open the base, and when the archive's folder holds none
-#     of this database's.
-#   - A damaged archive (a segment whose contents differ from its name)
-#     stops the recovery, said with the reason, never ends it short.
+#     that does not open the base, when the archive's folder holds none of
+#     this database's, and for a timeline named `latest`.
+#   - What would end the recovery short stops it, said with the reason: a
+#     segment whose contents differ from its name, a segment missing while
+#     a later one is archived (without an instant, all the archive
+#     replayed), an archive's folder that is not the database's (a copy made
+#     as root).
+#   - An instant before the base began is refused, once the recovery paused
+#     there, before any new timeline.
 #   - Restored to the first instant, the stack serves the first company,
 #     whose administrator signs in, and neither of the others. Its database
 #     is the same system, on a new timeline, without the recovery's settings
@@ -83,9 +90,18 @@ refused() {
 throw_away() {
   docker compose down -v >/dev/null 2>&1 || fail "the stack did not stop"
 }
-start_restored() {
-  docker compose up -d >/dev/null 2>&1 || fail "the restored stack did not start"
+start_stack() {
+  docker compose up -d >/dev/null 2>&1 || fail "the stack did not start"
   wait_for_stack "$base"
+}
+# A copy of the archive's folder of this system, made as `cp` $1 makes it,
+# as the database's (-a) or as root's (-r); prints the copy's root.
+copied_archive() {
+  local copy
+  copy=$(mktemp -d -p "$work")
+  as_root chmod 700 "$copy"
+  as_root cp "$1" "$folder" "$copy/"
+  echo "$copy"
 }
 
 work=$(mktemp -d)
@@ -97,7 +113,12 @@ system=$(sql "select system_identifier from pg_control_system()")
 folder=$archive/$system
 owner=$(as_root stat -c %u "$folder") || fail "the stack archives nothing in $folder"
 before=$(timeline)
+# Nothing committed from this instant to the base's end: only the instant's
+# check against the base's start can refuse it.
+docker compose stop api worker >/dev/null 2>&1 || fail "the API did not stop"
+too_early=$(noted_instant)
 MIMORYA_BACKUP_RECIPIENTS=$recipient infra/backup/backup.sh --base "$work/base.tar.gz.age" >/dev/null
+start_stack
 
 stamp=instant-$(date +%s)
 password=$(openssl rand -hex 24)
@@ -109,11 +130,14 @@ open_company "$base" "$stamp-c" 'Entreprise C' "$password" >/dev/null
 [[ $(opened) == "$stamp-a,$stamp-b,$stamp-c" ]] || fail "the three companies were not opened: $(opened)"
 segment=$(switched)
 await_archived "$segment" >/dev/null
+await_archived "$(switched)" >/dev/null
 
 # The refusals, each before anything is changed or with the database left
 # to throw away, as the script says.
 refused 'la base de la pile est démarrée' "$identity" "$first_instant"
 refused 'instant illisible' "$identity" "$first_instant'; select 1"
+MIMORYA_RESTORE_TIMELINE=latest refused 'MIMORYA_RESTORE_TIMELINE : current ou le numéro' \
+  "$identity" "$first_instant"
 docker compose stop >/dev/null 2>&1 || fail "the stack did not stop"
 refused 'la base contient déjà des fichiers' "$identity" "$first_instant"
 throw_away
@@ -132,21 +156,43 @@ start=${start##*/}
 start=${start:0:24}
 file=$(archived "$start")
 [[ -n $file ]] || fail "the base's first segment, $start, is not archived"
-damaged=$work/damaged
-as_root mkdir -m 700 "$damaged"
-as_root cp -a "$folder" "$damaged/"
+damaged=$(copied_archive -a)
 head -c 16777216 /dev/zero | gzip | age --recipient "$recipient" >"$work/zeros.gz.age"
 as_root install -m 600 -o "$owner" -g "$owner" "$work/zeros.gz.age" "$damaged/$system/${file##*/}"
 MIMORYA_WAL_ARCHIVE=$damaged refused "la récupération s'est arrêtée" "$identity" "$second_instant"
-grep -qF "Restauration arrêtée : le WAL $start de l'archive est inutilisable (son contenu ne correspond pas à son nom)" \
-  <<<"$refusal" || fail "the damaged segment was not said: $refusal"
+grep -qF "Restauration arrêtée au WAL $start : son contenu ne correspond pas à son nom" <<<"$refusal" ||
+  fail "the damaged segment was not said: $refusal"
+throw_away
+
+# A copy without the segment holding the companies, a later one archived:
+# replaying all the archive stops at the hole.
+holed=$(copied_archive -a)
+as_root find "$holed/$system" -maxdepth 1 -regextype posix-extended \
+  -regex ".*/$segment\.[0-9a-f]{64}\.gz\.age" -delete
+MIMORYA_WAL_ARCHIVE=$holed refused "la récupération s'est arrêtée" "$identity"
+grep -qF "Restauration arrêtée au WAL $segment : absent de l'archive, qui tient pourtant" <<<"$refusal" ||
+  fail "the hole was not said: $refusal"
+throw_away
+
+# A copy made as root: its files would seem absent to the database.
+rooted=$(copied_archive -r)
+MIMORYA_WAL_ARCHIVE=$rooted refused "la récupération s'est arrêtée" "$identity"
+grep -qF "n'est pas à la base (uid 999, en 700)" <<<"$refusal" ||
+  fail "the archive's folder not the database's was not said: $refusal"
+throw_away
+
+# An instant before the base began: nothing committed after it until the
+# base's end, the recovery pauses at the first commit past the base; the
+# instant is refused there, before any new timeline.
+refused "ne vient pas au moins une seconde après le début de la sauvegarde de base" \
+  "$identity" "$too_early"
 throw_away
 
 # Restored to the first instant.
 said=$(restore "$identity" "$first_instant") || fail "the restore to the first instant failed: $said"
 grep -qF "Base restaurée jusqu'à $first_instant, ligne temporelle" <<<"$said" ||
   fail "unexpected restore: $said"
-start_restored
+start_stack
 check_headers_and_health "$base"
 [[ $(opened) == "$stamp-a" ]] || fail "restored to the first instant, the companies are: $(opened)"
 session=$(sign_in "$base" "admin@$stamp-a.example" "$password")
@@ -154,7 +200,8 @@ check_company_of "$base" "$session" 'Entreprise A'
 [[ $(sql "select system_identifier from pg_control_system()") == "$system" ]] ||
   fail "the restored database is another system"
 first=$(timeline)
-((first > before)) || fail "the restored database writes timeline $first, not beyond $before"
+# The refused instant began no timeline: the first restore takes the next.
+((first == before + 1)) || fail "the restored database writes timeline $first, not $((before + 1))"
 [[ -z $(sql 'show restore_command') && -z $(sql 'show recovery_target_time') ]] ||
   fail "the recovery's settings were kept"
 [[ -z $(docker ps -aq --filter name=mimorya-restore-) ]] || fail "the recovery's container was left"
@@ -167,7 +214,7 @@ await_archived "$hex\\.history" >/dev/null
 # Restored again, to the second instant, from the same base and archive.
 throw_away
 said=$(restore "$identity" "$second_instant") || fail "the restore to the second instant failed: $said"
-start_restored
+start_stack
 [[ $(opened) == "$stamp-a,$stamp-b" ]] || fail "restored to the second instant, the companies are: $(opened)"
 second=$(timeline)
 ((second > first)) || fail "restored again, the database writes timeline $second, not beyond $first"
