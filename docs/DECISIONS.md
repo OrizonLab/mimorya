@@ -16301,19 +16301,36 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - durée : quatre heures proposées pour une installation de quelques dizaines de Go.
       Le plan la décompose étape par étape, et la donne comme un objectif à confirmer par
       un exercice, pas comme une mesure ;
-  - **préparation** : une liste à cocher et une table `cron` de référence :
-    - chaque nuit, dump, sauvegarde de base puis conservation ;
-    - copie hors site de l'archive et des sauvegardes toutes les cinq minutes, sans
-      suppression ;
-    - état de l'archive toutes les dix minutes, avec une alerte sur toute sortie non
-      nulle ;
+  - **conventions** : les commandes se lancent en `root` depuis le dépôt, `COMPOSE_FILE` et
+    `COMPOSE_ENV_FILES` exportés une fois : sans eux, `docker compose` lirait la base de
+    développement ;
+  - **préparation** : une liste à cocher et des tables `cron` de référence :
+    - sur l'hôte de production : `PATH`, la pile et un fichier des destinataires
+      (`MIMORYA_BACKUP_RECIPIENTS_FILE`, que lit `backup.sh`, les mêmes clés que celles
+      données à la base) en tête ; chaque nuit, le dump, puis la sauvegarde de base et, si
+      elle a réussi, la conservation ; l'état de l'archive toutes les dix minutes, une
+      alerte sur toute sortie non nulle ;
+    - la copie hors site **tirée par l'hôte de secours**, que l'hôte de production ne peut
+      ni réécrire ni supprimer. Sa clé SSH n'y ouvre qu'une lecture (`rrsync -ro`), et
+      `--numeric-ids` garde à l'archive son propriétaire, la base. Elle suit la
+      conservation de l'hôte (`--delete`), et des instantanés datés (`cp -al`) gardent ce
+      qu'elle retire, pour une durée que l'exploitant fixe, qui borne aussi ce que la
+      copie garde des données supprimées ;
+    - avec `MIMORYA_TLS=internal`, une copie de la racine locale de Caddy ;
   - **procédures** : erreur dans les données, perte de l'hôte (avec ou sans archive),
     base abîmée sur un hôte intact, intrusion, identité `age` perdue, archivage en échec.
-    Chacune commence par ne rien jeter de l'installation en panne ;
-  - **après une reprise** : archivage vérifié, sauvegarde de base aussitôt, ligne
-    temporelle notée, journal d'audit vérifié, entreprises informées ;
-  - **exercices** : chaque trimestre, une restauration minutée dans une pile jetable sur
-    un autre hôte, depuis la copie hors site, notée dans le plan ;
+    Deux règles valent pour toutes :
+    - ne rien jeter de l'installation en panne avant vérification. Le volume abîmé est
+      mis de côté et relu avant que le seul volume de la base soit retiré ;
+    - une pile restaurée ne tourne jamais entière à côté de celle en service : elle a les
+      mêmes réglages et les mêmes jetons, et ses workers relanceraient tâches planifiées,
+      e-mails, messages des passerelles et renouvellements OAuth. À côté, seule sa base
+      démarre ; la pile entière ne démarre qu'une fois l'ancienne arrêtée, à la bascule ;
+  - **après une reprise** : archivage vérifié, sauvegarde de base aussitôt, tâches de la
+    préparation remises en place, ligne temporelle notée, journal d'audit vérifié,
+    entreprises informées ;
+  - **exercices** : chaque trimestre, une restauration minutée sur l'hôte de secours,
+    depuis un instantané de la copie, la seule base démarrée, notée dans le plan ;
   - **précision d'ADR-215** : une restauration abandonnée avant son premier segment retient
     son dossier une période de plus. Ce qu'il garde remonte alors jusqu'à deux périodes,
     plus l'intervalle entre deux sauvegardes de base (et non « jusqu'à deux périodes »
@@ -16321,9 +16338,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 - **Conséquences** :
   - le chantier 4 est terminé : lots 70a (ADR-206), 70b (ADR-214) et 70c (ADR-215 et
     celui-ci) ;
-  - le plan lui-même n'est pas testé. Les commandes qu'il donne sont celles que la CI
-    joue : `backup-test.sh`, `wal-archive-test.sh`, `point-in-time-test.sh` et
-    `archive-retention-test.sh`. Ses durées restent à mesurer par l'exercice de chaque
-    exploitant ;
+  - le plan lui-même n'est pas testé, et la feuille de route ne le marque pas ✅. La CI
+    joue les sauvegardes, les restaurations, la conservation et l'état de l'archive
+    (`backup.sh`, `restore.sh`, `restore-base.sh`, `prune.sh`, `archive-status.sh`, par
+    `backup-test.sh`, `wal-archive-test.sh`, `point-in-time-test.sh` et
+    `archive-retention-test.sh`). Elle ne joue ni les tables `cron`, ni la copie tirée et
+    ses instantanés, ni la mise de côté d'un volume, ni la bascule : l'exercice de chaque
+    exploitant les vérifie, et mesure ses durées ;
   - un changement des scripts de sauvegarde ou de restauration met le plan à jour dans la
     même contribution.
