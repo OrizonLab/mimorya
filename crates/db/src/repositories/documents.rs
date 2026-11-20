@@ -2,7 +2,8 @@
 //! reaches only (`document_read_filter`, their space and clearance, checked
 //! in SQL), deposited with their file and passages in one transaction under
 //! the company's quota lock, deleted with both; replaced by a new version
-//! of their file in `document_versions` (ADR-150).
+//! of their file in `document_versions` (ADR-150); their type and
+//! confidentiality classified in `document_labels` (ADR-213, D4).
 
 use chrono::{DateTime, Utc};
 use mimorya_core::documents::{DocumentReadFilter, Passage};
@@ -21,7 +22,7 @@ pub(super) const VISIBLE: &str = "((((scope = 'tenant' and $1) \
         and array_position(array['public', 'internal', 'confidential', 'restricted'], sensitivity) - 1 <= shared.cap)))";
 
 const COLUMNS: &str = "id, scope, org_unit_id, title, file_name, kind, sensitivity, byte_size, \
-    page_count, uploaded_by_user_id, created_at, version, replaced_at";
+    page_count, uploaded_by_user_id, created_at, version, replaced_at, document_type";
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct DocumentRow {
@@ -39,6 +40,8 @@ pub struct DocumentRow {
     /// Its file's version: 1 as deposited, one more at each replacement.
     pub version: i32,
     pub replaced_at: Option<DateTime<Utc>>,
+    /// Its type, once a person set it (ADR-213, D4).
+    pub document_type: Option<String>,
 }
 
 pub(super) fn bind_visible<'q, O>(
@@ -87,6 +90,17 @@ pub async fn get_visible_document(
         .bind(id)
         .fetch_optional(conn)
         .await
+}
+
+/// Locks the document `id` until the end of the transaction: its level, set
+/// by a person or raised by its classification (ADR-213, D4), is read as it
+/// stays until then.
+pub async fn lock_document(conn: &mut PgConnection, id: Uuid) -> sqlx::Result<()> {
+    sqlx::query("select 1 from documents where id = $1 for update")
+        .bind(id)
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 /// Locks the company's documents until the end of the transaction, so that

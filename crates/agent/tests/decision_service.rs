@@ -230,3 +230,32 @@ async fn past_the_operator_s_supply_the_main_model_is_not_asked() {
     assert_eq!(answer, Err(EngineFailure::SupplySpent));
     assert!(provider.requests().is_empty());
 }
+
+#[tokio::test]
+async fn a_budget_bounds_the_engines_together_and_an_answer_within_it_is_counted() {
+    let calls = Arc::new(Calls::default());
+    let slow = Arc::new(Simulated {
+        kind: EngineKind::Jev,
+        answer: Ok(said(0.9)),
+        delay: Duration::from_millis(400),
+    });
+    let (main, provider) = main_model(vec![oui()]);
+    // The first engine takes the whole budget: the next is not asked.
+    let bounded = service(&calls)
+        .then(slow, Duration::from_secs(5))
+        .then(main, Duration::from_secs(5));
+    let (outcome, counted) = bounded
+        .decide_within(&request(), Some(Duration::from_millis(100)))
+        .await;
+    assert_eq!(outcome, DecisionOutcome::Failed);
+    assert!(counted.is_empty());
+    assert!(provider.requests().is_empty());
+    // Within it, the answer decides and its call is counted.
+    let quick = engine(Ok(said(0.9)));
+    let within = service(&calls).then(quick, Duration::from_secs(5));
+    let (outcome, counted) = within
+        .decide_within(&request(), Some(Duration::from_secs(2)))
+        .await;
+    assert!(matches!(outcome, DecisionOutcome::Decided(_)));
+    assert_eq!(counted.len(), 1);
+}

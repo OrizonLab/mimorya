@@ -27,6 +27,7 @@ pub const AVAILABLE_USAGES: &[DecisionUsage] = &[
     DecisionUsage::ModelRouting,
     DecisionUsage::SkillChoice,
     DecisionUsage::MemoryGuard,
+    DecisionUsage::DocumentLabels,
 ];
 
 /// What a usage reads of a person's request, at most.

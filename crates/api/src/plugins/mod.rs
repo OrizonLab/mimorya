@@ -7,6 +7,7 @@
 //! across processes, the run queue and the answers written in Slack.
 
 pub mod csrf;
+pub mod document_labels;
 pub mod gateway_replies;
 pub mod maintenance;
 pub mod memory_indexing;

@@ -29,6 +29,8 @@ pub const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
     ("DELETE", "/documents/{id}"),
     ("GET", "/documents/{id}/file"),
     ("PUT", "/documents/{id}/file"),
+    ("PUT", "/documents/{id}/labels"),
+    ("POST", "/documents/{id}/proposal/dismiss"),
     ("GET", "/scheduled-tasks"),
     ("POST", "/scheduled-tasks"),
     ("PATCH", "/scheduled-tasks/{id}"),

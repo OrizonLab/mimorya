@@ -2,13 +2,15 @@
 //! read: `document:write` there, at or under one's clearance. The file is
 //! then read (`reading`); it is recorded with its passages in one
 //! transaction, under the company's quota lock, audited without its name
-//! nor its text.
+//! nor its text; then classified, if the company's usage is not off
+//! (ADR-213, D4).
 
 use axum::body::Bytes;
 use mimorya_core::DomainError;
 use mimorya_core::authz::{Actor, Sensitivity};
 use mimorya_core::documents::{DocumentSpace, can_write_document};
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
+use mimorya_db::repositories::document_labels::request_document_labels;
 use mimorya_db::repositories::documents::{
     NewDocument, insert_document, insert_passages, lock_document_quota,
 };
@@ -95,9 +97,13 @@ impl DocumentService {
                 "sensitivity": deposit.sensitivity.as_str(),
             }));
         append_audit(&mut tx, entry).await?;
+        let classified = request_document_labels(&mut tx, tenant_id, id, 1).await?;
         tx.commit().await?;
         // Its passages await their vectors, if the company chose a model.
         self.embeddings.wake();
+        if classified {
+            self.labels.wake();
+        }
         Ok(DocumentCreated {
             id,
             page_count: file.page_count,

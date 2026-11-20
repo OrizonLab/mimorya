@@ -2,17 +2,26 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge, Cell, DataTable, EmptyState, ErrorNote } from '@/components/ui';
-import { api, useAction, type DocumentItem } from '@/lib/api';
+import {
+  api,
+  useAction,
+  type DocumentItem,
+  type DocumentLabelsUpdate,
+  type DocumentProposalDismissal,
+} from '@/lib/api';
 import { formatBytes, formatDate } from '@/lib/format';
-import { CLEARANCE_LABELS, DOCUMENT_KINDS } from '@/lib/labels';
+import { CLEARANCE_LABELS, DOCUMENT_KINDS, DOCUMENT_TYPES } from '@/lib/labels';
 import { DocumentActions } from './document-actions';
 import { DocumentReplace } from './document-replace';
+import { LabelProposal } from './label-proposal';
 
 /**
  * The documents the reader may read (ADR-095), the latest first: each
  * downloaded as deposited, replaced by a new version (ADR-151) or deleted
- * by whoever may write its space, its version said once replaced. When
- * older ones are left out, the list says so (ADR-097).
+ * by whoever may write its space, its version said once replaced, its type
+ * shown once set, and what its classification by the decision service left
+ * applied or dismissed by whoever may write it (ADR-213, D4). When older
+ * ones are left out, the list says so (ADR-097).
  *
  * One new version is chosen at a time, in a panel above the list, opened
  * and closed by its row's button: it closes once its document is gone from
@@ -69,6 +78,19 @@ export function DocumentLibrary({
     onChanged();
   }
 
+  async function setLabels(document: DocumentItem, labels: DocumentLabelsUpdate) {
+    const url = `/documents/${document.id}/labels`;
+    if ((await action.run(() => api.put(url, labels))) === null) return;
+    onChanged();
+  }
+
+  async function dismiss(document: DocumentItem, version: number) {
+    const body = { version } satisfies DocumentProposalDismissal;
+    const url = `/documents/${document.id}/proposal/dismiss`;
+    if ((await action.run(() => api.post(url, body))) === null) return;
+    onChanged();
+  }
+
   function open(document: DocumentItem) {
     setReplaced(null);
     setReplacingId(document.id);
@@ -121,7 +143,14 @@ export function DocumentLibrary({
               <div className="mt-1 flex flex-wrap gap-1">
                 <Badge>{DOCUMENT_KINDS[document.kind]}</Badge>
                 <Badge>{CLEARANCE_LABELS[document.sensitivity]}</Badge>
+                {document.documentType && <Badge>{DOCUMENT_TYPES[document.documentType]}</Badge>}
               </div>
+              <LabelProposal
+                document={document}
+                busy={action.pending || sending}
+                onSet={(labels) => void setLabels(document, labels)}
+                onDismiss={(version) => void dismiss(document, version)}
+              />
             </Cell>
             <Cell>
               <Badge tone="accent">{document.orgUnit ?? 'Entreprise'}</Badge>

@@ -7,7 +7,9 @@ use mimorya_agent::runtime::{BudgetLimits, DEFAULT_BUDGET, RunUsageTotals, Verif
 use mimorya_agent::tools::ToolCallEvaluation;
 use mimorya_core::ErrorCode;
 use mimorya_core::autonomy::ToolRisk as CoreRisk;
-use mimorya_core::documents::{DocumentKind as CoreDocumentKind, DocumentSpace};
+use mimorya_core::documents::{
+    DocumentKind as CoreDocumentKind, DocumentSpace, DocumentType as CoreDocumentType,
+};
 use mimorya_core::memory::{
     MemoryKind as CoreMemoryKind, MemoryScope as CoreMemoryScope, MemoryStatus as CoreMemoryStatus,
 };
@@ -160,6 +162,12 @@ fn document_columns_read_back_as_their_contract_values() {
     for scope in DocumentSpace::SCOPES {
         let read: DocumentScope = stored_text("document scope", scope).unwrap();
         assert_eq!(serde_json::to_value(read).unwrap(), scope);
+    }
+    // A type read back, and sent back to the core as it is.
+    for kind in CoreDocumentType::ALL {
+        let read: DocumentType = stored_text("document type", kind.as_str()).unwrap();
+        assert_eq!(serde_json::to_value(read).unwrap(), kind.as_str());
+        assert_eq!(CoreDocumentType::from(read), kind);
     }
 }
 

@@ -25,6 +25,10 @@ pub struct BuildOptions {
     /// Leaves memories to be indexed on demand (`index_pending`), not in the
     /// background (tests that count what a pass embeds).
     pub manual_indexing: bool,
+    /// Leaves deposited documents to be classified on demand
+    /// (`classify_pending`), not in the background (tests that set what the
+    /// decision answers, ADR-213).
+    pub manual_document_labels: bool,
     /// Replaces how long a run's lease lasts and how often leases are renewed
     /// and taken up (tests).
     pub run_leases: Option<LeaseTiming>,

@@ -1,8 +1,8 @@
 //! A document replaced by a new version of its file (ADR-150): only while
 //! it is at the version replaced, its file and passages with it, the
 //! former passages' vectors gone; nothing else of a document, nor of its
-//! file, the application may change. Each test leaves its transaction
-//! uncommitted: it is rolled back.
+//! file, the application may change, but its level and type (ADR-213, D4).
+//! Each test leaves its transaction uncommitted: it is rolled back.
 
 mod support;
 
@@ -156,10 +156,11 @@ async fn the_application_changes_nothing_else_of_a_document() {
     let mut setup = db.begin(tenant::ID).await.unwrap();
     let id = document(&mut setup).await;
     setup.commit().await.unwrap();
+    // Its level and type change too, set by a person or raised by its
+    // classification (ADR-213, D4, `document_labels.rs`); nothing else.
     for change in [
         "scope = 'org_unit'",
         "org_unit_id = null",
-        "sensitivity = 'public'",
         "uploaded_by_user_id = null",
         "created_at = now()",
         "tenant_id = tenant_id",

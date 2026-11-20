@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use futures::FutureExt;
-use mimorya_agent::decision::RunDecisions;
+use mimorya_agent::decision::{DecisionUsage, RunDecisions};
 use mimorya_agent::llm::{Effort, EscalationRoute, LlmMessage, ModelRouter, PriceTable, RunKind};
 
 use mimorya_agent::runtime::{
@@ -45,6 +45,10 @@ use crate::services::event_bus::RunEventBus;
 use crate::services::llm::{DecisionScope, LlmService, Models, SupplyGuard};
 
 const MAX_CORRECTION_ATTEMPTS: u32 = 2;
+
+/// The usages asked as a run starts: the router's choice (D1) and the
+/// skills listed (D2).
+const AT_START: &[DecisionUsage] = &[DecisionUsage::ModelRouting, DecisionUsage::SkillChoice];
 
 /// What a run's runtime is built for.
 struct RunSetup {
@@ -255,7 +259,7 @@ impl RunExecutor {
         };
         let tenant_id = access.subject.tenant_id;
         self.llm
-            .run_decisions(tenant_id, scope, models, None)
+            .run_decisions(tenant_id, scope, models, AT_START)
             .await
             .unwrap_or_else(|error| {
                 tracing::warn!(error = %error, "Decisions unread: the run asks none");

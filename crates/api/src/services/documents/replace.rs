@@ -7,15 +7,19 @@
 //! first deposit, the company's quota counting only what the new file adds.
 //! Audited without its name nor its text, as a file the reader could not
 //! read is, with the document it was for; its new passages await their
-//! vectors.
+//! vectors, and its classification (ADR-213, D4) starts again, what the
+//! former one proposed dropped.
 
 use axum::body::Bytes;
 use mimorya_core::DomainError;
 use mimorya_core::authz::Actor;
 use mimorya_core::documents::document_read_filter;
 use mimorya_db::repositories::audit::{AuditEntry, append_audit};
+use mimorya_db::repositories::document_labels::{drop_label_proposal, request_document_labels};
 use mimorya_db::repositories::document_versions::{NewVersion, replace_document_file};
-use mimorya_db::repositories::documents::{DocumentRow, get_visible_document, lock_document_quota};
+use mimorya_db::repositories::documents::{
+    DocumentRow, get_visible_document, lock_document, lock_document_quota,
+};
 use serde_json::json;
 use sqlx::PgConnection;
 use uuid::Uuid;
@@ -68,6 +72,8 @@ impl DocumentService {
         // Replacements and deposits wait for one another here: the
         // document read next is the one replaced.
         let used = lock_document_quota(&mut tx, tenant_id).await?;
+        // Its level raised or set since (ADR-213, D4) is the one checked.
+        lock_document(&mut tx, id).await?;
         let current = replaceable(&mut tx, access, id, replaces).await?;
         let former = i64::from(current.byte_size);
         // A smaller file is always taken, even over a quota lowered since.
@@ -86,7 +92,7 @@ impl DocumentService {
             content: bytes,
             passages: &file.passages,
         };
-        // Only a deletion, which takes no lock, can come in between.
+        // Nothing can come in between: the document is locked.
         let version = (replace_document_file(&mut tx, version).await?).ok_or_else(absent)?;
         let entry = AuditEntry::new(tenant_id, "user", "document.replaced", "success")
             .by_user(access.subject.user_id)
@@ -99,9 +105,15 @@ impl DocumentService {
                 "passages": file.passages.len(),
             }));
         append_audit(&mut tx, entry).await?;
+        // What the former version's classification proposed no longer holds.
+        drop_label_proposal(&mut tx, id).await?;
+        let classified = request_document_labels(&mut tx, tenant_id, id, version).await?;
         tx.commit().await?;
         // Its new passages await their vectors, if the company chose a model.
         self.embeddings.wake();
+        if classified {
+            self.labels.wake();
+        }
         Ok(DocumentReplaced {
             version,
             page_count: file.page_count,

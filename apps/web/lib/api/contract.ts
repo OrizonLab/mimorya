@@ -785,12 +785,34 @@ replacedAt: string | null,
  * The reader may replace or delete it: `document:write` over its space,
  * at its sensitivity.
  */
-canWrite: boolean, };
+canWrite: boolean,
+/**
+ * Its type, once a person set it (ADR-213, D4).
+ */
+documentType: DocumentType | null,
+/**
+ * What its classification leaves for the reader, who may write it.
+ */
+labelProposal: DocumentLabelProposal | null, };
 
 /**
  * The kind of a deposited file.
  */
 export type DocumentKind = "pdf" | "docx" | "markdown" | "text";
+
+/**
+ * What a classification leaves for a person who may write the document,
+ * for its version `version`: a type and a looser level proposed, or the
+ * level it held before the decision raised it.
+ */
+export type DocumentLabelProposal = { version: number, documentType: DocumentType | null, sensitivity: Sensitivity | null, raisedFrom: Sensitivity | null, };
+
+/**
+ * `PUT /documents/{id}/labels`: its type (none to clear it) and its level,
+ * set by a person who may write it at its level and at the new one, at the
+ * version they saw; what the classification proposed is dropped.
+ */
+export type DocumentLabelsUpdate = { version: number, documentType: DocumentType | null, sensitivity: Sensitivity, };
 
 /**
  * `GET /documents`.
@@ -812,6 +834,12 @@ spaces: Array<DocumentSpaceOption>, quota: DocumentQuota | null,
  * The largest file a deposit takes, in bytes (ADR-095).
  */
 maxFileBytes: number, };
+
+/**
+ * `POST /documents/{id}/proposal/dismiss`: what the classification of the
+ * version `version` proposed, dropped, the document left as it is.
+ */
+export type DocumentProposalDismissal = { version: number, };
 
 /**
  * The company's documents held, against its quota: shown to those who
@@ -840,6 +868,11 @@ export type DocumentScope = "tenant" | "org_unit";
  * A space the reader may deposit into: the company's (no unit) or a unit's.
  */
 export type DocumentSpaceOption = { unitId: string | null, name: string, };
+
+/**
+ * A document's type.
+ */
+export type DocumentType = "contract" | "invoice" | "quote" | "procedure" | "minutes" | "report" | "letter" | "technical_sheet" | "other";
 
 /**
  * `POST /documents?name=…&unitId=…&sensitivity=…`, the file as body: its

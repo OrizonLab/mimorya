@@ -5,9 +5,10 @@
 //! proposal its owner validates; a lesson said so is not kept (one it could
 //! not read is proposed, as every lesson is). Observed, the decision is
 //! journaled and nothing changes. A memory that already awaits a
-//! validation asks nothing: the decision can only add one. The decision is
-//! awaited within `MAX_WAIT`, well within a tool call's own delay: past it,
-//! it counts as unread, so that a slow engine never loses the memory.
+//! validation asks nothing: the decision can only add one. Its engines are
+//! asked within `MAX_WAIT` together, well within a tool call's own delay:
+//! past it, the decision counts as unread, so that a slow engine never loses
+//! the memory, and a call that answered is counted all the same.
 //! The company's settings are read at each write: none read, the memory is
 //! saved as asked, as without decisions.
 
@@ -17,15 +18,15 @@ use std::time::Duration;
 use mimorya_agent::decision::{
     DecisionMode, DecisionOutcome, DecisionUsage, holds_sensitive_data, memory_guard_request,
 };
-use mimorya_agent::runtime::NewMemory;
+use mimorya_agent::runtime::{DEFAULT_TOOL_TIMEOUT, NewMemory};
 use mimorya_core::memory::{MemoryScope, MemoryStatus};
 
 use super::db_ports::RunScope;
 use crate::services::llm::{DecisionScope, LlmService, Models};
 
-/// How long a write waits for the decision: half a tool call's own delay
-/// (`DEFAULT_TOOL_TIMEOUT`), so that the call ends with the memory saved.
-const MAX_WAIT: Duration = Duration::from_secs(15);
+/// How long a write waits for the decision's engines: half a tool call's
+/// own delay, so that the call ends with the memory saved.
+const MAX_WAIT: Duration = Duration::from_secs(DEFAULT_TOOL_TIMEOUT.as_secs() / 2);
 
 /// What the decision said of a text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,7 +99,7 @@ async fn read(
             scope.tenant_id,
             asked,
             models,
-            Some(DecisionUsage::MemoryGuard),
+            &[DecisionUsage::MemoryGuard],
         )
         .await
         .unwrap_or_else(|error| {
@@ -109,16 +110,20 @@ async fn read(
     if policy.mode == DecisionMode::Off {
         return None;
     }
+    // Each engine within what is left of the wait: a call that answered is
+    // counted, whatever follows.
     let request = memory_guard_request(title, text);
-    let verdict = match tokio::time::timeout(MAX_WAIT, decisions.service.decide(&request)).await {
-        Ok(DecisionOutcome::Decided(decided))
-            if holds_sensitive_data(&decided, policy.threshold) =>
-        {
+    let (outcome, _) = decisions
+        .service
+        .decide_within(&request, Some(MAX_WAIT))
+        .await;
+    let verdict = match outcome {
+        DecisionOutcome::Decided(decided) if holds_sensitive_data(&decided, policy.threshold) => {
             Verdict::Sensitive
         }
-        Ok(DecisionOutcome::Decided(_)) => Verdict::Clear,
+        DecisionOutcome::Decided(_) => Verdict::Clear,
         // No engine decided, or not in time.
-        Ok(DecisionOutcome::Failed) | Err(_) => Verdict::Unread,
+        DecisionOutcome::Failed => Verdict::Unread,
     };
     tracing::info!(
         target: "mimorya::decision",

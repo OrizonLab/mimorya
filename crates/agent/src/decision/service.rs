@@ -99,6 +99,18 @@ impl DecisionService {
         &self,
         request: &DecisionRequest,
     ) -> (DecisionOutcome, Vec<Counted>) {
+        self.decide_within(request, None).await
+    }
+
+    /// `decide_counted`, its engines asked within `budget` all together:
+    /// each within what is left of it, so that a call that answered is
+    /// always counted, whatever time is left (D3).
+    pub async fn decide_within(
+        &self,
+        request: &DecisionRequest,
+        budget: Option<Duration>,
+    ) -> (DecisionOutcome, Vec<Counted>) {
+        let deadline = budget.map(|budget| Instant::now() + budget);
         let mut counted = Vec::new();
         if let Some(problem) = request.problem() {
             tracing::warn!(
@@ -110,7 +122,12 @@ impl DecisionService {
         }
         for link in &self.chain {
             let started = Instant::now();
-            let asked = tokio::time::timeout(link.timeout, link.engine.answer(request)).await;
+            let left = deadline.map(|deadline| deadline.saturating_duration_since(started));
+            if left.is_some_and(|left| left.is_zero()) {
+                break;
+            }
+            let wait = left.map_or(link.timeout, |left| left.min(link.timeout));
+            let asked = tokio::time::timeout(wait, link.engine.answer(request)).await;
             let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
             let answer = match asked {
                 Err(_) => Err(EngineFailure::TimedOut),

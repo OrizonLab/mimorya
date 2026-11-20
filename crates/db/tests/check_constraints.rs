@@ -8,7 +8,7 @@ mod support;
 
 use mimorya_core::authz::Sensitivity;
 use mimorya_core::autonomy::ToolRisk;
-use mimorya_core::documents::{DocumentKind, DocumentSpace};
+use mimorya_core::documents::{DocumentKind, DocumentSpace, DocumentType};
 use mimorya_core::memory::{MemoryKind, MemoryScope, MemoryStatus};
 use mimorya_core::model_supply::SupplyFormula;
 use mimorya_core::retention::RetentionKind;
@@ -113,6 +113,22 @@ async fn constrained_columns_allow_exactly_the_platform_s_values() {
         ),
         (
             "documents_sensitivity_check",
+            owned(Sensitivity::ALL.map(Sensitivity::as_str)),
+        ),
+        (
+            "documents_document_type",
+            owned(DocumentType::ALL.map(DocumentType::as_str)),
+        ),
+        (
+            "document_label_proposals_document_type",
+            owned(DocumentType::ALL.map(DocumentType::as_str)),
+        ),
+        (
+            "document_label_proposals_sensitivity",
+            owned(Sensitivity::ALL.map(Sensitivity::as_str)),
+        ),
+        (
+            "document_label_proposals_raised_from",
             owned(Sensitivity::ALL.map(Sensitivity::as_str)),
         ),
         (

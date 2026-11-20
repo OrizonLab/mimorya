@@ -96,6 +96,7 @@ async fn apply(services: &AppState, invalidation: Invalidation) {
         Invalidation::Llm(tenant_id) => services.llm.forget(tenant_id),
         Invalidation::Embeddings(tenant_id) => services.embeddings.forget(tenant_id),
         Invalidation::Indexing => services.embeddings.wake_here(),
+        Invalidation::DocumentLabels => services.document_labels.wake_here(),
         Invalidation::Connector(id) => services.connectors.forget(id).await,
         Invalidation::ConnectorRetry(id) => services.connectors.retry_here(id).await,
     }
