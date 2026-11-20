@@ -97,6 +97,15 @@ pub struct RunCheckpoint {
     /// person validates after a pause.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skills_shown: Vec<SkillSummary>,
+    /// The run read an external content said to hold instructions for an
+    /// AI, or one the detection could not read (ADR-213, D6): each later
+    /// action waits for a person.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub external_suspect: bool,
+    /// Of which an external content was said to hold such instructions
+    /// (not only unread): a sub-agent's report is then marked so.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub instructions_detected: bool,
 }
 
 /// A run's model escalation (ADR-207).
@@ -174,6 +183,8 @@ impl RunCheckpoint {
             escalation: EscalationState::default(),
             supply_stopped: false,
             skills_shown: Vec::new(),
+            external_suspect: false,
+            instructions_detected: false,
         }
     }
 }

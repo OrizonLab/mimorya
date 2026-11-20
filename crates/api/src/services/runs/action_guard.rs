@@ -19,18 +19,28 @@ use mimorya_agent::runtime::{ActionGuard, GuardReview, GuardVerdict, GuardedCall
 use mimorya_db::Database;
 use mimorya_db::repositories::users::get_user;
 
-use super::db_ports::RunScope;
-use super::memory_guard::MAX_WAIT;
-use crate::services::llm::{DecisionScope, LlmService, Models};
+use super::db_ports::{DbPorts, RunScope};
+use super::usage_decisions::{MAX_WAIT, usage_decisions};
+use crate::services::llm::{LlmService, Models};
 
 pub(super) struct DbActionGuard {
-    pub db: Database,
-    pub llm: Arc<LlmService>,
-    pub models: Arc<Models>,
-    pub scope: RunScope,
+    db: Database,
+    llm: Arc<LlmService>,
+    models: Arc<Models>,
+    scope: RunScope,
 }
 
 impl DbActionGuard {
+    /// The guard of the run `ports` serve.
+    pub(super) fn of(ports: &DbPorts) -> Self {
+        Self {
+            db: ports.db.clone(),
+            llm: ports.llm.clone(),
+            models: ports.models.clone(),
+            scope: ports.scope,
+        }
+    }
+
     /// The served person's own e-mail domain, to tell an external recipient.
     async fn internal_domain(&self) -> Option<String> {
         let mut tx = self.db.begin(self.scope.tenant_id).await.ok()?;
@@ -44,27 +54,12 @@ impl DbActionGuard {
 #[async_trait]
 impl ActionGuard for DbActionGuard {
     async fn review(&self, call: &GuardedCall<'_>) -> GuardReview {
-        let scope = self.scope;
-        let asked = DecisionScope {
-            run_id: Some(scope.run_id),
-            user_id: Some(scope.user_id),
-        };
-        let usage = [DecisionUsage::ActionGuard];
-        let decisions = match (self.llm)
-            .run_decisions(scope.tenant_id, asked, &self.models, &usage)
-            .await
-        {
-            Ok(Some(decisions)) => decisions,
-            Ok(None) => return GuardReview::default(),
-            Err(error) => {
-                tracing::warn!(error = %error, "Decisions unread: the action goes as decided");
-                return GuardReview::default();
-            }
-        };
-        let policy = decisions.policy(DecisionUsage::ActionGuard);
-        if policy.mode == DecisionMode::Off {
+        let usage = DecisionUsage::ActionGuard;
+        let Some((decisions, policy)) =
+            usage_decisions(&self.llm, &self.models, self.scope, usage).await
+        else {
             return GuardReview::default();
-        }
+        };
         let domain = self.internal_domain().await;
         let parameters = call.input.to_string();
         let request = action_guard_request(&GuardedAction {

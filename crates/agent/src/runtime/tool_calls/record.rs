@@ -1,8 +1,9 @@
 //! What becomes of a call that ran (or was meant to): logged, audited and
 //! streamed, counted in the run, its citations among the run's evidence, the
 //! quality criteria of a skill `skill_read` loaded among the run's (ADR-106),
-//! and its asking for the escalation model kept (ADR-207), and its result
-//! turned into model input.
+//! and its asking for the escalation model kept (ADR-207), its external
+//! content screened for instructions meant for an AI (ADR-213, D6), and its
+//! result turned into model input.
 
 use mimorya_core::tools::ToolResult;
 use serde_json::{Value, json};
@@ -10,6 +11,7 @@ use uuid::Uuid;
 
 use super::ToolCallProcessor;
 use crate::llm::LlmToolResult;
+use crate::runtime::content_screen::{SUSPECT_NOTICE, SUSPECT_SUMMARY, ScreenVerdict};
 use crate::runtime::ports::{EngineAuditEntry, RunEvent, ToolInvocationRecord};
 use crate::runtime::state::RunCheckpoint;
 use crate::tools::platform::SKILL_READ;
@@ -25,6 +27,10 @@ pub(super) struct Call<'a> {
     pub tool_call_id: &'a str,
     pub input: Value,
     pub approval_id: Option<Uuid>,
+    /// What a sub-agent's detection said of what it read (ADR-213, D6):
+    /// its parent held suspect on either, its report marked when
+    /// instructions were detected.
+    pub reported: Option<ScreenVerdict>,
 }
 
 impl ToolCallProcessor {
@@ -43,6 +49,7 @@ impl ToolCallProcessor {
             tool_call_id,
             input,
             approval_id,
+            reported,
         } = call;
         state.usage.tool_calls += 1;
         if !result.is_error {
@@ -61,6 +68,17 @@ impl ToolCallProcessor {
                 "Terminé".into()
             }
         });
+        // External content screened for instructions meant for an AI
+        // (ADR-213, D6), before the person and the model read it.
+        let reported_suspect = reported == Some(ScreenVerdict::Suspect);
+        let suspect = self.screen(state, tool, &result).await? || reported_suspect;
+        state.external_suspect |= reported.is_some();
+        state.instructions_detected |= reported_suspect;
+        let summary = if suspect {
+            format!("{summary} — {SUSPECT_SUMMARY}")
+        } else {
+            summary
+        };
         let name = &tool.info.name;
 
         self.ports
@@ -92,6 +110,9 @@ impl ToolCallProcessor {
         if let Some(id) = approval_id {
             audited["approvalId"] = json!(id);
         }
+        if suspect {
+            audited["suspectContent"] = json!(true);
+        }
         if let Some(Value::Object(extra)) = metadata {
             for (key, value) in extra {
                 audited[key] = value;
@@ -122,9 +143,15 @@ impl ToolCallProcessor {
                 duration_ms,
             })
             .await?;
+        let content = wrap_tool_result(name, &result.content, result.is_error);
         Ok(LlmToolResult {
             tool_call_id: tool_call_id.into(),
-            content: wrap_tool_result(name, &result.content, result.is_error),
+            // The notice comes from the platform: outside the envelope.
+            content: if suspect {
+                format!("{SUSPECT_NOTICE}\n{content}")
+            } else {
+                content
+            },
             is_error: result.is_error,
         })
     }

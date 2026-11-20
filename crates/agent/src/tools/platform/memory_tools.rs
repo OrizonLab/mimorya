@@ -13,6 +13,10 @@ use validator::Validate;
 
 use crate::runtime::ports::{MemoryStore, NewMemory};
 
+/// The platform's memory tools, by name.
+pub const MEMORY_SEARCH: &str = "memory_search";
+pub const MEMORY_REMEMBER: &str = "memory_remember";
+
 const DEFAULT_SEARCH_LIMIT: u32 = 5;
 
 pub struct MemorySearch {
@@ -36,7 +40,7 @@ impl TypedTool for MemorySearch {
 
     fn info(&self) -> ToolInfo {
         ToolInfo::new(
-            "memory_search",
+            MEMORY_SEARCH,
             "Recherche dans la mémoire",
             "Recherche dans les mémoires accessibles à l’utilisateur (personnelle, équipe, entreprise, expérience) : procédures, préférences, décisions, faits utiles.",
             ToolRisk::Read,
@@ -137,7 +141,7 @@ impl TypedTool for MemoryRemember {
 
     fn info(&self) -> ToolInfo {
         ToolInfo::new(
-            "memory_remember",
+            MEMORY_REMEMBER,
             "Mémorisation",
             "Enregistre une information utile pour les prochaines missions. Espace « personal » : préférences et informations de travail de l’utilisateur (enregistré immédiatement, sauf dans une demande lancée par un déclencheur, ou si la plateforme y voit une donnée sensible : proposition à valider). Espaces « team » et « company » : connaissance partagée, enregistrée comme proposition à valider. N’enregistre jamais de secret, de mot de passe ni de donnée personnelle sensible.",
             ToolRisk::Draft,

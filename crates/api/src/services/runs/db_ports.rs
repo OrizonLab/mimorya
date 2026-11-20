@@ -28,6 +28,7 @@ use uuid::Uuid;
 use super::action_guard::DbActionGuard;
 use super::approval_notice::ApprovalNotifier;
 use super::approval_routing::{NOBODY_VALIDATES, Route, route};
+use super::content_screen::DbContentScreen;
 use super::deliverables::DbDeliverables;
 use super::events::append_in;
 use super::executor::RunExecutor;
@@ -65,7 +66,7 @@ pub struct RunScope {
 
 #[derive(Clone)]
 pub struct DbPorts {
-    db: Database,
+    pub(super) db: Database,
     pub(super) scope: RunScope,
     bus: Arc<RunEventBus>,
     /// The last event this execution recorded (`NO_EVENT` before the first):
@@ -93,8 +94,9 @@ pub struct DbPorts {
     pub(super) sub_run: bool,
     /// The accounts the run's user linked, for its tools (ADR-117).
     account_links: Arc<AccountLinkService>,
-    /// Reads a memory before it is saved, and an action before it runs or
-    /// is put to validation, when the company set it (ADR-213, D3, D5).
+    /// Reads a memory before it is saved, an action before it runs or is
+    /// put to validation and an external content before the model reads
+    /// it, when the company set it (ADR-213, D3, D5, D6).
     pub(super) llm: Arc<LlmService>,
     /// The company's models the execution took: what each of its model
     /// calls is charged, on whose key (ADR-208).
@@ -157,12 +159,8 @@ impl DbPorts {
             self.scope.tenant_id,
             self.scope.user_id,
         );
-        let action_guard = DbActionGuard {
-            db: self.db.clone(),
-            llm: self.llm.clone(),
-            models: self.models.clone(),
-            scope: self.scope,
-        };
+        let action_guard = DbActionGuard::of(&self);
+        let content_screen = DbContentScreen::of(&self);
         let ports = Arc::new(self);
         EnginePorts {
             events: ports.clone(),
@@ -178,6 +176,7 @@ impl DbPorts {
             deliverables: Arc::new(deliverables),
             accounts: Arc::new(accounts),
             action_guard: Arc::new(action_guard),
+            content_screen: Arc::new(content_screen),
         }
     }
 

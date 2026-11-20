@@ -15,6 +15,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::action_guard::ActionGuard;
+use super::content_screen::ContentScreen;
 use super::delegation::SubRunStore;
 use super::document_store::DocumentStore;
 use super::state::RunCheckpoint;
@@ -335,4 +336,7 @@ pub struct EnginePorts {
     pub sub_runs: Arc<dyn SubRunStore>,
     /// The company's guard of the actions (ADR-213, D5).
     pub action_guard: Arc<dyn ActionGuard>,
+    /// The company's detection of instructions in external content
+    /// (ADR-213, D6).
+    pub content_screen: Arc<dyn ContentScreen>,
 }

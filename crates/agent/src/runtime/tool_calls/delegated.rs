@@ -75,6 +75,9 @@ impl ToolCallProcessor {
                 tool_call_id: &delegated.tool_call_id,
                 input: delegated.input,
                 approval_id: delegated.approval_id,
+                // What a sub-agent read held suspect holds its parent so
+                // (ADR-213, D6).
+                reported: report.screened,
             };
             let result = self
                 .record(
@@ -106,5 +109,6 @@ fn unreadable(error: &serde_json::Error) -> SubAgentReport {
         result: ToolResult::error(format!("{INVALID_INPUT} — {error}")).with_summary("Refusé"),
         usage: RunUsageTotals::default(),
         duration_ms: 0,
+        screened: None,
     }
 }

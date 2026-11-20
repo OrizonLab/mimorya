@@ -10,7 +10,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use mimorya_core::autonomy::ToolRisk;
 use serde_json::Value;
 
 use crate::decision::Counted;
@@ -73,11 +72,9 @@ pub(super) fn guarded(evaluation: &ToolCallEvaluation) -> Option<&RegisteredTool
         | ToolCallEvaluation::RequireApproval { tool, .. } => tool,
         ToolCallEvaluation::Deny { .. } => return None,
     };
-    let acts = matches!(
-        tool.info.risk,
-        ToolRisk::Write | ToolRisk::External | ToolRisk::Irreversible
-    );
-    (acts && tool.info.name != DELEGATE_TASK).then_some(tool)
+    // A delegation reads only (its sub-agent may not act): said again here,
+    // as a defence should its risk ever change.
+    (tool.info.risk.has_side_effect() && tool.info.name != DELEGATE_TASK).then_some(tool)
 }
 
 /// `evaluation` once the guard said `verdict`: a validation added to an

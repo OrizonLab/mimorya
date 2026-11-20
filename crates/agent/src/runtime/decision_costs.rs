@@ -2,7 +2,8 @@
 //! calls are, and told to its listeners: the router's choice (D1) and the
 //! skills listed (D2). A memory read before it is saved (D3) is counted in
 //! the company's consumption only, its port reaching no run's totals. An
-//! action read by the guard (D5) is counted in the run that asked it.
+//! action read by the guard (D5) and an external content screened (D6) are
+//! counted in the run that asked.
 
 use super::ports::{EnginePorts, RunEvent};
 use super::state::RunCheckpoint;

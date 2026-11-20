@@ -17,10 +17,11 @@ use super::prompt::{sub_agent_system, sub_agent_turn};
 use super::store::{SubRunRequest, SubRunStore};
 use crate::llm::{Effort, ModelRouter, PriceTable};
 use crate::runtime::budget::BudgetLimits;
+use crate::runtime::content_screen::ScreenVerdict;
 use crate::runtime::ports::AccessSource;
 use crate::runtime::ports::SkillSummary;
 use crate::runtime::runtime::AgentRuntime;
-use crate::runtime::state::RunUsageTotals;
+use crate::runtime::state::{RunCheckpoint, RunUsageTotals};
 use crate::runtime::supply::SupplyLimit;
 use crate::runtime::types::StartInput;
 use crate::runtime::types::{RunConfig, RunOutcome, RuntimeDeps, VerificationConfig};
@@ -58,6 +59,10 @@ pub struct SubAgentReport {
     /// What the child spent, counted in its parent's budget.
     pub usage: RunUsageTotals,
     pub duration_ms: u64,
+    /// What the child's detection said of what it read (ADR-213, D6): its
+    /// parent is held suspect on either, its report marked when
+    /// instructions were detected.
+    pub screened: Option<ScreenVerdict>,
 }
 
 /// What a child run takes of its parent's: its system prompt, and the
@@ -105,6 +110,7 @@ impl SubAgents {
                 result,
                 usage: RunUsageTotals::default(),
                 duration_ms: 0,
+                screened: None,
             });
         };
         let allowed = self.actor.allowed_permissions.as_ref().map(|set| {
@@ -155,6 +161,7 @@ impl SubAgents {
             result: told(input, &outcome),
             usage: outcome.checkpoint().usage,
             duration_ms: started.elapsed().as_millis() as u64,
+            screened: reported(outcome.checkpoint()),
         })
     }
 
@@ -213,5 +220,16 @@ fn told(input: &DelegateTaskInput, outcome: &RunOutcome) -> ToolResult {
             format!("Le sous-agent « {label} » s’est arrêté sans rendre de résumé."),
         )
         .with_summary(format!("Sous-agent « {label} » : échec")),
+    }
+}
+
+/// What a child's detection said of what it read, as its parent takes it.
+fn reported(checkpoint: &RunCheckpoint) -> Option<ScreenVerdict> {
+    if checkpoint.instructions_detected {
+        Some(ScreenVerdict::Suspect)
+    } else if checkpoint.external_suspect {
+        Some(ScreenVerdict::Unread)
+    } else {
+        None
     }
 }

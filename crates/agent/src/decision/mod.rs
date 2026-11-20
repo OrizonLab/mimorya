@@ -7,6 +7,7 @@ mod action_guard;
 mod answer;
 mod document_labels;
 mod engine;
+mod injection;
 mod jev;
 mod jev_wire;
 mod main_model;
@@ -22,6 +23,7 @@ pub use document_labels::{
     FIRST_PAGES, MAX_FIRST_TEXT_CHARS, classified as classified_labels, document_labels_request,
 };
 pub use engine::{DecisionEngine, EngineAnswer, EngineFailure};
+pub use injection::{holds_instructions, injection_request};
 pub use jev::{
     DEFAULT_JEV_MODEL, JEV_ENDPOINT, JEV_PROVIDER, JevClient, JevEngine, is_versioned_jev,
 };

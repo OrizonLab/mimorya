@@ -9,7 +9,7 @@ mod withheld;
 
 use std::sync::Arc;
 
-use mimorya_agent::runtime::{EnginePorts, no_action_guard};
+use mimorya_agent::runtime::{EnginePorts, no_action_guard, no_content_screen};
 use uuid::Uuid;
 
 pub use journal::{Journal, ToolTrace};
@@ -66,6 +66,9 @@ pub fn case_ports(
         // An evaluation's actions are withheld, never run nor put to
         // validation: no guard to ask (ADR-213, D5).
         action_guard: no_action_guard(),
+        // Nor a detection (ADR-213, D6): its tools only read, and none of
+        // its actions ever leaves.
+        content_screen: no_content_screen(),
     };
     CasePorts {
         ports,
