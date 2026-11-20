@@ -15548,7 +15548,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 
 ## ADR-213 — Service de décision : jugements rapides et typés, Jev ou le modèle principal (chantier 7)
 
-- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 à D6 le 2026-11-20 · s'appuie sur ADR-024 (modèle par entreprise),
+- **Statut** : accepté (2026-11-19), D0 livré le 2026-11-20, D1 à D6 le 2026-11-20, D7 inscrit à la feuille de route · s'appuie sur ADR-024 (modèle par entreprise),
   ADR-207 (routeur en amont, dont il remplace le classement), ADR-208 à ADR-212
   (fourniture du modèle et montant payé).
 - **Contexte** : le moteur et plusieurs fonctionnalités ont besoin de jugements courts et
@@ -15630,7 +15630,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - chaque usage a trois modes : désactivé (par défaut), observation (la décision est
       calculée et journalisée, sans effet, pour calibrer) ou actif, et un seuil réglable
       entre 0 et 1. Un usage dont l'étape n'est pas livrée est refusé par le serveur et
-      grisé, « bientôt disponible » ;
+      grisé, « non disponible » ;
     - stockage sous RLS (`tenant_decision_settings`, `tenant_decision_usages`), API
       (`/admin/decisions`), section « Service de décision » de l'onglet « Modèle d'IA »,
       journal d'audit de chaque changement (`decision_service.configured`, `.reset`),
@@ -15657,7 +15657,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     | D4    | Documents déposés : type et confidentialité proposés, appliqués validés      |
     | D5    | Actions sensibles : une validation humaine ajoutée au-dessus du seuil        |
     | D6    | Injection dans les contenus externes : signalée, outils sensibles validés    |
-    | D7    | Tri des e-mails entrants, si un connecteur de messagerie est opérationnel    |
+    | D7    | Tri des e-mails entrants : non livré, aucun flux entrant (feuille de route)  |
 - **Alternatives écartées** :
   - le SDK de TypeSafe : il n'existe qu'en Python et en JavaScript ; un appel REST direct
     suffit et ne fait dépendre la plateforme d'aucun crate tiers ;
@@ -15910,10 +15910,11 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - limites assumées : dans un run suspect, une mémoire personnelle que l'agent
     enregistre seule (brouillon, sans effet au sens de l'autonomie) l'est aussitôt et
     peut revenir dans les runs suivants sans les rendre suspects (D3 peut la garder en
-    proposition si elle contient des données sensibles) ; le tour suivant d'une conversation et l'étape suivante d'une mission
-    repartent d'un point de reprise neuf, non suspect (l'historique rejoue pourtant la réponse du run suspect), depuis le point d'étape que le modèle
-    a écrit ; une évaluation de compétence, dont les actions ne partent jamais, ne demande
-    pas la détection (ses outils ne font que lire) ;
+    proposition si elle contient des données sensibles) ; le tour suivant d'une
+    conversation repart d'un point de reprise neuf, non suspect, son historique rejouant
+    pourtant la réponse du run suspect ; l'étape suivante d'une mission de même, depuis
+    le point d'étape que le modèle a écrit ; une évaluation de compétence, dont les
+    actions ne partent jamais, ne demande pas la détection (ses outils ne font que lire) ;
   - **ce n'est pas une protection absolue** : une instruction placée après le début lu,
     tournée pour passer ou dans une langue que le moteur lit mal peut échapper à la
     détection ; elle ne remplace ni l'enveloppe des résultats (non fiables), ni le PEP, ni
@@ -15921,3 +15922,22 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - avec Jev, le début des contenus externes (un e-mail lu, un document, la réponse d'un
     serveur MCP) part chez TypeSafe ; les trois gardes du run (D3, D5, D6) lisent leurs
     réglages par un même chemin (`services/runs/usage_decisions.rs`).
+- **D7, tri des e-mails entrants (non livré, inscrit à la feuille de route)** :
+  - le cahier des charges ne le prévoit « que si un connecteur de messagerie est
+    opérationnel », pour prioriser les e-mails et « n'éveiller l'agent que pour les
+    messages utiles » ; la messagerie standard (ADR-205), Microsoft 365 et Google
+    Workspace ne lisent une boîte qu'à la demande de l'agent, pendant un run : aucun
+    e-mail entrant n'éveille l'agent, il n'y a rien à trier en amont. La branche prévue
+    par le cahier s'applique : D7 est inscrit à la feuille de route, le chantier s'arrête
+    après D6 ;
+  - un tri des seuls résultats de `mail_search` (catégorie, urgence, agacement) a été
+    écarté : une décision par e-mail listé coûterait à chaque recherche pour un gain faible,
+    l'agent lisant déjà ce qu'il cherche ;
+  - conception proposée, à décider avec sa propre ADR : un relevé des boîtes reliées
+    (IMAP IDLE ou relevé périodique pour la messagerie standard, abonnements de Microsoft
+    Graph et notifications de Gmail), avec l'accord de chaque personne et la rétention de
+    ce qui est relevé, son export et sa suppression ; chaque e-mail entrant reçu par le service de décision (`choice` de
+    sa catégorie, `noul` de son urgence, `score` de son agacement, sur son expéditeur, son
+    objet et son début seuls) ; l'agent n'est éveillé, par un run au nom de la personne
+    comme un déclencheur (ADR-109), que pour les e-mails au-dessus du seuil, les autres
+    seulement classés ; la détection d'instructions (D6) lit l'e-mail avant tout run.

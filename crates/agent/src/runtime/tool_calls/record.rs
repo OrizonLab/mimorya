@@ -30,7 +30,7 @@ pub(super) struct Call<'a> {
     /// What a sub-agent's detection said of what it read (ADR-213, D6):
     /// its parent held suspect on either, its report marked when
     /// instructions were detected.
-    pub reported: Option<ScreenVerdict>,
+    pub reported: ScreenVerdict,
 }
 
 impl ToolCallProcessor {
@@ -70,9 +70,9 @@ impl ToolCallProcessor {
         });
         // External content screened for instructions meant for an AI
         // (ADR-213, D6), before the person and the model read it.
-        let reported_suspect = reported == Some(ScreenVerdict::Suspect);
+        let reported_suspect = reported == ScreenVerdict::Suspect;
         let suspect = self.screen(state, tool, &result).await? || reported_suspect;
-        state.external_suspect |= reported.is_some();
+        state.external_suspect |= reported != ScreenVerdict::Clear;
         state.instructions_detected |= reported_suspect;
         let summary = if suspect {
             format!("{summary} — {SUSPECT_SUMMARY}")

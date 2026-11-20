@@ -21,6 +21,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::budget::BudgetLimits;
+use super::content_screen::ScreenVerdict;
 use super::delegation::{MAX_PER_TURN, SubAgents, TOO_MANY_AT_ONCE};
 use super::ports::{CurrentAccess, EnginePorts, RunEvent};
 use super::state::{PendingApproval, RunCheckpoint};
@@ -252,7 +253,7 @@ impl ToolCallProcessor {
             tool_call_id,
             input,
             approval_id,
-            reported: None,
+            reported: ScreenVerdict::Clear,
         };
         self.record(state, call, result, duration_ms, None).await
     }

@@ -85,6 +85,8 @@ async fn a_sub_agent_returns_its_summary_and_sources_to_its_parent() {
     assert_eq!(checkpoint.usage.input_tokens, 400);
     assert_eq!(checkpoint.usage.output_tokens, 80);
     assert_eq!(checkpoint.usage.tool_calls, 1);
+    // A clear report leaves its parent clear (ADR-213, D6).
+    assert!(!checkpoint.external_suspect && !checkpoint.instructions_detected);
 
     let opened = h.ports.sub_runs();
     assert_eq!(opened.len(), 1);
