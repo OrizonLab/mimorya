@@ -344,24 +344,25 @@ COMPOSE_ENV_FILES=.env.production infra/backup/prune.sh 30 --dry-run   # dit ce 
 COMPOSE_ENV_FILES=.env.production infra/backup/prune.sh 30
 ```
 
-La base doit tourner. L'archive est élaguée d'abord : elle ne garde que ce dont ont
-besoin les sauvegardes de base de la période, celles archivées depuis 30 jours et la
-dernière d'avant, et, après une restauration à un instant passé, celle d'avant la
-bifurcation que la ligne nouvelle prolonge. Les historiques des lignes temporelles restent
-toujours. L'archive d'un autre système (une base refaite par un dump) part entière quand
-son dernier fichier a plus de 30 jours ; jamais celle de la base en service. Dans le
-dossier des sauvegardes (`MIMORYA_BACKUPS_DIR`, `backups/` par défaut), parmi les fichiers
-nommés par `backup.sh`, une sauvegarde de base reste si elle a moins de 30 jours ou si
-l'archive garde son historique ; un dump reste s'il a moins de 30 jours, plus le dernier
-d'avant ; un fichier autrement nommé ne part jamais. L'âge d'un fichier de l'archive est
-l'heure de son archivage, qu'une copie garde avec `cp -p` ou `rsync -a`. Une copie hors
-site synchronisée sans suppression (`rsync -a` sans `--delete`) garde plus longtemps ce que
-l'élagage retire ici, à votre rythme : une sauvegarde de base gardée plus longtemps ne se
-restaure qu'avec une telle copie de l'archive. Une archive sans aucune sauvegarde de base
-(des dumps seulement) n'est pas élaguée : `archive-status.sh --base-within` le signale. Ne
-démarrez jamais une base restaurée depuis une sauvegarde de base autrement que par
-`restore-base.sh` (voir plus bas), sur le dossier d'archive de la base copiée : elle
-archiverait sous les mêmes noms qu'elle et bloquerait son archivage.
+La base doit tourner. L'archive est élaguée d'abord : elle ne garde que ce dont ont besoin
+les sauvegardes de base de la période, celles archivées depuis 30 jours et la dernière
+d'avant, et, après une restauration à un instant passé, celles d'avant la bifurcation que
+la ligne nouvelle prolonge. Les historiques des lignes temporelles restent toujours.
+L'archive d'un autre système (une base refaite par un dump) part entière quand son dernier
+fichier a plus de 30 jours ; jamais celle de la base en service. Dans le dossier des
+sauvegardes (`MIMORYA_BACKUPS_DIR`, `backups/` par défaut), parmi les fichiers nommés par
+`backup.sh`, une sauvegarde de base reste si elle a moins de 30 jours, ou si elle est la
+dernière commencée avant la fin d'une sauvegarde que l'archive garde ; un dump reste s'il
+a moins de 30 jours, plus le dernier d'avant ; un fichier autrement nommé ne part jamais.
+L'âge d'un fichier de l'archive est l'heure de son archivage, qu'une copie garde avec `cp
+-p` ou `rsync -a`. Une copie hors site synchronisée sans suppression (`rsync -a` sans
+`--delete`) garde plus longtemps ce que l'élagage retire ici, à votre rythme : une
+sauvegarde de base gardée plus longtemps ne se restaure qu'avec une telle copie de
+l'archive. Une archive sans aucune sauvegarde de base (des dumps seulement) n'est pas
+élaguée : `archive-status.sh --base-within` le signale. Ne démarrez jamais une base
+restaurée depuis une sauvegarde de base autrement que par `restore-base.sh` (voir plus
+bas), sur le dossier d'archive de la base copiée : elle archiverait sous les mêmes noms
+qu'elle et bloquerait son archivage.
 
 La base de la pile de production est l'image `mimorya-db` (PostgreSQL 16, pgvector et
 `age`) : une installation antérieure qui se met à jour voit son conteneur de base remplacé,

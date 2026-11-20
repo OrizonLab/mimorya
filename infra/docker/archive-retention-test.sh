@@ -121,6 +121,9 @@ notation=1000000000000000003
 baseless=1000000000000000004
 forked=1000000000000000005
 straddling=1000000000000000006
+chained=1000000000000000007
+overlapping=1000000000000000008
+fresh=1000000000000000009
 segment $gone 1 1 $((40 * day))
 base $gone 1 1 $((40 * day))
 made_up $gone "00000002.history.$sum.gz.age" $((40 * day))
@@ -163,6 +166,54 @@ segment $straddling 1 17 $((30 * day + 30))
 base $straddling 1 18 $((30 * day - 20))
 segment $straddling 1 18 $((30 * day - 25))
 segment $straddling 1 19 $((1 * day))
+# Two restores in a row: timeline 2 forked at segment 4, after timeline 1's
+# base at 2, before its base at 6; timeline 3 forked from timeline 2 at
+# segment 8, before timeline 2's base at 9, within the period. Timeline 3's
+# first instants need timeline 1's base at 2, not the one at 6, which began
+# after timeline 2 forked.
+for n in 1 2 3 4 5 6 7; do
+  segment $chained 1 "$n" $(((46 - n) * day))
+done
+base $chained 1 2 $((44 * day))
+base $chained 1 6 $((40 * day))
+made_up $chained "00000002.history.$sum.gz.age" $((38 * day))
+for n in 4 5 6 7 8 9 10; do
+  segment $chained 2 "$n" $(((42 - n) * day))
+done
+base $chained 2 9 $((31 * day))
+made_up $chained "00000003.history.$sum.gz.age" $((25 * day))
+for n in 8 9 10 11; do
+  segment $chained 3 "$n" $(((65 - n * 5) * day))
+done
+base $chained 3 10 $((15 * day))
+# A base of timeline 1 began at segment 10, before the fork of timeline 2
+# at segment 12, and ended after it: the base before it is kept too.
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13; do
+  segment $overlapping 1 "$n" $(((47 - n) * day))
+done
+base $overlapping 1 2 $((45 * day))
+base $overlapping 1 10 $((40 * day))
+made_up $overlapping "00000002.history.$sum.gz.age" $((25 * day))
+for n in 12 13 14; do
+  segment $overlapping 2 "$n" $(((85 - n * 5) * day))
+done
+base $overlapping 2 14 $((10 * day))
+# A timeline that just began, none of its segments archived yet: its fork
+# is unknown, nothing is removed.
+for n in 1 2 3; do
+  segment $fresh 1 "$n" $(((45 - n * 5) * day))
+done
+base $fresh 1 1 $((40 * day))
+base $fresh 1 3 $((30 * day + 60))
+made_up $fresh "00000002.history.$sum.gz.age" 1
+# What two of them keep: all but the files before the earliest base kept,
+# timeline 1's segment 1.
+all_but_first() {
+  as_root find "$archive/$1" -mindepth 1 -printf '%f\n' | sed "s/\.$sum\.gz\.age$//" |
+    grep -vx "$(segment_of 1 1)" | sort | tr '\n' ' '
+}
+chained_expected=$(all_but_first $chained)
+overlapping_expected=$(all_but_first $overlapping)
 
 backups=$work/backups
 mkdir "$backups"
@@ -231,13 +282,21 @@ expected=$(printf '%s\n' "$(segment_of 1 16)" "$(segment_of 1 16).00000028.backu
   "$(segment_of 1 18).00000028.backup" "$(segment_of 1 18)" "$(segment_of 1 19)" | sort | tr '\n' ' ')
 [[ $(remaining $straddling) == "$expected" ]] ||
   fail "unexpected files kept around the cutoff: $(remaining $straddling), not $expected"
+[[ $(remaining $chained) == "$chained_expected" ]] ||
+  fail "two restores in a row lost the base their first instants need: $(remaining $chained), not $chained_expected"
+[[ $(remaining $overlapping) == "$overlapping_expected" ]] ||
+  fail "a base overlapping a fork took the place of the one before: $(remaining $overlapping), not $overlapping_expected"
+[[ $(remaining $fresh | wc -w) == 6 ]] || fail "a timeline that just began lost files: $(remaining $fresh)"
+grep -q "Archive du système $fresh : une ligne temporelle vient de commencer" <<<"$said" ||
+  fail "the timeline that just began was not said: $said"
 lost=$(comm -23 <(echo "$needed_before") <(needed "$earliest"))
 [[ -z $lost ]] || fail "files the current system's bases need were pruned: $lost"
 kept=$(find "$backups" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' ')
 expected=$(printf '%s\n' "${kept_backups[@]}" | sort | tr '\n' ' ')
 [[ $kept == "$expected" ]] || fail "unexpected backups kept: $kept, not $expected"
 as_root rm -rf "${archive:?}/$pruned" "${archive:?}/$notation" "${archive:?}/$baseless" \
-  "${archive:?}/$forked" "${archive:?}/$straddling"
+  "${archive:?}/$forked" "${archive:?}/$straddling" "${archive:?}/$chained" "${archive:?}/$overlapping" \
+  "${archive:?}/$fresh"
 
 # The current system's folder, its files all made 40 days older, in the
 # order they were archived, then a segment archived now, as the database

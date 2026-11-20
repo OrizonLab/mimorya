@@ -13,11 +13,17 @@
 #   - those archived since the cutoff (now less <days> days);
 #   - for each timeline with a file archived since the cutoff: its own last
 #     base archived before the cutoff; without one (the timeline began
-#     after it, or has no base yet), on each lower timeline (one it may have
-#     forked from), the last base that started before its first segment,
-#     which a restore along it needs for its first instants. Lower
-#     timelines it did not fork from add bases kept for nothing: the
-#     histories that would tell are encrypted.
+#     after it, or has no base yet), a restore along it needs, for its first
+#     instants, the last base of its ancestry before its fork: on the parent
+#     before the fork, or on the grandparent before the parent's fork, and
+#     so on. The histories that would name them are encrypted: for each
+#     lower timeline a, and each timeline u above a and up to it, the last
+#     two bases of a that began before u's first segment are kept, the
+#     second for a last one that began before a fork and ended after it.
+#     Timelines it does not descend from add bases kept for nothing.
+# A timeline that just began (its history archived since the cutoff, none
+# of its segments yet) holds back its folder: nothing is removed until its
+# first segment tells where it forked.
 # The segments, partial segments and bases' histories before the earliest
 # start among the bases kept go, whatever their timeline. Timelines'
 # histories are always kept: tiny, a restore reads them to choose its
@@ -89,17 +95,25 @@ kept_bases() {
         lines[tl[i]] = 1
       }
       for (t in active) {
-        if (!(t in low)) continue
+        if (!(t in low)) { print "fresh"; exit }
         best = 0
         for (i = 1; i <= n; i++)
           if (tl[i] == t && ends[i] < cutoff && (!best || ends[i] > ends[best])) best = i
         if (best) { kept[best] = 1; continue }
         for (a in lines) {
           if (!(a < t)) continue
-          best = 0
-          for (i = 1; i <= n; i++)
-            if (tl[i] == a && start[i] < low[t] && (!best || ends[i] > ends[best])) best = i
-          if (best) kept[best] = 1
+          for (u in low) {
+            if (!(a < u) || u > t) continue
+            last = 0
+            before = 0
+            for (i = 1; i <= n; i++) {
+              if (tl[i] != a || !(start[i] < low[u])) continue
+              if (!last || ends[i] > ends[last]) { before = last; last = i }
+              else if (!before || ends[i] > ends[before]) before = i
+            }
+            if (last) kept[last] = 1
+            if (before) kept[before] = 1
+          }
         }
       }
       for (i in kept) print start[i], ends[i]
@@ -121,6 +135,10 @@ for folder in "$root"/*/; do
     continue
   fi
   kept=$(kept_bases <<<"$files")
+  if [[ $kept == fresh ]]; then
+    echo "Archive du système $system : une ligne temporelle vient de commencer, sans segment encore archivé ; rien n'est retiré"
+    continue
+  fi
   if [[ -z $kept ]]; then
     echo "Archive du système $system : aucune sauvegarde de base n'y sert la période, rien n'est retiré"
     continue

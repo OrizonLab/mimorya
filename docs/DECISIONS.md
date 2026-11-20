@@ -16125,13 +16125,20 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       - pour chaque ligne qui a un fichier archivé depuis la limite, sa propre dernière
         sauvegarde archivée avant la limite ;
       - si elle n'en a pas (une ligne commencée par une restauration dans la période, ou
-        sans sauvegarde encore), sur chaque ligne inférieure, la dernière sauvegarde
-        commencée avant son premier segment. Une restauration le long de cette ligne en
-        a besoin pour ses premiers instants : elle bifurque d'une ligne inférieure, à un
-        instant antérieur à son premier segment. Choisir à l'heure seule prendrait une
-        sauvegarde de la branche abandonnée, que la ligne nouvelle ne prolonge pas. Les
-        lignes inférieures dont elle ne part pas ajoutent des sauvegardes gardées pour
-        rien : les historiques qui le diraient sont chiffrés ;
+        sans sauvegarde encore), une restauration le long d'elle a besoin, pour ses
+        premiers instants, de la dernière sauvegarde de sa lignée d'avant sa bifurcation :
+        sur sa ligne mère avant la bifurcation, ou sur la grand-mère avant celle de la
+        mère, et ainsi de suite. Choisir à l'heure seule prendrait une sauvegarde de la
+        branche abandonnée, que la ligne nouvelle ne prolonge pas. Les historiques qui
+        diraient sa lignée sont chiffrés : pour chaque ligne inférieure `a`, et chaque
+        ligne `u` au-dessus d'elle jusqu'à celle-ci, les deux dernières sauvegardes de `a`
+        commencées avant le premier segment de `u` restent. Chaque maillon de la lignée,
+        inconnue, est ainsi couvert ; la seconde sert quand la dernière a commencé avant la
+        bifurcation et fini après. Les lignes dont elle ne descend pas ajoutent des
+        sauvegardes gardées pour rien ;
+      - une ligne qui vient de commencer (son historique archivé dans la période, aucun
+        de ses segments encore) retient tout son dossier : sa bifurcation n'est pas encore
+        connue ;
     - **ce qui part** :
       - les segments, segments partiels et historiques de sauvegardes antérieurs au plus
         ancien départ parmi les sauvegardes gardées, quelle que soit leur ligne ;
@@ -16202,14 +16209,19 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     sont donnés) garde toute son archive : `archive-status.sh --base-within` le
     signale. Une copie hors site synchronisée sans suppression garde plus longtemps : sa
     conservation est celle de l'exploitant ;
-  - une pile arrêtée n'est pas élaguée : `prune.sh` le dit et ne retire rien ;
+  - une pile arrêtée n'est pas élaguée : `prune.sh` le dit et ne retire rien. Un
+    élagage de l'archive interrompu en cours (un fichier qui ne part pas) la laisse sans
+    trou, et ne touche pas aux sauvegardes ;
   - toute sauvegarde de base archivée compte, même si son fichier n'est pas gardé (un
     `backup.sh` en échec, une copie faite à la main) : elle peut tenir lieu de la
     dernière d'avant la limite et faire partir le début d'une plus ancienne, que seule
     une copie de l'archive gardée à part restaurerait. Une sauvegarde de base gardée
     ailleurs plus longtemps que la période ne se restaure plus avec l'archive élaguée :
-    son début en est parti, et la restauration s'arrête au trou (ADR-214). Il faut une
-    copie de l'archive qui garde ses segments, élaguée avec autant de jours ;
+    son début en est parti, et la restauration s'arrête au trou (ADR-214). Si plus aucun
+    segment de sa ligne ne reste, la restauration sans instant finit sans un mot à la fin
+    de la sauvegarde, sur les WAL qu'elle tient ; avec un instant au-delà, elle échoue et
+    le dit. Il faut une copie de l'archive qui garde ses segments, élaguée avec autant de
+    jours ;
   - le plan de reprise (objectifs de perte et de durée, procédures) suit, en second temps
     du lot 70c ;
   - test (`infra/docker/archive-retention-test.sh`, en CI le dernier de la pile de
@@ -16228,6 +16240,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       - une ligne commencée par une restauration dans la période, à un instant antérieur
         à des sauvegardes de la ligne d'avant : la sauvegarde de celle-ci d'avant la
         bifurcation reste, et ce qui la suit ; seul part ce qui la précède ;
+      - deux restaurations enchaînées, la seconde le long de la ligne de la première, une
+        sauvegarde de la branche abandonnée entre les deux bifurcations : la sauvegarde
+        d'avant la première bifurcation reste ;
+      - une sauvegarde commencée avant une bifurcation et finie après : celle d'avant
+        reste aussi ;
+      - une ligne qui vient de commencer, sans segment : rien ne part de son dossier ;
       - autour de la limite : la sauvegarde terminée la veille reste, et celle commencée
         avant la limite et terminée après ;
       - un dossier sans sauvegarde de base reste entier ;
@@ -16244,5 +16262,6 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       toujours ; `--base-within 24`
       dit alors qu'aucune sauvegarde de base n'est récente ;
     - la base refuse de démarrer sur un dossier d'archive sans liens physiques (CI, un
-      `ln` qui échoue toujours à sa place), sans données ni fichier d'essai laissés ; un
-      dossier où elle ne peut écrire est dit à part.
+      `ln` qui échoue toujours à sa place), sans données ni fichier d'essai laissés, et sur
+      un dossier où elle ne peut écrire (un `touch` qui échoue toujours), avec sa propre
+      raison.

@@ -52,7 +52,7 @@ mode=$(docker compose exec -T db psql --username mimorya --dbname mimorya -tAc '
 ends=
 if [[ $mode == on ]]; then
   said=$(docker compose exec -T -u postgres db bash /usr/local/bin/prune-wal.sh "$days" ${dry:+"$dry"} 2>&1) ||
-    fail "l'archive n'a pas été élaguée, ni les sauvegardes : $said"
+    fail "l'archive n'a été élaguée qu'en partie, ou pas du tout (sans trou : du plus ancien segment au plus récent) ; les sauvegardes n'ont pas été touchées : $said"
   grep -v '^kept-base-ends' <<<"$said" || true
   ends=$(sed -n 's/^kept-base-ends *//p' <<<"$said")
 else

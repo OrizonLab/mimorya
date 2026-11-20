@@ -519,7 +519,7 @@ jobs:
           test "$(stat -c %u wal-archive)" = 0 || { echo "the archive's folder was taken" >&2; exit 1; }
           docker compose down -v
       # An ln that always fails stands for a folder without hard links (ADR-215).
-      - name: The production database refuses an archive's folder without hard links, creating nothing
+      - name: The production database refuses an archive's folder without hard links or that it cannot write, creating nothing
         run: |
           printf '#!/bin/sh\necho "ln: Operation not permitted" >&2\nexit 1\n' > "$RUNNER_TEMP/ln"
           chmod +x "$RUNNER_TEMP/ln"
@@ -535,6 +535,19 @@ jobs:
           test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
           left=$(sudo find wal-archive -name '.mimorya-link-probe*')
           test -z "$left" || { echo "probe left behind: $left" >&2; exit 1; }
+          # A touch that always fails stands for a folder the database cannot write.
+          printf '#!/bin/sh\necho "touch: Permission denied" >&2\nexit 1\n' > "$RUNNER_TEMP/touch"
+          chmod +x "$RUNNER_TEMP/touch"
+          if output=$(timeout 120 docker compose -f compose.production.yml -f compose.production.build.yml \
+            run --rm --no-deps -T -v "$RUNNER_TEMP/touch:/usr/local/bin/touch:ro" db 2>&1); then
+            echo "the database started on an archive's folder it cannot write" >&2
+            exit 1
+          fi
+          grep -q "la base ne peut écrire dans le dossier monté sur .*(touch: Permission denied)" <<<"$output" ||
+            { echo "$output" >&2; exit 1; }
+          left=$(docker run --rm --entrypoint ls -v mimorya-production_db-data:/data \
+            pgvector/pgvector:pg16 -A /data)
+          test -z "$left" || { echo "data left behind: $left" >&2; exit 1; }
       - name: Start the production stack
         run: docker compose -f compose.production.yml -f compose.production.build.yml up -d
       - name: Installation test of the production stack
