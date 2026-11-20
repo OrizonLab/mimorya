@@ -50,8 +50,8 @@ export function DecisionUsagesFields({
         niveau strict. Les actions sensibles, actif : avant qu’une action qui agit parte ou soit
         mise en validation, le service lit l’outil et ses paramètres ; ce qu’il signale
         (destinataire externe, montant élevé, données personnelles, action irréversible, risque
-        élevé) s’ajoute à la raison de la validation, et une action qui partirait seule attend une
-        validation ; baisser son seuil le rend plus strict.
+        élevé) s’ajoute à la raison de la validation, lue dans « Validations », et une action qui
+        partirait seule attend une validation ; baisser son seuil le rend plus strict.
       </p>
       {usages.map((usage, index) => {
         const value = values[index];

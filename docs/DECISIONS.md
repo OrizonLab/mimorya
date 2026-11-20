@@ -15845,7 +15845,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     traitement des appels d'outils (`tool_calls/guard.rs`) après le point de décision
     (PEP), pour un appel à effet (`write`, `external`, `irreversible`) qu'il laisse partir
     ou met en validation ; jamais pour une lecture, un brouillon, une délégation, un
-    appel refusé, ni pour un appel qu'une personne a validé, exécuté tel quel ;
+    appel que le PEP refuse, ni pour un appel qu'une personne a validé, exécuté tel
+    quel. Seule exception : une validation qu'aucun responsable ne peut prendre
+    (ADR-059) n'est refusée qu'en la demandant, après lui ; il a alors été demandé (et
+    compté) pour rien, sans rien lever ;
   - l'état envoyé : l'outil, l'action telle que l'outil la décrit, ses paramètres
     (4 000 caractères au plus) et le domaine de l'adresse de la personne servie, rien
     d'autre ; quatre `noul` (destinataire externe, montant élevé, données personnelles,
@@ -15856,10 +15859,13 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - actif, une action que le PEP laisserait partir seule et que le garde-fou signale, ou
     dont aucun moteur ne décide dans le délai (15 s, comme D3), attend une validation, sa
     raison disant pourquoi ; une action déjà mise en validation la garde, et sa raison
-    dit les signaux à qui décide (application, Slack, Telegram, Teams, e-mail), sans
-    rien changer d'autre ; un échec n'y ajoute rien ;
+    dit les signaux, sans rien changer d'autre ; un échec n'y ajoute rien. La raison
+    d'une validation n'est montrée que sur la page « Validations » de l'application :
+    les passerelles (Slack, Telegram, Teams) et l'e-mail au responsable montrent
+    l'action, son risque et ses paramètres, pas sa raison ; les y montrer est laissé à
+    une étape à part ;
   - il ne lève jamais rien : un refus reste un refus, une validation reste une
-    validation, et les refus d'outils (`runtime/tool_refusals.rs`) et l'autonomie s'appliquent avant lui ;
+    validation ; l'autonomie et le PEP décident avant lui ;
   - observé, il est demandé, compté et journalisé, sans effet ; ses réglages sont relus
     à chaque appel (un run repris après une validation en tient compte), et s'ils ne
     peuvent être lus, l'action suit la décision du PEP, comme sans décision ;
@@ -15869,4 +15875,5 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - avec Jev, l'action et ses paramètres (un e-mail, ses destinataires et son texte, par
     exemple) partent chez TypeSafe ;
   - tant qu'aucun outil n'est autonome, son effet visible est la raison enrichie des
-    validations ; la validation ajoutée à une action autonome est testée sur le moteur.
+    validations, sur la page « Validations » ; la validation ajoutée à une action
+    autonome est testée sur le moteur.

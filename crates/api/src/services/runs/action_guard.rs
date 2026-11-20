@@ -80,17 +80,7 @@ impl ActionGuard for DbActionGuard {
             .service
             .decide_within(&request, Some(MAX_WAIT))
             .await;
-        let verdict = match outcome {
-            DecisionOutcome::Decided(decided) => {
-                let signals = guard_signals(&decided, policy.threshold);
-                if signals.is_empty() {
-                    GuardVerdict::Clear
-                } else {
-                    GuardVerdict::Signals(signals.into_iter().map(Into::into).collect())
-                }
-            }
-            DecisionOutcome::Failed => GuardVerdict::Unread,
-        };
+        let verdict = verdict_of(&outcome, policy.threshold);
         tracing::info!(
             target: "mimorya::decision",
             usage = DecisionUsage::ActionGuard.as_str(),
@@ -100,11 +90,99 @@ impl ActionGuard for DbActionGuard {
             "Action read by the guard"
         );
         GuardReview {
-            verdict: match policy.mode {
-                DecisionMode::Active => verdict,
-                DecisionMode::Observe | DecisionMode::Off => GuardVerdict::Clear,
-            },
+            verdict: in_effect(policy.mode, verdict),
             counted,
         }
+    }
+}
+
+/// What the decision says: its signals at `threshold`, or, no engine
+/// having decided, the usage's prudent value.
+fn verdict_of(outcome: &DecisionOutcome, threshold: f64) -> GuardVerdict {
+    match outcome {
+        DecisionOutcome::Decided(decided) => {
+            let signals = guard_signals(decided, threshold);
+            if signals.is_empty() {
+                GuardVerdict::Clear
+            } else {
+                GuardVerdict::Signals(signals.into_iter().map(Into::into).collect())
+            }
+        }
+        DecisionOutcome::Failed => GuardVerdict::Unread,
+    }
+}
+
+/// What the run is told: the verdict when the usage is active, nothing
+/// when it is only observed.
+fn in_effect(mode: DecisionMode, verdict: GuardVerdict) -> GuardVerdict {
+    match mode {
+        DecisionMode::Active => verdict,
+        DecisionMode::Observe | DecisionMode::Off => GuardVerdict::Clear,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use mimorya_agent::decision::{Decided, DecisionAnswer, EngineKind};
+
+    use super::*;
+
+    fn decided(yes: f64) -> DecisionOutcome {
+        let mut answers: BTreeMap<String, DecisionAnswer> = [
+            "destinataire_externe",
+            "montant_eleve",
+            "donnees_personnelles",
+            "irreversible",
+        ]
+        .into_iter()
+        .map(|name| (name.to_string(), DecisionAnswer::Noul { yes }))
+        .collect();
+        answers.insert(
+            "risque".into(),
+            DecisionAnswer::Score {
+                score: 0.0,
+                confidence: 0.9,
+                probabilities: vec![0.9, 0.1, 0.0, 0.0],
+            },
+        );
+        DecisionOutcome::Decided(Decided {
+            engine: EngineKind::Jev,
+            model: "jev-1.14.0".into(),
+            latency_ms: 1,
+            answers,
+        })
+    }
+
+    #[test]
+    fn a_failed_decision_calls_for_a_person_when_active_only() {
+        assert_eq!(
+            verdict_of(&DecisionOutcome::Failed, 0.5),
+            GuardVerdict::Unread
+        );
+        assert_eq!(
+            in_effect(DecisionMode::Active, GuardVerdict::Unread),
+            GuardVerdict::Unread
+        );
+        assert_eq!(
+            in_effect(DecisionMode::Observe, GuardVerdict::Unread),
+            GuardVerdict::Clear
+        );
+    }
+
+    #[test]
+    fn signals_at_the_threshold_are_told_nothing_else() {
+        assert_eq!(verdict_of(&decided(0.1), 0.5), GuardVerdict::Clear);
+        let GuardVerdict::Signals(signals) = verdict_of(&decided(0.9), 0.5) else {
+            panic!("signals expected")
+        };
+        assert_eq!(signals.len(), 4);
+        assert!(signals.contains(&"destinataire externe".to_string()));
+        let signalled = GuardVerdict::Signals(signals);
+        assert_eq!(
+            in_effect(DecisionMode::Observe, signalled),
+            GuardVerdict::Clear
+        );
     }
 }

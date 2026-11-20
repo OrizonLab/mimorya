@@ -16,7 +16,7 @@ mod run;
 mod service;
 mod usage;
 
-pub use action_guard::{GuardedAction, MAX_PARAMETERS_CHARS, action_guard_request, guard_signals};
+pub use action_guard::{GuardedAction, action_guard_request, guard_signals};
 pub use answer::{Decided, DecisionAnswer, EngineKind};
 pub use document_labels::{
     FIRST_PAGES, MAX_FIRST_TEXT_CHARS, classified as classified_labels, document_labels_request,

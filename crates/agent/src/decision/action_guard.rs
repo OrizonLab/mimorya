@@ -19,7 +19,7 @@ use super::usage::DecisionUsage;
 const MAX_TOOL_CHARS: usize = 200;
 const MAX_ACTION_CHARS: usize = 1_000;
 /// What the decision reads of an action's parameters, at most.
-pub const MAX_PARAMETERS_CHARS: usize = 4_000;
+const MAX_PARAMETERS_CHARS: usize = 4_000;
 const MAX_DOMAIN_CHARS: usize = 255;
 
 /// Each yes-or-no question, and the signal it raises, in French.

@@ -59,18 +59,26 @@ async fn requested(
     (run_id, approval["reason"].as_str().unwrap().to_string())
 }
 
-/// The calls with the role « décision » counted for `run_id`.
-async fn decisions_of(api: &TestApi, run_id: &str) -> i64 {
+/// The calls with the role « décision » recorded for `run_id`, and what
+/// they cost.
+async fn decisions_of(api: &TestApi, run_id: &str) -> (i64, i64) {
     let mut tx = api.app.services.db.begin(tenant::ID).await.unwrap();
-    let count = sqlx::query_scalar(
-        "select count(*) from usage_records where role = 'decision' and run_id = $1::uuid",
+    let recorded = sqlx::query_as(
+        "select count(*), coalesce(sum(cost_micros), 0)::bigint from usage_records \
+         where role = 'decision' and run_id = $1::uuid",
     )
     .bind(run_id)
     .fetch_one(&mut *tx)
     .await
     .unwrap();
     tx.commit().await.unwrap();
-    count
+    recorded
+}
+
+/// What the run `run_id` cost, as its totals say.
+async fn cost_of(marc: &Client<'_>, run_id: &str) -> i64 {
+    let detail = marc.get(&format!("/runs/{run_id}")).await.json();
+    detail["run"]["usage"]["costMicros"].as_i64().unwrap()
 }
 
 #[tokio::test]
@@ -83,7 +91,7 @@ async fn active_its_signals_are_told_to_whoever_decides() {
 
     // Off: nothing asked, the policy's own reason.
     set(&paul, guarding("off")).await;
-    let (_, policy_reason) = requested(&api, &marc, ("INT-2049", "09:00"), None).await;
+    let (off_run, policy_reason) = requested(&api, &marc, ("INT-2049", "09:00"), None).await;
     assert!(jev.asked().is_empty());
 
     // Active: Jev says yes to every question, the lowest risk.
@@ -107,8 +115,15 @@ async fn active_its_signals_are_told_to_whoever_decides() {
     );
     assert_eq!(state["domaine_interne"], "neo-maintenance.example");
     assert!(state["outil"].as_str().unwrap().contains("planning_apply"));
-    // Its decision counted in the run.
-    assert_eq!(decisions_of(&api, &run_id).await, 1);
+    // Its decision recorded, and counted in the run's totals: the same
+    // model calls as without it, and its own cost besides.
+    let (calls, decision_cost) = decisions_of(&api, &run_id).await;
+    assert_eq!(calls, 1);
+    assert!(decision_cost > 0);
+    assert_eq!(
+        cost_of(&marc, &run_id).await - cost_of(&marc, &off_run).await,
+        decision_cost
+    );
 }
 
 #[tokio::test]
@@ -126,7 +141,7 @@ async fn observed_or_failed_the_reason_is_the_policy_s_own() {
     let (run_id, reason) = requested(&api, &marc, ("INT-2052", "13:00"), None).await;
     assert_eq!(reason, policy_reason);
     assert_eq!(jev.asked().len(), 1);
-    assert_eq!(decisions_of(&api, &run_id).await, 1);
+    assert_eq!(decisions_of(&api, &run_id).await.0, 1);
 
     // Failed, Jev overloaded and the main model too: the request is the
     // policy's own, nothing added.
