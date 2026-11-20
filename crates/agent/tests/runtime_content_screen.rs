@@ -4,7 +4,8 @@
 //! behind the platform's notice and the person marked, and the run puts
 //! each later action to a person, saying why. One the detection cannot read
 //! holds the run suspect as well, without the notice; so does a sub-agent
-//! that read one, its report marked. A suspect run stays so once resumed,
+//! that read a suspect or unreadable one, its report marked only when
+//! instructions were detected. A suspect run stays so once resumed,
 //! lifts no refusal and lets reads and drafts run. The platform's own
 //! memory is never screened.
 

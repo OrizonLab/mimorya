@@ -62,7 +62,7 @@ pub struct SubAgentReport {
     /// What the child's detection said of what it read (ADR-213, D6): its
     /// parent is held suspect on either, its report marked when
     /// instructions were detected.
-    pub screened: Option<ScreenVerdict>,
+    pub screened: ScreenVerdict,
 }
 
 /// What a child run takes of its parent's: its system prompt, and the
@@ -110,7 +110,7 @@ impl SubAgents {
                 result,
                 usage: RunUsageTotals::default(),
                 duration_ms: 0,
-                screened: None,
+                screened: ScreenVerdict::Clear,
             });
         };
         let allowed = self.actor.allowed_permissions.as_ref().map(|set| {
@@ -224,12 +224,12 @@ fn told(input: &DelegateTaskInput, outcome: &RunOutcome) -> ToolResult {
 }
 
 /// What a child's detection said of what it read, as its parent takes it.
-fn reported(checkpoint: &RunCheckpoint) -> Option<ScreenVerdict> {
+fn reported(checkpoint: &RunCheckpoint) -> ScreenVerdict {
     if checkpoint.instructions_detected {
-        Some(ScreenVerdict::Suspect)
+        ScreenVerdict::Suspect
     } else if checkpoint.external_suspect {
-        Some(ScreenVerdict::Unread)
+        ScreenVerdict::Unread
     } else {
-        None
+        ScreenVerdict::Clear
     }
 }

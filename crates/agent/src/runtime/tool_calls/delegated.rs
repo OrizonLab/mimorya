@@ -11,6 +11,7 @@ use uuid::Uuid;
 use super::{Call, ToolCallProcessor};
 use crate::llm::LlmToolResult;
 use crate::runtime::budget::share_left;
+use crate::runtime::content_screen::ScreenVerdict;
 use crate::runtime::delegation::{Parent, SUB_AGENT_BUDGET, SubAgentReport};
 use crate::runtime::state::{RunCheckpoint, RunUsageTotals};
 use crate::tools::RegisteredTool;
@@ -109,6 +110,6 @@ fn unreadable(error: &serde_json::Error) -> SubAgentReport {
         result: ToolResult::error(format!("{INVALID_INPUT} — {error}")).with_summary("Refusé"),
         usage: RunUsageTotals::default(),
         duration_ms: 0,
-        screened: None,
+        screened: ScreenVerdict::Clear,
     }
 }
