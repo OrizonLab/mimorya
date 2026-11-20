@@ -66,8 +66,8 @@ pub fn case_ports(
         // An evaluation's actions are withheld, never run nor put to
         // validation: no guard to ask (ADR-213, D5).
         action_guard: no_action_guard(),
-        // Nor a detection: its connectors that reach the outside are
-        // withheld (ADR-153, ADR-213, D6).
+        // Nor a detection (ADR-213, D6): its tools only read, and none of
+        // its actions ever leaves.
         content_screen: no_content_screen(),
     };
     CasePorts {

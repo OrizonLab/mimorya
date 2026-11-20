@@ -14,7 +14,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::decision::Counted;
-use crate::tools::platform::{DELEGATE_TASK, SKILL_PROPOSE, SKILL_READ};
+use crate::tools::platform::{
+    DELEGATE_TASK, MEMORY_REMEMBER, MEMORY_SEARCH, SKILL_PROPOSE, SKILL_READ,
+};
 use crate::tools::{RegisteredTool, ToolCallEvaluation};
 
 /// What the detection said of a content.
@@ -57,8 +59,8 @@ pub fn no_content_screen() -> Arc<dyn ContentScreen> {
 
 /// The platform's own tools, whose results bring no external content.
 const INTERNAL_TOOLS: [&str; 5] = [
-    "memory_search",
-    "memory_remember",
+    MEMORY_SEARCH,
+    MEMORY_REMEMBER,
     SKILL_READ,
     SKILL_PROPOSE,
     DELEGATE_TASK,

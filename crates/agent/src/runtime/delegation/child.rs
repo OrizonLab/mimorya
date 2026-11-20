@@ -58,6 +58,9 @@ pub struct SubAgentReport {
     /// What the child spent, counted in its parent's budget.
     pub usage: RunUsageTotals,
     pub duration_ms: u64,
+    /// The child read an external content held suspect (ADR-213, D6): its
+    /// parent is held suspect too, and its report marked.
+    pub external_suspect: bool,
 }
 
 /// What a child run takes of its parent's: its system prompt, and the
@@ -105,6 +108,7 @@ impl SubAgents {
                 result,
                 usage: RunUsageTotals::default(),
                 duration_ms: 0,
+                external_suspect: false,
             });
         };
         let allowed = self.actor.allowed_permissions.as_ref().map(|set| {
@@ -155,6 +159,7 @@ impl SubAgents {
             result: told(input, &outcome),
             usage: outcome.checkpoint().usage,
             duration_ms: started.elapsed().as_millis() as u64,
+            external_suspect: outcome.checkpoint().external_suspect,
         })
     }
 

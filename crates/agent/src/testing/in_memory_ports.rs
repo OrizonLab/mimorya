@@ -128,6 +128,9 @@ impl InMemoryPorts {
             mail_account: state.mail_account.clone(),
             // Charged as its parent is (ADR-212).
             markup_bps: state.markup_bps,
+            // Its guard and detection say what its parent's do (ADR-213).
+            guard_verdict: state.guard_verdict.clone(),
+            screen_verdict: state.screen_verdict,
             ..State::default()
         };
         Arc::new(Self {

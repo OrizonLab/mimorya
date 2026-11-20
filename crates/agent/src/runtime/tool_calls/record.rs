@@ -27,6 +27,9 @@ pub(super) struct Call<'a> {
     pub tool_call_id: &'a str,
     pub input: Value,
     pub approval_id: Option<Uuid>,
+    /// A sub-agent's report whose run read a suspect content (ADR-213,
+    /// D6): marked as such, and its parent held suspect.
+    pub suspect: bool,
 }
 
 impl ToolCallProcessor {
@@ -45,6 +48,7 @@ impl ToolCallProcessor {
             tool_call_id,
             input,
             approval_id,
+            suspect: reported_suspect,
         } = call;
         state.usage.tool_calls += 1;
         if !result.is_error {
@@ -65,7 +69,8 @@ impl ToolCallProcessor {
         });
         // External content screened for instructions meant for an AI
         // (ADR-213, D6), before the person and the model read it.
-        let suspect = self.screen(state, tool, &result).await?;
+        let suspect = self.screen(state, tool, &result).await? || reported_suspect;
+        state.external_suspect |= reported_suspect;
         let summary = if suspect {
             format!("{summary} — {SUSPECT_SUMMARY}")
         } else {

@@ -1,9 +1,10 @@
 //! Handling of the tool calls of one assistant turn: each call goes through
 //! the policy enforcement point, with the rights of the current step, then
-//! the company's guard of the actions when it acts (`guard.rs`, ADR-213,
-//! D5), then is denied, queued for human validation or executed; an allowed
-//! delegation runs a sub-agent (`delegated.rs`, ADR-098). Every outcome is
-//! logged, audited and streamed (`record.rs`).
+//! the run's suspect content and the company's guard of the actions when it
+//! acts (`guard.rs`, ADR-213, D5, D6), then is denied, queued for human
+//! validation or executed; an allowed delegation runs a sub-agent
+//! (`delegated.rs`, ADR-098). Every outcome is logged, audited and streamed
+//! (`record.rs`), an external content screened first (`screen.rs`, D6).
 
 mod delegated;
 mod guard;
@@ -251,6 +252,7 @@ impl ToolCallProcessor {
             tool_call_id,
             input,
             approval_id,
+            suspect: false,
         };
         self.record(state, call, result, duration_ms, None).await
     }

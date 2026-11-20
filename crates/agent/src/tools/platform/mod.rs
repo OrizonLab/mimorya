@@ -13,7 +13,7 @@ use mimorya_core::tools::{ToolRef, typed_tool};
 
 pub use delegate_tool::{DELEGATE_TASK, DelegateTask, DelegateTaskInput};
 pub use document_tools::{DocumentRead, DocumentSearch, READ_PASSAGES};
-pub use memory_tools::{MemoryRemember, MemorySearch};
+pub use memory_tools::{MEMORY_REMEMBER, MEMORY_SEARCH, MemoryRemember, MemorySearch};
 pub use skill_propose_tool::{SKILL_PROPOSE, SkillPropose};
 pub use skill_tools::{SKILL_READ, SkillRead};
 
