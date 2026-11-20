@@ -332,15 +332,43 @@ la conservation automatique (lot 70c), seuls peuvent partir les segments antéri
 leur ligne temporelle, au segment de départ de la plus ancienne sauvegarde de base que
 vous gardez : son fichier `<segment>.<décalage>.backup…` le nomme. Gardez toujours les
 fichiers `.history`. Ne démarrez jamais une base restaurée depuis une sauvegarde de base
-sans la restauration du lot 70b sur le dossier d'archive de la base copiée : elle
-archiverait sous les mêmes noms qu'elle et bloquerait son archivage.
+autrement que par `restore-base.sh` (voir plus bas), sur le dossier d'archive de la base
+copiée : elle archiverait sous les mêmes noms qu'elle et bloquerait son archivage.
 
 La base de la pile de production est l'image `mimorya-db` (PostgreSQL 16, pgvector et
 `age`) : une installation antérieure qui se met à jour voit son conteneur de base remplacé,
 sur le même volume. La CI vérifie l'archive et la
 sauvegarde de base de la pile qu'elle installe (`infra/docker/wal-archive-test.sh`). La
-restauration à un instant précis, la conservation de l'archive et le plan de reprise
-restent à faire (lots 70b et 70c).
+conservation de l'archive et le plan de reprise restent à faire (lot 70c).
+
+#### Restauration à un instant précis
+
+Une sauvegarde de base et l'archive des WAL ramènent la base à un instant choisi, juste
+avant une erreur (ADR-214), dans une pile nouvelle. Celle-ci a la même version, la même clé
+maître et les mêmes mots de passe de base que la pile sauvegardée ; sa base n'a jamais
+démarré (ou a été vidée par `down -v`), et le dossier de son archive tient une copie de
+celle de la pile sauvegardée. L'identité qui ouvre la sauvegarde et l'archive n'est remise
+à la base que le temps de la récupération, dans sa mémoire :
+
+```bash
+# .env.production de la pile nouvelle : MIMORYA_WAL_ARCHIVE vers la copie de l'archive
+COMPOSE_ENV_FILES=.env.production infra/backup/restore-base.sh \
+  backups/mimorya-….base.tar.gz.age identite.txt '2026-11-20 14:30:00+01'
+docker compose --env-file .env.production -f compose.production.yml up -d
+```
+
+L'instant, avec son fuseau, est celui de PostgreSQL : la base revient à son dernier commit
+qui le précède ; sans instant, toute l'archive est rejouée. Prenez la plus récente
+sauvegarde de base terminée avant l'instant. Le script refuse une base démarrée ou qui
+contient déjà des fichiers, et une archive sans le dossier de la base sauvegardée. Un WAL
+illisible, ou dont le contenu diffère de son nom, arrête la restauration avec sa raison.
+Après un échec, videz la base (`down -v`) avant de réessayer. `MIMORYA_RESTORE_TIMEOUT`
+borne l'attente de la récupération (une heure par défaut).
+
+La base restaurée prend une nouvelle ligne temporelle et archive à côté des fichiers de la
+base sauvegardée, sans jamais les remplacer : plusieurs restaurations de la même archive ne
+se gênent pas. La CI restaure ainsi deux fois, à deux instants, la pile qu'elle installe
+(`infra/docker/point-in-time-test.sh`).
 
 ## Qualité
 
