@@ -1,7 +1,8 @@
 // The company's decision service (ADR-213): Paul finds its main model chosen
-// and every usage off until its step is delivered; chooses TypeSafe's Jev,
-// which the operator opens here, warned that it is a subprocessor outside
-// the European Union, with the company's key; reads it back once the page is
+// and every usage off, the model's routing alone delivered (D1); chooses
+// TypeSafe's Jev, which the operator opens here, warned that it is a
+// subprocessor outside the European Union, with the company's key, and sets
+// the model's routing active at a threshold; reads it back once the page is
 // reloaded, the key kept and never shown; tests it against the local
 // TypeSafe (`e2e_server`, `FakeJev`); and goes back to the main model, the
 // key removed. Whatever happens, the settings are removed afterwards. The
@@ -45,15 +46,20 @@ test('a company chooses Jev for its decisions, then its main model again', async
   // The main model's probabilities are said not to be calibrated.
   const uncalibrated = form.getByText(/cette probabilité n’est pas calibrée/);
   await expect(uncalibrated).toBeVisible();
-  // No usage is delivered yet: each stays off.
+  // The model's routing alone is delivered (D1), off until set; the
+  // others wait for their step.
   const routing = form.getByLabel('Mode : Choix du modèle d’un run');
-  await expect(routing).toBeDisabled();
+  await expect(routing).toBeEnabled();
   await expect(routing).toHaveValue('off');
-  await expect(form.getByText('(bientôt disponible)')).toHaveCount(7);
+  await expect(form.getByLabel('Mode : Choix des compétences à charger')).toBeDisabled();
+  await expect(form.getByText('(bientôt disponible)')).toHaveCount(6);
 
   await jev.check();
   await expect(form).toContainText('sous-traitant situé hors de l’Union européenne');
-  await expect(uncalibrated).toHaveCount(0);
+  // Said too where Jev is chosen: the main model decides when it does not answer.
+  await expect(uncalibrated).toBeVisible();
+  await routing.selectOption('active');
+  await form.getByLabel('Seuil : Choix du modèle d’un run').fill('0.7');
   await form.getByLabel(/^Clé d’API TypeSafe/).fill(JEV_KEY);
   await form.getByRole('button', { name: 'Enregistrer' }).click();
   await expect(form.getByLabel(/laisser vide pour conserver la clé enregistrée/)).toBeVisible();
@@ -66,6 +72,9 @@ test('a company chooses Jev for its decisions, then its main model again', async
   expect(await response.text()).not.toContain(JEV_KEY);
   const chosen = (await response.json()) as DecisionSettingsView;
   expect([chosen.engine, chosen.hasJevKey, chosen.problem]).toEqual(['jev', true, null]);
+  const routed = chosen.usages.find((usage) => usage.key === 'modelRouting');
+  expect([routed?.mode, routed?.threshold]).toEqual(['active', 0.7]);
+  await expect(routing).toHaveValue('active');
 
   // The engine chosen answers the test's question.
   await form.getByRole('button', { name: 'Tester le moteur' }).click();

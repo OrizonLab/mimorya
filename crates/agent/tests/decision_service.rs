@@ -26,9 +26,10 @@ struct Calls(Mutex<Vec<DecisionCall>>);
 
 #[async_trait]
 impl DecisionRecorder for Calls {
-    async fn record(&self, call: DecisionCall) -> anyhow::Result<()> {
+    async fn record(&self, call: DecisionCall) -> anyhow::Result<i64> {
+        let charged = call.cost_micros.unwrap_or(0);
         self.0.lock().unwrap().push(call);
-        Ok(())
+        Ok(charged)
     }
 }
 

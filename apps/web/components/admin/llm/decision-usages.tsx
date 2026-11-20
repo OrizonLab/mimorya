@@ -35,6 +35,12 @@ export function DecisionUsagesFields({
   return (
     <fieldset className="flex flex-col gap-3">
       <legend className="mb-2 text-sm font-medium">Usages</legend>
+      <p className="text-xs text-muted">
+        Le choix du modèle d’un run ne sert que là où le routeur de l’escalade classe la demande :
+        actif, « escalade », ou « principal » avec une confiance sous le seuil, fait partir le run
+        sur le modèle d’escalade, dans son budget ; sans décision, le classement par le modèle
+        principal s’applique comme avant.
+      </p>
       {usages.map((usage, index) => {
         const value = values[index];
         if (!value) return null;

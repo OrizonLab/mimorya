@@ -9,6 +9,7 @@ mod jev;
 mod jev_wire;
 mod main_model;
 mod question;
+mod run;
 mod service;
 mod usage;
 
@@ -22,7 +23,8 @@ pub use question::{
     DecisionQuestion, DecisionRequest, DecisionState, MAX_LEVELS, MAX_OPTIONS, MAX_STATE_CHARS,
     QuestionKind, TRUNCATED,
 };
-pub use service::{DecisionCall, DecisionOutcome, DecisionRecorder, DecisionService};
+pub use run::RunDecisions;
+pub use service::{Counted, DecisionCall, DecisionOutcome, DecisionRecorder, DecisionService};
 pub use usage::{
     AVAILABLE_USAGES, DecisionMode, DecisionUsage, ENGINE_TEST, UsagePolicy, usage_problem,
 };

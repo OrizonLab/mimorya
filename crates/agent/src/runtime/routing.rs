@@ -5,10 +5,13 @@
 //! stands for the main model. The
 //! classification's cost is counted in the run and in the escalation's
 //! budget, past which it is not made. A skill loaded later may still switch
-//! the run (`escalation::next_model`).
+//! the run (`escalation::next_model`). Where the company set it, the
+//! decision service is asked before the classification (ADR-213, D1,
+//! `decided_routing`).
 
 use serde::Deserialize;
 
+use super::decided_routing::{Routed, decided_level};
 use super::escalation::{Reason, budget_spent, start_escalation};
 use super::model_call::{ModelCall, complete_with_retry, record_model_usage};
 use super::state::RunCheckpoint;
@@ -59,10 +62,20 @@ pub(super) async fn route_at_start(
         EscalationRoute::Main => return Ok(false),
         EscalationRoute::Escalation => Reason::Rule,
         EscalationRoute::Classification => {
-            if !classified_hard(deps, config, state).await? {
+            // Nothing is asked once the month's budget is spent.
+            if budget_spent(deps, state).await? {
                 return Ok(true);
             }
-            Reason::Classification
+            match decided_level(deps, config, state).await? {
+                Routed::Escalation => Reason::Decision,
+                Routed::Main => return Ok(true),
+                Routed::Undecided => {
+                    if !classified_hard(deps, config, state).await? {
+                        return Ok(true);
+                    }
+                    Reason::Classification
+                }
+            }
         }
     };
     start_escalation(deps, state, reason).await?;
@@ -70,15 +83,12 @@ pub(super) async fn route_at_start(
 }
 
 /// Whether the main model classifies the run's request as one for the
-/// escalation model. Not asked once the month's budget is spent.
+/// escalation model.
 async fn classified_hard(
     deps: &RuntimeDeps,
     config: &RunConfig,
     state: &mut RunCheckpoint,
 ) -> anyhow::Result<bool> {
-    if budget_spent(deps, state).await? {
-        return Ok(false);
-    }
     // Not asked past the operator's supply (ADR-208): the run's next call
     // stops it.
     if supply_stopped(deps, state, ModelRole::Classification)

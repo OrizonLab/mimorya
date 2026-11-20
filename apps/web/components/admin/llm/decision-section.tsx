@@ -100,13 +100,11 @@ function DecisionForm({ data, onSaved }: { data: DecisionSettingsView; onSaved: 
             {data.jevReason && <span className="text-xs text-muted">({data.jevReason})</span>}
           </label>
         </fieldset>
-        {!jev && (
-          <p className="text-xs text-muted">
-            Le modèle principal dit sa certitude (faible, moyenne ou forte), traduite en probabilité
-            par une table fixe : cette probabilité n’est pas calibrée, et un seuil réglé pour Jev ne
-            vaut pas pour lui.
-          </p>
-        )}
+        <p className="text-xs text-muted">
+          Le modèle principal, choisi ou en repli quand Jev ne répond pas, dit sa certitude (faible,
+          moyenne ou forte), traduite en probabilité par une table fixe : cette probabilité n’est
+          pas calibrée, et un seuil réglé pour Jev ne vaut pas pour lui.
+        </p>
         {jev && (
           <>
             <p className="text-sm">

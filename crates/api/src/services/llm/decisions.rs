@@ -10,12 +10,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use mimorya_agent::decision::{
-    DecisionCall, DecisionRecorder, DecisionService, EngineKind, JEV_ENDPOINT, JevClient,
-    JevEngine, MainModelEngine,
+    DecisionCall, DecisionMode, DecisionRecorder, DecisionService, DecisionUsage, EngineKind,
+    JEV_ENDPOINT, JevClient, JevEngine, MainModelEngine, RunDecisions, UsagePolicy,
 };
 use mimorya_agent::llm::ModelRole;
 use mimorya_db::Database;
-use mimorya_db::repositories::decision_settings::decision_settings;
+use mimorya_db::repositories::decision_settings::{decision_settings, decision_usages};
 use mimorya_db::repositories::usage::{NewUsage, UsageCharge, append_usage};
 use uuid::Uuid;
 
@@ -85,6 +85,41 @@ impl LlmService {
             service = service.then(main_model, MAIN_MODEL_TIMEOUT);
         }
         Ok(service)
+    }
+
+    /// The decisions a run of the company may ask: none while no usage is
+    /// set, so that no engine is built nor key read for nothing (D1).
+    pub async fn run_decisions(
+        &self,
+        tenant_id: Uuid,
+        scope: DecisionScope,
+    ) -> anyhow::Result<Option<Arc<RunDecisions>>> {
+        let mut tx = self.db.begin(tenant_id).await?;
+        let rows = decision_usages(&mut tx).await?;
+        tx.commit().await?;
+        let policies: Vec<(DecisionUsage, UsagePolicy)> = rows
+            .iter()
+            .filter_map(|row| {
+                let usage = DecisionUsage::parse(&row.usage)?;
+                let mode = DecisionMode::parse(&row.mode)?;
+                let set = usage.available() && mode != DecisionMode::Off;
+                set.then_some((
+                    usage,
+                    UsagePolicy {
+                        mode,
+                        threshold: row.threshold,
+                    },
+                ))
+            })
+            .collect();
+        if policies.is_empty() {
+            return Ok(None);
+        }
+        let service = self.decision_service(tenant_id, scope).await?;
+        Ok(Some(Arc::new(RunDecisions::new(
+            Arc::new(service),
+            policies,
+        ))))
     }
 
     /// The engine the company chose, alone: what its test asks, or why it
@@ -205,7 +240,7 @@ struct DbDecisionRecorder {
 
 #[async_trait]
 impl DecisionRecorder for DbDecisionRecorder {
-    async fn record(&self, call: DecisionCall) -> anyhow::Result<()> {
+    async fn record(&self, call: DecisionCall) -> anyhow::Result<i64> {
         let cost_micros = call.cost_micros.unwrap_or(0);
         let charge = match call.engine {
             // On the company's own key to TypeSafe.
@@ -231,6 +266,6 @@ impl DecisionRecorder for DbDecisionRecorder {
         )
         .await?;
         tx.commit().await?;
-        Ok(())
+        Ok(charge.charged(cost_micros))
     }
 }
