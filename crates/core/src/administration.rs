@@ -23,6 +23,7 @@ pub const TENANT_WIDE_PERMISSIONS: &[&str] = &[
     "audit:read",
     "audit:export",
     "usage:read",
+    "compliance:read",
 ];
 
 pub fn is_tenant_wide(permission: &str) -> bool {

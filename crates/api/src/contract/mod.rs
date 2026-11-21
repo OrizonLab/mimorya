@@ -183,6 +183,7 @@ pub fn typescript() -> String {
     declarations.add::<admin::DecisionSettingsView>();
     declarations.add::<admin::DecisionTestResult>();
     declarations.add::<admin::RetentionView>();
+    declarations.add::<admin::ProcessingRegisterView>();
     declarations.add::<admin::SecondFactorPolicyView>();
     declarations.add::<admin::IdentityProvidersView>();
     declarations.add::<admin::Connectors>();

@@ -173,6 +173,15 @@ pub const PLATFORM_PERMISSIONS: &[PermissionInfo] = &[
         Holder,
     ),
     info("usage:read", "Consulter la consommation", true, Holder),
+    // The company's record of processing activities (ADR-217): it names
+    // every service its data goes to, for its data protection officer
+    // without the rest of the administration.
+    info(
+        "compliance:read",
+        "Consulter le registre des traitements",
+        false,
+        Holder,
+    ),
 ];
 
 /// Hard ceiling for agents: whatever the user's rights, an agent run can never

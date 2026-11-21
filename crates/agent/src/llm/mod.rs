@@ -22,7 +22,7 @@ pub use escalation::{
     EscalationRoute, EscalationRoutes, MAX_ESCALATION_BUDGET_MICROS, MAX_ESCALATIONS_PER_RUN,
     MIN_ESCALATION_BUDGET_MICROS, Mechanism, RunKind, check_escalation, escalation_problem,
 };
-pub use factory::{PROVIDER_KINDS, ProviderConfig, create_provider};
+pub use factory::{PROVIDER_KINDS, ProviderConfig, create_provider, default_endpoint};
 pub use pricing::{
     JEV_PRICES, JEV_PRICES_READ_ON, JEV_PRICES_SOURCE, LongPromptPrice, ModelPrice, PriceTable,
     TierPrice,

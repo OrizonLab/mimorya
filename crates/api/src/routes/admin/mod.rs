@@ -28,6 +28,7 @@ mod model_supply;
 mod organization;
 mod policies;
 mod policy_proposals;
+mod processing_register;
 mod retention;
 mod roles;
 mod scim;
@@ -162,6 +163,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
             "/admin/retention",
             get(retention::show).put(retention::update),
         )
+        .route("/admin/processing-register", get(processing_register::show))
         .route(
             "/admin/second-factor",
             get(second_factor_policy::show).put(second_factor_policy::update),

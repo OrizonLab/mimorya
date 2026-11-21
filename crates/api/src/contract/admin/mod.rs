@@ -28,6 +28,7 @@ mod model_supply;
 mod organization;
 mod policies;
 mod policy_proposals;
+mod processing_register;
 mod rest_connectors;
 mod rest_import;
 mod retention;
@@ -97,6 +98,10 @@ pub use policies::{
 };
 pub use policy_proposals::{
     NewPolicyProposal, PolicyProposalView, PolicyProposals, ProposalPerson, ProposalStatus,
+};
+pub use processing_register::{
+    ProcessingRegisterView, RecipientChoiceView, RecipientPlaceView, RegisterActivity,
+    RegisterRecipient,
 };
 pub use rest_connectors::{
     HttpMethod, NewRestConnector, ParameterLocation, ParameterType, RestApi, RestOperation,

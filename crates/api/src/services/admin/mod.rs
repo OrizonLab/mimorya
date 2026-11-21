@@ -55,6 +55,7 @@ mod policies;
 mod policy_changes;
 mod policy_checks;
 mod policy_proposals;
+mod processing_register;
 mod provider_designation;
 mod reset_links;
 mod rest_connectors;
@@ -139,6 +140,7 @@ pub use policy_proposals::{
     ProposalInput, approve_policy_proposal, propose_policy, reject_policy_proposal,
     withdraw_policy_proposal,
 };
+pub use processing_register::{RegisterSources, processing_register};
 pub use reset_links::send_reset_link;
 pub use rest_connectors::{NewRestConnector, create_rest_connector, read_openapi};
 pub use retention::{

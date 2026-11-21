@@ -48,6 +48,7 @@ pub const PLATFORM_ROLE_TEMPLATES: &[RoleTemplate] = &[
             "audit:read",
             "audit:export",
             "usage:read",
+            "compliance:read",
         ],
     },
     RoleTemplate {

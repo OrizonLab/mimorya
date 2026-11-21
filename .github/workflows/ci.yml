@@ -53,6 +53,16 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
+      # Three hundred test binaries, rebuilt whole when a crate they all
+      # depend on changes, and their archives fill the runner's disk even
+      # with line tables only: the runner itself then dies, its log
+      # unwritten. The toolchains this job never uses go first.
+      - name: Free the runner's disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
