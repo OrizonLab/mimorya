@@ -16572,8 +16572,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     d'avant comptées manquantes parmi les ruptures (ADR-198), que la phrase ne contredit
     pas. Une ancre d'avant la veille du début reste dite partie avec elles ; celle de la
     veille est vérifiée contre le sceau gardé ;
-  - **rien de nouveau côté serveur** : l'API rendait déjà ces valeurs, vérifiées par
-    `crates/api/tests/audit_retention*.rs`.
+  - **rien de nouveau côté serveur** : la route rend telles quelles les valeurs que
+    calcule la vérification (`firstPlace`, `purged`), que vérifient
+    `crates/api/tests/audit_retention*.rs` en l'appelant directement ; aucun test ne les
+    relit encore dans la réponse de la route.
 - **Conséquences** :
   - le serveur de bout en bout ne garde aucune entrée de cinq ans : le parcours d'une
     chaîne purgée remplace la réponse de l'API, comme d'autres parcours le font pour un
@@ -16583,8 +16585,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     parties (année, mois, jour), quel que soit le motif d'une locale ;
   - tests :
     - `apps/web/e2e/audit-chain.spec.ts` : la chaîne de l'entreprise de démonstration
-      n'a aucune suppression par la rétention ; sur des réponses remplacées, vérifiées
-      être celles que l'API rendrait aux ancres envoyées : une chaîne purgée dit sa place
+      n'a aucune suppression par la rétention ; sur des réponses remplacées, dont le
+      parcours vérifie les ancres envoyées et que reprennent les scénarios de
+      `crates/api/tests/audit_retention*.rs` : une chaîne purgée dit sa place
       de début, le nombre d'entrées supprimées et l'ancre partie avec elles ; une chaîne
       dont le début a été déplacé sans la clé est dite rompue, ses places manquantes, sans
       que rien ne la dise intacte ;
