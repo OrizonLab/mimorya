@@ -16456,7 +16456,7 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     lui donne, avec les coordonnées de chaque responsable, reste à venir ;
   - son écran dans l'administration et son téléchargement viennent au lot 71b ;
   - tests :
-    - `crates/core/src/processing_register/tests.rs` (unitaires) : les traitements d'une
+    - `crates/core/src/processing_register/tests/` (unitaires) : les traitements d'une
       entreprise sans service, sans destinataire, aux durées de la plateforme ; chaque
       modèle nommé avec sa place et qui l'a choisi, celui de l'exploitant comme son
       sous-traitant, un fournisseur inconnu dit tel ; Jev dans les seuls traitements de
