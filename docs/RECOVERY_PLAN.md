@@ -144,7 +144,8 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
       peut changer le propriétaire ou les droits, que le placement rétablit (§ 4). Ils
       sont datés par eux-mêmes et gardés 90 jours ici, ce qui borne aussi ce que la copie
       garde des données supprimées. L'instantané prend le verrou des sauvegardes avant
-      celui de l'archive, hors de la grille des cinq minutes. Gardez `rsync` à jour.
+      celui de l'archive, hors de la grille des cinq minutes ; un instantané du jour déjà
+      présent n'est pas refait, et l'alerte le signale. Gardez `rsync` à jour.
 
   ```cron
   */5 * * * *  flock -n /run/copie-archive.lock rsync -a --timeout=600 --numeric-ids --no-devices --no-specials --delete --exclude '.*' -e 'ssh -i /root/.ssh/archive' root@production:./ /srv/mimorya-copie/wal-archive/ || votre-alerte "copie de l'archive"
@@ -345,10 +346,10 @@ Un accès illégitime à l'hôte ou à l'application est suspecté :
 - [ ] `infra/backup/archive-status.sh` sort à zéro : la base restaurée archive, sur sa
       nouvelle ligne temporelle.
 - [ ] Une sauvegarde de base est faite aussitôt (`backup.sh --base`), et un dump.
-- [ ] Les tâches du § 3 tournent pour la pile reprise : sauvegardes, conservation, état
-      de l'archive, et la copie tirée, sur l'hôte qui sert désormais de secours. Le
-      marqueur `/etc/mimorya-secours` est retiré de l'hôte devenu la production, et posé
-      sur le nouvel hôte de secours.
+- [ ] Les tâches du § 3 tournent pour la pile reprise : sauvegardes, conservation, état de
+      l'archive, et la copie tirée, sur l'hôte qui sert désormais de secours. Le marqueur
+      `/etc/mimorya-secours` est retiré de l'hôte devenu la production, et posé sur le
+      nouvel hôte de secours une fois l'ancienne installation qu'il porterait retirée.
 - [ ] Le numéro de ligne temporelle dit par la restauration est noté : une restauration
       ultérieure qui partirait d'une sauvegarde de base antérieure le nomme
       (`MIMORYA_RESTORE_TIMELINE`).
