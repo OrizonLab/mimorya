@@ -19,6 +19,7 @@ l'expérience validée.
 | [Sécurité](docs/SECURITY.md)             | Modèle de menace, isolation, autorisations, RGPD               |
 | [Décisions](docs/DECISIONS.md)           | Journal des décisions d'architecture                           |
 | [Feuille de route](docs/ROADMAP.md)      | Phases, statuts, critères d'acceptation                        |
+| [Plan de reprise](docs/RECOVERY_PLAN.md) | Pertes et durées visées, préparation, procédures, exercices    |
 | [CLAUDE.md](CLAUDE.md)                   | Règles de développement                                        |
 
 ## Démarrage local
@@ -369,8 +370,9 @@ La base de la pile de production est l'image `mimorya-db` (PostgreSQL 16, pgvect
 `age`) : une installation antérieure qui se met à jour voit son conteneur de base remplacé,
 sur le même volume. La CI vérifie l'archive et la
 sauvegarde de base de la pile qu'elle installe (`infra/docker/wal-archive-test.sh`), sa
-conservation et son état (`infra/docker/archive-retention-test.sh`). Le plan de reprise
-reste à écrire (lot 70c).
+conservation et son état (`infra/docker/archive-retention-test.sh`). Le
+[plan de reprise](docs/RECOVERY_PLAN.md) dit quoi préparer et quoi faire selon l'incident
+(ADR-216).
 
 #### Restauration à un instant précis
 

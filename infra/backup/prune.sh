@@ -15,8 +15,8 @@
 #     its file;
 #   - a dump stays when made since the cutoff, or when it is the last made
 #     before: the oldest instant of the period lies after it;
-#   - without an archive (archiving off, or no base's history in it), a base
-#     backup is kept as a dump is.
+#   - without an archive (archiving off, or no base's history kept in it), a
+#     base backup is kept as a dump is.
 # A file named otherwise, a symbolic link or a partial file is never
 # touched. A base copied elsewhere and kept longer needs a copy of the
 # archive kept as long. With --dry-run, what would be removed is said,

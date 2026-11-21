@@ -17,6 +17,14 @@
 #         bases of its parent's abandoned branch: the parent's last base
 #         before the fork kept, and what follows it, which the new
 #         timeline's first instants need;
+#       - two restores in a row, the second along the first one's timeline,
+#         two bases of the abandoned branch between the two forks: the base
+#         before the first fork kept;
+#       - a base begun before a fork and ended after it: the base before it
+#         kept too;
+#       - a timeline that just began, none of its segments archived: nothing
+#         removed from its folder, and its bases' files kept, the oldest one
+#         justified by it alone;
 #       - a segment number that reads as a number in scientific notation
 #         (…01E1) compared as hexadecimal; a folder without any base left
 #         whole; in the current system's folder, every base and what it
@@ -182,6 +190,7 @@ made_up $chained "00000002.history.$sum.gz.age" $((38 * day))
 for n in 4 5 6 7 8 9 10; do
   segment $chained 2 "$n" $(((42 - n) * day))
 done
+segment $chained 2 11 $((30 * day + 720))
 base $chained 2 9 $((31 * day))
 made_up $chained "00000003.history.$sum.gz.age" $((25 * day))
 for n in 8 9 10 11; do

@@ -16278,3 +16278,91 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       `ln` qui échoue toujours à sa place), sans données ni fichier d'essai laissés, et sur
       un dossier où elle ne peut écrire (un `touch` qui échoue toujours), avec sa propre
       raison.
+
+## ADR-216 — Plan de reprise de l'installation de production (chantier 4, lot 70c)
+
+- **Statut** : accepté (2026-11-20) · complète ADR-166, ADR-206, ADR-214 et ADR-215, et
+  termine le chantier 4.
+- **Contexte** : les sauvegardes, l'archive des WAL, la restauration à un instant précis,
+  la conservation et l'état de l'archivage sont en place et vérifiés en CI. Il manque à
+  l'exploitant ce qui les relie le jour d'un incident :
+  - combien de données il peut perdre (RPO), et en combien de temps l'installation
+    repart (RTO) ;
+  - ce qu'il doit avoir préparé ;
+  - quoi faire, dans l'ordre, selon ce qui est arrivé.
+- **Décision** :
+  - **document** : `docs/RECOVERY_PLAN.md`, en français, pour l'exploitant, cité par le
+    README parmi la documentation ;
+  - **objectifs** :
+    - perte de données : `archive_timeout` (cinq minutes) plus l'intervalle de la copie
+      hors site de l'archive, soit une dizaine de minutes avec une copie toutes les cinq,
+      tant que l'archivage et la copie sont à jour ; sans archive, le dernier dump copié,
+      environ un jour plus le délai de sa copie ;
+    - pour une erreur dans les données, retour à l'instant choisi, juste avant elle ;
+    - durée : quatre heures proposées pour une installation de quelques dizaines de Go.
+      Le plan la décompose étape par étape, et la donne comme un objectif à confirmer par
+      un exercice, pas comme une mesure ;
+  - **conventions** : les commandes se lancent en `root` depuis le dépôt, `COMPOSE_FILE` et
+    `COMPOSE_ENV_FILES` exportés une fois : sans eux, `docker compose` lirait la base de
+    développement ;
+  - **préparation** : une liste à cocher et des tables `cron` de référence :
+    - sur l'hôte de production : `PATH`, la pile et un fichier des destinataires
+      (`MIMORYA_BACKUP_RECIPIENTS_FILE`, que lit `backup.sh`, les mêmes clés que celles
+      données à la base) en tête ; chaque nuit, le dump, puis la sauvegarde de base et, si
+      elle a réussi, la conservation ; l'état de l'archive toutes les dix minutes, une
+      alerte sur toute sortie non nulle ;
+    - la copie hors site **tirée par l'hôte de secours**, par deux clés SSH limitées
+      chacune à la lecture d'un dossier (`rrsync -ro`), l'archive et les sauvegardes, un
+      verrou par destination. `--numeric-ids` garde à l'archive son propriétaire, la base ;
+      `--no-devices --no-specials` refuse les fichiers spéciaux. La copie suit l'hôte,
+      suppressions comprises (`--delete`) : un intrus sur l'hôte de production peut la
+      vider. Seul le contenu des instantanés déjà faits (`cp -al`, datés par eux-mêmes) est
+      hors de sa portée : ils partagent leurs fichiers avec la copie, dont il peut changer
+      propriétaire et droits, que le placement rétablit. Leur durée, que l'exploitant fixe,
+      borne aussi ce que la copie garde des données supprimées. L'instantané prend le
+      verrou des sauvegardes avant celui de l'archive, hors de la grille des cinq minutes,
+      et un transfert bloqué est abandonné (`--timeout`). Les dossiers de la copie sont à
+      `root` seul : un exécutable qu'un hôte compromis y ferait entrer n'est atteint par
+      aucun autre compte ;
+    - avec `MIMORYA_TLS=internal`, une copie de la racine locale de Caddy ;
+  - **procédures** : erreur dans les données, perte de l'hôte (avec ou sans archive),
+    base abîmée sur un hôte intact, intrusion, identité `age` perdue, archivage en échec.
+    Deux règles valent pour toutes :
+    - ne rien jeter de l'installation en panne avant vérification. Le volume abîmé est
+      mis de côté et relu avant que le seul volume de la base soit retiré ;
+    - une pile restaurée ne tourne jamais entière en même temps que l'ancienne : elle a
+      les mêmes réglages et les mêmes jetons, et ses workers relanceraient tâches
+      planifiées, e-mails, messages des passerelles et renouvellements OAuth. Tant que
+      l'ancienne peut tourner, seule sa base démarre. Un hôte seulement injoignable peut
+      encore tourner, et un hôte éteint redémarre sa pile quand on le rallume : il est
+      coupé du réseau par son hébergeur avant que la pile restaurée démarre entière, et
+      reconnecté seulement sa pile arrêtée. Après une intrusion, la copie et ses
+      instantanés sont suspendus sur l'hôte de secours le temps de la reprise. Sur l'hôte
+      de secours, l'archive est placée dans un dossier vidé, et retirée après un exercice
+      : sinon les fichiers d'une restauration précédente se mêleraient à ceux de la
+      suivante. La commande qui jette une pile restaurée ne tourne que sur un hôte marqué
+      du rôle de secours (`/etc/mimorya-secours`), pas sur un nom d'hôte, que la bascule
+      rend trompeur ;
+    - après une intrusion, les clés TLS sont refaites (certificat public révoqué ; racine
+      `internal` nouvelle, jamais remise depuis la copie) avec les autres secrets ;
+  - **après une reprise** : archivage vérifié, sauvegarde de base aussitôt, tâches de la
+    préparation remises en place, ligne temporelle notée, journal d'audit vérifié,
+    entreprises informées ;
+  - **exercices** : chaque trimestre, une restauration minutée sur l'hôte de secours,
+    depuis un instantané de la copie, la seule base démarrée, notée dans le plan ;
+  - **précision d'ADR-215** : une restauration abandonnée avant son premier segment retient
+    son dossier une période de plus. Ce qu'il garde remonte alors jusqu'à deux périodes,
+    plus l'intervalle entre deux sauvegardes de base (et non « jusqu'à deux périodes »
+    pour la retenue elle-même).
+- **Conséquences** :
+  - le chantier 4 est terminé : lots 70a (ADR-206), 70b (ADR-214) et 70c (ADR-215 et
+    celui-ci) ;
+  - le plan lui-même n'est pas testé, et la feuille de route ne le marque pas ✅. La CI
+    joue les sauvegardes, les restaurations, la conservation et l'état de l'archive
+    (`backup.sh`, `restore.sh`, `restore-base.sh`, `prune.sh`, `archive-status.sh`, par
+    `backup-test.sh`, `wal-archive-test.sh`, `point-in-time-test.sh` et
+    `archive-retention-test.sh`). Elle ne joue ni les tables `cron`, ni la copie tirée et
+    ses instantanés, ni la mise de côté d'un volume, ni la bascule : l'exercice de chaque
+    exploitant les vérifie, et mesure ses durées ;
+  - un changement des scripts de sauvegarde ou de restauration met le plan à jour dans la
+    même contribution.

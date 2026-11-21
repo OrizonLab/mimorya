@@ -24,8 +24,10 @@
 # A timeline that just began (its history archived since the cutoff, none
 # of its segments yet) holds back its folder, all its bases kept: nothing is
 # removed until its first segment tells where it forked. A restore given up
-# before its first segment never gets one: its folder is held back until its
-# history is older than the cutoff, up to twice the period.
+# before its first segment never gets one: its folder is held back one
+# period more, until its history is older than the cutoff; what it keeps
+# then reaches back up to two periods, plus the interval between two base
+# backups.
 # The segments, partial segments and bases' histories before the earliest
 # start among the bases kept go, whatever their timeline. Timelines'
 # histories are always kept: tiny, a restore reads them to choose its

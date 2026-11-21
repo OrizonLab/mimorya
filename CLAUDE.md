@@ -475,7 +475,8 @@ Repères à l'intérieur des crates :
   sauvegarde de base (`--base`, ADR-206), restauration dans une pile nouvelle, ADR-166, et
   à un instant précis, sauvegarde de base et WAL de l'archive rejoués, `restore-base.sh`,
   ADR-214, conservation des sauvegardes et de l'archive bornée en jours, `prune.sh`, et
-  état de l'archivage pour la surveillance, `archive-status.sh`, ADR-215), `caddy/`
+  état de l'archivage pour la surveillance, `archive-status.sh`, ADR-215 ; ce que
+  l'exploitant en fait selon l'incident : `docs/RECOVERY_PLAN.md`, ADR-216), `caddy/`
   (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
   mots de passe et les destinataires de l'archive des WAL, que son dossier accepte les
   liens physiques (ADR-215), et l'active, `archive-wal.sh`
