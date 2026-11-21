@@ -28,7 +28,7 @@ const DAY = new Intl.DateTimeFormat('fr-FR', {
   day: '2-digit',
 });
 
-/** `instant`'s day in Paris, as `AAAA-MM-JJ`, whatever a locale's pattern. */
+/** `instant`'s day in Paris, as `YYYY-MM-DD`, whatever a locale's pattern. */
 function parisDay(instant: Date): string {
   const parts = Object.fromEntries(
     DAY.formatToParts(instant).map((part) => [part.type, part.value]),

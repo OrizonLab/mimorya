@@ -16563,10 +16563,15 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   le disait pas, si bien qu'un administrateur voyant sa chaîne commencer après la
   place 1 n'en avait pas l'explication.
 - **Décision** :
-  - **le rapport de vérification dit où la chaîne commence** : à sa première place, sans
-    rien de supprimé ; ou à la place n° N, après les entrées de plus de cinq ans que la
-    rétention a supprimées, leur nombre dit, le sceau de la dernière gardé pour vérifier
-    la suite. Une ancre d'avant ce début reste dite partie avec elles ;
+  - **le rapport de vérification dit où la chaîne commence** : à la place n° N, après
+    les entrées de plus de cinq ans que la rétention a supprimées sous un début scellé,
+    leur nombre dit, le sceau de la dernière gardé pour vérifier la suite ; sinon,
+    qu'aucune suppression par la rétention n'est enregistrée sous son sceau, si bien que
+    la chaîne doit commencer à sa première place. Il ne dit jamais que rien n'a été
+    supprimé : un début qui ne tient pas son sceau est tenu pour absent, et les places
+    d'avant comptées manquantes parmi les ruptures (ADR-198), que la phrase ne contredit
+    pas. Une ancre d'avant la veille du début reste dite partie avec elles ; celle de la
+    veille est vérifiée contre le sceau gardé ;
   - **rien de nouveau côté serveur** : l'API rendait déjà ces valeurs, vérifiées par
     `crates/api/tests/audit_retention*.rs`.
 - **Conséquences** :
@@ -16578,5 +16583,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     parties (année, mois, jour), quel que soit le motif d'une locale ;
   - tests :
     - `apps/web/e2e/audit-chain.spec.ts` : la chaîne de l'entreprise de démonstration
-      commence à sa première place ; sur une réponse remplacée, une chaîne purgée dit sa
-      place de début, le nombre d'entrées supprimées et l'ancre partie avec elles.
+      n'a aucune suppression par la rétention ; sur des réponses remplacées, vérifiées
+      être celles que l'API rendrait aux ancres envoyées : une chaîne purgée dit sa place
+      de début, le nombre d'entrées supprimées et l'ancre partie avec elles ; une chaîne
+      dont le début a été déplacé sans la clé est dite rompue, ses places manquantes, sans
+      que rien ne la dise intacte ;
+    - `apps/web/e2e/processing-register.spec.ts` : le fichier du registre est daté du
+      jour de Paris où le registre a été tiré, lu de la réponse de l'API.
