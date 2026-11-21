@@ -35,7 +35,7 @@ pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
                 connector.name
             )),
             ConnectorKind::McpProcess => Some(format!(
-                "Connecteur « {} » : programme déclaré par l’entreprise, lancé par la \
+                "Connecteur « {} » : programme installé par l’exploitant, lancé par la \
                  plateforme ; les services qu’il joint ne sont pas connus d’elle",
                 connector.name
             )),
@@ -64,12 +64,20 @@ pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
         ),
         recipients,
         retention: vec![
-            "Comptes reliés, comptes de messagerie et autorisations de chacun : jusqu’à leur \
-             retrait, la suppression du connecteur ou la désactivation du compte"
+            "Comptes reliés à Microsoft 365 ou Google : jusqu’à leur retrait, la suppression \
+             du connecteur ou la désactivation du compte"
+                .into(),
+            "Comptes de messagerie : jusqu’à leur retrait, le changement d’hôte d’un serveur, \
+             la suppression du connecteur ou la désactivation du compte"
+                .into(),
+            "Autorisations de chacun des serveurs MCP : jusqu’à leur retrait, un \
+             renouvellement refusé, un changement de l’adresse ou de la déclaration du \
+             serveur ou de qui l’autorise, la suppression du connecteur ou la désactivation \
+             du compte"
                 .into(),
             "Autorisations de l’entreprise : jusqu’à leur retrait ou leur remplacement, un \
-             changement de la déclaration ou de l’adresse du serveur, ou la suppression du \
-             connecteur"
+             changement de l’adresse ou de la déclaration du serveur ou de qui l’autorise, \
+             ou la suppression du connecteur"
                 .into(),
             "Contenus lus : avec la conversation qui les a demandés".into(),
         ],
@@ -96,7 +104,9 @@ pub(super) fn gateways(facts: &RegisterFacts) -> Activity {
             .map(recipients::gateway)
             .collect(),
         retention: vec![
-            "Identités reliées : jusqu’à leur retrait ou la désactivation du compte".into(),
+            "Identités reliées : jusqu’à leur retrait, celui de la passerelle ou la \
+             désactivation du compte"
+                .into(),
             "Messages : avec la conversation qu’ils tiennent".into(),
         ],
         notes: Vec::new(),

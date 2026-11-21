@@ -30,7 +30,7 @@ pub(super) fn assistance(facts: &RegisterFacts) -> Activity {
     if let Some(relay) = &facts.mail_relay {
         recipients.push(recipients::mail_relay(
             relay,
-            "Avis par e-mail : missions terminées, validations à donner",
+            "Avis par e-mail : missions terminées, validations à donner, absences à remplacer",
         ));
     }
     Activity {

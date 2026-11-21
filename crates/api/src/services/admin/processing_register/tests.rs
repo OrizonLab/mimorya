@@ -118,7 +118,8 @@ fn the_operator_s_model_is_named_where_it_is_reached() {
     assert_eq!(
         placed(elsewhere),
         (
-            "Serveur de modèles désigné par l’exploitant (passerelle.exploitant.example)".into(),
+            "Serveur de modèles désigné par l’exploitant (passerelle.exploitant.example), API OpenAI"
+                .into(),
             Place::OperatorServer
         )
     );

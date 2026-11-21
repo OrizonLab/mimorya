@@ -11,6 +11,7 @@ import {
   LlmTab,
   OrganizationTab,
   PoliciesTab,
+  RegisterTab,
   RetentionTab,
   RolesTab,
   SkillsTab,
@@ -34,6 +35,7 @@ const SECTION_VIEWS: Record<AdminSectionKey, ComponentType> = {
   llm: LlmTab,
   identityProviders: IdentityProvidersTab,
   retention: RetentionTab,
+  register: RegisterTab,
   connectors: ConnectorsTab,
   skills: SkillsTab,
 };

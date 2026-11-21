@@ -17,7 +17,8 @@ pub(super) fn accounts(facts: &RegisterFacts) -> Activity {
     if let Some(relay) = &facts.mail_relay {
         recipients.push(recipients::mail_relay(
             relay,
-            "Invitations et mots de passe oubliés",
+            "Invitations, mots de passe oubliés et avis aux administrateurs (fourniture du \
+             modèle, propositions de compétences et de politiques)",
         ));
     }
     Activity {
