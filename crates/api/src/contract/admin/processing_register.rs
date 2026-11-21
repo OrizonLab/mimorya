@@ -13,7 +13,9 @@ pub enum RecipientPlaceView {
     EuropeanUnion,
     /// A group established outside the European Union: a transfer to frame.
     OutsideEuropeanUnion,
-    ListedByOperator,
+    /// A server the operator designates: an endpoint it lists, its own
+    /// model's, its mail relay.
+    OperatorServer,
     DeclaredByCompany,
     Operator,
     Unknown,

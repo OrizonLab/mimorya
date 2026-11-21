@@ -51,9 +51,11 @@ fn second_factor(requirement: Requirement) -> &'static str {
 }
 
 /// What only the company, controller of the processing, can say.
-pub(super) const TO_COMPLETE: [&str; 6] = [
+pub(super) const TO_COMPLETE: [&str; 7] = [
     "Coordonnées du responsable du traitement, de son représentant et de son délégué à la \
      protection des données",
+    "Coordonnées de l’exploitant de la plateforme, sous-traitant qui héberge les données et \
+     leurs sauvegardes, et son contrat (article 28)",
     "Base légale de chaque traitement (contrat de travail, intérêt légitime, obligation \
      légale…)",
     "Garanties de chaque transfert hors de l’Union européenne",

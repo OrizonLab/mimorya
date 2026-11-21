@@ -88,10 +88,15 @@ async fn the_permission_is_granted_on_the_whole_company_only() {
     let granted = paul
         .post(&format!("/admin/users/{}/assignments", account.id), on_unit)
         .await;
-    assert!(
-        granted.status.is_client_error(),
-        "{} {}",
+    assert_eq!(
         granted.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        granted.text()
+    );
+    assert!(
+        granted.error_message().contains("toute l’entreprise"),
+        "{}",
         granted.text()
     );
 }

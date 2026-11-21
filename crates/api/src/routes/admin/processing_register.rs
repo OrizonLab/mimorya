@@ -24,7 +24,8 @@ pub async fn show(
         db: &state.db,
         llm: &state.llm,
         embeddings: &state.embeddings,
-        mails: state.mailer.is_some(),
+        mailer: state.mailer.is_some(),
+        mail: state.config.mail.as_ref(),
     };
     let register = processing_register(sources, &access).await?;
     Ok(Json(ProcessingRegisterView {
@@ -55,7 +56,7 @@ fn recipient(recipient: Recipient) -> RegisterRecipient {
         place: match recipient.place {
             Place::EuropeanUnion => RecipientPlaceView::EuropeanUnion,
             Place::OutsideEuropeanUnion => RecipientPlaceView::OutsideEuropeanUnion,
-            Place::ListedByOperator => RecipientPlaceView::ListedByOperator,
+            Place::OperatorServer => RecipientPlaceView::OperatorServer,
             Place::DeclaredByCompany => RecipientPlaceView::DeclaredByCompany,
             Place::Operator => RecipientPlaceView::Operator,
             Place::Unknown => RecipientPlaceView::Unknown,

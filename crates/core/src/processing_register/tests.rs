@@ -1,6 +1,7 @@
 use chrono::{TimeZone, Utc};
 
 use super::*;
+use crate::gateways::GatewayKind;
 use crate::identity_providers::ProviderKind;
 use crate::retention::RetentionKind;
 use crate::second_factor::Requirement;
@@ -11,13 +12,14 @@ fn bare() -> RegisterFacts {
         runs_model: None,
         review_model: None,
         embeddings: None,
-        jev: JevUses::default(),
+        decisions: DecisionUses::default(),
+        jev: false,
         connectors: Vec::new(),
         gateways: Vec::new(),
         identity_providers: Vec::new(),
         scim: false,
         audit_export: false,
-        mails: false,
+        mail_relay: None,
         retention: Vec::new(),
         second_factor: Requirement::Optional,
     }
@@ -26,7 +28,7 @@ fn bare() -> RegisterFacts {
 fn own(provider: &str) -> ModelService {
     ModelService {
         provider: provider.into(),
-        listed_host: None,
+        server_host: None,
         chosen_by: ChosenBy::Company,
     }
 }
@@ -70,7 +72,7 @@ fn a_company_without_services_has_its_activities_and_no_recipient() {
     let memory = activity(&register, ActivityKind::Memory);
     assert!(memory.retention[0].contains("12 mois"));
     assert!(memory.retention[1].contains("30 jours"));
-    assert_eq!(register.to_complete.len(), 6);
+    assert_eq!(register.to_complete.len(), 7);
 }
 
 #[test]
@@ -79,7 +81,7 @@ fn models_are_named_with_where_they_stand_and_who_chose_them() {
     facts.runs_model = Some(own("anthropic"));
     facts.review_model = Some(ModelService {
         provider: "ollama".into(),
-        listed_host: Some("modeles.interne".into()),
+        server_host: Some("modeles.interne".into()),
         chosen_by: ChosenBy::Company,
     });
     facts.embeddings = Some(own("mistral"));
@@ -89,12 +91,12 @@ fn models_are_named_with_where_they_stand_and_who_chose_them() {
         names(assistance),
         [
             "Anthropic",
-            "Serveur de modèles listé par l’exploitant (modeles.interne)"
+            "Serveur de modèles désigné par l’exploitant (modeles.interne)"
         ]
     );
     assert_eq!(assistance.recipients[0].place, Place::OutsideEuropeanUnion);
     assert_eq!(assistance.recipients[0].chosen_by, ChosenBy::Company);
-    assert_eq!(assistance.recipients[1].place, Place::ListedByOperator);
+    assert_eq!(assistance.recipients[1].place, Place::OperatorServer);
     let memory = activity(&register, ActivityKind::Memory);
     assert_eq!(names(memory), ["Anthropic", "Mistral AI"]);
     assert_eq!(memory.recipients[1].place, Place::EuropeanUnion);
@@ -119,7 +121,7 @@ fn the_operator_s_model_is_its_processor_and_an_unknown_kind_is_said_so() {
     let mut facts = bare();
     facts.runs_model = Some(ModelService {
         provider: "anthropic".into(),
-        listed_host: None,
+        server_host: None,
         chosen_by: ChosenBy::Operator,
     });
     facts.embeddings = Some(own("inconnu"));
@@ -132,45 +134,100 @@ fn the_operator_s_model_is_its_processor_and_an_unknown_kind_is_said_so() {
     assert_eq!(memory.recipients[1].place, Place::Unknown);
 }
 
+/// How many times TypeSafe is named in the activity `kind`.
+fn typesafe(register: &Register, kind: ActivityKind) -> usize {
+    activity(register, kind)
+        .recipients
+        .iter()
+        .filter(|r| r.name == "TypeSafe (Jev)" && r.place == Place::OutsideEuropeanUnion)
+        .count()
+}
+
 #[test]
 fn jev_receives_only_what_the_usages_set_send_it() {
     let mut facts = bare();
-    facts.jev = JevUses {
+    facts.decisions = DecisionUses {
         memories: true,
         external_contents: true,
-        ..JevUses::default()
+        ..DecisionUses::default()
     };
     facts.connectors = vec![ConnectorFact {
         kind: ConnectorKind::Rest,
         name: "Facturation".into(),
         hosts: vec!["api.facturation.example".into()],
     }];
-    let register = register(&facts);
-    let typesafe = |kind| {
-        activity(&register, kind)
-            .recipients
-            .iter()
-            .filter(|r| r.name == "TypeSafe (Jev)")
-            .count()
-    };
-    assert_eq!(typesafe(ActivityKind::Assistance), 0);
-    assert_eq!(typesafe(ActivityKind::Memory), 1);
-    assert_eq!(typesafe(ActivityKind::Documents), 0);
-    assert_eq!(typesafe(ActivityKind::Connectors), 1);
-    let jev = activity(&register, ActivityKind::Memory)
-        .recipients
-        .iter()
-        .find(|r| r.name == "TypeSafe (Jev)")
-        .unwrap();
-    assert_eq!(jev.place, Place::OutsideEuropeanUnion);
+    // The main model decides: TypeSafe receives nothing.
+    let register = super::register(&facts);
+    for kind in [
+        ActivityKind::Assistance,
+        ActivityKind::Memory,
+        ActivityKind::Documents,
+        ActivityKind::Connectors,
+    ] {
+        assert_eq!(typesafe(&register, kind), 0);
+    }
+    facts.jev = true;
+    let register = super::register(&facts);
+    assert_eq!(typesafe(&register, ActivityKind::Assistance), 0);
+    assert_eq!(typesafe(&register, ActivityKind::Memory), 1);
+    // The beginning of what a tool brings, a deposited document's passages
+    // as a connector's contents.
+    assert_eq!(typesafe(&register, ActivityKind::Documents), 1);
+    assert_eq!(typesafe(&register, ActivityKind::Connectors), 1);
     assert!(
-        JevUses {
+        DecisionUses {
             requests: true,
-            ..JevUses::default()
+            ..DecisionUses::default()
         }
         .any()
     );
-    assert!(!JevUses::default().any());
+    assert!(!DecisionUses::default().any());
+}
+
+#[test]
+fn the_passages_go_to_jev_without_any_connector() {
+    let mut facts = bare();
+    facts.jev = true;
+    facts.decisions.external_contents = true;
+    let register = register(&facts);
+    assert!(
+        register
+            .activities
+            .iter()
+            .all(|a| a.kind != ActivityKind::Connectors)
+    );
+    assert_eq!(typesafe(&register, ActivityKind::Documents), 1);
+}
+
+#[test]
+fn the_main_model_receives_what_the_decisions_ask_it() {
+    let mut facts = bare();
+    facts.runs_model = Some(own("anthropic"));
+    let role = |register: &Register, kind| activity(register, kind).recipients[0].role.clone();
+    let register = register(&facts);
+    assert!(!role(&register, ActivityKind::Memory).contains("données sensibles"));
+    assert!(!role(&register, ActivityKind::Documents).contains("classement"));
+    let memory = activity(&register, ActivityKind::Memory);
+    assert!(memory.sensitive.unwrap().contains("ne les y cherche pas"));
+
+    // Jev chosen or not, the main model decides what Jev does not.
+    facts.decisions = DecisionUses {
+        memories: true,
+        documents: true,
+        ..DecisionUses::default()
+    };
+    let register = super::register(&facts);
+    assert!(
+        role(&register, ActivityKind::Memory).contains("pour y chercher des données sensibles")
+    );
+    assert!(role(&register, ActivityKind::Documents).contains("pour son classement"));
+    let memory = activity(&register, ActivityKind::Memory);
+    assert!(
+        memory
+            .sensitive
+            .unwrap()
+            .contains("le service de décision les cherche")
+    );
 }
 
 #[test]
@@ -212,9 +269,12 @@ fn each_connector_is_named_by_what_its_tools_reach() {
     assert_eq!(connectors.recipients[1].place, Place::Operator);
     assert_eq!(connectors.recipients[2].place, Place::DeclaredByCompany);
     assert_eq!(connectors.recipients[4].place, Place::OutsideEuropeanUnion);
-    assert_eq!(connectors.notes.len(), 1);
+    assert_eq!(connectors.notes.len(), 2);
     assert!(connectors.notes[0].contains("« Interventions »"));
-    assert!(connectors.notes[0].contains("fictives"));
+    assert!(connectors.notes[0].contains("n’atteint aucun service extérieur"));
+    assert!(connectors.notes[1].contains("« Docs locaux »"));
+    assert!(connectors.notes[1].contains("ne sont pas connus"));
+    assert!(connectors.sensitive.unwrap().contains("e-mails"));
 }
 
 #[test]
@@ -239,7 +299,9 @@ fn gateways_and_sign_in_name_their_services() {
         },
     ];
     facts.scim = true;
-    facts.mails = true;
+    facts.mail_relay = Some(MailRelay {
+        host: Some("smtp.exploitant.example".into()),
+    });
     facts.audit_export = true;
     let register = register(&facts);
     assert!(
@@ -261,7 +323,7 @@ fn gateways_and_sign_in_name_their_services() {
             "Fournisseur SAML",
             "Microsoft Entra ID",
             "Fournisseur d’identité de l’entreprise",
-            "Relais d’envoi des e-mails de l’exploitant",
+            "Relais d’envoi des e-mails de l’exploitant (smtp.exploitant.example)",
         ]
     );
     assert_eq!(
@@ -269,6 +331,13 @@ fn gateways_and_sign_in_name_their_services() {
         "Fournisseur d’identité « Keycloak »"
     );
     assert_eq!(accounts.recipients[4].chosen_by, ChosenBy::Operator);
+    assert_eq!(accounts.recipients[4].place, Place::OperatorServer);
+    // Its notices, of missions and validations, as well.
+    let assistance = activity(&register, ActivityKind::Assistance);
+    assert_eq!(
+        names(assistance),
+        ["Relais d’envoi des e-mails de l’exploitant (smtp.exploitant.example)"]
+    );
     let audit = activity(&register, ActivityKind::Audit);
     assert_eq!(names(audit), ["SIEM de l’entreprise"]);
     assert!(
@@ -342,7 +411,7 @@ fn places_and_choices_have_stable_keys() {
     for place in [
         Place::EuropeanUnion,
         Place::OutsideEuropeanUnion,
-        Place::ListedByOperator,
+        Place::OperatorServer,
         Place::DeclaredByCompany,
         Place::Operator,
         Place::Unknown,

@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, Utc};
 
+use crate::gateways::GatewayKind;
 use crate::identity_providers::ProviderKind;
 use crate::retention::RetentionKind;
 use crate::second_factor::Requirement;
@@ -24,9 +25,11 @@ pub struct ModelService {
     /// Its kind as the platform names it (`anthropic`, `mistral`,
     /// `ollama`…).
     pub provider: String,
-    /// The host of the endpoint, for a kind served at an endpoint the
-    /// operator lists (`ollama`, `openai_compatible`).
-    pub listed_host: Option<String>,
+    /// The host of the server it is reached at when that is not its
+    /// provider's own: an endpoint the operator lists for a company's local
+    /// kind (`ollama`, `openai_compatible`), or the one the operator set for
+    /// its own model (`LLM_BASE_URL`).
+    pub server_host: Option<String>,
     pub chosen_by: ChosenBy,
 }
 
@@ -57,12 +60,11 @@ pub struct ConnectorFact {
     pub hosts: Vec<String>,
 }
 
-/// An enabled conversation gateway of the company.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GatewayKind {
-    Slack,
-    Telegram,
-    Teams,
+/// The operator's relay for the platform's e-mails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MailRelay {
+    /// Its host, when the platform knows it.
+    pub host: Option<String>,
 }
 
 /// An enabled identity provider of the company.
@@ -85,10 +87,12 @@ pub struct RetentionFact {
     pub shortening_at: Option<DateTime<Utc>>,
 }
 
-/// The activities a decision of TypeSafe's Jev may serve (ADR-213): those
-/// of the usages the company set, Jev chosen and opened by the operator.
+/// What the company's decision service is asked about (ADR-213): the
+/// usages it set and the platform delivers, not off. Its main model decides
+/// them, or Jev first when it chose Jev and Jev opens, the main model then
+/// deciding what Jev does not.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct JevUses {
+pub struct DecisionUses {
     /// Choosing a run's model or its skills, from the request (D1, D2).
     pub requests: bool,
     /// Sensitive data in a memory or a lesson (D3).
@@ -97,12 +101,12 @@ pub struct JevUses {
     pub documents: bool,
     /// An action's parameters, before it goes or is put to validation (D5).
     pub actions: bool,
-    /// The beginning of an external content a tool brings (D6), or an
-    /// incoming e-mail to sort.
+    /// The beginning of an external content a tool brings (D6): a
+    /// connector's, a deposited document's passages.
     pub external_contents: bool,
 }
 
-impl JevUses {
+impl DecisionUses {
     pub fn any(self) -> bool {
         self.requests || self.memories || self.documents || self.actions || self.external_contents
     }
@@ -119,16 +123,20 @@ pub struct RegisterFacts {
     pub review_model: Option<ModelService>,
     /// Its embedding model (ADR-074).
     pub embeddings: Option<ModelService>,
-    pub jev: JevUses,
+    pub decisions: DecisionUses,
+    /// Jev is chosen, opened by the operator and its key stored: TypeSafe
+    /// receives what the decisions ask.
+    pub jev: bool,
     pub connectors: Vec<ConnectorFact>,
+    /// Its enabled conversation gateways.
     pub gateways: Vec<GatewayKind>,
     pub identity_providers: Vec<IdentityFact>,
     /// Its identity provider holds a SCIM token (ADR-183).
     pub scim: bool,
     /// Its SIEM holds an export token of the audit log (ADR-181).
     pub audit_export: bool,
-    /// The platform sends e-mails (a relay is configured).
-    pub mails: bool,
+    /// The relay the platform sends e-mails through, if it sends any.
+    pub mail_relay: Option<MailRelay>,
     pub retention: Vec<RetentionFact>,
     pub second_factor: Requirement,
 }

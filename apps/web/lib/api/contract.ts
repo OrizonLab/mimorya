@@ -2883,7 +2883,7 @@ export type RecipientChoiceView = "company" | "operator";
 /**
  * Where a recipient stands, as far as the platform knows.
  */
-export type RecipientPlaceView = "europeanUnion" | "outsideEuropeanUnion" | "listedByOperator" | "declaredByCompany" | "operator" | "unknown";
+export type RecipientPlaceView = "europeanUnion" | "outsideEuropeanUnion" | "operatorServer" | "declaredByCompany" | "operator" | "unknown";
 
 /**
  * `POST /account/second-factor/confirmation` and

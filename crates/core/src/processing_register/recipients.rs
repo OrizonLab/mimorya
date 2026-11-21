@@ -4,9 +4,8 @@
 //! the company's contract has it process: that is for the company to
 //! complete with the guarantees of each transfer.
 
-use super::facts::{
-    ChosenBy, ConnectorFact, ConnectorKind, GatewayKind, IdentityFact, ModelService,
-};
+use super::facts::{ChosenBy, ConnectorFact, ConnectorKind, IdentityFact, MailRelay, ModelService};
+use crate::gateways::GatewayKind;
 use crate::identity_providers::ProviderKind;
 
 /// Where a recipient stands, as far as the platform knows.
@@ -17,12 +16,13 @@ pub enum Place {
     /// A group established outside the European Union: a transfer to
     /// frame.
     OutsideEuropeanUnion,
-    /// A private server the operator lists for the companies' models.
-    ListedByOperator,
+    /// A server the operator designates: an endpoint it lists for the
+    /// companies' models, the one of its own model, its mail relay.
+    OperatorServer,
     /// A server or service the company declared: its own, or its
     /// provider's.
     DeclaredByCompany,
-    /// The operator's own infrastructure.
+    /// The operator's own infrastructure, the platform's processes.
     Operator,
     /// A provider this build does not know.
     Unknown,
@@ -33,7 +33,7 @@ impl Place {
         match self {
             Self::EuropeanUnion => "european_union",
             Self::OutsideEuropeanUnion => "outside_european_union",
-            Self::ListedByOperator => "listed_by_operator",
+            Self::OperatorServer => "operator_server",
             Self::DeclaredByCompany => "declared_by_company",
             Self::Operator => "operator",
             Self::Unknown => "unknown",
@@ -47,8 +47,8 @@ impl Place {
                 "Groupe établi hors de l’Union européenne : transfert possible, à encadrer \
                  (décision d’adéquation ou clauses contractuelles types)"
             }
-            Self::ListedByOperator => {
-                "Serveur privé listé par l’exploitant : localisation selon son hébergement"
+            Self::OperatorServer => {
+                "Serveur désigné par l’exploitant : localisation selon son hébergement"
             }
             Self::DeclaredByCompany => {
                 "Service déclaré par l’entreprise : localisation selon son hébergement ou son \
@@ -97,12 +97,13 @@ impl Recipient {
     }
 }
 
-/// A model service, for `role`.
+/// A model service, for `role`: at the server it is reached at when that
+/// is not its provider's own.
 pub(super) fn model(service: &ModelService, role: &str) -> Recipient {
-    let (name, place) = match (service.provider.as_str(), &service.listed_host) {
+    let (name, place) = match (service.provider.as_str(), &service.server_host) {
         (_, Some(host)) => (
-            format!("Serveur de modèles listé par l’exploitant ({host})"),
-            Place::ListedByOperator,
+            format!("Serveur de modèles désigné par l’exploitant ({host})"),
+            Place::OperatorServer,
         ),
         ("anthropic", None) => ("Anthropic".into(), Place::OutsideEuropeanUnion),
         ("openai", None) => ("OpenAI".into(), Place::OutsideEuropeanUnion),
@@ -232,12 +233,11 @@ pub(super) fn siem() -> Recipient {
     )
 }
 
-/// The operator's relay for the platform's e-mails.
-pub(super) fn mail_relay() -> Recipient {
-    Recipient::new(
-        "Relais d’envoi des e-mails de l’exploitant",
-        "Invitations, mots de passe oubliés et avis par e-mail",
-        Place::Operator,
-        ChosenBy::Operator,
-    )
+/// The operator's relay for the platform's e-mails, sending `what`.
+pub(super) fn mail_relay(relay: &MailRelay, what: &str) -> Recipient {
+    let name = match &relay.host {
+        Some(host) => format!("Relais d’envoi des e-mails de l’exploitant ({host})"),
+        None => "Relais d’envoi des e-mails de l’exploitant".into(),
+    };
+    Recipient::new(name, what, Place::OperatorServer, ChosenBy::Operator)
 }

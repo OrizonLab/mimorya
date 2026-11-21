@@ -164,7 +164,7 @@ async fn the_register_names_where_the_company_s_data_go_now() {
     assert!(recipients(&register, "audit").is_empty());
     let assistance = lines(&activity(&register, "assistance")["retention"]);
     assert!(assistance[0].contains("depuis 24 mois :"), "{assistance:?}");
-    assert_eq!(lines(&register["toComplete"]).len(), 6);
+    assert_eq!(lines(&register["toComplete"]).len(), 7);
 
     // Its own models: Anthropic on its key, a review model and embeddings
     // at the endpoint the operator lists.
@@ -205,19 +205,19 @@ async fn the_register_names_where_the_company_s_data_go_now() {
             "usage"
         ]
     );
-    let listed = "Serveur de modèles listé par l’exploitant (embeddings.test)";
+    let listed = "Serveur de modèles désigné par l’exploitant (embeddings.test)";
     assert_eq!(
         recipients(&register, "assistance"),
         [
             of("Anthropic", "outsideEuropeanUnion", "company"),
-            of(listed, "listedByOperator", "company"),
+            of(listed, "operatorServer", "company"),
         ]
     );
     assert_eq!(
         recipients(&register, "memory"),
         [
             of("Anthropic", "outsideEuropeanUnion", "company"),
-            of(listed, "listedByOperator", "company"),
+            of(listed, "operatorServer", "company"),
         ]
     );
     assert_eq!(
@@ -354,6 +354,20 @@ async fn typesafe_is_named_while_jev_receives_something() {
     // The sensitive data of memories: the memories only.
     support::decisions::set(&paul, guarding_memories("jev", None)).await;
     assert_eq!(sent_to_typesafe(&read(&paul).await), ["memory"]);
+
+    // Instructions looked for in what a tool brings: a connector's contents
+    // and a deposited document's passages.
+    let mut body = guarding_memories("jev", None);
+    let screen = USAGES
+        .iter()
+        .position(|u| *u == "injectionDetection")
+        .unwrap();
+    body["usages"][screen]["mode"] = json!("active");
+    support::decisions::set(&paul, body).await;
+    assert_eq!(
+        sent_to_typesafe(&read(&paul).await),
+        ["memory", "documents", "connectors"]
+    );
 
     // The same usage on the main model: Jev no more.
     support::decisions::set(&paul, guarding_memories("mainModel", None)).await;
