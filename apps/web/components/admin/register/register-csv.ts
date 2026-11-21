@@ -20,13 +20,21 @@ const COLUMNS = [
 /** Tells a spreadsheet the file is in UTF-8. */
 const BYTE_ORDER_MARK = '\uFEFF';
 
-/** The day the file is named after, as the platform counts days. */
-const DAY = new Intl.DateTimeFormat('en-CA', {
+/** The parts of a day, as the platform counts days. */
+const DAY = new Intl.DateTimeFormat('fr-FR', {
   timeZone: PLATFORM_TIME_ZONE,
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
 });
+
+/** `instant`'s day in Paris, as `YYYY-MM-DD`, whatever a locale's pattern. */
+function parisDay(instant: Date): string {
+  const parts = Object.fromEntries(
+    DAY.formatToParts(instant).map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
 
 /** A spreadsheet reads a cell opening with one of these as a formula. */
 const FORMULA_START = /^[=+\-@\t\r]/;
@@ -50,7 +58,7 @@ export function registerCsv(register: ProcessingRegisterView): string {
 
 /** The file's name, dated the day the register was drawn, in Paris. */
 export function registerFileName(register: ProcessingRegisterView): string {
-  return `registre-des-traitements-${DAY.format(new Date(register.drawnAt))}.csv`;
+  return `registre-des-traitements-${parisDay(new Date(register.drawnAt))}.csv`;
 }
 
 function activityRows(activity: RegisterActivity): string[][] {

@@ -16553,3 +16553,43 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       « Connexion », qui manquait à sa liste ;
     - `crates/core/src/processing_register/tests/` : le serveur MCP de l'exploitant, l'API
       d'un serveur de modèles, les durées précisées.
+
+## ADR-219 — Début du journal d'audit montré dans son onglet (lot 72a)
+
+- **Statut** : accepté (2026-11-21) · complète ADR-179 et ADR-198.
+- **Contexte** : la rétention supprime les places du journal d'audit de plus de cinq ans,
+  un préfixe de la chaîne, et garde son début scellé (ADR-198). La vérification à la
+  demande le lit déjà (`firstPlace`, `purged`, ADR-179) ; l'onglet « Journal d'audit » ne
+  le disait pas, si bien qu'un administrateur voyant sa chaîne commencer après la
+  place 1 n'en avait pas l'explication.
+- **Décision** :
+  - **le rapport de vérification dit où la chaîne commence** : à la place n° N, après
+    les entrées de plus de cinq ans que la rétention a supprimées sous un début scellé,
+    leur nombre dit, le sceau de la dernière gardé pour vérifier la suite ; sinon,
+    qu'aucune suppression par la rétention n'est enregistrée sous son sceau, si bien que
+    la chaîne doit commencer à sa première place. Il ne dit jamais que rien n'a été
+    supprimé : un début qui ne tient pas son sceau est tenu pour absent, et les places
+    d'avant comptées manquantes parmi les ruptures (ADR-198), que la phrase ne contredit
+    pas. Une ancre d'avant la veille du début reste dite partie avec elles ; celle de la
+    veille est vérifiée contre le sceau gardé ;
+  - **rien de nouveau côté serveur** : la route rend telles quelles les valeurs que
+    calcule la vérification (`firstPlace`, `purged`), que vérifient
+    `crates/api/tests/audit_retention*.rs` en l'appelant directement ; aucun test ne les
+    relit encore dans la réponse de la route.
+- **Conséquences** :
+  - le serveur de bout en bout ne garde aucune entrée de cinq ans : le parcours d'une
+    chaîne purgée remplace la réponse de l'API, comme d'autres parcours le font pour un
+    état que ce serveur n'a pas ;
+  - suites de l'audit de la PR #290 : la marque d'ordre écrite en échappement dans le
+    parcours du registre ; la date du nom du fichier du registre construite de ses
+    parties (année, mois, jour), quel que soit le motif d'une locale ;
+  - tests :
+    - `apps/web/e2e/audit-chain.spec.ts` : la chaîne de l'entreprise de démonstration
+      n'a aucune suppression par la rétention ; sur des réponses remplacées, dont le
+      parcours vérifie les ancres envoyées et que reprennent les scénarios de
+      `crates/api/tests/audit_retention*.rs` : une chaîne purgée dit sa place
+      de début, le nombre d'entrées supprimées et l'ancre partie avec elles ; une chaîne
+      dont le début a été déplacé sans la clé est dite rompue, ses places manquantes, sans
+      que rien ne la dise intacte ;
+    - `apps/web/e2e/processing-register.spec.ts` : le fichier du registre est daté du
+      jour de Paris où le registre a été tiré, lu de la réponse de l'API.

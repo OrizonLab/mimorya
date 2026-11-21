@@ -17,7 +17,11 @@ import { expect, noError, test } from './support/fixtures';
 const TAB = 'Registre des traitements';
 
 test('the administrator reads the register and downloads it', async ({ page }) => {
+  const read = page.waitForResponse('**/api/admin/processing-register');
   await openAdmin(page, TAB);
+  const { drawnAt } = (await (await read).json()) as ProcessingRegisterView;
+  // The day it was drawn, in Paris, as `YYYY-MM-DD`.
+  const day = new Date(drawnAt).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
   const head = page.getByRole('region', { name: TAB });
   await expect(head.getByText('Néo Maintenance (démo)')).toBeVisible();
   const assistance = page.getByRole('region', { name: 'Assistance par l’agent' });
@@ -37,9 +41,9 @@ test('the administrator reads the register and downloads it', async ({ page }) =
   const downloading = page.waitForEvent('download');
   await head.getByRole('button', { name: 'Télécharger (CSV)' }).click();
   const download = await downloading;
-  expect(download.suggestedFilename()).toMatch(/^registre-des-traitements-\d{4}-\d{2}-\d{2}\.csv$/);
+  expect(download.suggestedFilename()).toBe(`registre-des-traitements-${day}.csv`);
   const text = await readFile(await download.path(), 'utf8');
-  expect(text.startsWith('﻿"Responsable du traitement";"Traitement";"Finalité";')).toBe(true);
+  expect(text.startsWith('\uFEFF"Responsable du traitement";"Traitement";"Finalité";')).toBe(true);
   const rows = text.trimEnd().split('\r\n');
   const company = '"Néo Maintenance (démo)";';
   expect(rows.some((row) => row.startsWith(`${company}"Assistance par l’agent";`))).toBe(true);
@@ -114,7 +118,7 @@ test('the downloaded file keeps each cell as text, one row per recipient', async
   const controller = `"'=Acme; ""Industrie"""`;
   const declared = '"Service déclaré";"Choisi par l’entreprise"';
   expect(text.split('\r\n')).toEqual([
-    '﻿"Responsable du traitement";"Traitement";"Finalité";"Personnes concernées";' +
+    '\uFEFF"Responsable du traitement";"Traitement";"Finalité";"Personnes concernées";' +
       '"Catégories de données";"Données sensibles";"Destinataire";' +
       '"Reçoit les données pour";"Localisation";"Choisi par";"Durées de conservation";' +
       '"Remarques"',
