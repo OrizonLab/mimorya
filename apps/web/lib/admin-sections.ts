@@ -14,6 +14,7 @@ export const ADMIN_SECTIONS = [
   { key: 'llm', label: 'Modèle d’IA', permissions: ['settings:manage'] },
   { key: 'identityProviders', label: 'Connexion', permissions: ['settings:manage'] },
   { key: 'retention', label: 'Conservation des données', permissions: ['retention:manage'] },
+  { key: 'register', label: 'Registre des traitements', permissions: ['compliance:read'] },
   { key: 'connectors', label: 'Connecteurs', permissions: ['connector:manage'] },
   { key: 'skills', label: 'Compétences', permissions: ['skill:manage'] },
 ] as const;

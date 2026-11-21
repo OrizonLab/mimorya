@@ -30,7 +30,7 @@ fn each_connector_is_named_by_what_its_tools_reach() {
         names(connectors),
         [
             "Serveur MCP (mcp.example.com)",
-            "Serveur MCP lancé par la plateforme",
+            "Serveur MCP installé par l’exploitant, lancé par la plateforme",
             "Serveur MCP",
             "Serveurs de messagerie (imap.example.com, smtp.example.com)",
             "Microsoft 365 (Microsoft Graph)",
@@ -40,6 +40,8 @@ fn each_connector_is_named_by_what_its_tools_reach() {
     assert_eq!(connectors.recipients[0].role, "Connecteur « Docs »");
     assert_eq!(connectors.recipients[0].place, Place::DeclaredByCompany);
     assert_eq!(connectors.recipients[1].place, Place::Operator);
+    // Only the operator installs such a program (ADR-025).
+    assert_eq!(connectors.recipients[1].chosen_by, ChosenBy::Operator);
     assert_eq!(connectors.recipients[2].place, Place::DeclaredByCompany);
     assert_eq!(connectors.recipients[4].place, Place::OutsideEuropeanUnion);
     assert_eq!(connectors.notes.len(), 2);
@@ -48,6 +50,9 @@ fn each_connector_is_named_by_what_its_tools_reach() {
     assert!(connectors.notes[1].contains("« Docs locaux »"));
     assert!(connectors.notes[1].contains("ne sont pas connus"));
     assert!(connectors.sensitive.unwrap().contains("e-mails"));
+    let kept = connectors.retention.join("\n");
+    assert!(kept.contains("changement d’hôte d’un serveur"), "{kept}");
+    assert!(kept.contains("ou de qui l’autorise"), "{kept}");
 }
 
 #[test]
@@ -88,6 +93,7 @@ fn gateways_and_sign_in_name_their_services() {
         names(gateways),
         ["Slack", "Microsoft Teams (Bot Framework)"]
     );
+    assert!(gateways.retention[0].contains("celui de la passerelle"));
     let accounts = activity(&register, ActivityKind::Accounts);
     assert_eq!(
         names(accounts),

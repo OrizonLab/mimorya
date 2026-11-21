@@ -205,7 +205,7 @@ async fn the_register_names_where_the_company_s_data_go_now() {
             "usage"
         ]
     );
-    let listed = "Serveur de modèles désigné par l’exploitant (embeddings.test)";
+    let listed = "Serveur de modèles désigné par l’exploitant (embeddings.test), API Ollama";
     assert_eq!(
         recipients(&register, "assistance"),
         [

@@ -4,7 +4,7 @@
 //! the company's contract has it process: that is for the company to
 //! complete with the guarantees of each transfer.
 
-use super::facts::{ChosenBy, ConnectorFact, ConnectorKind, IdentityFact, MailRelay, ModelService};
+use super::facts::{ChosenBy, ConnectorFact, ConnectorKind, IdentityFact, MailRelay};
 use crate::gateways::GatewayKind;
 use crate::identity_providers::ProviderKind;
 
@@ -87,7 +87,12 @@ pub struct Recipient {
 }
 
 impl Recipient {
-    fn new(name: impl Into<String>, role: impl Into<String>, place: Place, by: ChosenBy) -> Self {
+    pub(super) fn new(
+        name: impl Into<String>,
+        role: impl Into<String>,
+        place: Place,
+        by: ChosenBy,
+    ) -> Self {
         Self {
             name: name.into(),
             role: role.into(),
@@ -95,37 +100,6 @@ impl Recipient {
             chosen_by: by,
         }
     }
-}
-
-/// A model service, for `role`: at the server it is reached at when that
-/// is not its provider's own.
-pub(super) fn model(service: &ModelService, role: &str) -> Recipient {
-    let (name, place) = match (service.provider.as_str(), &service.server_host) {
-        (_, Some(host)) => (
-            format!("Serveur de modèles désigné par l’exploitant ({host})"),
-            Place::OperatorServer,
-        ),
-        ("anthropic", None) => ("Anthropic".into(), Place::OutsideEuropeanUnion),
-        ("openai", None) => ("OpenAI".into(), Place::OutsideEuropeanUnion),
-        ("openrouter", None) => (
-            "OpenRouter, et le fournisseur du modèle vers lequel il route".into(),
-            Place::OutsideEuropeanUnion,
-        ),
-        ("gemini", None) => ("Google (Gemini)".into(), Place::OutsideEuropeanUnion),
-        ("mistral", None) => ("Mistral AI".into(), Place::EuropeanUnion),
-        (other, None) => (format!("Fournisseur « {other} »"), Place::Unknown),
-    };
-    Recipient::new(name, role, place, service.chosen_by)
-}
-
-/// TypeSafe's Jev, for `role` (ADR-213): on the company's key.
-pub(super) fn jev(role: &str) -> Recipient {
-    Recipient::new(
-        "TypeSafe (Jev)",
-        role,
-        Place::OutsideEuropeanUnion,
-        ChosenBy::Company,
-    )
 }
 
 /// The service a connector's tools reach, if its data leaves the platform.
@@ -142,11 +116,12 @@ pub(super) fn connector(fact: &ConnectorFact) -> Option<Recipient> {
     };
     Some(match fact.kind {
         ConnectorKind::Demo => return None,
+        // Written by the operator of a private deployment alone (ADR-025).
         ConnectorKind::McpProcess => Recipient::new(
-            "Serveur MCP lancé par la plateforme",
+            "Serveur MCP installé par l’exploitant, lancé par la plateforme",
             role,
             Place::Operator,
-            ChosenBy::Company,
+            ChosenBy::Operator,
         ),
         ConnectorKind::Mcp => declared("Serveur MCP"),
         ConnectorKind::Rest => declared("API REST"),

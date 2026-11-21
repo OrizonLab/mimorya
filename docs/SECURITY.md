@@ -1010,7 +1010,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   d'e-mails par le sien), où chacun se tient, ce que la plateforme en sait seulement, les
   durées que la purge applique et les mesures de sécurité. Jamais une clé, un jeton ni une adresse d'e-mail ; les réglages d'une autre
   entreprise n'y sont jamais lus. L'entreprise complète ce qu'elle seule sait : son
-  délégué, la base légale de chaque traitement, les garanties de chaque transfert.
+  délégué, la base légale de chaque traitement, les garanties de chaque transfert. Son
+  onglet de l'administration le télécharge en CSV (ADR-218), chaque cellule qu'un tableur
+  lirait comme une formule gardée en texte.
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.
   - **TypeSafe AI** (Jev, service de décision, ADR-213) : sous-traitant **hors de l'Union

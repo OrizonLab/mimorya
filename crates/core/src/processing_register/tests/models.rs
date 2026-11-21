@@ -17,7 +17,7 @@ fn models_are_named_with_where_they_stand_and_who_chose_them() {
         names(assistance),
         [
             "Anthropic",
-            "Serveur de modèles désigné par l’exploitant (modeles.interne)"
+            "Serveur de modèles désigné par l’exploitant (modeles.interne), API Ollama"
         ]
     );
     assert_eq!(assistance.recipients[0].place, Place::OutsideEuropeanUnion);
