@@ -13,6 +13,19 @@ const FOUND: Record<AuditAnchorFound, string> = {
  * oldest places (ADR-198). */
 const HOLDS: readonly AuditAnchorFound[] = ['held', 'purged'];
 
+/** Where the chain begins (ADR-198, ADR-219): at its first place, or after
+ * the entries five years old that retention deleted. */
+function start(report: AuditChainVerification): string {
+  if (report.firstPlace <= 1 && report.purged === 0) {
+    return 'La chaîne commence à sa première place : aucune entrée n’en a encore été supprimée.';
+  }
+  return (
+    `La chaîne commence à la place n° ${report.firstPlace} : ${report.purged} entrée(s) de ` +
+    'plus de cinq ans en ont été supprimée(s) par la rétention, le sceau de la dernière ' +
+    'gardé pour vérifier la suite.'
+  );
+}
+
 function told(at: AuditChainBreak): string {
   switch (at.kind) {
     case 'missing':
@@ -62,6 +75,7 @@ export function ChainReport({ report }: { report: AuditChainVerification }) {
         </p>
       )}
       {!report.last && <p>Aucune entrée n’est encore scellée.</p>}
+      <p>{start(report)}</p>
       {report.broken > 0 && (
         <div>
           <p className="text-danger">{report.broken} rupture(s) :</p>

@@ -3,8 +3,12 @@
 // at start, and keeps the anchor shown; verified again with it and with the
 // same place under another seal, the first holds and the second does not, and
 // no anchor to keep is then offered.
-// The log traces both verifications, read again after reloading. The rules
-// themselves are tested on the API (`crates/api/tests/audit_chain*.rs`).
+// The log traces both verifications, read again after reloading. Where the
+// chain begins is said: at its first place here; after the places that
+// retention deleted on a stand-in answer of the API (ADR-219). The rules
+// themselves are tested on the API (`crates/api/tests/audit_chain*.rs`,
+// `audit_retention*.rs`).
+import type { AuditChainVerification } from '../lib/api/contract';
 import { openAdmin } from './support/admin';
 import { expect, noError, test } from './support/fixtures';
 
@@ -16,6 +20,8 @@ test('an administrator verifies the audit chain against the anchor they kept', a
   const report = page.getByRole('status', { name: 'Résultat de la vérification' });
   await verify.click();
   await expect(report.getByText('Journal intact')).toBeVisible();
+  // Nothing five years old yet: the chain begins at its first place.
+  await expect(report.getByText(/^La chaîne commence à sa première place/)).toBeVisible();
   await noError(page);
   const anchor = ((await report.getByLabel('Ancre à conserver').textContent()) ?? '').trim();
   expect(anchor).toMatch(/^[0-9a-f-]{36}:[1-9][0-9]*:[0-9a-f]{64}$/);
@@ -44,5 +50,42 @@ test('an administrator verifies the audit chain against the anchor they kept', a
   await expect(
     traced.filter({ hasText: 'Échec' }).filter({ hasText: 'Une ancre n’est plus tenue' }).first(),
   ).toBeVisible();
+  await noError(page);
+});
+
+// The end-to-end server keeps no entry five years old: the API's answer
+// stands in for a chain whose oldest places retention deleted (ADR-198).
+test('the verification says where a purged chain begins', async ({ page }) => {
+  const seal = 'a'.repeat(64);
+  const answer: AuditChainVerification = {
+    holds: true,
+    verified: 30,
+    unsealed: 0,
+    last: {
+      place: 1230,
+      seal,
+      anchor: `${'0'.repeat(8)}-0000-0000-0000-${'0'.repeat(12)}:1230:${seal}`,
+    },
+    firstPlace: 1201,
+    purged: 1200,
+    broken: 0,
+    breaks: [],
+    anchors: [{ place: 1100, seal, found: 'purged' }],
+    verifiedAt: '2026-11-21T08:00:00Z',
+  };
+  await page.route('**/api/admin/audit/verifications', (route) => route.fulfill({ json: answer }));
+  await openAdmin(page, TAB);
+  await page.getByRole('button', { name: 'Vérifier le journal' }).click();
+  const report = page.getByRole('status', { name: 'Résultat de la vérification' });
+  await expect(report.getByText('Journal intact')).toBeVisible();
+  await expect(
+    report.getByText(
+      'La chaîne commence à la place n° 1201 : 1200 entrée(s) de plus de cinq ans en ont été ' +
+        'supprimée(s) par la rétention, le sceau de la dernière gardé pour vérifier la suite.',
+    ),
+  ).toBeVisible();
+  await expect(report.getByRole('listitem')).toHaveText([
+    'Ancre de la place 1100 : avant le début de la chaîne : supprimée avec les entrées de plus de cinq ans.',
+  ]);
   await noError(page);
 });

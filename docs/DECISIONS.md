@@ -16553,3 +16553,30 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       « Connexion », qui manquait à sa liste ;
     - `crates/core/src/processing_register/tests/` : le serveur MCP de l'exploitant, l'API
       d'un serveur de modèles, les durées précisées.
+
+## ADR-219 — Début du journal d'audit montré dans son onglet (lot 72a)
+
+- **Statut** : accepté (2026-11-21) · complète ADR-179 et ADR-198.
+- **Contexte** : la rétention supprime les places du journal d'audit de plus de cinq ans,
+  un préfixe de la chaîne, et garde son début scellé (ADR-198). La vérification à la
+  demande le lit déjà (`firstPlace`, `purged`, ADR-179) ; l'onglet « Journal d'audit » ne
+  le disait pas, si bien qu'un administrateur voyant sa chaîne commencer après la
+  place 1 n'en avait pas l'explication.
+- **Décision** :
+  - **le rapport de vérification dit où la chaîne commence** : à sa première place, sans
+    rien de supprimé ; ou à la place n° N, après les entrées de plus de cinq ans que la
+    rétention a supprimées, leur nombre dit, le sceau de la dernière gardé pour vérifier
+    la suite. Une ancre d'avant ce début reste dite partie avec elles ;
+  - **rien de nouveau côté serveur** : l'API rendait déjà ces valeurs, vérifiées par
+    `crates/api/tests/audit_retention*.rs`.
+- **Conséquences** :
+  - le serveur de bout en bout ne garde aucune entrée de cinq ans : le parcours d'une
+    chaîne purgée remplace la réponse de l'API, comme d'autres parcours le font pour un
+    état que ce serveur n'a pas ;
+  - suites de l'audit de la PR #290 : la marque d'ordre écrite en échappement dans le
+    parcours du registre ; la date du nom du fichier du registre construite de ses
+    parties (année, mois, jour), quel que soit le motif d'une locale ;
+  - tests :
+    - `apps/web/e2e/audit-chain.spec.ts` : la chaîne de l'entreprise de démonstration
+      commence à sa première place ; sur une réponse remplacée, une chaîne purgée dit sa
+      place de début, le nombre d'entrées supprimées et l'ancre partie avec elles.
