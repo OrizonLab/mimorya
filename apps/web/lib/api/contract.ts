@@ -2836,6 +2836,27 @@ condition: Record<string, unknown>, enabled: boolean,
 editable: boolean, updatedAt: string, };
 
 /**
+ * `GET /admin/processing-register`.
+ */
+export type ProcessingRegisterView = {
+/**
+ * The controller: the company's name.
+ */
+controller: string,
+/**
+ * When it was drawn (RFC 3339): it states the settings of that moment.
+ */
+drawnAt: string, activities: Array<RegisterActivity>,
+/**
+ * A general description of the security measures.
+ */
+measures: Array<string>,
+/**
+ * What the company, controller, completes itself.
+ */
+toComplete: Array<string>, };
+
+/**
  * An administrator who proposed or decided.
  */
 export type ProposalPerson = { id: string, displayName: string, };
@@ -2855,11 +2876,38 @@ export type ProviderKind = { kind: string, requiresKey: boolean,
 listedEndpoint: boolean, defaultModel: string | null, };
 
 /**
+ * Who chose a recipient.
+ */
+export type RecipientChoiceView = "company" | "operator";
+
+/**
+ * Where a recipient stands, as far as the platform knows.
+ */
+export type RecipientPlaceView = "europeanUnion" | "outsideEuropeanUnion" | "listedByOperator" | "declaredByCompany" | "operator" | "unknown";
+
+/**
  * `POST /account/second-factor/confirmation` and
  * `POST /account/second-factor/recovery-codes`: the recovery codes,
  * shown this once.
  */
 export type RecoveryCodes = { codes: Array<string>, };
+
+export type RegisterActivity = {
+/**
+ * `accounts`, `assistance`, `memory`, `documents`, `connectors`,
+ * `gateways`, `audit` or `usage`.
+ */
+key: string, name: string, purpose: string, subjects: Array<string>, data: Array<string>,
+/**
+ * What it says of sensitive data, if anything.
+ */
+sensitive: string | null, recipients: Array<RegisterRecipient>, retention: Array<string>, notes: Array<string>, };
+
+export type RegisterRecipient = { name: string,
+/**
+ * What it receives the data for.
+ */
+role: string, place: RecipientPlaceView, placeLabel: string, chosenBy: RecipientChoiceView, chosenByLabel: string, };
 
 /**
  * `POST /auth/password-reset/link`: the account whose password is reset.

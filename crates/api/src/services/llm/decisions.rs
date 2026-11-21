@@ -175,6 +175,13 @@ impl LlmService {
         })
     }
 
+    /// Whether the company's decisions go to Jev now: chosen, opened by the
+    /// operator and its key stored (the record of processing activities,
+    /// ADR-217).
+    pub async fn jev_opens(&self, tenant_id: Uuid) -> anyhow::Result<bool> {
+        Ok(matches!(self.chosen(tenant_id).await?, Chosen::Jev(Ok(_))))
+    }
+
     fn decisions_of(
         &self,
         tenant_id: Uuid,

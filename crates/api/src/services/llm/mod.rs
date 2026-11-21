@@ -164,6 +164,14 @@ impl LlmService {
         self.platform.as_ref()
     }
 
+    /// The kind of the operator's model and its endpoint, if it set one:
+    /// where the record of processing activities says the data of the
+    /// companies it supplies go (ADR-217). Never its key.
+    pub fn platform_endpoint(&self) -> Option<(&str, Option<&str>)> {
+        let config = self.platform_config.as_ref()?;
+        Some((config.kind.as_str(), config.base_url.as_deref()))
+    }
+
     pub fn secrets(&self) -> &SecretStore {
         &self.secrets
     }

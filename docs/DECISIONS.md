@@ -16366,3 +16366,97 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     exploitant les vérifie, et mesure ses durées ;
   - un changement des scripts de sauvegarde ou de restauration met le plan à jour dans la
     même contribution.
+
+## ADR-217 — Registre des traitements tiré des réglages de chaque entreprise (lot 71a)
+
+- **Statut** : accepté (2026-11-21) · complète ADR-185 à ADR-198 (rétention, export,
+  effacement) et ADR-213 (sous-traitant hors de l'Union européenne).
+- **Contexte** : l'entreprise cliente est responsable des traitements qu'elle fait par la
+  plateforme ; l'exploitant en est le sous-traitant. L'article 30 du RGPD oblige l'une à
+  tenir le registre de ses traitements, l'autre celui des traitements qu'il fait pour
+  chacune. Ce que la plateforme traite pour une entreprise dépend de ses réglages : son
+  modèle (le sien ou celui de l'exploitant, ADR-208), son modèle de contrôle, ses
+  embeddings, son service de décision (Jev de TypeSafe, ADR-213), ses connecteurs, ses
+  passerelles, ses fournisseurs d'identité, SCIM, l'export de son journal, ses durées de
+  rétention. Un registre écrit à la main par l'entreprise prend vite du retard sur eux.
+- **Décision** :
+  - **un registre tiré des réglages à chaque lecture, jamais enregistré** :
+    `crates/core/src/processing_register/` le dessine à partir des faits que lit l'API
+    (`services/admin/processing_register.rs`), dans une transaction de l'entreprise ; il
+    ne peut donc pas retarder sur eux, et rien n'est à purger ;
+  - **les traitements** : comptes et connexion, assistance par l'agent, mémoire, documents
+    déposés, connecteurs et comptes reliés (quand un connecteur est activé), passerelles
+    de conversation (quand une passerelle est activée), journal d'audit, consommation.
+    Chacun dit sa finalité, les personnes et les données qu'il concerne, ses
+    destinataires et sa conservation, en textes fixes ; les destinataires et les durées
+    sont ceux de l'entreprise ;
+  - **un destinataire est nommé là où vont ses données maintenant** :
+    - le modèle de ses runs tel qu'il se résout : le sien, celui de l'exploitant sur sa
+      clé quand sa formule le fournit (« fourni par l'exploitant », son sous-traitant),
+      rien pour un choix inutilisable ;
+    - un modèle de contrôle choisi à part, un modèle d'embeddings prêt et toujours celui
+      qui est enregistré ;
+    - TypeSafe (Jev) seulement quand Jev est choisi, ouvert par l'exploitant, sa clé
+      enregistrée et qu'un usage livré n'est pas éteint, dans les traitements que servent
+      ces usages (demande, mémoire, document, action, contenu externe) ;
+    - chaque connecteur activé par l'hôte que ses outils atteignent tel qu'il est déclaré
+      (serveur MCP, API REST, serveurs de messagerie), un serveur MCP que la plateforme
+      lance elle-même comme tel, Microsoft 365, Google Workspace, et le modèle des runs,
+      qui reçoit ce qu'ils lisent ; le connecteur de démonstration n'a aucun destinataire,
+      une note dit ses données fictives ;
+    - chaque passerelle activée (Slack, Telegram, Teams), chaque fournisseur d'identité
+      activé (par l'hôte de son émetteur pour OpenID Connect et SAML), le fournisseur
+      d'identité quand un jeton SCIM existe, le SIEM quand un jeton d'export existe, le
+      relais d'e-mails de l'exploitant quand la plateforme en envoie ;
+    - jamais une clé, un jeton ni une adresse d'e-mail ;
+  - **où se tient un destinataire, ce que la plateforme en sait** : établi dans l'Union
+    européenne (Mistral AI), groupe établi hors de l'Union (Anthropic, OpenAI,
+    OpenRouter, Google, Microsoft, Slack, Telegram, TypeSafe : un transfert possible, à
+    encadrer), serveur privé listé par l'exploitant, service déclaré par l'entreprise,
+    infrastructure de l'exploitant, ou fournisseur inconnu. La plateforme ne dit pas où le
+    contrat de l'entreprise fait traiter les données : c'est à elle de le compléter ;
+  - **les durées sont celles que la purge applique**, lues comme l'écran de la rétention
+    (`RetentionDuration::of`, ADR-195) ; un raccourcissement qui attend est dit avec le
+    jour où il s'appliquera. Une conversation encore active est dite gardée entière : la
+    purge message par message n'existe pas encore ;
+  - **les mesures de sécurité**, en description générale, dont le second facteur que
+    l'entreprise exige (ADR-201) et sa connexion par un fournisseur d'identité ;
+  - **ce que l'entreprise complète elle-même**, listé : coordonnées du responsable et de
+    son délégué à la protection des données, base légale de chaque traitement, garanties
+    de chaque transfert, information des personnes, analyse d'impact, conservation de ce
+    qu'elle exporte ;
+  - **une permission à part, `compliance:read`** (« Consulter le registre des
+    traitements »), non délégable, sur toute l'entreprise seulement, donnée au rôle
+    d'administrateur technique, y compris dans les entreprises déjà là (migration 0099) : un délégué à la protection des données lit le registre sans rien administrer,
+    et qui règle le reste ne le lit pas sans elle. Elle compte parmi les permissions qui
+    font un administrateur, pour le second facteur exigé (ADR-201) ;
+  - **`GET /api/admin/processing-register`** le rend, avec l'instant où il a été tiré.
+- **Conséquences** :
+  - le registre est à jour à chaque lecture ; ce qui n'était plus vrai hier n'y est plus ;
+  - l'exploitant tient le sien, par entreprise, de la même source ; une commande qui le
+    lui donne, avec les coordonnées de chaque responsable, reste à venir ;
+  - son écran dans l'administration et son téléchargement viennent au lot 71b ;
+  - tests :
+    - `crates/core/src/processing_register/tests.rs` (unitaires) : les traitements d'une
+      entreprise sans service, sans destinataire, aux durées de la plateforme ; chaque
+      modèle nommé avec sa place et qui l'a choisi, celui de l'exploitant comme son
+      sous-traitant, un fournisseur inconnu dit tel ; Jev dans les seuls traitements de
+      ses usages ; chaque connecteur par ce que ses outils atteignent, la démonstration en
+      note ; passerelles, fournisseurs d'identité, SCIM, SIEM et relais d'e-mails ; un
+      raccourcissement avec son jour ; le second facteur exigé ;
+    - `services/admin/processing_register.rs` (unitaires) : les usages qui servent Jev,
+      éteints, non livrés ou illisibles exclus ; l'hôte d'une adresse listée ;
+    - `crates/db/tests/processing_register_roles.rs` : le rôle d'administrateur technique
+      des entreprises déjà là gagne `compliance:read`, ni un rôle de l'entreprise de même
+      clé ni les autres ; un second passage ne change rien ;
+    - `crates/api/tests/processing_register.rs` : le registre suit les réglages (modèle de
+      l'exploitant, puis le sien, contrôle et embeddings à l'adresse listée, passerelle,
+      fournisseur d'identité, SCIM, SIEM, raccourcissement, second facteur), sans aucune
+      clé ; TypeSafe nommé seulement quand un usage lui envoie quelque chose, jamais
+      appelé pour le dire ; les réglages d'une entreprise n'apparaissent jamais dans le
+      registre d'une autre ;
+    - `crates/api/tests/processing_register_access.rs` : seul qui détient
+      `compliance:read` sur toute l'entreprise le lit, sans rien d'autre de
+      l'administration ; ni qui règle les réglages, l'audit, les connecteurs et la
+      rétention, ni un membre, ni un administrateur d'une équipe ; la permission n'est
+      jamais accordée sur une unité.

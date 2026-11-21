@@ -999,6 +999,17 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   que la base ne peut pas dire d'une place supprimée part avec elle, mais seules partent
   des places dont le sceau tenait. L'entreprise trouve chaque purge dans son journal
   (`audit.purged`), scellée à son tour.
+- **Registre des traitements** (article 30, ADR-217) : tiré des réglages de l'entreprise à
+  chaque lecture, jamais enregistré, par qui détient `compliance:read` (non délégable,
+  sur toute l'entreprise seulement ; un délégué à la protection des données le lit sans
+  rien administrer) : chaque traitement, sa finalité, les personnes et les données
+  concernées, ses destinataires là où vont ses données maintenant (le modèle de l'exploitant
+  nommé comme son sous-traitant, TypeSafe seulement quand un usage lui envoie quelque
+  chose, chaque connecteur par l'hôte qu'il atteint), où chacun se tient, ce que la
+  plateforme en sait seulement, les durées que la purge applique et les mesures de
+  sécurité. Jamais une clé, un jeton ni une adresse d'e-mail ; les réglages d'une autre
+  entreprise n'y sont jamais lus. L'entreprise complète ce qu'elle seule sait : son
+  délégué, la base légale de chaque traitement, les garanties de chaque transfert.
 - **Sous-traitants** : choix du fournisseur LLM et de sa région par entreprise ;
   possibilité de modèles locaux ; registre des sous-traitants et DPA.
   - **TypeSafe AI** (Jev, service de décision, ADR-213) : sous-traitant **hors de l'Union

@@ -51,7 +51,7 @@ impl Requirement {
 
 /// The permissions that make an account one of the company's
 /// administrators.
-pub const ADMINISTRATION_PERMISSIONS: [&str; 12] = [
+pub const ADMINISTRATION_PERMISSIONS: [&str; 13] = [
     "org:manage",
     "user:manage",
     "user:erase",
@@ -64,6 +64,7 @@ pub const ADMINISTRATION_PERMISSIONS: [&str; 12] = [
     "audit:export",
     "settings:manage",
     "retention:manage",
+    "compliance:read",
 ];
 
 /// Whether `holds` holds one of `ADMINISTRATION_PERMISSIONS`.

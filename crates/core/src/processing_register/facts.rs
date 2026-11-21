@@ -1,0 +1,134 @@
+//! What the register is drawn from: the company's settings as they stand
+//! when it is asked for, read by the API. Nothing here is stored.
+
+use chrono::{DateTime, Utc};
+
+use crate::identity_providers::ProviderKind;
+use crate::retention::RetentionKind;
+use crate::second_factor::Requirement;
+
+/// Who chose a service the company's data goes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChosenBy {
+    /// The company: its own key, application, bot or server.
+    Company,
+    /// The operator, who supplies it (its model on its key, ADR-208; its
+    /// relay for e-mails): one of its own processors.
+    Operator,
+}
+
+/// A model service: of the conversations, of the review of their answers,
+/// or of embeddings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelService {
+    /// Its kind as the platform names it (`anthropic`, `mistral`,
+    /// `ollama`…).
+    pub provider: String,
+    /// The host of the endpoint, for a kind served at an endpoint the
+    /// operator lists (`ollama`, `openai_compatible`).
+    pub listed_host: Option<String>,
+    pub chosen_by: ChosenBy,
+}
+
+/// What a connector of the company is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectorKind {
+    /// Fictitious data, inside the platform.
+    Demo,
+    /// An MCP server reached over HTTP.
+    Mcp,
+    /// An MCP server the platform starts itself, as a process.
+    McpProcess,
+    Rest,
+    Microsoft365,
+    GoogleWorkspace,
+    StandardMail,
+    /// A type this build does not describe.
+    Other,
+}
+
+/// An enabled connector of the company.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectorFact {
+    pub kind: ConnectorKind,
+    pub name: String,
+    /// The hosts its tools reach, as declared (none for an MCP server the
+    /// platform starts itself, nor an address it cannot read).
+    pub hosts: Vec<String>,
+}
+
+/// An enabled conversation gateway of the company.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GatewayKind {
+    Slack,
+    Telegram,
+    Teams,
+}
+
+/// An enabled identity provider of the company.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityFact {
+    pub kind: ProviderKind,
+    pub name: String,
+    /// The host of its issuer, when it is an address.
+    pub host: Option<String>,
+}
+
+/// A duration retention applies, as the purge applies it now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetentionFact {
+    pub kind: RetentionKind,
+    pub in_effect: i32,
+    /// The company's choice, or the platform's without one.
+    pub chosen: i32,
+    /// When a shortening that waits applies.
+    pub shortening_at: Option<DateTime<Utc>>,
+}
+
+/// The activities a decision of TypeSafe's Jev may serve (ADR-213): those
+/// of the usages the company set, Jev chosen and opened by the operator.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct JevUses {
+    /// Choosing a run's model or its skills, from the request (D1, D2).
+    pub requests: bool,
+    /// Sensitive data in a memory or a lesson (D3).
+    pub memories: bool,
+    /// A deposited document's type and confidentiality (D4).
+    pub documents: bool,
+    /// An action's parameters, before it goes or is put to validation (D5).
+    pub actions: bool,
+    /// The beginning of an external content a tool brings (D6), or an
+    /// incoming e-mail to sort.
+    pub external_contents: bool,
+}
+
+impl JevUses {
+    pub fn any(self) -> bool {
+        self.requests || self.memories || self.documents || self.actions || self.external_contents
+    }
+}
+
+/// The company's settings the register is drawn from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegisterFacts {
+    /// The company's name: the controller.
+    pub company: String,
+    /// The model of its runs, if they have one.
+    pub runs_model: Option<ModelService>,
+    /// The model it chose apart to review answers (ADR-108).
+    pub review_model: Option<ModelService>,
+    /// Its embedding model (ADR-074).
+    pub embeddings: Option<ModelService>,
+    pub jev: JevUses,
+    pub connectors: Vec<ConnectorFact>,
+    pub gateways: Vec<GatewayKind>,
+    pub identity_providers: Vec<IdentityFact>,
+    /// Its identity provider holds a SCIM token (ADR-183).
+    pub scim: bool,
+    /// Its SIEM holds an export token of the audit log (ADR-181).
+    pub audit_export: bool,
+    /// The platform sends e-mails (a relay is configured).
+    pub mails: bool,
+    pub retention: Vec<RetentionFact>,
+    pub second_factor: Requirement,
+}

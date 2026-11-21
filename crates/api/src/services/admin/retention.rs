@@ -42,7 +42,9 @@ pub struct RetentionDuration {
 }
 
 impl RetentionDuration {
-    fn of(kind: RetentionKind, stored: &[StoredRetention]) -> Self {
+    /// What the purge applies of `kind`, the platform's without the
+    /// company's own; the register reads it alike (ADR-217).
+    pub(super) fn of(kind: RetentionKind, stored: &[StoredRetention]) -> Self {
         match stored.iter().find(|row| row.kind == kind.key()) {
             Some(row) => Self {
                 kind,
