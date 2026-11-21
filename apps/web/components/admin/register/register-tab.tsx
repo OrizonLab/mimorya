@@ -27,8 +27,10 @@ function Register({ data }: { data: ProcessingRegisterView }) {
   return (
     <div className="flex flex-col gap-4">
       <Card className="p-4">
-        <section aria-label="Registre des traitements" className="flex flex-col gap-3">
-          <p className="font-medium">Registre des traitements</p>
+        <section aria-labelledby="register-title" className="flex flex-col gap-3">
+          <h2 id="register-title" className="font-medium">
+            Registre des traitements
+          </h2>
           <p className="text-sm">
             Responsable du traitement : <span className="font-semibold">{data.controller}</span>
           </p>

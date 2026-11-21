@@ -3,24 +3,24 @@
 
 use super::{Activity, ActivityKind, COLLABORATORS};
 use crate::processing_register::facts::{ConnectorKind, RegisterFacts};
-use crate::processing_register::recipients;
+use crate::processing_register::{model_recipients, recipients};
 
 pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
     let mut recipients = Vec::new();
     if let Some(model) = &facts.runs_model {
-        recipients.push(recipients::model(
+        recipients.push(model_recipients::model(
             model,
             "Modèle des conversations : contenus lus et actions préparées",
         ));
     }
     recipients.extend(facts.connectors.iter().filter_map(recipients::connector));
     if facts.jev && facts.decisions.actions {
-        recipients.push(recipients::jev(
+        recipients.push(model_recipients::jev(
             "Service de décision : action et ses paramètres, avant qu’elle parte",
         ));
     }
     if facts.jev && facts.decisions.external_contents {
-        recipients.push(recipients::jev(
+        recipients.push(model_recipients::jev(
             "Service de décision : début des contenus rapportés par un outil, pour y chercher \
              des instructions",
         ));
@@ -64,11 +64,13 @@ pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
         ),
         recipients,
         retention: vec![
-            "Comptes reliés à Microsoft 365 ou Google : jusqu’à leur retrait, la suppression \
-             du connecteur ou la désactivation du compte"
+            "Comptes reliés à Microsoft 365 ou Google : jusqu’à leur retrait, un \
+             renouvellement refusé par le fournisseur, la suppression du connecteur ou la \
+             désactivation du compte"
                 .into(),
-            "Comptes de messagerie : jusqu’à leur retrait, le changement d’hôte d’un serveur, \
-             la suppression du connecteur ou la désactivation du compte"
+            "Comptes de messagerie : jusqu’à leur retrait, leur refus par le serveur, le \
+             changement d’hôte d’un serveur, la suppression du connecteur ou la désactivation \
+             du compte"
                 .into(),
             "Autorisations de chacun des serveurs MCP : jusqu’à leur retrait, un \
              renouvellement refusé, un changement de l’adresse ou de la déclaration du \
@@ -76,8 +78,8 @@ pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
              du compte"
                 .into(),
             "Autorisations de l’entreprise : jusqu’à leur retrait ou leur remplacement, un \
-             changement de l’adresse ou de la déclaration du serveur ou de qui l’autorise, \
-             ou la suppression du connecteur"
+             renouvellement refusé, un changement de l’adresse ou de la déclaration du serveur \
+             ou de qui l’autorise, ou la suppression du connecteur"
                 .into(),
             "Contenus lus : avec la conversation qui les a demandés".into(),
         ],
@@ -104,8 +106,8 @@ pub(super) fn gateways(facts: &RegisterFacts) -> Activity {
             .map(recipients::gateway)
             .collect(),
         retention: vec![
-            "Identités reliées : jusqu’à leur retrait, celui de la passerelle ou la \
-             désactivation du compte"
+            "Identités reliées : jusqu’à leur retrait, celui de la passerelle, la désactivation \
+             du compte ou, dans Slack, quand Slack ne dit plus qu’elle est la personne"
                 .into(),
             "Messages : avec la conversation qu’ils tiennent".into(),
         ],

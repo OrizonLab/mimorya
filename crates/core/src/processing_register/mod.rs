@@ -10,6 +10,7 @@
 mod activities;
 mod facts;
 mod measures;
+mod model_recipients;
 mod recipients;
 mod retention;
 

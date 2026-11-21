@@ -5,8 +5,8 @@
 
 use super::{Activity, ActivityKind, CITED, COLLABORATORS, TYPED};
 use crate::processing_register::facts::RegisterFacts;
-use crate::processing_register::recipients;
 use crate::processing_register::retention::{conversations, departed, episodes};
+use crate::processing_register::{model_recipients, recipients};
 
 /// The memories' sensitive data, the decision service asked about them.
 const GUARDED: &str = "Les collaborateurs peuvent y écrire des données sensibles (santé, \
@@ -17,20 +17,21 @@ const GUARDED: &str = "Les collaborateurs peuvent y écrire des données sensibl
 pub(super) fn assistance(facts: &RegisterFacts) -> Activity {
     let mut recipients = Vec::new();
     if let Some(model) = &facts.runs_model {
-        recipients.push(recipients::model(model, "Modèle des conversations"));
+        recipients.push(model_recipients::model(model, "Modèle des conversations"));
     }
     if let Some(model) = &facts.review_model {
-        recipients.push(recipients::model(model, "Contrôle des réponses"));
+        recipients.push(model_recipients::model(model, "Contrôle des réponses"));
     }
     if facts.jev && facts.decisions.requests {
-        recipients.push(recipients::jev(
+        recipients.push(model_recipients::jev(
             "Service de décision : choix du modèle et des compétences, sur la demande",
         ));
     }
     if let Some(relay) = &facts.mail_relay {
         recipients.push(recipients::mail_relay(
             relay,
-            "Avis par e-mail : missions terminées, validations à donner, absences à remplacer",
+            "Avis par e-mail : missions terminées, validations à donner, absence déclarée ou \
+             levée par un administrateur",
         ));
     }
     Activity {
@@ -67,16 +68,16 @@ pub(super) fn memory(facts: &RegisterFacts) -> Activity {
         } else {
             "Modèle des conversations : mémoires utiles à une demande"
         };
-        recipients.push(recipients::model(model, role));
+        recipients.push(model_recipients::model(model, role));
     }
     if let Some(model) = &facts.embeddings {
-        recipients.push(recipients::model(
+        recipients.push(model_recipients::model(
             model,
             "Recherche par le sens (embeddings)",
         ));
     }
     if facts.jev && facts.decisions.memories {
-        recipients.push(recipients::jev(
+        recipients.push(model_recipients::jev(
             "Service de décision : données sensibles d’une mémoire ou d’une leçon",
         ));
     }
@@ -115,22 +116,22 @@ pub(super) fn documents(facts: &RegisterFacts) -> Activity {
         } else {
             "Modèle des conversations : passages lus pour une demande"
         };
-        recipients.push(recipients::model(model, role));
+        recipients.push(model_recipients::model(model, role));
     }
     if let Some(model) = &facts.embeddings {
-        recipients.push(recipients::model(
+        recipients.push(model_recipients::model(
             model,
             "Recherche par le sens (embeddings)",
         ));
     }
     if facts.jev && facts.decisions.documents {
-        recipients.push(recipients::jev(
+        recipients.push(model_recipients::jev(
             "Service de décision : type et confidentialité, sur le titre et les trois premières \
              pages",
         ));
     }
     if facts.jev && facts.decisions.external_contents {
-        recipients.push(recipients::jev(
+        recipients.push(model_recipients::jev(
             "Service de décision : début des passages lus pour une demande, pour y chercher des \
              instructions",
         ));

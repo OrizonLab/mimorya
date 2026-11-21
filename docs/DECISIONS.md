@@ -16508,23 +16508,28 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   - **téléchargement en CSV**, fait dans le navigateur à partir de ce que l'API a rendu :
     séparé par des points-virgules, en UTF-8 avec sa marque d'ordre, ce qu'un tableur
     ouvre tel quel ; une ligne par destinataire de chaque traitement, une seule, sans
-    destinataire, pour un traitement qui n'en a pas ; chaque cellule entre guillemets, et
-    celle qu'un tableur lirait comme une formule (le nom d'un connecteur ou d'une
-    entreprise commençant par `=`, `+`, `-`, `@`…) gardée en texte. Les mesures et ce qui
-    est à compléter restent à l'écran : le fichier tient le tableau des traitements ;
+    destinataire, pour un traitement qui n'en a pas, chacune nommant le responsable du
+    traitement (article 30, 1, a) ; le fichier daté du jour où le registre a été tiré,
+    à Paris. Chaque cellule est entre guillemets, et celle qu'un tableur lirait comme une
+    formule (commençant par `=`, `+`, `-`, `@`, une tabulation ou un retour) est gardée
+    en texte : une défense en profondeur, aucun texte de la plateforme ne commençant
+    ainsi, mais le nom d'une entreprise le peut. Les mesures et ce qui est à compléter
+    restent à l'écran : le fichier tient le tableau des traitements ;
   - **précisions des textes** (second audit de la PR #289) :
     - un serveur MCP lancé par la plateforme (stdio) est un programme que seul
       l'exploitant installe (ADR-025) : nommé ainsi, et « fourni par l'exploitant » ;
     - le modèle joint à l'adresse d'un serveur désigné par l'exploitant garde dans son nom
       l'API qu'il parle (Anthropic, OpenAI, Ollama…), une passerelle pouvant le relayer
       ailleurs ;
-    - les durées des comptes reliés, des comptes de messagerie (aussi au changement
-      d'hôte d'un serveur), des autorisations de chacun (aussi à un renouvellement
-      refusé, un changement d'adresse ou de déclaration du serveur ou de qui l'autorise)
-      et des identités des passerelles (aussi au retrait de la passerelle) ;
+    - les durées des comptes reliés (aussi à un renouvellement refusé par le
+      fournisseur), des comptes de messagerie (aussi à leur refus par le serveur et au
+      changement d'hôte d'un serveur), des autorisations de chacun et de l'entreprise
+      (aussi à un renouvellement refusé, un changement d'adresse ou de déclaration du
+      serveur ou de qui l'autorise) et des identités des passerelles (aussi au retrait de
+      la passerelle et, dans Slack, quand Slack ne dit plus qu'elle est la personne) ;
     - le relais d'e-mails porte aussi les avis aux administrateurs (fourniture du
-      modèle, propositions de compétences et de politiques) et ceux d'une absence à
-      remplacer.
+      modèle, propositions de compétences et de politiques) et l'avis d'une absence
+      déclarée ou levée par un administrateur.
 - **Conséquences** :
   - un délégué à la protection des données lit et télécharge le registre sans rien
     administrer ; ce qu'il complète reste dans son propre outil ;
@@ -16535,9 +16540,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `apps/web/e2e/processing-register.spec.ts` : l'administrateur lit le registre de
       l'entreprise de démonstration (responsable, traitements, durées, connecteur de
       démonstration, mesures, à compléter) et le télécharge, le fichier daté, ouvert par
-      sa marque d'ordre et ses colonnes, une ligne par traitement au moins ;
+      sa marque d'ordre et ses colonnes, l'assistance et le journal d'audit parmi ses
+      lignes ; d'une réponse de l'API remplacée, chaque ligne exacte du fichier : chaque
+      cellule commençant comme une formule gardée en texte, les guillemets doublés, une
+      ligne pour un traitement sans destinataire, deux pour un traitement à deux
+      destinataires, le fichier daté du jour de Paris ;
     - `apps/web/e2e/processing-register-access.spec.ts` : un compte qui détient
-      `compliance:read` seul ouvre le registre et aucun autre écran d'administration ;
-      avec `retention:manage` seul, jamais le registre ;
+      `compliance:read` seul ouvre le registre, sans « Modèle d'IA », « Conservation des
+      données », « Journal d'audit » ni « Connecteurs » (son rôle de base lit
+      l'organisation et ses comptes) ; avec `retention:manage` seul, jamais le registre ;
+    - `apps/web/e2e/navigation.spec.ts` : l'onglet s'ouvre sans erreur, comme
+      « Connexion », qui manquait à sa liste ;
     - `crates/core/src/processing_register/tests/` : le serveur MCP de l'exploitant, l'API
       d'un serveur de modèles, les durées précisées.
