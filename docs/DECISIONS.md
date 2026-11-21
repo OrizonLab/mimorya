@@ -16321,7 +16321,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       propriétaire et droits, que le placement rétablit. Leur durée, que l'exploitant fixe,
       borne aussi ce que la copie garde des données supprimées. L'instantané prend le
       verrou des sauvegardes avant celui de l'archive, hors de la grille des cinq minutes,
-      et chaque transfert est borné (`--timeout`) ;
+      et un transfert bloqué est abandonné (`--timeout`). Les dossiers de la copie sont à
+      `root` seul : un exécutable qu'un hôte compromis y ferait entrer n'est atteint par
+      aucun autre compte ;
     - avec `MIMORYA_TLS=internal`, une copie de la racine locale de Caddy ;
   - **procédures** : erreur dans les données, perte de l'hôte (avec ou sans archive),
     base abîmée sur un hôte intact, intrusion, identité `age` perdue, archivage en échec.
@@ -16335,9 +16337,12 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       encore tourner, et un hôte éteint redémarre sa pile quand on le rallume : il est
       coupé du réseau par son hébergeur avant que la pile restaurée démarre entière, et
       reconnecté seulement sa pile arrêtée. Après une intrusion, la copie et ses
-      instantanés sont suspendus sur l'hôte de secours le temps de la reprise. Sur l'hôte de secours, l'archive est placée dans un
-      dossier vidé, et retirée après un exercice : sinon les fichiers d'une restauration
-      précédente se mêleraient à ceux de la suivante ;
+      instantanés sont suspendus sur l'hôte de secours le temps de la reprise. Sur l'hôte
+      de secours, l'archive est placée dans un dossier vidé, et retirée après un exercice
+      : sinon les fichiers d'une restauration précédente se mêleraient à ceux de la
+      suivante. La commande qui jette une pile restaurée ne tourne que sur un hôte marqué
+      du rôle de secours (`/etc/mimorya-secours`), pas sur un nom d'hôte, que la bascule
+      rend trompeur ;
     - après une intrusion, les clés TLS sont refaites (certificat public révoqué ; racine
       `internal` nouvelle, jamais remise depuis la copie) avec les autres secrets ;
   - **après une reprise** : archivage vérifié, sauvegarde de base aussitôt, tâches de la

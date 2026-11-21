@@ -100,7 +100,9 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
       d'abord) admises pour `root`, chacune limitée à la lecture d'un seul dossier par
       `rrsync` (`/usr/bin/rrsync` depuis rsync 3.2.4, qui demande `python3` ; avant, à
       installer depuis `/usr/share/doc/rsync/scripts/`), dans `/root/.ssh/authorized_keys`,
-      `PermitRootLogin forced-commands-only` dans la configuration de `sshd` :
+      `PermitRootLogin forced-commands-only` dans la configuration de `sshd`. Ce réglage
+      refuse toute autre clé `root` : gardez d'abord un compte d'administration (`sudo`)
+      pour vos propres accès.
 
   ```text
   command="rrsync -ro /srv/mimorya/wal-archive/",restrict ssh-ed25519 AAAA… archive@secours
@@ -119,11 +121,15 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
 
 - [ ] Docker, `age`, `rsync`, le dépôt extrait à la version de l'installation,
       `.env.production` et la clé maître à portée.
-- [ ] Les dossiers de la copie et des instantanés, les deux clés SSH, et l'empreinte de
-      l'hôte de production connue :
+- [ ] Le rôle de l'hôte, que vérifient les commandes qui jettent une pile restaurée, à
+      retirer s'il devient la production (§ 5) : `touch /etc/mimorya-secours`.
+- [ ] Les dossiers de la copie et des instantanés, à `root` seul (un fichier exécutable
+      que la copie apporterait n'y est atteint par aucun autre compte), les deux clés SSH,
+      et l'empreinte de l'hôte de production connue :
 
   ```bash
-  mkdir -p /srv/mimorya-copie/wal-archive /srv/mimorya-copie/backups /srv/mimorya-instantanes
+  install -d -m 700 /srv/mimorya-copie /srv/mimorya-instantanes
+  mkdir /srv/mimorya-copie/wal-archive /srv/mimorya-copie/backups
   ssh-keygen -t ed25519 -N '' -f /root/.ssh/archive && ssh-keygen -t ed25519 -N '' -f /root/.ssh/sauvegardes
   ssh-keyscan production >>/root/.ssh/known_hosts   # empreinte à vérifier
   ```
@@ -143,7 +149,7 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
   ```cron
   */5 * * * *  flock -n /run/copie-archive.lock rsync -a --timeout=600 --numeric-ids --no-devices --no-specials --delete --exclude '.*' -e 'ssh -i /root/.ssh/archive' root@production:./ /srv/mimorya-copie/wal-archive/ || votre-alerte "copie de l'archive"
   10 3 * * *   flock /run/copie-sauvegardes.lock rsync -a --timeout=600 --numeric-ids --no-devices --no-specials --delete --exclude '*.partial.*' --exclude '*.probe.*' -e 'ssh -i /root/.ssh/sauvegardes' root@production:./ /srv/mimorya-copie/backups/ || votre-alerte "copie des sauvegardes"
-  52 4 * * *   flock /run/copie-sauvegardes.lock flock /run/copie-archive.lock sh -c 'd=/srv/mimorya-instantanes/$(date +\%F) && cp -al /srv/mimorya-copie "$d" && touch "$d" && find /srv/mimorya-instantanes -mindepth 1 -maxdepth 1 -mtime +90 -exec rm -rf {} +' || votre-alerte "instantané"
+  52 4 * * *   flock /run/copie-sauvegardes.lock flock /run/copie-archive.lock sh -c 'd=/srv/mimorya-instantanes/$(date +\%F) && [ ! -e "$d" ] && cp -al /srv/mimorya-copie "$d" && touch "$d" && find /srv/mimorya-instantanes -mindepth 1 -maxdepth 1 -mtime +90 -exec rm -rf {} +' || votre-alerte "instantané"
   ```
 
 - [ ] Un premier exercice de reprise fait et minuté (§ 6).
@@ -166,12 +172,21 @@ L'identité `age` est apportée sur l'hôte le temps de la restauration, puis re
 
 Sur l'hôte de secours, l'archive se place dans un dossier vidé de ce qu'une restauration
 précédente y a laissé, depuis la copie (la copie de l'archive en pause le temps de le
-faire) ou un instantané. Propriétaire et droits sont rendus à la base, quoi qu'en dise
-la source :
+faire) ou un instantané (`/srv/mimorya-instantanes/<date>/wal-archive/` pour source).
+Propriétaire et droits sont rendus à la base, quoi qu'en dise la source :
 
 ```bash
 flock /run/copie-archive.lock rsync -a --delete --chown=999:999 --chmod=D700,F600 \
   /srv/mimorya-copie/wal-archive/ /srv/mimorya/wal-archive/
+```
+
+Une pile restaurée sur l'hôte de secours se jette, avec l'archive qu'elle a laissée,
+par une commande qui refuse de tourner ailleurs que sur un hôte marqué de ce rôle (§ 3) :
+les chemins sont les mêmes sur l'hôte de production.
+
+```bash
+if [ -e /etc/mimorya-secours ]; then docker compose down -v && rm -rf /srv/mimorya/wal-archive
+else echo "Pas l'hôte de secours (/etc/mimorya-secours absent) : rien n'est jeté" >&2; fi
 ```
 
 Avec `MIMORYA_TLS=internal`, la racine de Caddy gardée au § 3, apportée comme l'identité,
@@ -202,10 +217,7 @@ Des données supprimées ou modifiées par erreur, par une personne, un agent ou
 5. Choisir :
    - **réintégrer** les seules données perdues dans la pile en service, par un export
      ciblé depuis la base restaurée : réservé à qui connaît le schéma, à faire relire.
-     Puis, **sur l'hôte de secours seulement** (les chemins sont les mêmes sur l'hôte de
-     production ; `secours` est ici le nom de l'hôte de secours), jeter la pile restaurée et
-     l'archive qu'elle a laissée :
-     `[ "$(hostname)" = secours ] && docker compose down -v && rm -rf /srv/mimorya/wal-archive` ;
+     Puis jeter la pile restaurée par la commande gardée (voir plus haut) ;
    - **reprendre sur la pile restaurée** : arrêter l'ancienne (`docker compose stop` sur
      son hôte), remettre la racine de Caddy le cas échéant, démarrer la nouvelle
      (`docker compose up -d`), faire pointer le domaine vers elle, et vérifier (§ 5). Ce
@@ -224,7 +236,7 @@ L'hôte est détruit, inaccessible ou son disque perdu :
    de l'hébergeur. Un hôte seulement injoignable peut encore tourner, et un hôte
    seulement éteint redémarre sa pile, connectée, quand on le rallume (ses services
    redémarrent d'eux-mêmes). Ne le reconnecter qu'après avoir arrêté sa pile
-   (`docker compose stop`), isolé ou démarré en mode de secours.
+   (`docker compose stop`), démarré normalement mais isolé.
 2. Sur l'hôte de secours : `.env.production` et la clé maître repris de leur copie ;
    l'archive placée (voir plus haut), depuis la copie ou son dernier instantané.
 3. Rejouer toute l'archive, sans instant :
@@ -334,7 +346,9 @@ Un accès illégitime à l'hôte ou à l'application est suspecté :
       nouvelle ligne temporelle.
 - [ ] Une sauvegarde de base est faite aussitôt (`backup.sh --base`), et un dump.
 - [ ] Les tâches du § 3 tournent pour la pile reprise : sauvegardes, conservation, état
-      de l'archive, et la copie tirée, sur l'hôte qui sert désormais de secours.
+      de l'archive, et la copie tirée, sur l'hôte qui sert désormais de secours. Le
+      marqueur `/etc/mimorya-secours` est retiré de l'hôte devenu la production, et posé
+      sur le nouvel hôte de secours.
 - [ ] Le numéro de ligne temporelle dit par la restauration est noté : une restauration
       ultérieure qui partirait d'une sauvegarde de base antérieure le nomme
       (`MIMORYA_RESTORE_TIMELINE`).
@@ -349,16 +363,15 @@ Un accès illégitime à l'hôte ou à l'application est suspecté :
 Chaque trimestre, et après tout changement de l'installation, sur l'hôte de secours, sans
 rien démarrer d'autre que la base restaurée :
 
-1. Placer l'archive depuis le dernier instantané de la copie (§ 4).
+1. Placer l'archive depuis le dernier instantané de la copie
+   (`/srv/mimorya-instantanes/<date>/wal-archive/`, § 4).
 2. Choisir un instant de la veille et restaurer la plus récente sauvegarde de base
    terminée avant lui (4.1 étape 3), puis démarrer la seule base.
 3. Vérifier les entreprises et leurs dernières données (`psql`), et le journal d'audit
    (`docker compose run --rm --no-deps api mimorya-admin verify-audit`, une commande qui ne
    lance aucune tâche de fond).
-4. Minuter chaque étape du § 2, puis, sur l'hôte de secours, jeter la pile et l'archive
-   qu'elle a laissée
-   (`[ "$(hostname)" = secours ] && docker compose down -v && rm -rf /srv/mimorya/wal-archive`),
-   et retirer l'identité.
+4. Minuter chaque étape du § 2, puis jeter la pile par la commande gardée (§ 4), et
+   retirer l'identité.
 5. Noter le résultat ci-dessous et corriger l'objectif ou la préparation.
 
 | Date | Taille de la base | Durée totale | Écarts constatés | Suite donnée |
