@@ -16752,13 +16752,16 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     l'exemple, en changeant un défaut et en branchant `HTTPS_PROXY` sur le mandataire des
     connecteurs ; `llm::anthropic::provider` pour l'adresse vide.
 - **Complément (suites de la bêta)** : la configuration écrit l'adresse officielle
-  d'Anthropic quand aucune n'est donnée, et le fournisseur Anthropic ne lit plus rien de
-  l'environnement du processus, ni adresse ni clé. Il n'y a plus qu'une lecture, celle de
-  la configuration, où une valeur vide vaut une variable absente. La clé propre d'une
+  d'Anthropic quand aucune n'est donnée, et le fournisseur Anthropic ne lit plus de
+  l'environnement du processus ni adresse ni clé ; seul son client HTTP suit le mandataire
+  des modèles (`HTTPS_PROXY`, plus haut). Il n'y a plus qu'une lecture, celle de la
+  configuration, où une valeur vide vaut une variable absente. La clé propre d'une
   entreprise ne pouvait déjà pas partir vers la passerelle de l'exploitant, son adresse
   étant toujours écrite (ADR-108) ; plus rien ne dépend de cette précaution. Tests :
   `config::tests::the_platform_s_anthropic_endpoint_and_its_advisor_are_read`
-  (variable absente ou vide), `llm::anthropic::provider` (rien lu de l'environnement),
+  (variable absente ou vide), `llm::anthropic::provider` (adresse officielle par défaut,
+  aucune clé sans clé donnée), `crates/agent/tests/llm_environment.rs` (aucune source de
+  l'agent ne lit l'environnement, échec vérifié avec l'ancien fournisseur),
   `crates/api/tests/configuration_files/starts.rs`.
 
 ## ADR-222 — Marque configurable à l'installation (bêta, étape 2)
@@ -17012,6 +17015,6 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
     vérifié en retirant une variable du guide, puis en y écrivant une commande et un
     script qui n'existent pas.
 - **Complément (suites de la bêta)** : au retour en arrière, l'attente de l'archivage du
-  segment en cours s'arrête au bout de cinq minutes. Si le segment n'est toujours pas
-  archivé, le guide dit de ne pas aller plus loin, et renvoie à `archive-status.sh` et au
-  plan de reprise, § 4.6.
+  segment en cours s'arrête au bout de cinq minutes. Si la base ne répond pas, ou si le
+  segment n'est toujours pas archivé, le guide dit de ne pas aller plus loin, et renvoie à
+  `archive-status.sh` et au plan de reprise, § 4.6.

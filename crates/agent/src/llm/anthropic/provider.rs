@@ -136,8 +136,9 @@ mod tests {
             given(Some("https://gw.example".into())).as_deref(),
             Some("https://gw.example")
         );
-        // An empty address given is Anthropic's own; no key given is none,
-        // whatever the environment holds.
+        // An empty address given is Anthropic's own, and no key given is
+        // none: that nothing is read from the environment instead,
+        // `tests/llm_environment.rs` checks.
         let provider = AnthropicProvider::new(AnthropicOptions {
             base_url: Some(String::new()),
             ..AnthropicOptions::default()
