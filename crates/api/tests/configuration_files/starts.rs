@@ -78,7 +78,7 @@ fn with_the_operator_s_key_the_platform_s_model_is_the_advised_one() {
     let model = configuration(&given).unwrap().llm.unwrap();
     assert_eq!(model.kind, "anthropic");
     assert_eq!(model.model.as_deref(), Some("claude-sonnet-5-5"));
-    assert_eq!(model.base_url, None);
+    assert_eq!(model.base_url.as_deref(), Some("https://api.anthropic.com"));
 }
 
 #[test]

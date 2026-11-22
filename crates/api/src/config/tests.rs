@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use mimorya_agent::llm::anthropic::DEFAULT_BASE_URL as OFFICIAL;
+
 use super::*;
 
 fn load(vars: &[(&str, &str)]) -> anyhow::Result<AppConfig> {
@@ -293,13 +295,17 @@ fn a_proxy_is_an_http_s_address_and_its_bypass_needs_it() {
 }
 
 /// Whether the platform's model is at Anthropic's official address decides
-/// its advisor (ADR-207): its endpoint is read as its provider reads it.
+/// its advisor (ADR-207): its endpoint is written out, the official one when
+/// none is set, its provider reading nothing from the environment (ADR-221).
 #[test]
 fn the_platform_s_anthropic_endpoint_and_its_advisor_are_read() {
     let key = ("ANTHROPIC_API_KEY", "sk-test");
     let plain = load(&[DB, key]).unwrap();
-    assert_eq!(plain.llm.unwrap().base_url, None);
+    assert_eq!(plain.llm.unwrap().base_url.as_deref(), Some(OFFICIAL));
     assert!(!plain.anthropic_advisor);
+    // As the stack passes it when its operator sets nothing.
+    let empty = load(&[DB, key, ("ANTHROPIC_BASE_URL", " ")]).unwrap();
+    assert_eq!(empty.llm.unwrap().base_url.as_deref(), Some(OFFICIAL));
     let gateway = ("ANTHROPIC_BASE_URL", "https://passerelle.exemple");
     let config = load(&[DB, key, gateway, ("MIMORYA_ANTHROPIC_ADVISOR", "true")]).unwrap();
     assert_eq!(

@@ -290,9 +290,19 @@ votre identité apportée le temps de la restauration :
 
    ```bash
    segment=$(docker compose exec -T db psql -U mimorya -d mimorya -tAc 'select pg_walfile_name(pg_switch_wal())')
-   until [ "$(docker compose exec -T db psql -U mimorya -d mimorya -tAc \
-       "select last_archived_wal >= '$segment' from pg_stat_archiver")" = t ]; do sleep 5; done
+   for attempt in $(seq 60); do
+     archived=$(docker compose exec -T db psql -U mimorya -d mimorya -tAc \
+         "select case when last_archived_wal >= '$segment' then 'oui' else 'non' end from pg_stat_archiver")
+     [ "$archived" = oui ] && break
+     sleep 5
+   done
+   echo "Segment $segment archivé : $archived"
    ```
+
+   Encore « non » au bout de cinq minutes : l'archivage échoue, et la restauration
+   n'atteindrait pas l'instant noté. N'allez pas plus loin. `infra/backup/archive-status.sh`
+   dit ce qui bloque, et `docs/RECOVERY_PLAN.md`, § 4.6 « Archivage en échec », comment y
+   remédier ; reprenez ensuite à ce point.
 
 2. Revenez au dépôt et à `MIMORYA_VERSION` de la version précédente
    (`git checkout v0.1.0-beta.1`).
