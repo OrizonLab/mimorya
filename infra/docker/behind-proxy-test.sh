@@ -96,16 +96,19 @@ reached() {
 }
 [[ $(reached http://mimorya-api:4000/health) == 0 ]] || fail "the API is not reached as mimorya-api"
 [[ $(reached http://mimorya-web:3000/login) == 0 ]] || fail "the web application is not reached as mimorya-web"
-# What Docker's resolver answers for $1 on the edge network, as the proxy
-# asks it; a name it does not hold goes to the host's resolver, which may
-# answer late, or never.
+# The IPv4 addresses Docker's resolver gives $1 on the edge network, asked
+# from the proxy's container twice: by nslookup of Docker's own resolver,
+# then by the C library. A name it does not hold goes to the host's
+# resolver, which may answer late, or never: each is cut after 12 s.
 answer() {
-  docker exec "$front" timeout 15 nslookup "$1" 2>&1 || true
+  docker exec "$front" sh -c \
+    'timeout 12 nslookup -type=a "$1" 127.0.0.11; timeout 12 getent ahostsv4 "$1"' sh "$1" 2>&1 || true
 }
 api=$(docker compose ps --format '{{.Name}}' api)
 api_address=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$edge\").IPAddress}}" "$api")
-grep -qwF "$api_address" <<<"$(answer mimorya-api)" ||
-  fail "the resolver does not give mimorya-api's address ($api_address)"
+said=$(answer mimorya-api)
+grep -qwF "$api_address" <<<"$said" ||
+  fail "the resolver does not give mimorya-api's address ($api_address): $said"
 db=$(docker compose ps --format '{{.Name}}' db)
 address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$db")
 for name in db "$db"; do
