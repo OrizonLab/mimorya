@@ -30,7 +30,8 @@ use mimorya_db::repositories::retention_durations::retention_durations;
 use mimorya_db::repositories::second_factor_settings::second_factor_requirement;
 
 use self::reading::{
-    chosen_model, connector, decision_uses, embedding_model, host, platform_model, retention,
+    chosen_model, connector, decision_uses, embedding_model, host, kept_by, platform_model,
+    retention,
 };
 use crate::mail::MailSettings;
 use crate::services::embeddings::EmbeddingResolution;
@@ -64,7 +65,12 @@ pub async fn processing_register(
     let runs_row = get_llm_settings(&mut tx, ModelPurpose::Conversations).await?;
     let review_row = get_llm_settings(&mut tx, ModelPurpose::Verification).await?;
     let usages = decision_usages(&mut tx).await?;
-    let connectors = list_connector_instances(&mut tx, true).await?;
+    // Disabled ones too: what they keep of people stays stored (ADR-220).
+    let mut connectors = Vec::new();
+    for row in list_connector_instances(&mut tx, false).await? {
+        let kept = kept_by(&mut tx, &row).await?;
+        connectors.push(connector(&row, kept));
+    }
     let gateways = list_gateways(&mut tx).await?;
     let providers = list_identity_providers(&mut tx).await?;
     let scim = count_tokens(&mut tx, TokenTable::Scim).await? > 0;
@@ -106,7 +112,7 @@ pub async fn processing_register(
         embeddings,
         decisions,
         jev,
-        connectors: connectors.iter().map(connector).collect(),
+        connectors,
         gateways: gateways
             .iter()
             .filter(|gateway| gateway.enabled)

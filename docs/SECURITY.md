@@ -1008,7 +1008,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   son fournisseur, TypeSafe seulement quand un usage lui envoie quelque chose, dont les
   passages des documents lus, chaque connecteur par l'hôte qu'il atteint, le relais
   d'e-mails par le sien), où chacun se tient, ce que la plateforme en sait seulement, les
-  durées que la purge applique et les mesures de sécurité. Jamais une clé, un jeton ni une adresse d'e-mail ; les réglages d'une autre
+  durées que la purge applique et les mesures de sécurité. Un connecteur désactivé n'a aucun
+  destinataire, mais ce qu'il garde encore des personnes, scellé, y est compté et noté
+  (ADR-220). Jamais une clé, un jeton ni une adresse d'e-mail ; les réglages d'une autre
   entreprise n'y sont jamais lus. L'entreprise complète ce qu'elle seule sait : son
   délégué, la base légale de chaque traitement, les garanties de chaque transfert. Son
   onglet de l'administration le télécharge en CSV (ADR-218), chaque cellule qu'un tableur

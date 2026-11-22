@@ -2,24 +2,72 @@
 //! and the accounts its people link, its conversation gateways.
 
 use super::{Activity, ActivityKind, COLLABORATORS};
-use crate::processing_register::facts::{ConnectorKind, RegisterFacts};
+use crate::processing_register::facts::{ConnectorFact, ConnectorKind, RegisterFacts};
 use crate::processing_register::{model_recipients, recipients};
 
+/// Whether a connector is processing: enabled, or disabled and keeping
+/// personal data its people linked or authorized there.
+pub(super) fn processed(connector: &ConnectorFact) -> bool {
+    connector.enabled || connector.kept.any()
+}
+
+/// What a disabled connector keeps, as counted, each kind until what
+/// removes it (`connectors`' own durations say the same).
+fn kept(connector: &ConnectorFact) -> Option<String> {
+    let kept = connector.kept;
+    let parts: Vec<String> = [
+        (
+            kept.linked_accounts,
+            "compte(s) relié(s), jetons de renouvellement scellés, jusqu’à leur retrait, la \
+             désactivation du compte de chacun ou la suppression du connecteur",
+        ),
+        (
+            kept.mail_accounts,
+            "compte(s) de messagerie, mots de passe scellés, jusqu’à leur retrait, la \
+             désactivation du compte de chacun, le changement d’hôte d’un serveur ou la \
+             suppression du connecteur",
+        ),
+        (
+            kept.person_authorizations,
+            "autorisation(s) OAuth données par chacun, jetons scellés, jusqu’à leur retrait, \
+             la désactivation du compte de chacun, un renouvellement refusé (au test d’un \
+             administrateur), un changement de l’adresse ou de la déclaration du serveur ou de \
+             qui l’autorise, ou la suppression du connecteur",
+        ),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, what)| format!("{count} {what}"))
+    .collect();
+    if parts.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Connecteur « {} » désactivé : aucun run ne l’utilise ; restent stockés : {}",
+        connector.name,
+        parts.join(" ; ")
+    ))
+}
+
 pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
+    let enabled: Vec<&ConnectorFact> = facts.connectors.iter().filter(|c| c.enabled).collect();
+    // Without an enabled connector, nothing is read and nothing acts: no
+    // service receives anything of it.
+    let reading = !enabled.is_empty();
     let mut recipients = Vec::new();
-    if let Some(model) = &facts.runs_model {
+    if let Some(model) = facts.runs_model.as_ref().filter(|_| reading) {
         recipients.push(model_recipients::model(
             model,
             "Modèle des conversations : contenus lus et actions préparées",
         ));
     }
-    recipients.extend(facts.connectors.iter().filter_map(recipients::connector));
-    if facts.jev && facts.decisions.actions {
+    recipients.extend(enabled.iter().filter_map(|c| recipients::connector(c)));
+    if reading && facts.jev && facts.decisions.actions {
         recipients.push(model_recipients::jev(
             "Service de décision : action et ses paramètres, avant qu’elle parte",
         ));
     }
-    if facts.jev && facts.decisions.external_contents {
+    if reading && facts.jev && facts.decisions.external_contents {
         recipients.push(model_recipients::jev(
             "Service de décision : début des contenus rapportés par un outil, pour y chercher \
              des instructions",
@@ -29,6 +77,7 @@ pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
         .connectors
         .iter()
         .filter_map(|connector| match connector.kind {
+            _ if !connector.enabled => kept(connector),
             ConnectorKind::Demo => Some(format!(
                 "Connecteur « {} » : démonstration, données fictives ; il n’atteint aucun \
                  service extérieur",

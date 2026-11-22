@@ -117,7 +117,8 @@ test('a start that does not hold its seal is never said untouched', async ({ pag
     // As the scenario reads: the chain ends at place 5, which follows the
     // missing places with nothing verified before it to check it against.
     verified: 0,
-    unsealed: 0,
+    // The purge's own entry, still to seal.
+    unsealed: 1,
     last: { place: 5, seal: SEAL, anchor: `${COMPANY}:5:${SEAL}` },
     firstPlace: 1,
     purged: 0,

@@ -3,8 +3,8 @@ use mimorya_agent::llm::PROVIDER_KINDS;
 use mimorya_agent::llm::embedding::EMBEDDING_KINDS;
 use mimorya_connectors::connector_types;
 use mimorya_core::processing_register::{
-    ActivityKind, ChosenBy, ConnectorKind, DecisionUses, ModelService, Place, RegisterFacts,
-    register,
+    ActivityKind, ChosenBy, ConnectorKind, DecisionUses, KeptData, ModelService, Place,
+    RegisterFacts, register,
 };
 use mimorya_core::second_factor::Requirement;
 use serde_json::{Value, json};
@@ -31,6 +31,7 @@ fn declared(
             created_at: Utc::now(),
             updated_at: Utc::now(),
         },
+        KeptData::default(),
     )
 }
 

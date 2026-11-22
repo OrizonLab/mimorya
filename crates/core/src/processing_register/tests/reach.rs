@@ -1,4 +1,4 @@
-use super::{activity, bare, names};
+use super::{activity, bare, names, own};
 use crate::gateways::GatewayKind;
 use crate::identity_providers::ProviderKind;
 use crate::processing_register::*;
@@ -9,6 +9,8 @@ fn each_connector_is_named_by_what_its_tools_reach() {
         kind,
         name: name.into(),
         hosts: hosts.iter().map(|h| h.to_string()).collect(),
+        enabled: true,
+        kept: KeptData::default(),
     };
     let mut facts = bare();
     facts.connectors = vec![
@@ -125,4 +127,123 @@ fn gateways_and_sign_in_name_their_services() {
             .iter()
             .any(|m| m.contains("fournisseur d’identité"))
     );
+}
+
+#[test]
+fn a_disabled_connector_is_noted_for_what_it_keeps_as_counted() {
+    let connector = |kind, name: &str, enabled, kept| ConnectorFact {
+        kind,
+        name: name.into(),
+        hosts: vec!["service.example".into()],
+        enabled,
+        kept,
+    };
+    let nothing = KeptData::default();
+    let mut facts = bare();
+    facts.runs_model = Some(own("anthropic"));
+    facts.jev = true;
+    facts.decisions.actions = true;
+    facts.decisions.external_contents = true;
+
+    // Disabled, keeping nothing of anyone, whatever their type (an API's
+    // token, the operator's program, the demonstration): no activity.
+    facts.connectors = [
+        ConnectorKind::Demo,
+        ConnectorKind::Rest,
+        ConnectorKind::Mcp,
+        ConnectorKind::McpProcess,
+        ConnectorKind::Microsoft365,
+        ConnectorKind::GoogleWorkspace,
+        ConnectorKind::StandardMail,
+        ConnectorKind::Other,
+    ]
+    .into_iter()
+    .map(|kind| connector(kind, "Désactivé", false, nothing))
+    .collect();
+    let register = super::register(&facts);
+    assert!(
+        register
+            .activities
+            .iter()
+            .all(|a| a.kind != ActivityKind::Connectors)
+    );
+
+    // Keeping what people linked or authorized: the activity, no recipient,
+    // a note of what it keeps, as counted.
+    facts.connectors = vec![
+        connector(
+            ConnectorKind::Microsoft365,
+            "Microsoft 365",
+            false,
+            KeptData {
+                linked_accounts: 3,
+                ..nothing
+            },
+        ),
+        connector(
+            ConnectorKind::StandardMail,
+            "Messagerie",
+            false,
+            KeptData {
+                mail_accounts: 1,
+                ..nothing
+            },
+        ),
+        connector(
+            ConnectorKind::Mcp,
+            "Wiki",
+            false,
+            KeptData {
+                person_authorizations: 2,
+                ..nothing
+            },
+        ),
+        connector(ConnectorKind::Rest, "Facturation", false, nothing),
+    ];
+    let register = super::register(&facts);
+    let connectors = activity(&register, ActivityKind::Connectors);
+    assert!(
+        connectors.recipients.is_empty(),
+        "{:?}",
+        connectors.recipients
+    );
+    let notes = &connectors.notes;
+    assert_eq!(notes.len(), 3);
+    let start = "désactivé : aucun run ne l’utilise ; restent stockés : ";
+    assert_eq!(
+        notes[0],
+        format!(
+            "Connecteur « Microsoft 365 » {start}3 compte(s) relié(s), jetons de renouvellement \
+             scellés, jusqu’à leur retrait, la désactivation du compte de chacun ou la \
+             suppression du connecteur"
+        )
+    );
+    // Each kind with what removes it: a linked account never goes with a
+    // change of declaration, nor a mail account but with a host's.
+    assert!(!notes[0].contains("déclaration") && !notes[0].contains("hôte"));
+    assert!(notes[1].contains("1 compte(s) de messagerie, mots de passe scellés"));
+    assert!(notes[1].contains("le changement d’hôte d’un serveur"));
+    assert!(!notes[1].contains("déclaration"));
+    assert!(notes[2].contains("2 autorisation(s) OAuth données par chacun, jetons scellés"));
+    assert!(notes[2].contains("de l’adresse ou de la déclaration du serveur ou de qui l’autorise"));
+    // An administrator's test renews them, disabled as they are.
+    assert!(notes[2].contains("un renouvellement refusé (au test d’un administrateur)"));
+
+    // With one enabled beside them, only it reaches out, served as before.
+    facts
+        .connectors
+        .push(connector(ConnectorKind::Rest, "Paie", true, nothing));
+    let register = super::register(&facts);
+    let connectors = activity(&register, ActivityKind::Connectors);
+    assert_eq!(
+        names(connectors),
+        [
+            "Anthropic",
+            "API REST (service.example)",
+            "TypeSafe (Jev)",
+            "TypeSafe (Jev)"
+        ]
+    );
+    assert_eq!(connectors.recipients[1].role, "Connecteur « Paie »");
+    assert_eq!(connectors.notes.len(), 3);
 }
