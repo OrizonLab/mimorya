@@ -16885,7 +16885,7 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
   - **base de données** : joignable par un rôle soumis à l'isolation des entreprises.
     Est en `ÉCHEC` un rôle qui la contourne : superutilisateur, `BYPASSRLS`, ou
     propriétaire d'une table dont la sécurité par ligne ne s'impose pas à son
-    propriétaire, ou membre de ce propriétaire, que PostgreSQL en dispense de même.
+    propriétaire, ou membre de ce propriétaire, qui peut agir en son nom.
     L'adresse du propriétaire donnée à la place de celle de l'application l'est donc,
     superutilisateur ou non ;
   - **migrations** : le journal comparé aux migrations que porte cette version, numéro
@@ -16929,3 +16929,59 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
     reconnue, puis reconnue ; l'adresse du propriétaire à la place de celle de
     l'application ; un rôle sans privilège, membre du propriétaire des tables), `crates/db/tests/definer_functions.rs` (la fonction, appelée par le
     seul rôle applicatif), `infra/docker/production-test.sh`.
+
+## ADR-224 — Guide d'installation, recette et première version de bêta (bêta, étape 4)
+
+- **Statut** : accepté (2026-11-22)
+- **Contexte** : la plateforme s'installe sur le serveur de l'exploitant, avec de vraies
+  clés, pour son équipe puis deux ou trois entreprises pilotes. Les étapes 1 à 3 ont rendu
+  la configuration complète (ADR-221), la marque réglable (ADR-222) et l'installation
+  vérifiable (ADR-223). Il manquait un guide pas à pas, la liste des essais à faire avant
+  d'ouvrir, et une version étiquetée à installer.
+- **Décision** :
+  - **`docs/INSTALLATION.md`**, en français, sur un serveur neuf Debian 12 ou Ubuntu
+    24.04 en amd64 :
+    - taille conseillée pour quelques dizaines d'utilisateurs, 4 vCPU, 8 Go et 80 Go de
+      SSD, et minimale pour l'équipe seule ;
+    - DNS, pare-feu (SSH, 80 et 443 seulement), Docker depuis son dépôt, `age` ;
+    - dépôt extrait à la version installée ;
+    - secrets : l'identité des sauvegardes créée sur le poste de l'exploitant, jamais sur
+      le serveur, `.env.production` lisible par root seul ;
+    - démarrage, puis `check-install`, avec ce qu'il doit dire point par point ;
+    - première entreprise et sa formule, par le service `migrate` ;
+    - sauvegardes programmées, par renvoi au plan de reprise ;
+    - mise à jour : sauvegarde de base d'abord, nouvelle version, `check-install`. Revenir
+      en arrière, c'est restaurer : les migrations ne reculent pas.
+
+    Un test vérifie que le guide nomme chaque variable obligatoire et recommandée de
+    `.env.production.example` : une variable ajoutée là, et oubliée dans le guide, fait
+    échouer la CI ;
+
+  - **`docs/RECETTE_BETA.md`** : les essais que l'exploitant fait lui-même avec une vraie
+    clé, chacun avec son résultat attendu :
+    - comptes : invitation, mot de passe oublié, second facteur ;
+    - agent : conversation, document, action soumise à validation (par la messagerie
+      standard), mission ;
+    - escalade : par le routeur, par classement, après échec du contrôle (qui ne se
+      provoque pas à coup sûr : la recette le dit), budget épuisé ;
+    - formules : plafond (le plus bas permis, 1 USD, atteint plus vite avec un
+      coefficient de 100 %), alertes, crédit prépayé, retour à la clé du client ;
+    - sauvegarde, puis restauration sur une pile de test, puis vérification du journal
+      d'audit ;
+    - mise à jour de version, puis retour en arrière.
+
+    Elle dit comment remonter un problème : la version, la sortie de `check-install`, les
+    journaux, qui ne contiennent ni en-têtes, ni corps, ni secrets ; jamais
+    `.env.production`, la clé maître ni une sauvegarde ;
+
+  - **les versions** : une étiquette `vX.Y.Z`, avec un suffixe pour une préversion
+    (`v0.1.0-beta.1`), posée sur un commit de `main` dont les images sont publiées. Le
+    flux des images les nomme de cette version sans les reconstruire (ADR-051). La
+    première est `v0.1.0-beta.1`, sur le commit qui fusionne ce guide.
+- **Conséquences** :
+  - le guide suit la pile : une variable de plus à régler s'y ajoute, ou la CI échoue ;
+  - la recette se refait à chaque version de bêta ; ses résultats, notés par
+    l'exploitant, restent hors du dépôt ;
+  - tests : `crates/api/tests/configuration_files.rs`
+    (`the_installation_guide_names_every_variable_to_set`, dont l'échec a été vérifié en
+    retirant une variable du guide).

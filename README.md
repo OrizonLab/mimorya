@@ -195,6 +195,10 @@ conservée par un collecteur de journaux : le lien y resterait. En développemen
 
 ### Pile conteneurisée de production
 
+Pour une première installation sur un serveur neuf, suivez le guide pas à pas,
+`docs/INSTALLATION.md`, puis faites les essais de `docs/RECETTE_BETA.md` avant d'ouvrir la
+plateforme (ADR-224). Ce qui suit en est le détail.
+
 `compose.production.yml` (ADR-034) installe la même chose en conteneurs, sans données
 fictives : PostgreSQL (rôles créés avec vos mots de passe), migrations, API, worker
 (ADR-087), interface et Caddy (HTTPS, HSTS), dans son propre projet (`mimorya-production`, à part de la base de

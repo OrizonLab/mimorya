@@ -194,3 +194,19 @@ fn the_production_example_and_the_stack_name_the_same_variables() {
         "read by compose.production.yml, never described in .env.production.example"
     );
 }
+
+#[test]
+fn the_installation_guide_names_every_variable_to_set() {
+    // The required and recommended parts of the example, before the
+    // optional one: what an installation sets (docs/INSTALLATION.md).
+    let example = repository(".env.production.example");
+    let (to_set, _) = example
+        .split_once("3. FACULTATIVES")
+        .expect("the example's optional part");
+    let guide = repository("docs/INSTALLATION.md");
+    let unnamed: Vec<String> = stack::set_in(to_set)
+        .into_keys()
+        .filter(|name| !guide.contains(&format!("`{name}`")))
+        .collect();
+    assert_eq!(unnamed, Vec::<String>::new(), "docs/INSTALLATION.md");
+}
