@@ -486,7 +486,9 @@ Repères à l'intérieur des crates :
   ADR-215,
   `init-production.sh` crée le rôle applicatif) ; `docker-compose.yml`
   (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,
-  ADR-034) et `compose.demo.yml` (pile de démonstration,
+  ADR-034, chaque variable lue par l'API transmise avec son défaut, décrite pour l'exploitant
+  dans `.env.production.example` comme pour le développement dans `.env.example`, ce que
+  vérifie `crates/api/tests/configuration_files.rs`, exceptions justifiées, ADR-221) et `compose.demo.yml` (pile de démonstration,
   ADR-032), chacune avec un service `api` et un service `worker` de la même image
   (ADR-087), qui téléchargent les images publiées (`.github/workflows/images.yml`,
   ADR-051) ; `compose.*.build.yml` les construisent depuis le dépôt (CI) ; `ci/` (CI en

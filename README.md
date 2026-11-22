@@ -199,7 +199,11 @@ conservée par un collecteur de journaux : le lien y resterait. En développemen
 fictives : PostgreSQL (rôles créés avec vos mots de passe), migrations, API, worker
 (ADR-087), interface et Caddy (HTTPS, HSTS), dans son propre projet (`mimorya-production`, à part de la base de
 développement). Seul Caddy publie des ports. Les identifiants se choisissent dans un
-fichier d'environnement gardé hors du dépôt, lisible par vous seul :
+fichier d'environnement gardé hors du dépôt, lisible par vous seul.
+`.env.production.example` décrit chaque variable en trois parties (obligatoires,
+recommandées, facultatives) : son rôle, son défaut, comment la produire et ce qui se passe
+sans elle (ADR-221). Copiez-le (`install -m 600 .env.production.example .env.production`)
+et remplissez-le, ou écrivez l'essentiel directement :
 
 ```bash
 (umask 077 && cat > .env.production <<VARIABLES
@@ -210,6 +214,8 @@ MIMORYA_DOMAIN=mimorya.acme.example
 MIMORYA_TLS=exploitation@acme.example
 MIMORYA_VERSION=1.2.0            # images publiées à installer (ADR-051) : version ou sha-…
 MIMORYA_WORKERS=1                # workers qui exécutent les runs (ADR-087)
+ANTHROPIC_API_KEY=…              # modèle de la plateforme, fourni par l'exploitant (ADR-208)
+LLM_MODEL=claude-sonnet-5-5      # Opus en escalade, choisi par entreprise (ADR-207)
 VARIABLES
 )
 docker compose --env-file .env.production -f compose.production.yml pull
@@ -243,8 +249,12 @@ saisie restant masquée et hors de l'historique (`docker compose … exec db psq
 puis `\password mimorya_app`, de même pour `mimorya`), puis la variable, puis relancez
 `up -d`. `MIMORYA_TLS` vaut une
 adresse e-mail pour un certificat public (ports 80 et 443 joignables depuis Internet) ou
-`internal` (certificat local de Caddy). Mêmes variables facultatives que la pile de
-démonstration (fournisseur de modèle, `MIMORYA_MASTER_KEY`, relais SMTP). La CI suit ce
+`internal` (certificat local de Caddy). `MIMORYA_MASTER_KEY` est obligatoire : sans
+elle, aucune entreprise ne pourrait garder sa propre clé de modèle ni relier un compte ;
+gardez-en une copie hors du serveur. Chaque variable que lit l'API est décrite dans
+`.env.production.example` et transmise par `compose.production.yml`, sauf celles que la
+pile fixe ou que l'image tient ; un test le vérifie à chaque PR
+(`crates/api/tests/configuration_files.rs`), de même que `.env.example`. La CI suit ce
 parcours, rôles et second worker compris, jusqu'à la première connexion de
 l'administrateur avec les images construites depuis le dépôt
 (`compose.production.build.yml`), pas avec les images téléchargées

@@ -1,9 +1,11 @@
 # Private production stack (ADR-034): no demonstration data, every secret
 # chosen at installation, behind Caddy. In an env file (kept out of the
-# repository) or the environment:
+# repository; .env.production.example describes every variable, ADR-221) or
+# the environment:
 #   POSTGRES_PASSWORD         owner of the schema (migrations)
 #   MIMORYA_APP_DB_PASSWORD   the application's role (row-level security)
 #                             both: 16 letters and digits at least (`openssl rand -hex 32`)
+#   MIMORYA_MASTER_KEY        seals the companies' secrets (`openssl rand -base64 32`)
 #   MIMORYA_DOMAIN            the name the stack is served on
 #   MIMORYA_TLS               an e-mail address for a public certificate (ACME),
 #                             or `internal` for Caddy's own local authority
@@ -38,17 +40,38 @@
 name: mimorya-production
 
 # What the API and the workers read alike: the same database, the same
-# models, keys and mail relay (ADR-085).
+# models, keys and mail relay (ADR-085). Every variable the configuration
+# reads is passed, with its default, but those this file fixes or the image
+# holds (ADR-221, crates/api/tests/configuration_files.rs); what each one does:
+# .env.production.example.
 x-backend-environment: &backend-environment
   MIMORYA_ENV: production
+  # Session cookies only over HTTPS: the stack is served by Caddy alone.
+  SESSION_SECURE_COOKIE: 'true'
   DATABASE_APP_URL: postgres://mimorya_app:${MIMORYA_APP_DB_PASSWORD}@db:5432/mimorya
   WEB_ORIGIN: https://${MIMORYA_DOMAIN:?choose the domain the stack is served on (MIMORYA_DOMAIN)}
+  # Seals the companies' keys and tokens, keys the audit chain's seals and
+  # the rate limits' digests: without it, no company could keep its own
+  # model key (the « client key » formula) nor link an account.
+  MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:?generate the master key (openssl rand -base64 32) and keep a copy off the server (MIMORYA_MASTER_KEY)}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  MIMORYA_ASSISTANT_NAME: ${MIMORYA_ASSISTANT_NAME:-Mimorya}
+  LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
+  MIMORYA_DOCUMENT_QUOTA_MB: ${MIMORYA_DOCUMENT_QUOTA_MB:-1024}
   # Unset: Anthropic if ANTHROPIC_API_KEY is, otherwise no model.
   LLM_PROVIDER: ${LLM_PROVIDER:-}
   LLM_MODEL: ${LLM_MODEL:-}
   LLM_API_KEY: ${LLM_API_KEY:-}
   LLM_BASE_URL: ${LLM_BASE_URL:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+  MIMORYA_LLM_JUDGE: ${MIMORYA_LLM_JUDGE:-false}
+  # Private model servers a company may choose (comma-separated).
+  MIMORYA_TENANT_LLM_ENDPOINTS: ${MIMORYA_TENANT_LLM_ENDPOINTS:-}
+  # The proxy the model providers, the embedding models and Jev are reached
+  # through, if any: never what companies connect (MIMORYA_OUTBOUND_PROXY).
+  HTTPS_PROXY: ${MIMORYA_MODEL_PROXY:-}
+  NO_PROXY: ${MIMORYA_MODEL_NO_PROXY:-}
   # Anthropic's advisor, in beta: off unless the operator opens it (ADR-207).
   MIMORYA_ANTHROPIC_ADVISOR: ${MIMORYA_ANTHROPIC_ADVISOR:-false}
   # TypeSafe's Jev, a subprocessor outside the EU: off unless the operator
@@ -56,7 +79,6 @@ x-backend-environment: &backend-environment
   MIMORYA_TYPESAFE_JEV: ${MIMORYA_TYPESAFE_JEV:-false}
   MIMORYA_JEV_MODEL: ${MIMORYA_JEV_MODEL:-jev-1.14.0}
   MIMORYA_DECISION_TIMEOUT_MS: ${MIMORYA_DECISION_TIMEOUT_MS:-2000}
-  MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:-}
   SMTP_URL: ${SMTP_URL:-}
   MAIL_FROM: ${MAIL_FROM:-}
   # What companies connect may reach: public servers only unless lifted, and
@@ -64,6 +86,9 @@ x-backend-environment: &backend-environment
   MIMORYA_MCP_ALLOW_PRIVATE_NETWORK: ${MIMORYA_MCP_ALLOW_PRIVATE_NETWORK:-false}
   MIMORYA_OUTBOUND_PROXY: ${MIMORYA_OUTBOUND_PROXY:-}
   MIMORYA_OUTBOUND_NO_PROXY: ${MIMORYA_OUTBOUND_NO_PROXY:-}
+  # How long an MCP server may take to start, and a person's turn wait for it.
+  MIMORYA_MCP_START_TIMEOUT_SECS: ${MIMORYA_MCP_START_TIMEOUT_SECS:-20}
+  MIMORYA_MCP_START_PATIENCE_SECS: ${MIMORYA_MCP_START_PATIENCE_SECS:-5}
 
 services:
   # PostgreSQL 16 with pgvector, and age for the archive of its WAL (ADR-206).
@@ -109,7 +134,8 @@ services:
         condition: service_healthy
 
   # Serves the API; the runs it starts wait queued for a worker. One only:
-  # the rate limits are counted per process (SECURITY §4).
+  # the global rate limit is counted per process, the sign-in limits alone
+  # being shared through PostgreSQL (ADR-088, SECURITY §4).
   api:
     image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
     restart: unless-stopped

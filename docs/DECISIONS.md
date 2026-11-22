@@ -16663,3 +16663,91 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       garde rien de personne n'y figure pas ; aucun n'a de destinataire ;
     - les aides des tests du registre sont partagées dans le dossier `support` des tests
       de l'API (`processing_register.rs`).
+
+## ADR-221 — Configuration de production complète et sans dérive (bêta, étape 1)
+
+- **Statut** : accepté (2026-11-22).
+- **Contexte** : une première installation de bêta, sur un vrai serveur, avec de vraies
+  clés d'API, d'abord pour l'équipe de l'exploitant puis pour deux ou trois entreprises
+  pilotes. Un état des lieux montrait :
+  - un `.env.example` qui ne couvrait que le développement, et auquel manquaient des
+    variables que lit l'API (`ANTHROPIC_BASE_URL`, `HOST`, `LOGIN_RATE_LIMIT_PER_MINUTE`,
+    `MIMORYA_LLM_JUDGE`, `SESSION_SECURE_COOKIE`) ;
+  - aucun exemple de configuration de production ;
+  - un `compose.production.yml` qui ne transmettait pas plusieurs variables utiles :
+    nom de l'assistant, niveau des journaux, quota de documents, limite de connexion,
+    serveurs de modèles privés, délais des serveurs MCP, adresse d'Anthropic, mandataire
+    des modèles ;
+  - une clé maître facultative, alors que sans elle la formule « clé du client »
+    (ADR-208) est impossible.
+- **Décision** :
+  - **`.env.example`** décrit chaque variable que lit la configuration ;
+  - **`.env.production.example`**, commenté en français, en trois parties :
+    - obligatoires : domaine, certificat, deux mots de passe de base, clé maître ;
+    - recommandées : version des images, clé d'Anthropic et modèle de la plateforme,
+      relais SMTP, destinataires des sauvegardes ;
+    - facultatives : tout le reste, avec son défaut.
+
+    Chaque variable dit son rôle, sa valeur par défaut, comment la produire
+    (`openssl rand -hex 32`, `openssl rand -base64 32`, `age-keygen`) et ce qui se passe
+    sans elle. Modèle conseillé : `claude-sonnet-5-5`, Opus en modèle d'escalade, choisi
+    par entreprise dans son administration (ADR-207, ADR-209) ;
+
+  - **`compose.production.yml` transmet à l'API et aux workers** chaque variable que lit
+    la configuration, avec son défaut, sauf celles que l'image tient. Il ajoute :
+    `LOG_LEVEL`, `MIMORYA_ASSISTANT_NAME`, `LOGIN_RATE_LIMIT_PER_MINUTE`,
+    `MIMORYA_DOCUMENT_QUOTA_MB`, `ANTHROPIC_BASE_URL`, `MIMORYA_LLM_JUDGE`,
+    `MIMORYA_TENANT_LLM_ENDPOINTS`, et les délais `MIMORYA_MCP_START_TIMEOUT_SECS` et
+    `MIMORYA_MCP_START_PATIENCE_SECS` ;
+  - **le mandataire des modèles** : les fournisseurs de modèles, les modèles
+    d'embeddings et Jev suivent le `HTTPS_PROXY` et le `NO_PROXY` du processus. Ce que
+    les entreprises connectent les ignore (`no_proxy`, ADR-162). La pile les reçoit sous
+    des noms à elle, `MIMORYA_MODEL_PROXY` et `MIMORYA_MODEL_NO_PROXY` : un `HTTPS_PROXY`
+    resté dans le shell de l'exploitant n'y entre pas par mégarde. Vide, ils sont
+    ignorés ;
+  - **`MIMORYA_MASTER_KEY` est obligatoire** dans `compose.production.yml` : sans elle,
+    la pile refuse de démarrer et dit comment la générer ;
+  - **un test** (`crates/api/tests/configuration_files.rs`) relève les variables que la
+    configuration demande en la lisant, une fois sans rien et une fois avec chaque
+    branche ouverte (fournisseur de modèle, mandataire, relais SMTP), plutôt qu'une liste
+    écrite à la main. Il échoue quand l'une d'elles manque :
+    - dans `.env.example` ;
+    - dans `.env.production.example` ;
+    - dans `compose.production.yml`.
+
+    Il accepte des exceptions listées, chacune avec sa raison :
+    - fixées par la pile : `MIMORYA_ENV`, `SESSION_SECURE_COOKIE` (écrite `true` : la pile
+      n'est servie qu'en HTTPS), `MIMORYA_ROLE`, `DATABASE_APP_URL`, `WEB_ORIGIN`,
+      `TRUST_PROXY` ;
+    - tenues par l'image : `HOST`, `PORT`, `MIMORYA_EXTRACTOR`, `MIMORYA_MCP_ALLOW_STDIO`.
+
+    Il vérifie aussi que chaque variable de `.env.production.example` est lue par la
+    pile, et l'inverse, et qu'aucune exception n'est devenue sans objet. Il ne compte
+    que ce que la pile donne aux services `api` et `worker` ;
+
+  - **la pile démarrée depuis l'exemple** : un second jeu de tests lit
+    `compose.production.yml` comme `docker compose` le lit (bloc partagé, puis
+    l'environnement propre du service, `${…}` remplis, une valeur vide valant une variable
+    absente). Il vérifie que :
+    - l'exemple, ses valeurs obligatoires remplies, donne à l'API et aux workers une
+      configuration acceptée ;
+    - sans clé maître, la pile refuse de démarrer et dit comment la générer ;
+    - le mandataire des modèles devient le `HTTPS_PROXY` du processus, jamais celui des
+      connecteurs ;
+    - chaque défaut écrit dans la pile est celui du code : la configuration est la même
+      avec ce défaut ou sans la variable ;
+  - **une adresse vide vaut l'adresse officielle** : la pile passe `ANTHROPIC_BASE_URL=`
+    quand l'exploitant n'en donne pas, et le fournisseur Anthropic prend alors
+    `https://api.anthropic.com`, jamais une adresse vide ; de même pour sa clé.
+- **Conséquences** :
+  - une installation dont l'environnement n'a pas de clé maître ne démarre plus : à
+    générer et garder hors du serveur avant la mise à jour ;
+  - une variable ajoutée à la configuration sans être décrite ni transmise fait échouer la
+    CI ; une variable lue seulement dans une branche que le test n'ouvre pas lui échappe,
+    et la branche s'ajoute alors au test ;
+  - tests : `crates/api/tests/configuration_files.rs`, dont l'échec a été vérifié en
+    retirant une variable de chacun des trois fichiers, et
+    `crates/api/tests/configuration_files/starts.rs`, dont l'échec a été vérifié en
+    rendant la clé maître facultative, en remettant un expéditeur sans relais dans
+    l'exemple, en changeant un défaut et en branchant `HTTPS_PROXY` sur le mandataire des
+    connecteurs ; `llm::anthropic::provider` pour l'adresse vide.

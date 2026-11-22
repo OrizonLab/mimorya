@@ -763,7 +763,13 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   portent une clé (`ProviderConfig`, options des fournisseurs) n'affichent jamais sa
   valeur en débogage. Le journal d'audit ne recopie jamais une entrée refusée.
 - Clés LLM et clé maître : variables d'environnement / gestionnaire de secrets ; jamais
-  committées (`.env` ignoré, `.env.example` sans valeur réelle).
+  committées (`.env` et `.env.production` ignorés, `.env.example` et
+  `.env.production.example` sans valeur réelle). En production, `.env.production` est
+  lisible par root seul (`install -m 600`), et la pile refuse de démarrer sans clé maître
+  (ADR-221) : sans elle, aucune entreprise ne garderait sa propre clé de modèle. Le
+  mandataire des fournisseurs de modèles (`MIMORYA_MODEL_PROXY`, devenu le `HTTPS_PROXY`
+  de l'API et des workers) ne s'applique jamais à ce que les entreprises connectent, qui
+  ne passe que par le mandataire de l'exploitant prévu pour lui (ADR-162).
 
 ## 8. Journal d'audit
 
