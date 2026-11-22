@@ -156,6 +156,20 @@ fn whatever_fetches_from_elsewhere_is_refused() {
             r#"<g style="mask:image('https://evil.example/p.png')"/>"#,
             "image(…)",
         ),
+        // A sheet cut by a comment or a CDATA is read whole, as a browser
+        // joins it.
+        (
+            "<style>.a{fill:u<!-- -->rl(https://evil.example/p.svg#a)}</style>",
+            "url(…) externe",
+        ),
+        (
+            "<style>@im<!-- -->port 'https://evil.example/a.css';</style>",
+            "@import",
+        ),
+        (
+            "<style>@im<![CDATA[port 'https://evil.example/a.css';]]></style>",
+            "@import",
+        ),
     ] {
         let refused = refused(&wrapped(inner));
         assert!(refused.contains(why), "{inner}: {refused}");
@@ -197,6 +211,7 @@ fn only_one_svg_image_is_an_svg() {
         "<svg/>",
         "texte",
         r#"<svg xmlns="http://www.w3.org/2000/svg"><g></svg>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg"><style>@import 'a.css';"#,
         r#"<svg xmlns="http://www.w3.org/2000/svg"/><svg xmlns="http://www.w3.org/2000/svg"/>"#,
     ] {
         assert!(refusal(text).is_some(), "{text}");

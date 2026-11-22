@@ -66,8 +66,11 @@ pub(super) fn refusal(text: &str) -> Option<String> {
     reader.config_mut().check_end_names = true;
     let mut depth = 0_usize;
     let mut root_seen = false;
-    // The depth of the `<style>` open, if one is: all its text is CSS.
+    // The depth of the `<style>` open, if one is, and its sheet: all its
+    // text and CDATA, joined as a browser joins them, a comment between two
+    // pieces (`u<!-- -->rl(`) hiding nothing.
     let mut style: Option<usize> = None;
+    let mut sheet = String::new();
     loop {
         let (namespace, event) = match reader.read_resolved_event() {
             Ok(read) => read,
@@ -104,25 +107,21 @@ pub(super) fn refusal(text: &str) -> Option<String> {
                     depth += 1;
                     if name == "style" {
                         style = Some(depth);
+                        sheet.clear();
                     }
                 }
             }
             Event::End(_) => {
                 if style == Some(depth) {
                     style = None;
+                    if let Some(why) = css::refusal(&sheet) {
+                        return Some(why);
+                    }
                 }
                 depth = depth.saturating_sub(1);
             }
-            Event::Text(run) if style.is_some() => {
-                if let Some(why) = css::refusal(&run.xml10_content()) {
-                    return Some(why);
-                }
-            }
-            Event::CData(run) if style.is_some() => {
-                if let Some(why) = css::refusal(&run.xml10_content()) {
-                    return Some(why);
-                }
-            }
+            Event::Text(run) if style.is_some() => sheet.push_str(&run.xml10_content()),
+            Event::CData(run) if style.is_some() => sheet.push_str(&run.xml10_content()),
             Event::GeneralRef(reference) => {
                 let known = reference.is_char_ref()
                     || matches!(&*reference, "lt" | "gt" | "amp" | "apos" | "quot");
@@ -143,6 +142,9 @@ pub(super) fn refusal(text: &str) -> Option<String> {
                     "instruction de traitement (<?xml-stylesheet …?>) refusée".to_string(),
                 );
             }
+            // Cut short, a browser shows nothing; read to the end, it is
+            // refused here all the same.
+            Event::Eof if depth > 0 => return Some("document inachevé".to_string()),
             Event::Eof => break,
             _ => {}
         }

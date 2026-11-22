@@ -16818,8 +16818,10 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - une référence externe : `href` hors `#…` et d'une image matricielle intégrée ;
       `url(…)` hors `#…`, `image(…)`, `image-set(…)`, `cross-fade(…)`, `src(…)`,
       `@import` ou `@font-face`, dans une feuille de style comme dans un attribut ;
-    - un échappement CSS (`\`) dans une feuille de style ou un attribut, un élément dans
-      une feuille de style, une déclaration DOCTYPE, une instruction de traitement, une
+    - un échappement CSS (`\`) dans une feuille de style ou un attribut (ceux des éditeurs
+      exceptés : inertes, ils gardent parfois un chemin Windows), un élément dans une
+      feuille de style, lue en entier comme un navigateur l'assemble (un commentaire ou un
+      CDATA entre deux morceaux ne cache rien), une déclaration DOCTYPE, une instruction de traitement, une
       animation qui change une référence ;
     - un encodage déclaré autre qu'UTF-8, ou un caractère de contrôle autre que la
       tabulation et les fins de ligne : lu dans un autre encodage, un document que le
