@@ -164,7 +164,8 @@ impl LlmService {
         self.platform.as_ref()
     }
 
-    /// The kind of the operator's model and its endpoint, if it set one:
+    /// The kind of the operator's model and its endpoint as configured
+    /// (Anthropic's official one written when none is set, ADR-221):
     /// where the record of processing activities says the data of the
     /// companies it supplies go (ADR-217). Never its key.
     pub fn platform_endpoint(&self) -> Option<(&str, Option<&str>)> {

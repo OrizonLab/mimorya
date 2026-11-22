@@ -771,7 +771,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   committées (`.env` et `.env.production` ignorés, `.env.example` et
   `.env.production.example` sans valeur réelle). En production, `.env.production` est
   lisible par root seul (`install -m 600`), et la pile refuse de démarrer sans clé maître
-  (ADR-221) : sans elle, aucune entreprise ne garderait sa propre clé de modèle. Le
+  (ADR-221) : sans elle, aucune entreprise ne garderait sa propre clé de modèle. Seule la
+  configuration lit la clé et l'adresse du modèle de la plateforme : le fournisseur
+  Anthropic ne lit de l'environnement ni clé ni adresse (seul son client HTTP suit le
+  mandataire des modèles ci-dessous), et la clé d'une entreprise va à l'adresse écrite
+  avec elle, jamais à la passerelle de l'exploitant (ADR-221). Le
   mandataire des fournisseurs de modèles (`MIMORYA_MODEL_PROXY`, devenu le `HTTPS_PROXY`
   de l'API et des workers) ne s'applique jamais à ce que les entreprises connectent, qui
   ne passe que par le mandataire de l'exploitant prévu pour lui (ADR-162).

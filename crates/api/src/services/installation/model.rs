@@ -65,3 +65,48 @@ pub(super) async fn platform(config: &AppConfig, called: Option<Arc<dyn LlmProvi
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use async_trait::async_trait;
+    use mimorya_agent::llm::{LlmError, LlmResponse};
+
+    use super::*;
+
+    /// A model that never answers.
+    struct Silent;
+
+    #[async_trait]
+    impl LlmProvider for Silent {
+        fn id(&self) -> &str {
+            "anthropic"
+        }
+
+        fn model(&self) -> &str {
+            "claude-sonnet-5-5"
+        }
+
+        async fn complete(&self, _: &LlmRequest) -> Result<LlmResponse, LlmError> {
+            std::future::pending().await
+        }
+    }
+
+    /// The clock is tokio's, paused: the minute passes at once.
+    #[tokio::test(start_paused = true)]
+    async fn a_model_that_does_not_answer_fails_the_check_after_its_minute() {
+        let config = AppConfig::from_vars(|key| match key {
+            "DATABASE_APP_URL" => Some("postgres://app:app@localhost/mimorya".into()),
+            "ANTHROPIC_API_KEY" => Some("cle-de-test".into()),
+            _ => None,
+        })
+        .unwrap();
+        let started = tokio::time::Instant::now();
+        let found = platform(&config, Some(Arc::new(Silent))).await;
+        assert_eq!(started.elapsed(), TIMEOUT);
+        assert_eq!(found.state, State::Failed);
+        assert_eq!(
+            found.said,
+            "anthropic, claude-sonnet-5-5 n’a pas répondu en 60 s"
+        );
+    }
+}
