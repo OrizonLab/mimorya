@@ -63,11 +63,11 @@ Commandes :
                      par exemple --cap 80,95,100)
   check-install    dit ce qui est prêt et ce qui manque : base et migrations, clé maître,
                    domaine et certificat, relais SMTP, archive des WAL, workers, marque,
-                   modèle de la plateforme ; échoue si un point empêche de servir. Dans
+                   modèle de la plateforme ; échoue tant qu’un point est à corriger. Dans
                    le service api : docker compose … exec api mimorya-admin check-install
                      [--mail-to <adresse>]   envoie un e-mail d’essai par le relais
                      [--call-model]          appelle vraiment le modèle de la plateforme
-                                             (quelques jetons, facturés)
+                                             (facturé ; quelques jetons chez Anthropic)
   help             affiche cette aide
 
 create-company, invite, suspend-company, reactivate-company, release-company,

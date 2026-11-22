@@ -1,5 +1,6 @@
 //! The platform's model: configured or not and, when the operator asks, a
-//! real call that proves its key (a few tokens, billed).
+//! real call that proves its key: billed, its answer bounded to a few
+//! tokens at Anthropic; an OpenAI-compatible provider takes no bound.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};

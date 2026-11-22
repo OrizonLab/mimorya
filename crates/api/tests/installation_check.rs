@@ -9,50 +9,17 @@ use std::fs;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::Router;
-use axum::routing::get;
 use mimorya_agent::testing::{ScriptedProvider, ScriptedStep};
-use mimorya_api::AppConfig;
-use mimorya_api::services::installation::{Finding, Probes, Report, State, check, told};
-use mimorya_connectors::outbound::{NetworkPolicy, http_client};
+use mimorya_api::services::installation::{Probes, State, check, told};
+use mimorya_connectors::outbound::http_client;
+use mimorya_db::migrate::MIGRATOR;
 use mimorya_db::notifications::{RUN_EVENTS_LISTENER, RUN_QUEUE_LISTENER};
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use support::app_url;
+use support::installation::{DIRECT, check_config as config, found, health};
 use support::llm::MASTER_KEY;
 use support::mail::RecordingMailer;
-
-const DIRECT: NetworkPolicy = NetworkPolicy {
-    allow_private_network: true,
-    allow_stdio: false,
-    proxy: None,
-    test_servers: &[],
-    test_roots: &[],
-};
-
-fn config(vars: &[(&str, &str)]) -> AppConfig {
-    let mut all = vec![
-        ("MIMORYA_ENV", "test".to_string()),
-        ("DATABASE_APP_URL", app_url().to_string()),
-        ("LLM_PROVIDER", "none".to_string()),
-    ];
-    all.extend(vars.iter().map(|(key, value)| (*key, (*value).to_string())));
-    AppConfig::from_vars(|key| {
-        all.iter()
-            .rev()
-            .find(|(name, _)| *name == key)
-            .map(|(_, value)| value.clone())
-    })
-    .expect("config")
-}
-
-fn found<'a>(report: &'a Report, topic: &str) -> &'a Finding {
-    report
-        .findings
-        .iter()
-        .find(|finding| finding.topic == topic)
-        .unwrap_or_else(|| panic!("no {topic} in {report:?}"))
-}
 
 /// A connection held as a process of the stack holds it, listening.
 async fn listening(name: &'static str) -> PgPool {
@@ -73,8 +40,7 @@ async fn listening(name: &'static str) -> PgPool {
 async fn site() -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
-    let router = Router::new().route("/api/health", get(|| async { "ok" }));
-    tokio::spawn(async move { axum::serve(listener, router).await });
+    tokio::spawn(async move { axum::serve(listener, health()).await });
     format!("http://{address}")
 }
 
@@ -109,10 +75,11 @@ async fn a_ready_installation_says_so_point_by_point() {
     let said = |topic| found(&report, topic).said.clone();
     assert_eq!(state("Base de données"), State::Ready);
     assert_eq!(state("Migrations"), State::Ready);
+    let last = MIGRATOR.iter().map(|m| m.version).max().unwrap();
+    let migrations = said("Migrations");
     assert!(
-        said("Migrations").ends_with("la dernière 0100"),
-        "{}",
-        said("Migrations")
+        migrations.ends_with(&format!("la dernière {last:04}")),
+        "{migrations}"
     );
     assert_eq!(state("Clé maître"), State::Ready);
     // Served over HTTP here: to complete, not failed.
@@ -161,12 +128,23 @@ async fn what_stops_the_platform_fails_the_check_and_says_what_to_do() {
         ("DATABASE_APP_URL", unreachable.as_str()),
         ("WEB_ORIGIN", "https://127.0.0.1:1"),
         ("MIMORYA_BRAND_DIR", folder.to_str().unwrap()),
+        (
+            "SMTP_URL",
+            "smtps://ops:Relais-Secret-2026@relais.example:465",
+        ),
+        ("MAIL_FROM", "Mimorya <no-reply@example.com>"),
+        ("LLM_PROVIDER", "anthropic"),
+        ("ANTHROPIC_API_KEY", "cle-de-test-secrete"),
     ]);
+    // The relay refuses the test e-mail, the model fails.
+    let mailer = Arc::new(RecordingMailer::default());
+    mailer.fail();
+    let model = ScriptedProvider::new(vec![ScriptedStep::fails("Le fournisseur est surchargé")]);
     let probes = Probes {
         web: http_client(DIRECT).unwrap(),
-        mailer: None,
-        mail_to: None,
-        model: None,
+        mailer: Some(mailer),
+        mail_to: Some("exploitation@example.com".into()),
+        model: Some(Arc::new(model)),
     };
     let report = check(&config, probes).await;
 
@@ -181,15 +159,27 @@ async fn what_stops_the_platform_fails_the_check_and_says_what_to_do() {
     assert!(said("Clé maître").contains("MIMORYA_MASTER_KEY"));
     assert_eq!(state("Domaine et certificat"), State::Failed);
     assert!(said("Domaine et certificat").starts_with("https://127.0.0.1:1 injoignable"));
-    assert_eq!(state("Relais SMTP"), State::ToComplete);
+    assert_eq!(state("Relais SMTP"), State::Failed);
+    assert!(
+        said("Relais SMTP").starts_with("relais.example:465 : "),
+        "{}",
+        said("Relais SMTP")
+    );
     assert_eq!(state("Marque"), State::Failed);
     assert!(
         said("Marque").contains("logo.svg : SVG refusé"),
         "{}",
         said("Marque")
     );
-    assert_eq!(state("Modèle de la plateforme"), State::ToComplete);
+    assert_eq!(state("Modèle de la plateforme"), State::Failed);
+    assert!(said("Modèle de la plateforme").contains("Le fournisseur est surchargé"));
 
     assert!(report.failed());
-    assert!(told(&report).contains("point(s) empêchent de servir"));
+    let text = told(&report);
+    assert!(text.contains("point(s) à corriger avant d’ouvrir la plateforme"));
+    // No secret is said: not the database's password, the relay's nor the
+    // model's key.
+    for secret in ["pas-le-bon", "Relais-Secret-2026", "cle-de-test-secrete"] {
+        assert!(!text.contains(secret), "{secret} in {text}");
+    }
 }

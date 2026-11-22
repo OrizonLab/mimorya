@@ -40,7 +40,7 @@ pub async fn check_install(mail_to: Option<String>, call_model: bool) -> anyhow:
     let report = check(&config, probes).await;
     print!("{}", told(&report));
     if report.failed() {
-        anyhow::bail!("l’installation ne peut pas servir en l’état : voir les points en ÉCHEC");
+        anyhow::bail!("l’installation n’est pas prête à ouvrir : voir les points en ÉCHEC");
     }
     Ok(())
 }

@@ -273,10 +273,11 @@ docker compose --env-file .env.production -f compose.production.yml exec api \
 Elle passe en revue la base et ses migrations, la clé maître, le domaine et son
 certificat, le relais SMTP (avec `--mail-to`, un e-mail d'essai part à cette adresse),
 l'archive des WAL, les workers, la marque et le modèle de la plateforme. Chaque point est
-`OK`, `À FAIRE` (la plateforme sert, mais il manque quelque chose) ou `ÉCHEC` (elle ne
-peut pas servir), avec ce qu'il faut faire. La commande échoue tant qu'un point est en
-`ÉCHEC`. `--call-model` ajoute un vrai appel au modèle pour vérifier sa clé ; il coûte
-quelques jetons.
+`OK`, `À FAIRE` (la plateforme sert, mais il manque quelque chose) ou `ÉCHEC` (à corriger
+avant d'ouvrir : elle ne peut pas servir, ou ne protège plus ses données), avec ce qu'il
+faut faire. La commande échoue tant qu'un point est en `ÉCHEC`. `--call-model` ajoute un
+vrai appel au modèle pour vérifier sa clé ; il est facturé, quelques jetons chez
+Anthropic.
 
 #### Marque de l'installation
 

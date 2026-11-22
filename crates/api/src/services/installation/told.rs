@@ -25,7 +25,9 @@ pub fn told(report: &Report) -> String {
         (0, 0) => "tout est prêt.".to_string(),
         (0, missing) => format!("prête à servir, {missing} point(s) à compléter."),
         (failed, missing) => {
-            format!("{failed} point(s) empêchent de servir, {missing} à compléter.")
+            format!(
+                "{failed} point(s) à corriger avant d’ouvrir la plateforme, {missing} à compléter."
+            )
         }
     };
     text.push_str(&format!("\nBilan : {outcome}\n"));
@@ -55,9 +57,9 @@ mod tests {
         report
             .findings
             .push(Finding::new("Workers", State::Failed, "aucun"));
-        assert!(
-            told(&report).ends_with("Bilan : 1 point(s) empêchent de servir, 1 à compléter.\n")
-        );
+        assert!(told(&report).ends_with(
+            "Bilan : 1 point(s) à corriger avant d’ouvrir la plateforme, 1 à compléter.\n"
+        ));
         assert!(report.failed());
     }
 }

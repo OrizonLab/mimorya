@@ -28,7 +28,8 @@ pub enum State {
     /// Works, but something an installation should have is missing or
     /// unverified.
     ToComplete,
-    /// The platform cannot serve as it is.
+    /// To fix before the platform is opened: it cannot serve, or no longer
+    /// protects its data (the archive of the WAL failing).
     Failed,
 }
 
@@ -57,7 +58,7 @@ pub struct Report {
 }
 
 impl Report {
-    /// Whether something stops the platform from serving.
+    /// Whether something is to fix before the platform is opened.
     pub fn failed(&self) -> bool {
         self.findings.iter().any(|f| f.state == State::Failed)
     }

@@ -333,6 +333,14 @@ utilisateur).
   dans sa propre entreprise, ADR-102), `system_unannounced_policy_proposals` (de même
   pour les autorisations proposées qui attendent encore, non expirées, sans avoir été
   annoncées aux autres administrateurs des politiques, ADR-170),
+  `system_supplied_companies` (lister les entreprises actives fournies sur la clé de
+  l'exploitant, dont la passe des alertes lit la fourniture : entreprise seulement,
+  chacune lue ensuite dans sa propre entreprise, ADR-211),
+  `system_tenants_awaiting_document_labels` (lister les entreprises actives dont des
+  documents attendent leur classement : entreprise seulement, chacune classée ensuite dans
+  sa propre entreprise, ADR-213), `system_applied_migrations` (le journal des migrations
+  pour la vérification de l'installation : numéro, réussite et somme de contrôle de
+  chacune, rien d'autre ; le journal lui-même reste au rôle propriétaire, ADR-223),
   `system_purge_policy_proposals` (supprimer les autorisations proposées décidées, ou
   laissées expirer, depuis plus de 90 jours, ADR-168), `system_audit_log_tenants` (lister
   les entreprises dont le journal d'audit a des entrées, ou des entrées encore sans

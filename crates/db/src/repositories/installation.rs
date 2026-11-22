@@ -17,8 +17,19 @@ pub struct AppliedMigration {
 /// The migration journal, through the one function that reads it for the
 /// application role.
 pub async fn applied_migrations(pool: &PgPool) -> sqlx::Result<Vec<AppliedMigration>> {
-    sqlx::query_as("select version, success, checksum from system_applied_migrations()")
-        .fetch_all(pool)
+    sqlx::query_as(
+        "select version, success, checksum from system_applied_migrations() order by version",
+    )
+    .fetch_all(pool)
+    .await
+}
+
+/// Whether the role the API connects with escapes the companies' isolation
+/// (a superuser, or a role that bypasses row-level security): the owner's
+/// address given in place of the application's.
+pub async fn role_escapes_isolation(pool: &PgPool) -> sqlx::Result<bool> {
+    sqlx::query_scalar("select rolsuper or rolbypassrls from pg_roles where rolname = current_user")
+        .fetch_one(pool)
         .await
 }
 

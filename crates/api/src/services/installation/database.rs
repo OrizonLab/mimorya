@@ -4,7 +4,7 @@
 
 use mimorya_db::migrate::MIGRATOR;
 use mimorya_db::repositories::installation::{
-    AppliedMigration, Listeners, applied_migrations, listeners,
+    AppliedMigration, Listeners, applied_migrations, listeners, role_escapes_isolation,
 };
 use mimorya_db::{Database, PoolOptions};
 
@@ -23,14 +23,23 @@ pub(super) async fn connect(config: &AppConfig) -> Result<Database, String> {
     let db = Database::connect(&config.database_app_url, options)
         .await
         .map_err(|error| format!("injoignable ({error})"))?;
-    if let Err(error) = sqlx::query("select 1").execute(db.pool()).await {
-        return Err(format!("ne répond pas ({error})"));
+    match role_escapes_isolation(db.pool()).await {
+        Err(error) => Err(format!("ne répond pas ({error})")),
+        Ok(true) => Err(
+            "DATABASE_APP_URL se connecte avec un rôle qui contourne l’isolation des \
+             entreprises (superutilisateur ou BYPASSRLS) : la pile l’écrit avec mimorya_app"
+                .to_string(),
+        ),
+        Ok(false) => Ok(db),
     }
-    Ok(db)
 }
 
 pub(super) fn reached() -> Finding {
-    Finding::new(TOPIC, State::Ready, "joignable par le rôle applicatif")
+    Finding::new(
+        TOPIC,
+        State::Ready,
+        "joignable par le rôle applicatif, soumis à l’isolation des entreprises",
+    )
 }
 
 pub(super) async fn migrations(db: &Database) -> Finding {
@@ -98,7 +107,7 @@ pub(super) fn compare(carried: &[(i64, Vec<u8>)], applied: &[AppliedMigration]) 
             plural(pending.len() as i64, "migration", "migrations")
         ));
     }
-    let last = applied.last().map_or(0, |m| m.version);
+    let last = applied.iter().map(|m| m.version).max().unwrap_or(0);
     Finding::new(
         MIGRATIONS,
         State::Ready,

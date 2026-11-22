@@ -16878,9 +16878,13 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
 [--call-model]`, lancée dans le service `api` (`docker compose … exec api …`). Elle
     voit son environnement, son dossier de marque et son réseau. Elle dit chaque point
     en français, `OK`, `À FAIRE` (la plateforme sert, mais il manque ce qu'une
-    installation devrait avoir, ou ce n'est pas vérifié) ou `ÉCHEC` (elle ne peut pas
-    servir), puis un bilan. Elle échoue s'il reste un point en `ÉCHEC` ;
-  - **base de données** : joignable par le rôle applicatif ;
+    installation devrait avoir, ou ce n'est pas vérifié) ou `ÉCHEC` (à corriger avant
+    d'ouvrir la plateforme : elle ne peut pas servir, ou ne protège plus ses données,
+    comme une archive des WAL en échec), puis un bilan. Elle échoue s'il reste un point
+    en `ÉCHEC` ;
+  - **base de données** : joignable par un rôle soumis à l'isolation des entreprises.
+    L'adresse d'un superutilisateur ou d'un rôle `BYPASSRLS`, celle du propriétaire
+    donnée à la place de celle de l'application, est en `ÉCHEC` ;
   - **migrations** : le journal comparé aux migrations que porte cette version, numéro
     et somme de contrôle. Il signale une migration à appliquer, échouée, changée depuis
     qu'elle a été appliquée, ou inconnue de cette version (image plus ancienne que la
@@ -16904,16 +16908,21 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
     api, ADR-085) ;
   - **marque** : lue comme l'API la lit au démarrage (ADR-222), refus compris ;
   - **modèle de la plateforme** : configuré ou non. Avec `--call-model` seulement, un
-    vrai appel, de quelques jetons facturés, prouve sa clé. La CI ne le fait jamais, et
-    les tests prennent un modèle scénarisé.
+    vrai appel, facturé, prouve sa clé ; sa réponse est bornée à 16 jetons chez
+    Anthropic, un fournisseur compatible OpenAI ne recevant pas de borne. La CI ne le
+    fait jamais, et les tests prennent un modèle scénarisé.
 - **Conséquences** :
   - la commande dit un état à l'instant où elle tourne ; elle ne surveille rien ;
   - derrière un NAT sans retour, le domaine peut être injoignable depuis le serveur et
     joignable depuis l'extérieur : le message le dit ;
-  - la CI la lance dans la pile de production qu'elle construit. Elle doit tout dire
-    prêt, sauf le domaine (`localhost` sous l'autorité interne de Caddy) ;
+  - la CI la lance dans la pile de production qu'elle construit : base, migrations,
+    clé, workers, marque et archive des WAL prêts ; relais et modèle à faire (la pile de
+    la CI n'en a pas) ; domaine injoignable depuis la pile, `localhost` n'y étant pas
+    Caddy. Le bilan compte ce seul point à corriger ;
   - tests : `crates/api/src/services/installation/` (comparaison du journal, archive,
     workers, adresse, relais, bilan), `crates/api/tests/installation_check.rs` (une
     installation prête, puis une qui ne peut pas servir, contre une vraie base),
-    `crates/db/tests/definer_functions.rs` (la fonction, appelée par le seul rôle
-    applicatif), `infra/docker/production-test.sh`.
+    `crates/api/tests/installation_check_guards.rs` (un certificat d'une autorité non
+    reconnue, puis reconnue ; l'adresse du propriétaire à la place de celle de
+    l'application), `crates/db/tests/definer_functions.rs` (la fonction, appelée par le
+    seul rôle applicatif), `infra/docker/production-test.sh`.

@@ -57,10 +57,11 @@ done
 unprivileged web
 "${compose[@]}" run --rm --no-deps migrate >/dev/null || fail "migrations not re-applied"
 
-# The installation's check (ADR-223), in the api service: ready but for the
-# domain, which the CI serves as localhost under Caddy's internal authority,
-# out of reach from inside the stack; the archive of the WAL on when the
-# stack has the backups' recipients.
+# The installation's check (ADR-223), in the api service: the database, the
+# migrations, the key, the workers and the brand ready, the archive of the WAL
+# too when the stack has the backups' recipients; the relay and the model to
+# complete (the CI's stack has none); the domain, localhost, out of reach from
+# inside the stack, the one point to fix.
 if report=$("${compose[@]}" exec -T api mimorya-admin check-install 2>&1); then
   fail "check-install passed although the CI's domain is localhost: $report"
 fi
@@ -70,6 +71,8 @@ for expected in 'OK       Base de données : ' 'OK       Migrations : à jour' \
   "$backups Sauvegardes : " 'ÉCHEC    Domaine et certificat : '; do
   grep -qF -- "$expected" <<<"$report" || fail "check-install did not say « $expected »: $report"
 done
+grep -qF 'Bilan : 1 point(s) à corriger avant d’ouvrir la plateforme' <<<"$report" ||
+  fail "check-install found more than the domain to fix: $report"
 
 demo=$("${compose[@]}" exec -T db psql -U mimorya -d mimorya -tAc \
   "select count(*) from tenants where settings->>'demo' = 'true'") ||
