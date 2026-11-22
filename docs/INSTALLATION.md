@@ -9,6 +9,10 @@ Les commandes se lancent sur le serveur **en `root`** (`sudo -i` depuis votre co
 d'administration), sauf celles que le guide dit de lancer sur votre poste. Le dépôt va dans
 `/srv/mimorya`, l'emplacement que suit le plan de reprise (`docs/RECOVERY_PLAN.md`).
 
+Un reverse proxy tient déjà les ports 80 et 443 du serveur (Nginx Proxy Manager, nginx,
+Traefik…) ? Lisez d'abord l'annexe, « Derrière un reverse proxy déjà installé » : elle
+change les étapes 5, 6 et 7, et c'est ce reverse proxy qui obtient le certificat.
+
 ## 1. Le serveur
 
 Pour une bêta de quelques dizaines d'utilisateurs :
@@ -144,7 +148,7 @@ passe sans elle (ADR-221) :
 | Variable                    | Valeur                                                       |
 | --------------------------- | ------------------------------------------------------------ |
 | `MIMORYA_DOMAIN`            | `beta.example.com`                                           |
-| `MIMORYA_TLS`               | une adresse e-mail (certificat public de Let's Encrypt)      |
+| `MIMORYA_TLS`               | une adresse e-mail (certificat de Let's Encrypt) ; annexe    |
 | `POSTGRES_PASSWORD`         | la première valeur `openssl rand -hex 32`                    |
 | `MIMORYA_APP_DB_PASSWORD`   | la seconde                                                   |
 | `MIMORYA_MASTER_KEY`        | la valeur `openssl rand -base64 32`                          |
@@ -331,3 +335,95 @@ entreprises avant de mettre à jour.
 
 `docs/RECETTE_BETA.md`, « Remonter un problème », dit quoi joindre : la version, la sortie
 de `check-install` et les journaux, qui ne contiennent aucun secret.
+
+## Annexe : derrière un reverse proxy déjà installé
+
+Quand un reverse proxy tient déjà les ports 80 et 443 du serveur (Nginx Proxy Manager,
+nginx, Traefik…), c'est lui qui sert la plateforme et obtient son certificat ; Caddy ne
+démarre pas (ADR-225). Le fichier `compose.behind-proxy.yml` s'ajoute à la pile :
+l'interface et l'API rejoignent un réseau à part, `mimorya-edge`, sous les noms
+`mimorya-web` (port 3000) et `mimorya-api` (port 4000). La base et les workers n'y sont
+pas, et la pile ne publie aucun port.
+
+Ce qui change, dans l'ordre du guide :
+
+1. **§ 5** : `/root/.bashrc` nomme aussi ce fichier.
+
+   ```bash
+   export COMPOSE_FILE=compose.production.yml:compose.behind-proxy.yml COMPOSE_ENV_FILES=/srv/mimorya/.env.production
+   ```
+
+2. **§ 6** : `MIMORYA_TLS=internal`. La pile l'exige ; Caddy, qui ne démarre pas, ne s'en
+   sert pas.
+3. **Avant le § 7**, une fois, le réseau, puis une vérification qui ne démarre rien :
+
+   ```bash
+   docker network create mimorya-edge
+   docker compose config --quiet       # refuse une variable obligatoire manquante
+   docker compose config --services    # db, migrate, api, web, worker : pas de proxy
+   ```
+
+4. **§ 7** : le démarrage ne change pas.
+5. **Après le § 7 seulement**, le reverse proxy rejoint `mimorya-edge`, puis sert le
+   domaine : nginx refuse un nom qu'il ne trouve pas encore.
+
+### Nginx Proxy Manager
+
+1. **Le réseau.** Dans le `docker-compose.yml` de Nginx Proxy Manager, puis
+   `docker compose up -d` dans son dossier :
+
+   ```yaml
+   services:
+     app: # le service de Nginx Proxy Manager, tel qu'il s'appelle chez vous
+       networks: [default, mimorya-edge]
+   networks:
+     mimorya-edge:
+       external: true
+   ```
+
+   Le réseau existe avant les deux piles : aucune ne dépend du démarrage de l'autre.
+
+2. **Le Proxy Host** (_Hosts_, _Proxy Hosts_, _Add Proxy Host_) :
+   - _Details_ : _Domain Names_, le domaine de `MIMORYA_DOMAIN` ; _Scheme_ `http` ;
+     _Forward Hostname / IP_ `mimorya-web` ; _Forward Port_ `3000`. Laissez _Block Common
+     Exploits_ désactivé : ses règles refusent des requêtes légitimes (retours de
+     connexion, SCIM, webhooks), et l'API fait ses propres contrôles. _Websockets Support_
+     est inutile.
+   - _Advanced_ : le bloc de `infra/proxy/api-location.conf`, tel quel. La barre finale de
+     `proxy_pass` retire le préfixe `/api`, que l'API n'attend pas.
+
+     ```nginx
+     location /api/ {
+         proxy_pass http://mimorya-api:4000/;
+         proxy_http_version 1.1;
+         proxy_set_header Host $host;
+         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+         proxy_set_header X-Forwarded-Proto $scheme;
+         proxy_buffering off;
+         proxy_read_timeout 300s;
+         client_max_body_size 20m;
+     }
+     ```
+
+   - _SSL_ : _Request a new SSL Certificate_ (Let's Encrypt), _Force SSL_, _HTTP/2
+     Support_, _HSTS Enabled_. _HSTS Subdomains_ seulement si tous les sous-domaines du
+     domaine sont servis en HTTPS. Le domaine pointe vers le serveur, et le port 80 est
+     joignable (§ 2 et § 3).
+
+3. **La vérification** : `curl -sI https://beta.example.com/api/health` répond `200`, puis
+   le § 8.
+
+### Un autre reverse proxy
+
+Il convient s'il est relié à `mimorya-edge` et :
+
+- sert le domaine en HTTPS, avec HSTS, et `/` à `mimorya-web:3000` ;
+- sert `/api/` à `mimorya-api:4000` sans son préfixe, sans mettre les réponses en tampon
+  (suivi en direct des conversations), avec un corps de 20 Mo ;
+- ajoute l'adresse du client à `X-Forwarded-For` (nginx : `infra/proxy/api-location.conf`
+  dans son bloc `server`).
+
+L'API prend pour adresse du client la dernière de `X-Forwarded-For` : elle limite ainsi les
+tentatives de connexion de chacun. Un reverse proxy qui ne l'ajoute pas, ou un second
+mandataire devant lui (Cloudflare en mode proxy), ferait compter tous les visiteurs comme
+un seul.

@@ -296,7 +296,8 @@ fn a_proxy_is_an_http_s_address_and_its_bypass_needs_it() {
 
 /// Whether the platform's model is at Anthropic's official address decides
 /// its advisor (ADR-207): its endpoint is written out, the official one when
-/// none is set, its provider reading nothing from the environment (ADR-221).
+/// none is set, its provider reading neither key nor address from the
+/// environment (ADR-221).
 #[test]
 fn the_platform_s_anthropic_endpoint_and_its_advisor_are_read() {
     let key = ("ANTHROPIC_API_KEY", "sk-test");
