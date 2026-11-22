@@ -16944,30 +16944,42 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
     - taille conseillée pour quelques dizaines d'utilisateurs, 4 vCPU, 8 Go et 80 Go de
       SSD, et minimale pour l'équipe seule ;
     - DNS, pare-feu (SSH, 80 et 443 seulement), Docker depuis son dépôt, `age` ;
-    - dépôt extrait à la version installée ;
-    - secrets : l'identité des sauvegardes créée sur le poste de l'exploitant, jamais sur
-      le serveur, `.env.production` lisible par root seul ;
+    - dépôt extrait à la version installée, dans `/srv/mimorya`, l'emplacement que suit le
+      plan de reprise, la pile désignée par `COMPOSE_FILE`, `COMPOSE_ENV_FILES` et
+      `MIMORYA_BACKUP_RECIPIENTS_FILE` comme dans lui ; les commandes en `root` ;
+    - secrets : deux identités des sauvegardes créées sur le poste de l'exploitant, jamais
+      sur le serveur, leurs clés publiques dans `.env.production` et `destinataires.txt` ;
+      `.env.production` lisible par root seul et copié, avec la clé maître, hors du
+      serveur ;
     - démarrage, puis `check-install`, avec ce qu'il doit dire point par point ;
     - première entreprise et sa formule, par le service `migrate` ;
     - sauvegardes programmées, par renvoi au plan de reprise ;
-    - mise à jour : sauvegarde de base d'abord, nouvelle version, `check-install`. Revenir
-      en arrière, c'est restaurer : les migrations ne reculent pas.
+    - mise à jour : sauvegarde de base et instant noté d'abord, nouvelle version,
+      `check-install`. Les migrations ne reculent pas et une ancienne version refuse une
+      base plus récente : revenir en arrière, c'est restaurer la base à l'instant noté,
+      sur l'hôte même, avec la version précédente.
 
-    Un test vérifie que le guide nomme chaque variable obligatoire et recommandée de
-    `.env.production.example` : une variable ajoutée là, et oubliée dans le guide, fait
-    échouer la CI ;
+    Des tests vérifient que le guide nomme chaque variable obligatoire et recommandée de
+    `.env.production.example`, et que chaque commande `mimorya-admin` et chaque script de
+    sauvegarde que citent le guide et la recette existent : une variable ajoutée, une
+    commande renommée font échouer la CI ;
 
   - **`docs/RECETTE_BETA.md`** : les essais que l'exploitant fait lui-même avec une vraie
     clé, chacun avec son résultat attendu :
     - comptes : invitation, mot de passe oublié, second facteur ;
-    - agent : conversation, document, action soumise à validation (par la messagerie
-      standard), mission ;
+    - agent : conversation, document (déposé par un second compte, qui reçoit le rôle de
+      gestionnaire des connaissances : personne ne change ses propres droits), action
+      soumise à validation (par la messagerie standard), mission ;
     - escalade : par le routeur, par classement, après échec du contrôle (qui ne se
-      provoque pas à coup sûr : la recette le dit), budget épuisé ;
-    - formules : plafond (le plus bas permis, 1 USD, atteint plus vite avec un
-      coefficient de 100 %), alertes, crédit prépayé, retour à la clé du client ;
-    - sauvegarde, puis restauration sur une pile de test, puis vérification du journal
-      d'audit ;
+      provoque pas à coup sûr : la recette le dit, et remet d'abord le routeur au modèle
+      principal), budget baissé sous la dépense, chaque appel comptant dans la borne par
+      run ;
+    - formules, sur une entreprise d'essai à part : plafond (le plus bas permis, 1 USD,
+      atteint plus vite avec un coefficient de 100 %), alertes, crédit prépayé, retour à
+      la clé du client ;
+    - sauvegarde sur le serveur, puis restauration sur l'hôte de secours, base seule, par
+      l'exercice du plan de reprise : jamais sur le serveur de production, où la pile porte
+      un nom fixe, ni en pile entière, qui tournerait en même temps que la production ;
     - mise à jour de version, puis retour en arrière.
 
     Elle dit comment remonter un problème : la version, la sortie de `check-install`, les
@@ -16982,6 +16994,8 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
   - le guide suit la pile : une variable de plus à régler s'y ajoute, ou la CI échoue ;
   - la recette se refait à chaque version de bêta ; ses résultats, notés par
     l'exploitant, restent hors du dépôt ;
-  - tests : `crates/api/tests/configuration_files.rs`
-    (`the_installation_guide_names_every_variable_to_set`, dont l'échec a été vérifié en
-    retirant une variable du guide).
+  - tests : `crates/api/tests/configuration_files.rs`,
+    `the_installation_guide_names_every_variable_to_set` et
+    `the_guide_and_the_acceptance_tests_name_commands_that_exist`, dont l'échec a été
+    vérifié en retirant une variable du guide, puis en y écrivant une commande et un
+    script qui n'existent pas.

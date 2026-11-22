@@ -14,6 +14,7 @@ mod starts;
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::path::Path;
 
 use mimorya_api::AppConfig;
 use regex::Regex;
@@ -209,4 +210,34 @@ fn the_installation_guide_names_every_variable_to_set() {
         .filter(|name| !guide.contains(&format!("`{name}`")))
         .collect();
     assert_eq!(unnamed, Vec::<String>::new(), "docs/INSTALLATION.md");
+}
+
+#[test]
+fn the_guide_and_the_acceptance_tests_name_commands_that_exist() {
+    let usage = repository("crates/api/src/bin/admin/usage.rs");
+    let command = Regex::new(r"mimorya-admin ([a-z][a-z-]*)").unwrap();
+    let script = Regex::new(r"infra/backup/([a-z][a-z-]*\.sh)").unwrap();
+    for document in ["docs/INSTALLATION.md", "docs/RECETTE_BETA.md"] {
+        let text = repository(document);
+        for found in command.captures_iter(&text) {
+            let listed = usage
+                .lines()
+                .any(|line| line.trim_start().split(' ').next() == Some(&found[1]));
+            assert!(
+                listed,
+                "{document}: mimorya-admin {} is no command",
+                &found[1]
+            );
+        }
+        for found in script.captures_iter(&text) {
+            let path = format!("infra/backup/{}", &found[1]);
+            assert!(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../..")
+                    .join(&path)
+                    .is_file(),
+                "{document}: {path} does not exist"
+            );
+        }
+    }
 }
