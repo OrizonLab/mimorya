@@ -281,19 +281,25 @@ async fn one_company_s_settings_are_never_in_another_s_register() {
     let api = start().await;
     let acme = companies::create(&api, "acme-registre", "jeanne@acme-registre.example").await;
     let mut tx = api.app.services.db.begin(acme.tenant_id).await.unwrap();
-    let config = json!({ "prefix": "facturation", "url": "https://facturation.acme.example/api" });
-    create_connector_instance(
-        &mut tx,
-        NewConnectorInstance {
-            tenant_id: acme.tenant_id,
-            connector_type: "rest",
-            name: "Facturation Acme",
-            enabled: true,
-            config: &config,
-        },
-    )
-    .await
-    .unwrap();
+    // An enabled API, and a disabled one, which still keeps its token.
+    for (name, host, enabled) in [
+        ("Facturation Acme", "facturation", true),
+        ("Paie Acme", "paie", false),
+    ] {
+        let config = json!({ "prefix": host, "url": format!("https://{host}.acme.example/api") });
+        create_connector_instance(
+            &mut tx,
+            NewConnectorInstance {
+                tenant_id: acme.tenant_id,
+                connector_type: "rest",
+                name,
+                enabled,
+                config: &config,
+            },
+        )
+        .await
+        .unwrap();
+    }
     tx.commit().await.unwrap();
 
     let paul = api.sign_in(user::PAUL).await;
@@ -308,6 +314,7 @@ async fn one_company_s_settings_are_never_in_another_s_register() {
         .await;
     let register = read(&jeanne).await;
     assert_eq!(register["controller"], "Acme Industrie");
+    // The disabled API sends nothing: no recipient, a note of what it keeps.
     assert_eq!(
         recipients(&register, "connectors"),
         [of(
@@ -316,7 +323,13 @@ async fn one_company_s_settings_are_never_in_another_s_register() {
             "company"
         )]
     );
-    assert!(lines(&activity(&register, "connectors")["notes"]).is_empty());
+    assert_eq!(
+        lines(&activity(&register, "connectors")["notes"]),
+        [
+            "Connecteur « Paie Acme » désactivé : rien ne part vers son service ; ce qu’il garde \
+             reste stocké jusqu’à son retrait ou la suppression du connecteur : son jeton, scellé"
+        ]
+    );
     assert!(!register.to_string().contains("Néo"));
 }
 

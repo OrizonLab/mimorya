@@ -16593,3 +16593,46 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
       que rien ne la dise intacte ;
     - `apps/web/e2e/processing-register.spec.ts` : le fichier du registre est daté du
       jour de Paris où le registre a été tiré, lu de la réponse de l'API.
+
+## ADR-220 — Ce que garde un connecteur désactivé, dans le registre (lot 71c)
+
+- **Statut** : accepté (2026-11-22) · complète ADR-217 et ADR-219.
+- **Contexte** : désactiver un connecteur ne retire rien de ce qu'il garde. Restent
+  stockés, scellés, les comptes que chacun a reliés à Microsoft 365 ou Google, les
+  comptes de messagerie et leurs mots de passe, les autorisations OAuth d'un serveur MCP,
+  de l'entreprise et de chacun, et le jeton d'une API. Seuls un changement d'adresse ou de
+  déclaration, ou la suppression du connecteur, les retirent. Le registre ne lisait que
+  les connecteurs activés : une entreprise sans connecteur activé n'y trouvait plus le
+  traitement « Connecteurs et comptes reliés », alors que ces données restaient
+  conservées.
+- **Décision** :
+  - **le registre lit tous les connecteurs**. Le traitement apparaît quand l'un d'eux est
+    activé, ou désactivé mais gardant quelque chose (tout sauf le connecteur de
+    démonstration, aux données fictives) ;
+  - **un connecteur désactivé n'a aucun destinataire** : rien ne part vers son service.
+    Le modèle des runs et le service de décision ne sont nommés pour ce traitement que si
+    un connecteur est activé ;
+  - **une note dit ce que garde chaque connecteur désactivé**, selon son type :
+    - son jeton et les autorisations OAuth pour un serveur MCP ;
+    - son jeton pour une API REST ;
+    - les comptes reliés et leurs jetons de renouvellement pour Microsoft 365 ou Google ;
+    - les comptes de messagerie et leurs mots de passe pour la messagerie standard.
+      Ces données restent stockées jusqu'à leur retrait ou la suppression du connecteur.
+- **Conséquences** :
+  - suites de l'audit de la PR #291 :
+    - `crates/api/tests/audit_retention_route.rs` relit `firstPlace` et `purged` dans la
+      réponse de `POST /admin/audit/verifications` :
+      - aucune suppression : la chaîne commence à sa première place ;
+      - après la rétention : elle commence après les places supprimées ;
+      - début déplacé sans la clé : elle commence à sa première place, qui manque ;
+    - dans le parcours de la chaîne déplacée, la réponse remplacée compte l'entrée
+      `audit.purged` encore à sceller (`unsealed: 1`) ;
+    - le parcours du registre construit le jour attendu de ses parties ;
+  - tests :
+    - `crates/core/src/processing_register/tests/reach.rs` :
+      - un connecteur de démonstration désactivé n'ouvre aucun traitement ;
+      - des connecteurs désactivés qui gardent quelque chose l'ouvrent, sans destinataire
+        et avec leur note ;
+      - à côté d'un connecteur activé, seul celui-ci et ce qui le sert sont nommés ;
+    - `crates/api/tests/processing_register.rs` : une API REST désactivée d'une autre
+      entreprise est notée dans son registre, sans destinataire.

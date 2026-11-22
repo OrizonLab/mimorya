@@ -33,6 +33,7 @@ fn models_are_named_with_where_they_stand_and_who_chose_them() {
         kind: ConnectorKind::Microsoft365,
         name: "Microsoft 365".into(),
         hosts: Vec::new(),
+        enabled: true,
     }];
     let register = super::register(&facts);
     let connectors = activity(&register, ActivityKind::Connectors);
@@ -81,6 +82,7 @@ fn jev_receives_only_what_the_usages_set_send_it() {
         kind: ConnectorKind::Rest,
         name: "Facturation".into(),
         hosts: vec!["api.facturation.example".into()],
+        enabled: true,
     }];
     // The main model decides: TypeSafe receives nothing.
     let register = super::register(&facts);

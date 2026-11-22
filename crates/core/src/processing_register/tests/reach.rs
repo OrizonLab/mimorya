@@ -1,4 +1,4 @@
-use super::{activity, bare, names};
+use super::{activity, bare, names, own};
 use crate::gateways::GatewayKind;
 use crate::identity_providers::ProviderKind;
 use crate::processing_register::*;
@@ -9,6 +9,7 @@ fn each_connector_is_named_by_what_its_tools_reach() {
         kind,
         name: name.into(),
         hosts: hosts.iter().map(|h| h.to_string()).collect(),
+        enabled: true,
     };
     let mut facts = bare();
     facts.connectors = vec![
@@ -125,4 +126,66 @@ fn gateways_and_sign_in_name_their_services() {
             .iter()
             .any(|m| m.contains("fournisseur d’identité"))
     );
+}
+
+#[test]
+fn a_disabled_connector_sends_nothing_and_says_what_it_keeps() {
+    let connector = |kind, name: &str, enabled| ConnectorFact {
+        kind,
+        name: name.into(),
+        hosts: vec!["service.example".into()],
+        enabled,
+    };
+    let mut facts = bare();
+    facts.runs_model = Some(own("anthropic"));
+    facts.jev = true;
+    facts.decisions.actions = true;
+    facts.decisions.external_contents = true;
+
+    // A disabled demonstration keeps nothing: no activity.
+    facts.connectors = vec![connector(ConnectorKind::Demo, "Interventions", false)];
+    let register = super::register(&facts);
+    assert!(
+        register
+            .activities
+            .iter()
+            .all(|a| a.kind != ActivityKind::Connectors)
+    );
+
+    // Disabled ones keeping what was linked: the activity, no recipient.
+    facts.connectors = vec![
+        connector(ConnectorKind::Microsoft365, "Microsoft 365", false),
+        connector(ConnectorKind::StandardMail, "Messagerie", false),
+        connector(ConnectorKind::Rest, "Facturation", false),
+    ];
+    let register = super::register(&facts);
+    let connectors = activity(&register, ActivityKind::Connectors);
+    assert!(
+        connectors.recipients.is_empty(),
+        "{:?}",
+        connectors.recipients
+    );
+    assert_eq!(connectors.notes.len(), 3);
+    assert!(connectors.notes[0].starts_with("Connecteur « Microsoft 365 » désactivé"));
+    assert!(connectors.notes[0].contains("les comptes que chacun y a reliés"));
+    assert!(connectors.notes[1].contains("mots de passe scellés"));
+    assert!(connectors.notes[2].contains("son jeton, scellé"));
+
+    // With one enabled beside them, only it reaches out.
+    facts
+        .connectors
+        .push(connector(ConnectorKind::Rest, "Paie", true));
+    let register = super::register(&facts);
+    let connectors = activity(&register, ActivityKind::Connectors);
+    assert_eq!(
+        names(connectors),
+        [
+            "Anthropic",
+            "API REST (service.example)",
+            "TypeSafe (Jev)",
+            "TypeSafe (Jev)"
+        ]
+    );
+    assert_eq!(connectors.recipients[1].role, "Connecteur « Paie »");
+    assert_eq!(connectors.notes.len(), 3);
 }

@@ -104,7 +104,7 @@ pub(super) fn decision_uses<'a>(usages: impl Iterator<Item = (&'a str, &'a str)>
     uses
 }
 
-/// An enabled connector, and the hosts its tools reach as declared.
+/// A connector, enabled or not, and the hosts its tools reach as declared.
 pub(super) fn connector(row: &ConnectorInstanceRow) -> ConnectorFact {
     let address = || {
         row.config
@@ -134,6 +134,7 @@ pub(super) fn connector(row: &ConnectorInstanceRow) -> ConnectorFact {
         kind,
         name: row.name.clone(),
         hosts,
+        enabled: row.enabled,
     }
 }
 

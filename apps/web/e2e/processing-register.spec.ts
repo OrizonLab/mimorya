@@ -20,8 +20,18 @@ test('the administrator reads the register and downloads it', async ({ page }) =
   const read = page.waitForResponse('**/api/admin/processing-register');
   await openAdmin(page, TAB);
   const { drawnAt } = (await (await read).json()) as ProcessingRegisterView;
-  // The day it was drawn, in Paris, as `YYYY-MM-DD`.
-  const day = new Date(drawnAt).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  // The day it was drawn, in Paris, as `YYYY-MM-DD`, from its parts.
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(new Date(drawnAt))
+      .map((part) => [part.type, part.value]),
+  );
+  const day = `${parts.year}-${parts.month}-${parts.day}`;
   const head = page.getByRole('region', { name: TAB });
   await expect(head.getByText('Néo Maintenance (démo)')).toBeVisible();
   const assistance = page.getByRole('region', { name: 'Assistance par l’agent' });

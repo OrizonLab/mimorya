@@ -50,11 +50,14 @@ pub enum ConnectorKind {
     Other,
 }
 
-/// An enabled connector of the company.
+/// A connector of the company, enabled or not.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectorFact {
     pub kind: ConnectorKind,
     pub name: String,
+    /// Its tools are offered: disabled, nothing is sent to its service, but
+    /// what it keeps stays stored.
+    pub enabled: bool,
     /// The hosts its tools reach, as declared (none for an MCP server the
     /// platform starts itself, nor an address it cannot read).
     pub hosts: Vec<String>,

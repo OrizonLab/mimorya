@@ -64,7 +64,8 @@ pub async fn processing_register(
     let runs_row = get_llm_settings(&mut tx, ModelPurpose::Conversations).await?;
     let review_row = get_llm_settings(&mut tx, ModelPurpose::Verification).await?;
     let usages = decision_usages(&mut tx).await?;
-    let connectors = list_connector_instances(&mut tx, true).await?;
+    // Disabled ones too: what they keep stays stored (ADR-220).
+    let connectors = list_connector_instances(&mut tx, false).await?;
     let gateways = list_gateways(&mut tx).await?;
     let providers = list_identity_providers(&mut tx).await?;
     let scim = count_tokens(&mut tx, TokenTable::Scim).await? > 0;

@@ -2,24 +2,58 @@
 //! and the accounts its people link, its conversation gateways.
 
 use super::{Activity, ActivityKind, COLLABORATORS};
-use crate::processing_register::facts::{ConnectorKind, RegisterFacts};
+use crate::processing_register::facts::{ConnectorFact, ConnectorKind, RegisterFacts};
 use crate::processing_register::{model_recipients, recipients};
 
+/// Whether a connector is processing: enabled, or disabled and keeping
+/// what its people linked or authorized (the demonstration's keeps
+/// nothing).
+pub(super) fn processed(connector: &ConnectorFact) -> bool {
+    connector.enabled || connector.kind != ConnectorKind::Demo
+}
+
+/// What a disabled connector keeps, still stored, until its removal.
+fn kept(connector: &ConnectorFact) -> Option<String> {
+    let what = match connector.kind {
+        ConnectorKind::Demo => return None,
+        ConnectorKind::Mcp | ConnectorKind::McpProcess => {
+            "son jeton et les autorisations OAuth de l’entreprise et de chacun, scellés"
+        }
+        ConnectorKind::Rest => "son jeton, scellé",
+        ConnectorKind::Microsoft365 | ConnectorKind::GoogleWorkspace => {
+            "les comptes que chacun y a reliés, leurs jetons de renouvellement scellés"
+        }
+        ConnectorKind::StandardMail => {
+            "les comptes de messagerie de chacun, leurs mots de passe scellés"
+        }
+        ConnectorKind::Other => "ce que sa déclaration garde",
+    };
+    Some(format!(
+        "Connecteur « {} » désactivé : rien ne part vers son service ; ce qu’il garde reste \
+         stocké jusqu’à son retrait ou la suppression du connecteur : {what}",
+        connector.name
+    ))
+}
+
 pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
+    let enabled: Vec<&ConnectorFact> = facts.connectors.iter().filter(|c| c.enabled).collect();
+    // Without an enabled connector, nothing is read and nothing acts: no
+    // service receives anything of it.
+    let reading = !enabled.is_empty();
     let mut recipients = Vec::new();
-    if let Some(model) = &facts.runs_model {
+    if let Some(model) = facts.runs_model.as_ref().filter(|_| reading) {
         recipients.push(model_recipients::model(
             model,
             "Modèle des conversations : contenus lus et actions préparées",
         ));
     }
-    recipients.extend(facts.connectors.iter().filter_map(recipients::connector));
-    if facts.jev && facts.decisions.actions {
+    recipients.extend(enabled.iter().filter_map(|c| recipients::connector(c)));
+    if reading && facts.jev && facts.decisions.actions {
         recipients.push(model_recipients::jev(
             "Service de décision : action et ses paramètres, avant qu’elle parte",
         ));
     }
-    if facts.jev && facts.decisions.external_contents {
+    if reading && facts.jev && facts.decisions.external_contents {
         recipients.push(model_recipients::jev(
             "Service de décision : début des contenus rapportés par un outil, pour y chercher \
              des instructions",
@@ -29,6 +63,7 @@ pub(super) fn connectors(facts: &RegisterFacts) -> Activity {
         .connectors
         .iter()
         .filter_map(|connector| match connector.kind {
+            _ if !connector.enabled => kept(connector),
             ConnectorKind::Demo => Some(format!(
                 "Connecteur « {} » : démonstration, données fictives ; il n’atteint aucun \
                  service extérieur",
