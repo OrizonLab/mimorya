@@ -7,6 +7,10 @@ mod support;
 
 use axum::http::StatusCode;
 use mimorya_core::demo::user;
+use mimorya_db::repositories::account_links::{NewAccountLink, put_account_link};
+use mimorya_db::repositories::connector_person_authorizations::{
+    NewPersonAuthorization, put_person_authorization,
+};
 use mimorya_db::repositories::connectors::{NewConnectorInstance, create_connector_instance};
 use mimorya_db::repositories::mail_accounts::put_mail_account;
 use mimorya_db::repositories::secrets::StoredSecret;
@@ -21,42 +25,16 @@ async fn one_company_s_settings_are_never_in_another_s_register() {
     let api = start().await;
     let acme = companies::create(&api, "acme-registre", "jeanne@acme-registre.example").await;
     let mut tx = api.app.services.db.begin(acme.tenant_id).await.unwrap();
-    // An enabled API; a disabled one, keeping nothing of anyone; a disabled
-    // mail server, keeping Jeanne's account.
-    let mut created = Vec::new();
-    for (kind, name, host, enabled) in [
-        ("rest", "Facturation Acme", "facturation", true),
-        ("rest", "Paie Acme", "paie", false),
-        ("mail_server", "Messagerie Acme", "mail", false),
-    ] {
-        let config = json!({ "prefix": host, "url": format!("https://{host}.acme.example/api") });
-        let id = create_connector_instance(
-            &mut tx,
-            NewConnectorInstance {
-                tenant_id: acme.tenant_id,
-                connector_type: kind,
-                name,
-                enabled,
-                config: &config,
-            },
-        )
-        .await
-        .unwrap();
-        created.push(id);
-    }
-    let sealed = StoredSecret {
-        ciphertext: vec![1; 16],
-        iv: vec![2; 12],
-        auth_tag: vec![3; 16],
-        key_version: 1,
-    };
-    put_mail_account(
+    let config = json!({ "prefix": "facturation", "url": "https://facturation.acme.example/api" });
+    create_connector_instance(
         &mut tx,
-        acme.tenant_id,
-        created[2],
-        acme.admin_id,
-        "jeanne",
-        &sealed,
+        NewConnectorInstance {
+            tenant_id: acme.tenant_id,
+            connector_type: "rest",
+            name: "Facturation Acme",
+            enabled: true,
+            config: &config,
+        },
     )
     .await
     .unwrap();
@@ -75,9 +53,6 @@ async fn one_company_s_settings_are_never_in_another_s_register() {
     let register = read(&jeanne).await;
     assert_eq!(register["controller"], "Acme Industrie");
     assert!(!register.to_string().contains("Néo"));
-    // The disabled ones send nothing: no recipient but the enabled API. The
-    // mail server is noted for the account it keeps, the API keeping no one's
-    // data not at all.
     assert_eq!(
         recipients(&register, "connectors"),
         [of(
@@ -86,13 +61,115 @@ async fn one_company_s_settings_are_never_in_another_s_register() {
             "company"
         )]
     );
-    assert_eq!(
-        lines(&activity(&register, "connectors")["notes"]),
-        [
-            "Connecteur « Messagerie Acme » désactivé : aucun run ne l’utilise ; restent stockés, \
-             jusqu’à leur retrait, la désactivation du compte de chacun, un changement de la \
-             déclaration du connecteur ou sa suppression : 1 compte(s) de messagerie, mots de \
-             passe scellés"
-        ]
+}
+
+/// A sealed value the tests store: never read back.
+fn sealed() -> StoredSecret {
+    StoredSecret {
+        ciphertext: vec![1; 16],
+        iv: vec![2; 12],
+        auth_tag: vec![3; 16],
+        key_version: 1,
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_disabled_connector_is_noted_for_what_it_keeps_of_people() {
+    let api = start().await;
+    let address = "jeanne@acme-desactive.example";
+    let acme = companies::create(&api, "acme-desactive", address).await;
+    let (tenant_id, jeanne_id) = (acme.tenant_id, acme.admin_id);
+    let mut tx = api.app.services.db.begin(tenant_id).await.unwrap();
+    // Disabled, each keeping one kind of Jeanne's data; an API keeping no
+    // one's.
+    let mut created = Vec::new();
+    for (kind, name) in [
+        ("microsoft365", "Microsoft Acme"),
+        ("mail_server", "Messagerie Acme"),
+        ("mcp", "Wiki Acme"),
+        ("rest", "Paie Acme"),
+    ] {
+        let config = json!({ "url": "https://service.acme.example/api" });
+        let id = create_connector_instance(
+            &mut tx,
+            NewConnectorInstance {
+                tenant_id,
+                connector_type: kind,
+                name,
+                enabled: false,
+                config: &config,
+            },
+        )
+        .await
+        .unwrap();
+        created.push(id);
+    }
+    let token = sealed();
+    put_account_link(
+        &mut tx,
+        NewAccountLink {
+            tenant_id,
+            connector_id: created[0],
+            user_id: jeanne_id,
+            subject: "sujet-jeanne",
+            address,
+            scopes: "Mail.Read",
+            refresh_token: &token,
+        },
+    )
+    .await
+    .unwrap();
+    put_mail_account(&mut tx, tenant_id, created[1], jeanne_id, "jeanne", &token)
+        .await
+        .unwrap();
+    put_person_authorization(
+        &mut tx,
+        NewPersonAuthorization {
+            tenant_id,
+            connector_id: created[2],
+            user_id: jeanne_id,
+            issuer: "https://auth.acme.example",
+            client_id: "mimorya",
+            resource: "https://service.acme.example/api",
+            scopes: "wiki.read",
+            access_token: &token,
+            access_expires_at: None,
+            refresh_token: None,
+        },
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    let accepted = accept(&api, &acme.invitation.link, INVITED_PASSWORD).await;
+    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
+    let jeanne = api.sign_in_with(address, INVITED_PASSWORD).await;
+    let register = read(&jeanne).await;
+    // No recipient: no run uses them. Each kept kind noted in its own
+    // connector's note; the API keeping no one's data, not at all.
+    assert!(recipients(&register, "connectors").is_empty());
+    let notes = lines(&activity(&register, "connectors")["notes"]);
+    assert_eq!(notes.len(), 3, "{notes:?}");
+    let noted = |name: &str, what: &str| {
+        assert!(
+            notes.iter().any(|note| {
+                note.starts_with(&format!("Connecteur « {name} » désactivé")) && note.contains(what)
+            }),
+            "{name}: {notes:?}"
+        );
+    };
+    noted(
+        "Microsoft Acme",
+        "1 compte(s) relié(s), jetons de renouvellement scellés",
     );
+    noted(
+        "Messagerie Acme",
+        "1 compte(s) de messagerie, mots de passe scellés",
+    );
+    noted(
+        "Wiki Acme",
+        "1 autorisation(s) OAuth données par chacun, jetons scellés",
+    );
+    assert!(!notes.iter().any(|note| note.contains("Paie Acme")));
 }

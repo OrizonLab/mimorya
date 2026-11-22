@@ -4,8 +4,8 @@
 //! embedding models at a listed endpoint, its gateway, its identity
 //! provider, SCIM and its SIEM), with the durations in effect, a shortening
 //! that waits and its second factor; TypeSafe named only while one of the
-//! usages set sends Jev something; never a key; another company's settings
-//! never in it, nor its in the other's.
+//! usages set sends Jev something; never a key. That another company's
+//! settings are never in it: `processing_register_isolation.rs`.
 
 mod support;
 

@@ -207,26 +207,25 @@ fn a_disabled_connector_is_noted_for_what_it_keeps_as_counted() {
         "{:?}",
         connectors.recipients
     );
-    let prefix = "désactivé : aucun run ne l’utilise ; restent stockés, jusqu’à leur retrait, la \
-                  désactivation du compte de chacun, un changement de la déclaration du connecteur \
-                  ou sa suppression : ";
+    let notes = &connectors.notes;
+    assert_eq!(notes.len(), 3);
+    let start = "désactivé : aucun run ne l’utilise ; restent stockés : ";
     assert_eq!(
-        connectors.notes,
-        [
-            format!(
-                "Connecteur « Microsoft 365 » {prefix}3 compte(s) relié(s), jetons de \
-                 renouvellement scellés"
-            ),
-            format!(
-                "Connecteur « Messagerie » {prefix}1 compte(s) de messagerie, mots de passe \
-                 scellés"
-            ),
-            format!(
-                "Connecteur « Wiki » {prefix}2 autorisation(s) OAuth données par chacun, jetons \
-                 scellés"
-            ),
-        ]
+        notes[0],
+        format!(
+            "Connecteur « Microsoft 365 » {start}3 compte(s) relié(s), jetons de renouvellement \
+             scellés, jusqu’à leur retrait, la désactivation du compte de chacun ou la \
+             suppression du connecteur"
+        )
     );
+    // Each kind with what removes it: a linked account never goes with a
+    // change of declaration, nor a mail account but with a host's.
+    assert!(!notes[0].contains("déclaration") && !notes[0].contains("hôte"));
+    assert!(notes[1].contains("1 compte(s) de messagerie, mots de passe scellés"));
+    assert!(notes[1].contains("le changement d’hôte d’un serveur"));
+    assert!(!notes[1].contains("déclaration"));
+    assert!(notes[2].contains("2 autorisation(s) OAuth données par chacun, jetons scellés"));
+    assert!(notes[2].contains("de l’adresse ou de la déclaration du serveur ou de qui l’autorise"));
 
     // With one enabled beside them, only it reaches out, served as before.
     facts

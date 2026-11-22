@@ -11,21 +11,27 @@ pub(super) fn processed(connector: &ConnectorFact) -> bool {
     connector.enabled || connector.kept.any()
 }
 
-/// What a disabled connector keeps, as counted, until its removal.
+/// What a disabled connector keeps, as counted, each kind until what
+/// removes it (`connectors`' own durations say the same).
 fn kept(connector: &ConnectorFact) -> Option<String> {
     let kept = connector.kept;
     let parts: Vec<String> = [
         (
             kept.linked_accounts,
-            "compte(s) relié(s), jetons de renouvellement scellés",
+            "compte(s) relié(s), jetons de renouvellement scellés, jusqu’à leur retrait, la \
+             désactivation du compte de chacun ou la suppression du connecteur",
         ),
         (
             kept.mail_accounts,
-            "compte(s) de messagerie, mots de passe scellés",
+            "compte(s) de messagerie, mots de passe scellés, jusqu’à leur retrait, la \
+             désactivation du compte de chacun, le changement d’hôte d’un serveur ou la \
+             suppression du connecteur",
         ),
         (
             kept.person_authorizations,
-            "autorisation(s) OAuth données par chacun, jetons scellés",
+            "autorisation(s) OAuth données par chacun, jetons scellés, jusqu’à leur retrait, \
+             la désactivation du compte de chacun, un changement de l’adresse ou de la \
+             déclaration du serveur ou de qui l’autorise, ou la suppression du connecteur",
         ),
     ]
     .into_iter()
@@ -36,9 +42,7 @@ fn kept(connector: &ConnectorFact) -> Option<String> {
         return None;
     }
     Some(format!(
-        "Connecteur « {} » désactivé : aucun run ne l’utilise ; restent stockés, jusqu’à leur \
-         retrait, la désactivation du compte de chacun, un changement de la déclaration du \
-         connecteur ou sa suppression : {}",
+        "Connecteur « {} » désactivé : aucun run ne l’utilise ; restent stockés : {}",
         connector.name,
         parts.join(" ; ")
     ))
