@@ -95,7 +95,7 @@ async fn tell(
     let link = format!("{}/missions", config.web_origin);
     let end = end_of(&notice)?;
     let mail = end_mail(&EndMail {
-        product: &config.assistant_name,
+        assistant_name: &config.brand.names.assistant,
         company: &notice.company,
         owner: &notice.owner_name,
         email: &notice.owner_email,

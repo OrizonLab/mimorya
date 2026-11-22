@@ -123,8 +123,9 @@ async fn enrol(
     headers: HeaderMap,
 ) -> ApiResult<Json<SecondFactorEnrolment>> {
     let token = challenge(&state, &context, &headers).await?;
-    let enrolment =
-        start_sign_in_enrolment(&state.db, state.config.secrets.as_deref(), &token).await?;
+    let issuer = &state.config.brand.names.product;
+    let cipher = state.config.secrets.as_deref();
+    let enrolment = start_sign_in_enrolment(&state.db, cipher, &token, issuer).await?;
     Ok(Json(SecondFactorEnrolment {
         secret: enrolment.secret,
         uri: enrolment.uri,

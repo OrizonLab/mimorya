@@ -261,6 +261,31 @@ l'administrateur avec les images construites depuis le dépôt
 (`infra/docker/production-test.sh`, réservé à une pile jetable : il y laisse une
 entreprise de vérification).
 
+#### Marque de l'installation
+
+La pile porte la marque de l'installation sans reconstruire les images (ADR-222) :
+
+- `MIMORYA_PRODUCT_NAME` et `MIMORYA_ASSISTANT_NAME` dans `.env.production`. Le nom du
+  produit paraît dans l'onglet, la connexion, la barre latérale, les e-mails et les
+  applications d'authentification ; celui de l'assistant dans les conversations et les
+  consignes données au modèle. L'assistant prend le nom du produit par défaut ;
+- `MIMORYA_ACCENT_LIGHT` et `MIMORYA_ACCENT_DARK` (`#rrggbb`), la couleur d'accent de
+  chaque thème ;
+- le logo et le favicon dans le dossier `./brand` de l'hôte (`MIMORYA_BRAND_FOLDER`),
+  monté en lecture seule dans le service `api`, sous les noms `logo.svg`, `logo.png` ou
+  `logo.webp`, et `favicon.svg`, `favicon.png` ou `favicon.ico`.
+
+Sans réglage, tout reste « Mimorya ». L'API vérifie la marque à son démarrage et refuse
+de démarrer, en disant pourquoi dans ses journaux (`docker compose … logs api`), si un
+accent n'a pas le contraste de WCAG AA (4,5:1) avec un fond de l'interface, si un fichier
+n'est pas le type que dit son nom ou pèse trop (512 Kio pour le logo, 128 Kio pour le
+favicon), ou si un SVG contient un script, un gestionnaire d'événement, un élément hors
+de l'espace de noms de SVG, une référence externe ou un encodage autre qu'UTF-8 (ADR-222
+pour la liste). Les fichiers doivent être lisibles par l'utilisateur du conteneur `api`
+(uid 10001) : `chmod a+r brand/*`. Après un changement, relancez l'API (`… up -d`) :
+l'interface la relit dans la minute. Pensez aussi au nom de l'expéditeur des e-mails,
+`MAIL_FROM`.
+
 ### Sauvegardes
 
 La base se sauvegarde chiffrée par [age](https://age-encryption.org), à installer sur

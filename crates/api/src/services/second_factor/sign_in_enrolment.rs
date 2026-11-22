@@ -32,11 +32,13 @@ fn cipher_of(cipher: Option<&SecretCipher>) -> Result<&SecretCipher, DomainError
     cipher.ok_or_else(|| DomainError::unavailable(NO_MASTER_KEY))
 }
 
-/// Starts the enrolment the challenge of `token` waits for.
+/// Starts the enrolment the challenge of `token` waits for, the app showing
+/// it under `issuer`.
 pub async fn start_sign_in_enrolment(
     db: &Database,
     cipher: Option<&SecretCipher>,
     token: &str,
+    issuer: &str,
 ) -> anyhow::Result<Enrolment> {
     // The challenge first: nothing is said of the server to whoever holds
     // none.
@@ -46,7 +48,7 @@ pub async fn start_sign_in_enrolment(
     let account = get_user(&mut tx, record.user_id)
         .await?
         .ok_or_else(|| DomainError::unauthenticated(EXPIRED))?;
-    let enrolment = begin(&mut tx, cipher, record.user_id, &account.email).await?;
+    let enrolment = begin(&mut tx, cipher, record.user_id, &account.email, issuer).await?;
     tx.commit().await?;
     Ok(enrolment)
 }

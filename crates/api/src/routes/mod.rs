@@ -1,7 +1,8 @@
 //! HTTP routes, one module per resource. Every route resolves the caller with
 //! `Auth`, builds the authorization context server-side and checks the
 //! permission or the ownership of the resource before answering. Exceptions:
-//! login, invitation and password reset links and health need no identity,
+//! login, invitation and password reset links, health and the brand need no
+//! identity,
 //! nor a delivery to an inbound hook, proved by its token (ADR-109), nor an
 //! event Slack sends a gateway, proved by its signature (ADR-125), nor the
 //! audit log a company's SIEM reads, proved by its token (ADR-181);
@@ -19,6 +20,7 @@ mod approval_delegation;
 mod approvals;
 mod audit_export;
 mod auth;
+mod brand;
 mod conversations;
 mod documents;
 mod gateways;
@@ -55,6 +57,7 @@ pub use scim::PREFIX as SCIM_PREFIX;
 pub fn router(state: &AppState) -> Router<AppState> {
     Router::new()
         .merge(health::routes())
+        .merge(brand::routes())
         .merge(auth::routes())
         .merge(sso::routes())
         .merge(saml::routes())

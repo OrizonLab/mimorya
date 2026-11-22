@@ -51,6 +51,9 @@ pub struct OAuthInput {
     pub scopes: Option<Vec<String>>,
     /// The platform's return address, given a registered client.
     pub redirect_uri: String,
+    /// The name the server shows for the platform's client, if it registers
+    /// one: the product's (ADR-222).
+    pub client_name: String,
     /// Who authorizes the server (ADR-174); `None` keeps who did under the
     /// declaration replaced, the company for a first one.
     pub holder: Option<OAuthHolder>,
@@ -146,6 +149,7 @@ pub async fn declare_oauth(
         let with = Declared {
             scopes,
             redirect_uri: &input.redirect_uri,
+            client_name: &input.client_name,
             network,
         };
         declared(found, client, with)

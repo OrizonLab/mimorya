@@ -395,6 +395,47 @@ export type BearerTokenCreated = { token: BearerTokenView, secret: string, };
  */
 export type BearerTokenView = { id: string, name: string, createdBy: string | null, createdAt: string, lastUsedAt: string | null, };
 
+export type BrandImageView = {
+/**
+ * Changes with the image: its address carries it (`?v=`).
+ */
+version: string, mediaType: string, };
+
+/**
+ * Colours as `#rrggbb`, named as the interface's tokens.
+ */
+export type BrandPalette = { accent: string, accentFg: string, accentSoft: string, };
+
+/**
+ * `GET /brand`.
+ */
+export type BrandView = {
+/**
+ * The tab, the sign-in, the sidebar.
+ */
+productName: string,
+/**
+ * The conversations.
+ */
+assistantName: string,
+/**
+ * The start of the names of the files people download (`mimorya`).
+ */
+filePrefix: string,
+/**
+ * Served at `/brand/logo`, if the installation gives one.
+ */
+logo: BrandImageView | null,
+/**
+ * Served at `/brand/favicon`.
+ */
+favicon: BrandImageView | null,
+/**
+ * The accent of each scheme the installation sets; the interface's own
+ * for the other.
+ */
+light: BrandPalette | null, dark: BrandPalette | null, };
+
 /**
  * As `skill_evaluations::CaseOutcome` stores it.
  */

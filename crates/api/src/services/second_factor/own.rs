@@ -90,6 +90,7 @@ pub async fn start_enrolment(
     secrets: &SecretStore,
     access: &AccessContext,
     password: String,
+    issuer: &str,
 ) -> anyhow::Result<Option<Enrolment>> {
     let cipher = secrets.cipher()?;
     let (tenant_id, user_id) = (access.subject.tenant_id, access.subject.user_id);
@@ -103,7 +104,7 @@ pub async fn start_enrolment(
         return Ok(None);
     }
     let mut tx = db.begin(tenant_id).await?;
-    let enrolment = begin(&mut tx, cipher, user_id, &access.profile.email).await?;
+    let enrolment = begin(&mut tx, cipher, user_id, &access.profile.email, issuer).await?;
     tx.commit().await?;
     Ok(Some(enrolment))
 }

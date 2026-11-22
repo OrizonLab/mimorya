@@ -8,6 +8,7 @@ pub mod audit_chain;
 pub mod audit_export;
 pub mod background;
 pub mod bearer_tokens;
+pub mod brand;
 pub mod connectors;
 pub mod document_labels;
 pub mod documents;

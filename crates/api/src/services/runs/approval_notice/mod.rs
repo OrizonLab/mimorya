@@ -79,7 +79,7 @@ pub struct ApprovalNotifier {
     mailer: Option<Arc<dyn Mailer>>,
     /// The web application's address, where the link leads.
     web_origin: String,
-    product: String,
+    assistant_name: String,
     background: Arc<BackgroundTasks>,
 }
 
@@ -89,7 +89,7 @@ impl ApprovalNotifier {
         access: Arc<AccessService>,
         mailer: Option<Arc<dyn Mailer>>,
         web_origin: String,
-        product: String,
+        assistant_name: String,
         background: Arc<BackgroundTasks>,
     ) -> Self {
         Self {
@@ -97,7 +97,7 @@ impl ApprovalNotifier {
             access,
             mailer,
             web_origin,
-            product,
+            assistant_name,
             background,
         }
     }
@@ -273,7 +273,7 @@ impl ApprovalNotifier {
         let to = recipient(&self.db, &self.access, tenant_id, first).await?;
         let link = format!("{}/approvals", self.web_origin);
         let mail = approval_mail(&ApprovalMail {
-            product: &self.product,
+            assistant_name: &self.assistant_name,
             company: &first.company,
             manager: &to.name,
             email: &to.email,

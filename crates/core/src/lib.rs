@@ -9,6 +9,7 @@ pub mod administration;
 pub mod approval_routing;
 pub mod authz;
 pub mod autonomy;
+pub mod brand;
 pub mod collaborator_attributes;
 pub mod conversation_summary;
 pub mod custom_roles;

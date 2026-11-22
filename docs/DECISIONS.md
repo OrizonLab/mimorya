@@ -16751,3 +16751,117 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     rendant la clé maître facultative, en remettant un expéditeur sans relais dans
     l'exemple, en changeant un défaut et en branchant `HTTPS_PROXY` sur le mandataire des
     connecteurs ; `llm::anthropic::provider` pour l'adresse vide.
+
+## ADR-222 — Marque configurable à l'installation (bêta, étape 2)
+
+- **Statut** : accepté (2026-11-22)
+- **Contexte** : une installation de bêta sert d'abord une équipe, puis deux ou trois clients
+  pilotes, chacun sous sa marque. Le nom « Mimorya » était écrit en dur dans l'onglet et la
+  connexion, et seul le nom de l'assistant se réglait. Les images publiées doivent servir
+  telles quelles : la marque se règle à l'installation, sans reconstruire.
+- **Décision** :
+  - **le moyen** : des variables d'environnement pour ce qui s'écrit, un dossier monté en
+    lecture seule pour les fichiers :
+    - `MIMORYA_PRODUCT_NAME` et `MIMORYA_ASSISTANT_NAME` ;
+    - `MIMORYA_ACCENT_LIGHT` et `MIMORYA_ACCENT_DARK`, au format `#rrggbb`, chacun
+      facultatif ;
+    - `MIMORYA_BRAND_DIR`, le dossier des fichiers dans le conteneur. La pile le fixe à
+      `/etc/mimorya/brand` et y monte le dossier de l'hôte `MIMORYA_BRAND_FOLDER`
+      (`./brand` par défaut ; un dossier vide ne change rien).
+
+    Les fichiers portent des noms fixes : `logo.svg`, `logo.png` ou `logo.webp` ;
+    `favicon.svg`, `favicon.png` ou `favicon.ico`. Seul le service `api` monte le dossier.
+
+    L'API seule lit et vérifie la marque. Elle la sert sans session à `GET /api/brand` (la
+    page de connexion en a besoin), et ses images à `GET /api/brand/logo` et
+    `GET /api/brand/favicon`, leur adresse versionnée par leur empreinte. Le serveur de
+    l'interface la lui demande pour chaque page qu'il rend, gardée une minute, à l'adresse
+    de son relais (`API_URL`, gardée dans l'image web pour l'exécution) : le titre de
+    l'onglet, le favicon et les couleurs sont dans la page dès son premier affichage, les
+    couleurs dans un style qui porte le nonce de la page (CSP, ADR-030). L'interface ne lit
+    pas ces variables elle-même : la vérification n'existe qu'une fois, en Rust, et les
+    e-mails comme les consignes du modèle viennent de l'API ;
+
+  - **les noms** :
+    - le produit : titre de l'onglet, connexion, barre latérale, e-mails (invitation,
+      mot de passe oublié, absence, alertes de fourniture, propositions de politique),
+      émetteur dans les applications d'authentification, nom du client que la plateforme
+      enregistre auprès d'un serveur d'autorisation OAuth (ADR-173), nom du fichier de ses
+      données qu'une personne télécharge ;
+    - l'assistant : consignes données au modèle, e-mails qui parlent de lui (validation
+      attendue, mission terminée, compétence proposée), passerelles de conversation ;
+    - l'assistant prend le nom du produit par défaut, et le produit « Mimorya » ;
+    - de 1 à 40 caractères, sans caractère de contrôle (un retour à la ligne ajouterait un
+      en-tête à un e-mail) ; sans deux-points pour le produit, qui séparent l'émetteur du
+      compte dans une application d'authentification ;
+  - **les couleurs** : l'accent de chaque thème. Le fond pâle d'une sélection ne porte
+    que le texte de l'interface et l'accent : la zone de dépôt d'un document, dont les
+    libellés sont atténués, se marque au survol par sa bordure et le fond secondaire. La plateforme en tire le texte d'un bouton
+    (celui du thème) et le fond pâle d'une sélection (l'accent à 12 % sur les cartes en
+    clair, à 20 % en sombre). Un accent est refusé si son contraste est sous 4,5:1 (WCAG 2
+    AA) avec l'un des fonds où l'interface le pose : la page, les cartes, les zones
+    secondaires, le fond pâle, le texte d'un bouton. Le refus dit le ratio, le fond et s'il
+    faut une couleur plus foncée ou plus claire. Un test vérifie que les fonds connus de
+    Rust sont ceux de `globals.css` ;
+  - **les fichiers** : leur type est lu de leur contenu, jamais de leur extension
+    (signature PNG, WebP, ICO ; SVG en UTF-8, analysé). Le logo pèse 512 Kio au plus, le
+    favicon 128 Kio. Un nom inconnu dans le dossier, ou deux fichiers pour un même rôle,
+    sont refusés : une faute de frappe ne passe pas en silence. Un fichier n'est jamais lu
+    au-delà de son poids permis ;
+  - **un SVG est refusé, pas nettoyé**, s'il contient :
+    - un script, un gestionnaire d'événement (`on…`) ou une adresse `javascript:` ;
+    - un élément qui intègre un contenu (`foreignObject`, `iframe`…), ou un élément
+      hors de l'espace de noms de SVG : un `<img>` XHTML charge son `src` où qu'il soit.
+      Seuls ceux des éditeurs (Inkscape, Sodipodi, RDF, Creative Commons, Dublin Core),
+      inertes, sont acceptés ;
+    - un attribut qui charge (`src`, `srcset`, `action`, `formaction`, `poster`, `data`) ;
+    - une référence externe : `href` hors `#…` et d'une image matricielle intégrée ;
+      `url(…)` hors `#…`, `image(…)`, `image-set(…)`, `cross-fade(…)`, `src(…)`,
+      `@import` ou `@font-face`, dans une feuille de style comme dans un attribut ;
+    - un échappement CSS (`\`) dans une feuille de style ou un attribut (ceux des éditeurs
+      exceptés : inertes, ils gardent parfois un chemin Windows), un élément dans une
+      feuille de style, lue en entier comme un navigateur l'assemble (un commentaire ou un
+      CDATA entre deux morceaux ne cache rien), une déclaration DOCTYPE, une instruction de traitement, une
+      animation qui change une référence ;
+    - un encodage déclaré autre qu'UTF-8, ou un caractère de contrôle autre que la
+      tabulation et les fins de ligne : lu dans un autre encodage, un document que le
+      contrôle prend pour un commentaire peut cacher un `<script>`.
+
+    Le document est lu analysé, en UTF-8, entités résolues, et servi en
+    `image/svg+xml; charset=utf-8` : ni une référence de caractère (`&#106;avascript:`),
+    ni un échappement CSS, ni un autre encodage ne cachent un mot. Un nettoyage
+    changerait l'image ou laisserait passer ce qu'il n'a pas prévu ; l'exploitant corrige
+    son fichier une fois. En plus, les images sont servies avec
+    `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:;
+sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessinent
+    et ne font rien d'autre. C'est la seule politique qu'une route de l'API choisit à la
+    place de la sienne ;
+
+  - **un refus arrête le démarrage**, chaque problème nommé par sa variable ou son fichier,
+    comme le reste de la configuration. Les noms et les couleurs sont vérifiés par chaque
+    processus ; les fichiers, par ceux qui servent l'API ;
+  - **aucun identifiant technique n'est renommé** : préfixe `MIMORYA_`, en-tête
+    `X-Mimorya-Request`, crates, images publiées, base, agent des requêtes REST,
+    `PRODID` iCalendar.
+- **Conséquences** :
+  - sans réglage, rien ne change : « Mimorya », les couleurs de l'interface, aucun logo ni
+    favicon ;
+  - changer la marque, c'est redémarrer l'API ; l'interface la relit dans la minute. Si
+    l'API ne répond pas, l'interface garde la dernière marque lue, ou celle par défaut ;
+  - un code d'application d'authentification enrôlé avant un changement de nom reste
+    valable : seul son libellé change pour les enrôlements suivants ;
+  - les tests de bout en bout tournent sous une marque, « Atelier Nova », et son
+    assistant, « Nova » : un nom écrit en dur se verrait ;
+  - une marque propre à chaque entreprise cliente reste hors de ce chantier : la marque
+    est celle de l'installation, la même pour toutes ses entreprises (feuille de route) ;
+  - tests :
+    - `crates/core/src/brand/` : contraste, couleurs, noms, types et poids des images,
+      SVG, et les fonds connus de Rust comparés à `globals.css` ;
+    - `crates/api/src/config/brand.rs` : rien de réglé, rien ne change ; refus dits par
+      variable ;
+    - `crates/api/src/services/brand/` : dossier lu, nom inconnu, deux fichiers pour une
+      image, type menteur, poids, SVG à script ;
+    - `crates/api/tests/brand.rs` : marque par défaut, marque servie, images et leurs
+      en-têtes, démarrage refusé ;
+    - `apps/web/e2e/brand.spec.ts` : onglet, connexion, barre latérale, logo, favicon,
+      accents clair et sombre, images servies ; `data-export.spec.ts` : nom du fichier.

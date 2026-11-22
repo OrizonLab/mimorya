@@ -8,6 +8,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use mimorya_core::DomainError;
+use mimorya_core::brand::file_prefix;
 use mimorya_db::repositories::notification_settings::NotificationSettingsRow;
 
 use crate::app::AppState;
@@ -30,7 +31,8 @@ pub fn routes() -> Router<AppState> {
         .route("/account/export", get(export))
 }
 
-/// The person's own data, as a JSON file named for the day it was made.
+/// The person's own data, as a JSON file named after the product and the
+/// day it was made.
 async fn export(
     State(state): State<AppState>,
     context: RequestContext,
@@ -38,8 +40,9 @@ async fn export(
 ) -> ApiResult<Response> {
     let access = state.access.context(identity).await?;
     let file = export_own_data(&state.db, &state.exports, &access, &context).await?;
+    let prefix = file_prefix(&state.config.brand.names.product);
     let disposition = HeaderValue::from_str(&format!(
-        "attachment; filename=\"mimorya-mes-donnees-{}.json\"",
+        "attachment; filename=\"{prefix}-mes-donnees-{}.json\"",
         file.day
     ))
     .map_err(|error| anyhow::anyhow!("content disposition: {error}"))?;

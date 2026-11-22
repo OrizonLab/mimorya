@@ -1,6 +1,7 @@
 # The web application, as Next.js's self-contained server (`standalone`
 # output), run as an unprivileged user (ADR-032). Its relay of /api/* is
-# set at build time: API_URL is the API as the web container reaches it.
+# set at build time: API_URL is the API as the web container reaches it,
+# kept for its server, which reads the brand there (ADR-222).
 #   docker build -f infra/docker/web.Dockerfile --build-arg API_URL=http://api:4000 -t mimorya-web .
 
 FROM node:22-bookworm-slim AS build
@@ -19,7 +20,11 @@ RUN pnpm --filter @mimorya/web build
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
+# The server also asks the API for the installation's brand when it renders
+# a page (ADR-222): the same address as the relay's, at run time.
+ARG API_URL=http://api:4000
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000 \
+    API_URL=$API_URL
 # The code stays root's; the server only writes its cache.
 COPY --from=build /src/apps/web/.next/standalone ./
 COPY --from=build /src/apps/web/.next/static ./apps/web/.next/static

@@ -2792,6 +2792,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "chrono-tz",
+ "quick-xml",
  "regex",
  "ring",
  "schemars 1.2.3",

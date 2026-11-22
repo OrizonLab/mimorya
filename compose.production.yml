@@ -55,7 +55,14 @@ x-backend-environment: &backend-environment
   # model key (the « client key » formula) nor link an account.
   MIMORYA_MASTER_KEY: ${MIMORYA_MASTER_KEY:?generate the master key (openssl rand -base64 32) and keep a copy off the server (MIMORYA_MASTER_KEY)}
   LOG_LEVEL: ${LOG_LEVEL:-info}
-  MIMORYA_ASSISTANT_NAME: ${MIMORYA_ASSISTANT_NAME:-Mimorya}
+  # The brand people see (ADR-222): the assistant takes the product's name
+  # when it has none, the interface keeps its accents when none is set.
+  MIMORYA_PRODUCT_NAME: ${MIMORYA_PRODUCT_NAME:-Mimorya}
+  MIMORYA_ASSISTANT_NAME: ${MIMORYA_ASSISTANT_NAME:-}
+  MIMORYA_ACCENT_LIGHT: ${MIMORYA_ACCENT_LIGHT:-}
+  MIMORYA_ACCENT_DARK: ${MIMORYA_ACCENT_DARK:-}
+  # Where the api reads the logo and the favicon (mounted from the host).
+  MIMORYA_BRAND_DIR: /etc/mimorya/brand
   LOGIN_RATE_LIMIT_PER_MINUTE: ${LOGIN_RATE_LIMIT_PER_MINUTE:-10}
   MIMORYA_DOCUMENT_QUOTA_MB: ${MIMORYA_DOCUMENT_QUOTA_MB:-1024}
   # Unset: Anthropic if ANTHROPIC_API_KEY is, otherwise no model.
@@ -143,6 +150,10 @@ services:
       <<: *backend-environment
       MIMORYA_ROLE: api
       TRUST_PROXY: 'true'
+    volumes:
+      # The brand's logo and favicon, checked when it starts (ADR-222); an
+      # empty folder shows none.
+      - ${MIMORYA_BRAND_FOLDER:-./brand}:/etc/mimorya/brand:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

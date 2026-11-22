@@ -71,7 +71,9 @@ export function FileDrop({
       onDrop={drop}
       className={cx(
         'rounded-lg border border-dashed border-line p-3',
-        over && 'border-accent bg-accent-soft',
+        // Not the accent's pale ground: its labels are muted, a contrast
+        // no installation's accent guarantees there (ADR-222).
+        over && 'border-accent bg-surface-2',
       )}
     >
       <Field label="Fichier">

@@ -35,7 +35,7 @@ impl End {
 }
 
 pub struct EndMail<'a> {
-    pub product: &'a str,
+    pub assistant_name: &'a str,
     pub company: &'a str,
     pub owner: &'a str,
     pub email: &'a str,
@@ -48,7 +48,7 @@ pub struct EndMail<'a> {
 
 pub fn end_mail(notice: &EndMail<'_>) -> Mail {
     let EndMail {
-        product,
+        assistant_name,
         company,
         owner,
         email,
@@ -74,7 +74,7 @@ pub fn end_mail(notice: &EndMail<'_>) -> Mail {
             (
                 format!("Votre mission « {title} » est terminée"),
                 format!(
-                    "L’assistant {product} ({company}) a terminé votre mission « {title} ». {review}"
+                    "L’assistant {assistant_name} ({company}) a terminé votre mission « {title} ». {review}"
                 ),
                 "Pour lire sa réponse",
             )
@@ -82,7 +82,7 @@ pub fn end_mail(notice: &EndMail<'_>) -> Mail {
         End::Unfinished => (
             format!("Votre mission « {title} » s’est arrêtée inachevée"),
             format!(
-                "Votre mission « {title} », que l’assistant {product} ({company}) menait en \
+                "Votre mission « {title} », que l’assistant {assistant_name} ({company}) menait en \
                  arrière-plan, s’est arrêtée inachevée."
             ),
             "Pour savoir pourquoi, et où elle en est restée",
@@ -107,7 +107,7 @@ mod tests {
 
     fn mail(end: End) -> Mail {
         end_mail(&EndMail {
-            product: "Mimorya",
+            assistant_name: "Mimorya",
             company: "Néo Maintenance",
             owner: "Marc Lefèvre",
             email: "marc.lefevre@neo-maintenance.example",

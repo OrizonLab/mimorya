@@ -61,6 +61,7 @@ pub async fn declare(
         client_secret: body.client_secret.filter(|secret| !secret.is_empty()),
         scopes: body.scopes,
         redirect_uri: oauth_redirect_uri(&state.config.web_origin),
+        client_name: state.config.brand.names.product.clone(),
         holder: body.per_person.map(holder),
         verify_identity: body.verify_identity,
         replaces: body.replaces,

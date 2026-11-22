@@ -218,7 +218,7 @@ async fn me(
             .collect(),
         grants: access.grants.clone(),
         assistant: AssistantStatus {
-            name: state.config.assistant_name.clone(),
+            name: state.config.brand.names.assistant.clone(),
             available: state.llm.available(access.subject.tenant_id).await,
         },
     }))

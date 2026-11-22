@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useBrand } from '@/components/shell/brand-context';
 import { Button, Card, ErrorNote } from '@/components/ui';
 import { api, useAction } from '@/lib/api';
 import { saveFile } from '@/lib/save-file';
@@ -15,11 +16,12 @@ const EXPORT = '/account/export';
  */
 export function DataExport() {
   const action = useAction();
+  const { filePrefix } = useBrand();
   const [done, setDone] = useState(false);
 
   async function download() {
     setDone(false);
-    const file = await action.run(() => api.download(EXPORT, 'mimorya-mes-donnees.json'));
+    const file = await action.run(() => api.download(EXPORT, `${filePrefix}-mes-donnees.json`));
     if (file) {
       saveFile(file);
       setDone(true);

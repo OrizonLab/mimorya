@@ -2,6 +2,7 @@ import { LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { Badge, cx } from '@/components/ui';
 import type { Me } from '@/lib/api';
+import { BrandMark } from './brand-mark';
 import { NAV_ITEMS } from './nav';
 
 export function Sidebar({
@@ -19,7 +20,9 @@ export function Sidebar({
   return (
     <nav className="flex h-full flex-col gap-1 p-3" aria-label="Navigation principale">
       <div className="mb-4 px-2 pt-1">
-        <p className="text-base font-semibold tracking-tight">{me.assistant.name}</p>
+        <p className="text-base font-semibold tracking-tight">
+          <BrandMark />
+        </p>
         <p className="truncate text-xs text-muted">{me.tenant.name}</p>
         {me.tenant.demo && (
           <div className="mt-2">
