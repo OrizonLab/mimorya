@@ -10,6 +10,7 @@ fn each_connector_is_named_by_what_its_tools_reach() {
         name: name.into(),
         hosts: hosts.iter().map(|h| h.to_string()).collect(),
         enabled: true,
+        kept: KeptData::default(),
     };
     let mut facts = bare();
     facts.connectors = vec![
@@ -129,21 +130,36 @@ fn gateways_and_sign_in_name_their_services() {
 }
 
 #[test]
-fn a_disabled_connector_sends_nothing_and_says_what_it_keeps() {
-    let connector = |kind, name: &str, enabled| ConnectorFact {
+fn a_disabled_connector_is_noted_for_what_it_keeps_as_counted() {
+    let connector = |kind, name: &str, enabled, kept| ConnectorFact {
         kind,
         name: name.into(),
         hosts: vec!["service.example".into()],
         enabled,
+        kept,
     };
+    let nothing = KeptData::default();
     let mut facts = bare();
     facts.runs_model = Some(own("anthropic"));
     facts.jev = true;
     facts.decisions.actions = true;
     facts.decisions.external_contents = true;
 
-    // A disabled demonstration keeps nothing: no activity.
-    facts.connectors = vec![connector(ConnectorKind::Demo, "Interventions", false)];
+    // Disabled, keeping nothing of anyone, whatever their type (an API's
+    // token, the operator's program, the demonstration): no activity.
+    facts.connectors = [
+        ConnectorKind::Demo,
+        ConnectorKind::Rest,
+        ConnectorKind::Mcp,
+        ConnectorKind::McpProcess,
+        ConnectorKind::Microsoft365,
+        ConnectorKind::GoogleWorkspace,
+        ConnectorKind::StandardMail,
+        ConnectorKind::Other,
+    ]
+    .into_iter()
+    .map(|kind| connector(kind, "Désactivé", false, nothing))
+    .collect();
     let register = super::register(&facts);
     assert!(
         register
@@ -152,11 +168,37 @@ fn a_disabled_connector_sends_nothing_and_says_what_it_keeps() {
             .all(|a| a.kind != ActivityKind::Connectors)
     );
 
-    // Disabled ones keeping what was linked: the activity, no recipient.
+    // Keeping what people linked or authorized: the activity, no recipient,
+    // a note of what it keeps, as counted.
     facts.connectors = vec![
-        connector(ConnectorKind::Microsoft365, "Microsoft 365", false),
-        connector(ConnectorKind::StandardMail, "Messagerie", false),
-        connector(ConnectorKind::Rest, "Facturation", false),
+        connector(
+            ConnectorKind::Microsoft365,
+            "Microsoft 365",
+            false,
+            KeptData {
+                linked_accounts: 3,
+                ..nothing
+            },
+        ),
+        connector(
+            ConnectorKind::StandardMail,
+            "Messagerie",
+            false,
+            KeptData {
+                mail_accounts: 1,
+                ..nothing
+            },
+        ),
+        connector(
+            ConnectorKind::Mcp,
+            "Wiki",
+            false,
+            KeptData {
+                person_authorizations: 2,
+                ..nothing
+            },
+        ),
+        connector(ConnectorKind::Rest, "Facturation", false, nothing),
     ];
     let register = super::register(&facts);
     let connectors = activity(&register, ActivityKind::Connectors);
@@ -165,16 +207,31 @@ fn a_disabled_connector_sends_nothing_and_says_what_it_keeps() {
         "{:?}",
         connectors.recipients
     );
-    assert_eq!(connectors.notes.len(), 3);
-    assert!(connectors.notes[0].starts_with("Connecteur « Microsoft 365 » désactivé"));
-    assert!(connectors.notes[0].contains("les comptes que chacun y a reliés"));
-    assert!(connectors.notes[1].contains("mots de passe scellés"));
-    assert!(connectors.notes[2].contains("son jeton, scellé"));
+    let prefix = "désactivé : aucun run ne l’utilise ; restent stockés, jusqu’à leur retrait, la \
+                  désactivation du compte de chacun, un changement de la déclaration du connecteur \
+                  ou sa suppression : ";
+    assert_eq!(
+        connectors.notes,
+        [
+            format!(
+                "Connecteur « Microsoft 365 » {prefix}3 compte(s) relié(s), jetons de \
+                 renouvellement scellés"
+            ),
+            format!(
+                "Connecteur « Messagerie » {prefix}1 compte(s) de messagerie, mots de passe \
+                 scellés"
+            ),
+            format!(
+                "Connecteur « Wiki » {prefix}2 autorisation(s) OAuth données par chacun, jetons \
+                 scellés"
+            ),
+        ]
+    );
 
-    // With one enabled beside them, only it reaches out.
+    // With one enabled beside them, only it reaches out, served as before.
     facts
         .connectors
-        .push(connector(ConnectorKind::Rest, "Paie", true));
+        .push(connector(ConnectorKind::Rest, "Paie", true, nothing));
     let register = super::register(&facts);
     let connectors = activity(&register, ActivityKind::Connectors);
     assert_eq!(

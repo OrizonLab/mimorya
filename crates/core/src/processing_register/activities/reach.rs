@@ -6,32 +6,41 @@ use crate::processing_register::facts::{ConnectorFact, ConnectorKind, RegisterFa
 use crate::processing_register::{model_recipients, recipients};
 
 /// Whether a connector is processing: enabled, or disabled and keeping
-/// what its people linked or authorized (the demonstration's keeps
-/// nothing).
+/// personal data its people linked or authorized there.
 pub(super) fn processed(connector: &ConnectorFact) -> bool {
-    connector.enabled || connector.kind != ConnectorKind::Demo
+    connector.enabled || connector.kept.any()
 }
 
-/// What a disabled connector keeps, still stored, until its removal.
+/// What a disabled connector keeps, as counted, until its removal.
 fn kept(connector: &ConnectorFact) -> Option<String> {
-    let what = match connector.kind {
-        ConnectorKind::Demo => return None,
-        ConnectorKind::Mcp | ConnectorKind::McpProcess => {
-            "son jeton et les autorisations OAuth de l’entreprise et de chacun, scellés"
-        }
-        ConnectorKind::Rest => "son jeton, scellé",
-        ConnectorKind::Microsoft365 | ConnectorKind::GoogleWorkspace => {
-            "les comptes que chacun y a reliés, leurs jetons de renouvellement scellés"
-        }
-        ConnectorKind::StandardMail => {
-            "les comptes de messagerie de chacun, leurs mots de passe scellés"
-        }
-        ConnectorKind::Other => "ce que sa déclaration garde",
-    };
+    let kept = connector.kept;
+    let parts: Vec<String> = [
+        (
+            kept.linked_accounts,
+            "compte(s) relié(s), jetons de renouvellement scellés",
+        ),
+        (
+            kept.mail_accounts,
+            "compte(s) de messagerie, mots de passe scellés",
+        ),
+        (
+            kept.person_authorizations,
+            "autorisation(s) OAuth données par chacun, jetons scellés",
+        ),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, what)| format!("{count} {what}"))
+    .collect();
+    if parts.is_empty() {
+        return None;
+    }
     Some(format!(
-        "Connecteur « {} » désactivé : rien ne part vers son service ; ce qu’il garde reste \
-         stocké jusqu’à son retrait ou la suppression du connecteur : {what}",
-        connector.name
+        "Connecteur « {} » désactivé : aucun run ne l’utilise ; restent stockés, jusqu’à leur \
+         retrait, la désactivation du compte de chacun, un changement de la déclaration du \
+         connecteur ou sa suppression : {}",
+        connector.name,
+        parts.join(" ; ")
     ))
 }
 

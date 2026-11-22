@@ -16597,28 +16597,40 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
 ## ADR-220 — Ce que garde un connecteur désactivé, dans le registre (lot 71c)
 
 - **Statut** : accepté (2026-11-22) · complète ADR-217 et ADR-219.
-- **Contexte** : désactiver un connecteur ne retire rien de ce qu'il garde. Restent
-  stockés, scellés, les comptes que chacun a reliés à Microsoft 365 ou Google, les
-  comptes de messagerie et leurs mots de passe, les autorisations OAuth d'un serveur MCP,
-  de l'entreprise et de chacun, et le jeton d'une API. Seuls un changement d'adresse ou de
-  déclaration, ou la suppression du connecteur, les retirent. Le registre ne lisait que
-  les connecteurs activés : une entreprise sans connecteur activé n'y trouvait plus le
-  traitement « Connecteurs et comptes reliés », alors que ces données restaient
-  conservées.
+- **Contexte** : désactiver un connecteur ne retire rien de ce qu'il garde des personnes.
+  Restent stockés, scellés :
+  - les comptes que chacun a reliés à Microsoft 365 ou Google ;
+  - les comptes de messagerie et leurs mots de passe ;
+  - les autorisations OAuth d'un serveur MCP données par chacun.
+
+  Ils partent à leur retrait par la personne, à la désactivation de son compte, à un
+  changement de la déclaration ou de l'adresse du connecteur, ou à sa suppression. Le
+  registre ne lisait que les connecteurs activés : une entreprise dont tous les
+  connecteurs étaient désactivés n'y trouvait plus le traitement « Connecteurs et comptes
+  reliés », alors que ces données restaient conservées.
+
 - **Décision** :
-  - **le registre lit tous les connecteurs**. Le traitement apparaît quand l'un d'eux est
-    activé, ou désactivé mais gardant quelque chose (tout sauf le connecteur de
-    démonstration, aux données fictives) ;
-  - **un connecteur désactivé n'a aucun destinataire** : rien ne part vers son service.
-    Le modèle des runs et le service de décision ne sont nommés pour ce traitement que si
-    un connecteur est activé ;
-  - **une note dit ce que garde chaque connecteur désactivé**, selon son type :
-    - son jeton et les autorisations OAuth pour un serveur MCP ;
-    - son jeton pour une API REST ;
-    - les comptes reliés et leurs jetons de renouvellement pour Microsoft 365 ou Google ;
-    - les comptes de messagerie et leurs mots de passe pour la messagerie standard.
-      Ces données restent stockées jusqu'à leur retrait ou la suppression du connecteur.
+  - **le registre lit tous les connecteurs** et compte, pour chaque connecteur désactivé,
+    dans sa propre transaction, ce qu'il garde des personnes : comptes reliés, comptes de
+    messagerie, autorisations données par chacun. Il compte, sans jamais dire qui. Le
+    jeton d'une API et l'autorisation de l'entreprise ne sont les données de personne :
+    le registre ne les compte pas ;
+  - **le traitement apparaît** quand un connecteur est activé, ou quand un connecteur
+    désactivé garde quelque chose d'une personne. Ce que garde un connecteur se lit dans
+    la base, jamais d'après son type : une API sans jeton, le programme de l'exploitant
+    (sans OAuth) ou le connecteur de démonstration désactivés n'en ouvrent aucun ;
+  - **un connecteur désactivé n'a aucun destinataire** : aucun run ne l'utilise. Le
+    modèle des runs et le service de décision ne sont nommés pour ce traitement que si un
+    connecteur est activé. Un test de l'administrateur peut encore joindre son serveur,
+    et un retrait y révoquer un jeton : ce sont des actions de l'administration, pas un
+    traitement que le connecteur fait pour un run ;
+  - **une note dit ce qu'il garde, compté** : par exemple « 1 compte(s) de messagerie,
+    mots de passe scellés ». Ces données restent jusqu'à leur retrait, la désactivation
+    du compte de chacun, un changement de la déclaration du connecteur ou sa suppression.
 - **Conséquences** :
+  - les passerelles et fournisseurs d'identité désactivés restent hors du registre, alors
+    qu'une passerelle désactivée garde les identités reliées : même question, lot
+    ultérieur ;
   - suites de l'audit de la PR #291 :
     - `crates/api/tests/audit_retention_route.rs` relit `firstPlace` et `purged` dans la
       réponse de `POST /admin/audit/verifications` :
@@ -16630,9 +16642,15 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - le parcours du registre construit le jour attendu de ses parties ;
   - tests :
     - `crates/core/src/processing_register/tests/reach.rs` :
-      - un connecteur de démonstration désactivé n'ouvre aucun traitement ;
-      - des connecteurs désactivés qui gardent quelque chose l'ouvrent, sans destinataire
-        et avec leur note ;
+      - désactivé et ne gardant rien d'une personne, aucun connecteur n'ouvre le
+        traitement, quel que soit son type ;
+      - ceux qui gardent quelque chose l'ouvrent, sans destinataire, avec leur note
+        comptée ;
       - à côté d'un connecteur activé, seul celui-ci et ce qui le sert sont nommés ;
-    - `crates/api/tests/processing_register.rs` : une API REST désactivée d'une autre
-      entreprise est notée dans son registre, sans destinataire.
+    - `services/admin/processing_register/tests.rs` : chaque type de connecteur lu ;
+    - `crates/api/tests/processing_register_isolation.rs` : dans le registre d'une autre
+      entreprise, une messagerie désactivée gardant un compte est notée pour lui ; une
+      API désactivée qui ne garde rien de personne n'y figure pas ; ni l'une ni l'autre
+      n'a de destinataire ;
+    - les aides des tests du registre sont dans `crates/api/tests/support/
+processing_register.rs`.

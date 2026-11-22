@@ -55,12 +55,33 @@ pub enum ConnectorKind {
 pub struct ConnectorFact {
     pub kind: ConnectorKind,
     pub name: String,
-    /// Its tools are offered: disabled, nothing is sent to its service, but
-    /// what it keeps stays stored.
+    /// Its tools are offered: disabled, no run uses it, but what it keeps
+    /// stays stored.
     pub enabled: bool,
+    /// The personal data it keeps, as counted (read for a disabled one).
+    pub kept: KeptData,
     /// The hosts its tools reach, as declared (none for an MCP server the
     /// platform starts itself, nor an address it cannot read).
     pub hosts: Vec<String>,
+}
+
+/// The personal data a connector keeps, counted, never who: what each
+/// person linked or authorized there, sealed (ADR-220). The company's own
+/// token and authorization are no one's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KeptData {
+    /// Accounts linked at Microsoft 365 or Google, their renewal tokens.
+    pub linked_accounts: i64,
+    /// Accounts at the standard mail, their passwords.
+    pub mail_accounts: i64,
+    /// Authorizations of an MCP server each person gave, their tokens.
+    pub person_authorizations: i64,
+}
+
+impl KeptData {
+    pub fn any(self) -> bool {
+        self.linked_accounts + self.mail_accounts + self.person_authorizations > 0
+    }
 }
 
 /// The operator's relay for the platform's e-mails.
