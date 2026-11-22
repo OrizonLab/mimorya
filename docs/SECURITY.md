@@ -1060,7 +1060,10 @@ DENY`, `Permissions-Policy` et `Cross-Origin-Opener-Policy: same-origin` ;
   - **API** : toute réponse, refus compris, porte `Content-Security-Policy:
 default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`,
     `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` et `Cache-Control:
-no-store` (le flux d'événements garde `no-cache, no-transform`) ;
+no-store` (le flux d'événements garde `no-cache, no-transform`). Seules les images de la
+    marque (ADR-222) choisissent une autre politique, plus étroite pour ce qu'elles
+    peuvent faire : `default-src 'none'; style-src 'unsafe-inline'; img-src data:;
+sandbox`, gardées par les navigateurs tant que leur adresse, qui change avec elles ;
   - **HSTS** : à poser par le reverse proxy qui termine TLS (fourni :
     `infra/caddy/Caddyfile`, ADR-032 et ADR-034), par exemple
     `Strict-Transport-Security: max-age=63072000; includeSubDomains` (ajouter
@@ -1145,6 +1148,17 @@ no-store` (le flux d'événements garde `no-cache, no-transform`) ;
   coupés encore par le filtre, quel que soit `LOG_LEVEL` (`crates/api/tests/logs.rs`) ;
   aucun enregistrement plus fin que le filtre n'est même formé (`crates/api/tests/logs_level.rs`) ; ceux de lettre ne sont
   pas compilés.
+- Marque de l'installation (ADR-222) : ses noms, ses accents et ses images sont lus au
+  démarrage de l'API et le refusent s'ils ne conviennent pas : un nom avec un caractère
+  de contrôle (il ajouterait un en-tête à un e-mail) ou, pour le produit, un deux-points
+  (émetteur des applications d'authentification) ; un accent sous 4,5:1 de contraste
+  avec un fond de l'interface ; un fichier dont le contenu n'est pas le type que dit son
+  nom, trop lourd, inconnu du dossier ; un SVG qui contient un script, un gestionnaire
+  d'événement, un élément qui intègre un contenu, une référence externe (`href`,
+  `url(…)`, `@import`), un échappement CSS, une déclaration DOCTYPE ou une instruction
+  de traitement, lu entités résolues. Il est refusé, jamais nettoyé. Les accents
+  n'entrent dans la page que sous la forme `#rrggbb`, dans un style qui porte le nonce
+  de la page.
 - Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais
   dans celui de l'API, lancé avec un environnement vide et borné par lui-même avant de
   rien lire (1 Gio de mémoire, 20 s de processeur, aucun fichier écrit), tué au bout de

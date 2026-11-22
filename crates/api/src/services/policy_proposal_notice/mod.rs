@@ -162,7 +162,7 @@ async fn tell(
         }
     }
     let mail = policy_proposals_mail(&PolicyProposalsMail {
-        product: &config.assistant_name,
+        product: &config.brand.names.product,
         company,
         administrator: &administrator.display_name,
         email: &administrator.email,

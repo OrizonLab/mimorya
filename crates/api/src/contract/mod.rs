@@ -9,6 +9,7 @@ pub mod admin;
 mod approval_delegation;
 mod approvals;
 mod audit_export;
+mod brand;
 mod common;
 mod conversations;
 mod document_labels;
@@ -39,6 +40,7 @@ pub use account_mail::{AccountMail, LinkedMailAccount, MailAccountLink, MailAcco
 pub use approval_delegation::{Absence, ApprovalDelegations, Delegation};
 pub use approvals::{Approval, ApprovalDecided, ApprovalList, ApprovalPerson, ApprovalVerdict};
 pub use audit_export::{AuditExport, ExportedAuditEntry};
+pub use brand::{BrandImageView, BrandPalette, BrandView};
 pub use common::{Created, Done};
 pub use conversations::{
     Citation, ConversationChanges, ConversationCreated, ConversationDetail, ConversationList,
@@ -152,6 +154,7 @@ pub fn typescript() -> String {
     declarations.add::<InvitationDetails>();
     declarations.add::<ResetDetails>();
     declarations.add::<Health>();
+    declarations.add::<BrandView>();
     declarations.add::<admin::Organization>();
     declarations.add::<admin::Directory>();
     declarations.add::<admin::UserCreated>();

@@ -12,7 +12,7 @@ use super::wording::{Phrases, phrases, risk_label};
 use crate::mail::{Mail, expiry_label};
 
 pub struct ApprovalMail<'a> {
-    pub product: &'a str,
+    pub assistant_name: &'a str,
     pub company: &'a str,
     /// Whom it is addressed to: the manager, or their stand-in.
     pub manager: &'a str,
@@ -35,7 +35,7 @@ pub struct ApprovalMail<'a> {
 
 pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
     let ApprovalMail {
-        product,
+        assistant_name,
         company,
         manager,
         email,
@@ -89,7 +89,7 @@ pub fn approval_mail(notice: &ApprovalMail<'_>) -> Mail {
         subject,
         text: format!(
             "Bonjour {manager},\n\n\
-             {assistant} {product} ({company}) {asks} votre validation pour {what} \
+             {assistant} {assistant_name} ({company}) {asks} votre validation pour {what} \
              ({risk_word} : {}).\n\n\
              Pour voir {see}, connectez-vous et ouvrez la page des validations :\n\
              {link}\n\n\
@@ -111,7 +111,7 @@ mod tests {
 
     fn mail(count: usize, risks: &[&str], reminder: bool) -> Mail {
         approval_mail(&ApprovalMail {
-            product: "Mimorya",
+            assistant_name: "Mimorya",
             company: "Néo Maintenance",
             manager: "Marc Lefèvre",
             email: "marc.lefevre@neo-maintenance.example",
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn a_stand_in_is_told_in_whose_absence() {
         let mail = approval_mail(&ApprovalMail {
-            product: "Mimorya",
+            assistant_name: "Mimorya",
             company: "Néo Maintenance",
             manager: "Julien Moreau",
             email: "julien.moreau@neo-maintenance.example",

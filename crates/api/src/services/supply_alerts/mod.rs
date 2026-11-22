@@ -202,7 +202,7 @@ async fn tell(
     let config = &services.config;
     let link = format!("{}/admin", config.web_origin);
     let mail = supply_alert_mail(&SupplyAlertMail {
-        product: &config.assistant_name,
+        product: &config.brand.names.product,
         company: told.company,
         administrator: &administrator.display_name,
         email: &administrator.email,

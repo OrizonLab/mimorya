@@ -131,7 +131,7 @@ async fn tell(
     let config = &services.config;
     let link = format!("{}/admin", config.web_origin);
     let mail = proposals_mail(&ProposalsMail {
-        product: &config.assistant_name,
+        assistant_name: &config.brand.names.assistant,
         company: notice.company,
         administrator: &administrator.display_name,
         email: &administrator.email,

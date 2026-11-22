@@ -34,6 +34,7 @@ use crate::secrets::SecretStore;
 use crate::services::account_links::AccountLinkService;
 use crate::services::audit_chain::ChainChecks;
 use crate::services::background::BackgroundTasks;
+use crate::services::brand::Brand;
 use crate::services::connectors::ConnectorSettings;
 use crate::services::document_labels::DocumentLabelService;
 use crate::services::documents::{DocumentService, Extractor};
@@ -53,6 +54,8 @@ const BODY_LIMIT_BYTES: usize = 1_000_000;
 
 pub struct Services {
     pub config: AppConfig,
+    /// The names, accents and images people see (ADR-222).
+    pub brand: Brand,
     pub db: Database,
     pub access: Arc<AccessService>,
     pub connectors: Arc<ConnectorService>,
@@ -202,7 +205,7 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             teams: (options.teams_api.as_deref())
                 .map_or_else(TeamsEndpoints::microsoft, TeamsEndpoints::local),
             web_origin: config.web_origin.clone(),
-            assistant_name: config.assistant_name.clone(),
+            assistant_name: config.brand.names.assistant.clone(),
         },
         background.clone(),
     )?);
@@ -231,10 +234,10 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
             access.clone(),
             mailer.clone(),
             config.web_origin.clone(),
-            config.assistant_name.clone(),
+            config.brand.names.assistant.clone(),
             background.clone(),
         ),
-        assistant_name: config.assistant_name.clone(),
+        assistant_name: config.brand.names.assistant.clone(),
         llm_judge: config.llm_judge,
     };
     let global = options.global_rate_limit_per_minute;
@@ -251,7 +254,10 @@ pub async fn build_app(config: AppConfig, options: BuildOptions) -> anyhow::Resu
         embeddings.clone(),
         document_labels.clone(),
     ));
+    // Its images read once, before anything else is served (ADR-222).
+    let brand = Brand::load(&config.brand, config.role.serves_http())?;
     let services = Arc::new(Services {
+        brand,
         documents,
         document_labels,
         runs: RunService::new(

@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { FirstPasswordScreen } from '@/components/account';
 import { Badge, Failure, Spinner } from '@/components/ui';
 import { MeContext } from '@/lib/me-context';
+import { BrandMark } from './brand-mark';
 import { Sidebar } from './sidebar';
 import { useCurrentUser, usePendingApprovals } from './use-session';
 
@@ -68,7 +69,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button type="button" aria-label="Ouvrir le menu" onClick={() => setMenuOpen(true)}>
               <Menu className="size-5" />
             </button>
-            <span className="font-semibold">{me.assistant.name}</span>
+            <span className="min-w-0 font-semibold">
+              <BrandMark />
+            </span>
             {pending > 0 && (
               <Link href="/approvals" className="ml-auto">
                 <Badge tone="warn">{pending} validation(s)</Badge>

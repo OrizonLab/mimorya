@@ -67,7 +67,15 @@ async fn enrol(
     if !state.limits.failed_logins.allow(&account_key).await? {
         return Err(ApiError::RateLimited);
     }
-    let started = start_enrolment(&state.db, &state.secret_store(), &access, body.password).await;
+    let issuer = &state.config.brand.names.product;
+    let started = start_enrolment(
+        &state.db,
+        &state.secret_store(),
+        &access,
+        body.password,
+        issuer,
+    )
+    .await;
     if !matches!(started, Ok(None)) {
         state.limits.failed_logins.release(&account_key).await;
     }

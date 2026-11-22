@@ -49,5 +49,7 @@ next-env.d.ts
 /backups/
 # The production database's WAL archive, encrypted too (ADR-206)
 /wal-archive/
+# The production stack's brand folder, the operator's logo and favicon (ADR-222)
+/brand/
 # Written when a kept crate's own tests are replayed (vendor/*/MIMORYA.md).
 /vendor/*/Cargo.lock

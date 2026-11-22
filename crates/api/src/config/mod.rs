@@ -14,7 +14,10 @@ use crate::secrets::SecretCipher;
 use crate::services::documents::extractor_beside;
 use reader::{Reader, is_http_url};
 
+mod brand;
 mod reader;
+
+pub use brand::BrandSettings;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Environment {
@@ -70,7 +73,9 @@ pub struct AppConfig {
     /// (the web relay alone does not: it forwards the client's header as is).
     /// Off by default: the client address is then the TCP peer.
     pub trust_proxy: bool,
-    pub assistant_name: String,
+    /// The names people read, the interface's accents and the folder of its
+    /// images (ADR-222).
+    pub brand: BrandSettings,
     pub llm: Option<ProviderConfig>,
     /// Seals the companies' secrets (`MIMORYA_MASTER_KEY`); without it, none
     /// can be stored.
@@ -140,7 +145,7 @@ impl std::fmt::Debug for AppConfig {
             .field("web_origin", &self.web_origin)
             .field("secure_cookies", &self.secure_cookies)
             .field("trust_proxy", &self.trust_proxy)
-            .field("assistant_name", &self.assistant_name)
+            .field("brand", &self.brand)
             .field("llm", &self.llm)
             .field("secrets", &self.secrets)
             .field("tenant_llm_endpoints", &self.tenant_llm_endpoints)
@@ -210,9 +215,7 @@ impl AppConfig {
         let secure_cookies =
             reader.boolean("SESSION_SECURE_COOKIE", env == Environment::Production);
         let trust_proxy = reader.boolean("TRUST_PROXY", false);
-        let assistant_name = reader
-            .value("MIMORYA_ASSISTANT_NAME")
-            .unwrap_or_else(|| "Mimorya".to_string());
+        let brand = reader.brand();
         let llm = reader.llm();
         let secrets = reader.master_key(env);
         let tenant_llm_endpoints = reader.endpoints("MIMORYA_TENANT_LLM_ENDPOINTS");
@@ -267,7 +270,7 @@ impl AppConfig {
             web_origin,
             secure_cookies,
             trust_proxy,
-            assistant_name,
+            brand,
             llm,
             secrets,
             tenant_llm_endpoints,

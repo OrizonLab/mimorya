@@ -9,7 +9,7 @@ mod recovery;
 mod requirement;
 mod totp;
 
-pub use enrolment::{ISSUER, base32, otpauth_uri, read_base32};
+pub use enrolment::{base32, otpauth_uri, read_base32};
 pub use recovery::{
     CODE_BYTES, RECOVERY_CODES, read_recovery_code, recovery_code, recovery_digest,
 };

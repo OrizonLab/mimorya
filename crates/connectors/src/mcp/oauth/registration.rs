@@ -24,9 +24,6 @@ use super::server_metadata::{AuthorizationServer, ClientAuth};
 use super::token_request::error_code;
 use crate::outbound::NetworkPolicy;
 
-/// The name the authorization server shows for the platform's client.
-pub const CLIENT_NAME: &str = "Mimorya";
-
 /// What is said when the server offers no registration.
 pub const NO_REGISTRATION_ENDPOINT: &str = "Ce serveur d’autorisation n’offre pas \
      l’enregistrement dynamique des clients : enregistrez le client chez lui et saisissez son \
@@ -71,10 +68,12 @@ struct Answer {
     redirect_uris: Option<Vec<String>>,
 }
 
-/// Registers the platform at `server` for `redirect_uri` and `scopes`.
+/// Registers the platform at `server` for `redirect_uri` and `scopes`, its
+/// client shown there as `client_name` (the product's, ADR-222).
 pub async fn register_client(
     server: &AuthorizationServer,
     redirect_uri: &str,
+    client_name: &str,
     scopes: &[String],
     policy: NetworkPolicy,
 ) -> Result<Registration, String> {
@@ -86,7 +85,7 @@ pub async fn register_client(
     }
     let asked = asked_auth(server)?;
     let request = Request {
-        client_name: CLIENT_NAME,
+        client_name,
         redirect_uris: [redirect_uri],
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],

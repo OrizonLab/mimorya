@@ -193,6 +193,9 @@ pub const AUTHENTICATED_ROUTES: &[(&str, &str)] = &[
 /// let a temporary password be replaced.
 pub const OTHER_ROUTES: &[(&str, &str)] = &[
     ("GET", "/health"),
+    ("GET", "/brand"),
+    ("GET", "/brand/logo"),
+    ("GET", "/brand/favicon"),
     ("POST", "/hooks/{id}"),
     ("GET", "/audit/export"),
     ("GET", "/scim/v2/ServiceProviderConfig"),

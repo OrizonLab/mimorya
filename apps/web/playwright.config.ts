@@ -68,6 +68,13 @@ export default defineConfig({
         // so that the administration can store secrets (a token, an API key).
         MIMORYA_MASTER_KEY: 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=',
         LOGIN_RATE_LIMIT_PER_MINUTE: '1000',
+        // A brand of its own, as an installation sets it (ADR-222): every
+        // page shows it, `brand.spec.ts` says where.
+        MIMORYA_PRODUCT_NAME: 'Atelier Nova',
+        MIMORYA_ASSISTANT_NAME: 'Nova',
+        MIMORYA_ACCENT_LIGHT: '#6b2fa3',
+        MIMORYA_ACCENT_DARK: '#c4a3e8',
+        MIMORYA_BRAND_DIR: path.join(root, 'apps/web/e2e/brand'),
         LOG_LEVEL: 'warn',
         E2E_MAIL_DIR: MAIL_DIR,
         // Beside the API's binaries, not the example's (`target/debug/examples`).

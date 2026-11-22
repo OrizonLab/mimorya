@@ -17,7 +17,10 @@ test('one downloads one’s own data', async ({ page, newContext }) => {
   const downloading = page.waitForEvent('download');
   await section.getByRole('button', { name: 'Télécharger mes données' }).click();
   const download = await downloading;
-  expect(download.suggestedFilename()).toMatch(/^mimorya-mes-donnees-\d{4}-\d{2}-\d{2}\.json$/);
+  // Named after the product (ADR-222): « Atelier Nova » in these tests.
+  expect(download.suggestedFilename()).toMatch(
+    /^atelier-nova-mes-donnees-\d{4}-\d{2}-\d{2}\.json$/,
+  );
   await expect(section.getByRole('status')).toHaveText('Vos données sont téléchargées.');
 
   const text = await readFile(await download.path(), 'utf8');

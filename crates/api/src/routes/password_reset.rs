@@ -57,7 +57,7 @@ async fn request(
         access: state.access.clone(),
         mailer,
         web_origin: state.config.web_origin.clone(),
-        product: state.config.assistant_name.clone(),
+        product: state.config.brand.names.product.clone(),
     };
     let request = ResetRequest {
         email,

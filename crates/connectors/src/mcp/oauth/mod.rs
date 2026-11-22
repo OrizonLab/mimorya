@@ -48,7 +48,7 @@ pub use protected_resource::{
 };
 pub use refresh::{RenewalFailure, refresh_tokens};
 pub use registration::{
-    CLIENT_NAME, NO_REGISTRATION_ENDPOINT, REGISTRATION_TOKEN_NEEDED, Registration, register_client,
+    NO_REGISTRATION_ENDPOINT, REGISTRATION_TOKEN_NEEDED, Registration, register_client,
 };
 pub use resource::{
     canonical_resource, covers, protected_resource_locations, same_origin, same_resource,

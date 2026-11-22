@@ -180,7 +180,7 @@ async fn answer_and_judge(
     } else {
         Vec::new()
     };
-    let profile = user_profile(access, &services.config.assistant_name);
+    let profile = user_profile(access, &services.config.brand.names.assistant);
     let system = build_system_prompt(&profile, &skills, Utc::now());
     let mut deps = RuntimeDeps::new(
         ModelRouter::new(provider.clone()),

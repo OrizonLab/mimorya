@@ -174,7 +174,7 @@ pub(super) fn link_sender(state: &AppState) -> LinkSender<'_> {
         accounts: &state.access,
         mailer: state.mailer.as_deref(),
         web_origin: &state.config.web_origin,
-        product: &state.config.assistant_name,
+        product: &state.config.brand.names.product,
     }
 }
 

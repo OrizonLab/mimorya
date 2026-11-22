@@ -1,13 +1,12 @@
 //! What a person's authenticator app is given (ADR-200): the secret in
 //! base32 (RFC 4648, without padding), typed by hand or read from the
 //! `otpauth://` address its QR code holds (the « Key Uri Format » the apps
-//! share), naming the platform and the account.
+//! share), naming the platform (the product's name, ADR-222) and the
+//! account.
 
 use super::totp::{DIGITS, STEP_SECONDS};
 
 const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-/// The name the app shows the code under.
-pub const ISSUER: &str = "Mimorya";
 
 /// `bytes` in base32, without padding.
 pub fn base32(bytes: &[u8]) -> String {
@@ -46,11 +45,12 @@ pub fn read_base32(text: &str) -> Option<Vec<u8>> {
 }
 
 /// The address an authenticator app reads for `secret`, for the account
-/// `email`.
-pub fn otpauth_uri(secret: &[u8], email: &str) -> String {
+/// `email`, shown under `issuer`: the product's name, which holds no colon
+/// (`brand::name`).
+pub fn otpauth_uri(secret: &[u8], email: &str, issuer: &str) -> String {
     format!(
         "otpauth://totp/{issuer}:{account}?secret={secret}&issuer={issuer}&algorithm=SHA1&digits={DIGITS}&period={STEP_SECONDS}",
-        issuer = encode(ISSUER),
+        issuer = encode(issuer),
         account = encode(email),
         secret = base32(secret),
     )
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn names_the_platform_and_the_account() {
-        let uri = otpauth_uri(b"12345678901234567890", "léa.f+x@neo.example");
+        let uri = otpauth_uri(b"12345678901234567890", "léa.f+x@neo.example", "Mimorya");
         assert_eq!(
             uri,
             "otpauth://totp/Mimorya:l%C3%A9a.f%2Bx%40neo.example\

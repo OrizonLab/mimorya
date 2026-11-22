@@ -28,12 +28,14 @@ enum Place {
     Environment,
 }
 
-/// What `service` is given, as written: the shared block, then its own
-/// `environment`, which overrides it.
+/// What `service` is given, as written: the shared block if its
+/// `environment` merges it (`<<: *backend-environment`), then its own, which
+/// overrides it.
 pub fn environment(compose: &str, service: &str) -> BTreeMap<String, String> {
     let entry = Regex::new(r"^\s+([A-Z][A-Z0-9_]*):\s*(.*?)\s*$").unwrap();
     let header = format!("  {service}:");
-    let mut given = BTreeMap::new();
+    let (mut shared, mut own) = (BTreeMap::new(), BTreeMap::new());
+    let mut merges = false;
     let mut place = Place::Elsewhere;
     for line in compose.lines() {
         let text = line.trim();
@@ -64,14 +66,23 @@ pub fn environment(compose: &str, service: &str) -> BTreeMap<String, String> {
         } else {
             place
         };
-        if matches!(place, Place::Shared | Place::Environment)
-            && let Some(found) = entry.captures(line)
-        {
-            let value = found[2].trim_matches(|c| c == '\'' || c == '"');
-            given.insert(found[1].to_string(), value.to_string());
-        }
+        merges |= place == Place::Environment && text == "<<: *backend-environment";
+        let Some(found) = entry.captures(line) else {
+            continue;
+        };
+        let value = found[2].trim_matches(|c| c == '\'' || c == '"').to_string();
+        match place {
+            Place::Shared => shared.insert(found[1].to_string(), value),
+            Place::Environment => own.insert(found[1].to_string(), value),
+            _ => None,
+        };
     }
-    given
+    if merges {
+        shared.extend(own);
+        shared
+    } else {
+        own
+    }
 }
 
 /// The variables an env file sets, not those it describes in a comment.
@@ -147,7 +158,12 @@ services:
         ["REQUIRED", "ROLE", "SHARED"]
     );
     assert_eq!(api["ROLE"], "api");
-    assert!(!environment(compose, "worker").contains_key("ROLE"));
+    assert!(environment(compose, "worker").is_empty());
+    // A service that does not merge the shared block is not given it.
+    assert_eq!(
+        environment(compose, "db").keys().collect::<Vec<_>>(),
+        ["DB_ONLY"]
+    );
     let mut env = BTreeMap::from([("REQUIRED".to_string(), String::new())]);
     assert_eq!(received(compose, "api", &env), Err("say it".to_string()));
     env.insert("REQUIRED".into(), "deux".into());

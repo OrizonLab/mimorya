@@ -34,19 +34,20 @@ pub struct Enrolment {
 }
 
 /// Starts the enrolment of `user_id`, whose address is `email`, with a new
-/// secret.
+/// secret, the app showing it under `issuer` (the product's name).
 pub(super) async fn begin(
     tx: &mut TenantTx,
     cipher: &SecretCipher,
     user_id: Uuid,
     email: &str,
+    issuer: &str,
 ) -> anyhow::Result<Enrolment> {
     let tenant_id = tx.tenant_id();
     let (secret, sealed) = new_secret(cipher, tenant_id, user_id)?;
     if !put_pending_second_factor(tx, tenant_id, user_id, &sealed).await? {
         return Err(DomainError::conflict(ALREADY_ON).into());
     }
-    let uri = otpauth_uri(&secret, email);
+    let uri = otpauth_uri(&secret, email, issuer);
     let qr_code = qr_code(&uri).context("otpauth address too long for a QR code")?;
     Ok(Enrolment {
         secret: base32(&secret),

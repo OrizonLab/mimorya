@@ -82,6 +82,8 @@ pub struct Declared<'a> {
     pub scopes: Option<Vec<String>>,
     /// The platform's return address, which a registered client is given.
     pub redirect_uri: &'a str,
+    /// The name the server shows for a registered client.
+    pub client_name: &'a str,
     pub network: NetworkPolicy,
 }
 
@@ -103,8 +105,14 @@ pub async fn declared(
         }
         OAuthClient::Register => {
             let scopes = asked_scopes(&found, with.scopes)?;
-            let registration =
-                register_client(&found.server, with.redirect_uri, &scopes, with.network).await?;
+            let registration = register_client(
+                &found.server,
+                with.redirect_uri,
+                with.client_name,
+                &scopes,
+                with.network,
+            )
+            .await?;
             let declaration = OAuthDeclaration::registered(found, &registration, scopes);
             Ok((declaration, registration.client_secret))
         }

@@ -34,7 +34,7 @@ impl Origin {
 }
 
 pub struct AuthorMail<'a> {
-    pub product: &'a str,
+    pub assistant_name: &'a str,
     pub company: &'a str,
     pub author: &'a str,
     pub email: &'a str,
@@ -54,7 +54,7 @@ pub struct AuthorMail<'a> {
 
 pub fn author_mail(notice: &AuthorMail<'_>) -> Mail {
     let AuthorMail {
-        product,
+        assistant_name,
         company,
         author,
         email,
@@ -85,21 +85,21 @@ pub fn author_mail(notice: &AuthorMail<'_>) -> Mail {
         Origin::Mission => (
             format!("Votre mission « {title} » attend votre validation"),
             format!(
-                "Votre mission « {title} », que l’assistant {product} ({company}) mène en \
+                "Votre mission « {title} », que l’assistant {assistant_name} ({company}) mène en \
                  arrière-plan, demande"
             ),
         ),
         Origin::ScheduledTask => (
             format!("Votre tâche planifiée « {title} » attend votre validation"),
             format!(
-                "Votre tâche planifiée « {title} » a lancé l’assistant {product} ({company}), \
+                "Votre tâche planifiée « {title} » a lancé l’assistant {assistant_name} ({company}), \
                  qui demande"
             ),
         ),
         Origin::Hook => (
             format!("Votre déclencheur « {title} » attend votre validation"),
             format!(
-                "Un envoi reçu par votre déclencheur « {title} » a lancé l’assistant {product} \
+                "Un envoi reçu par votre déclencheur « {title} » a lancé l’assistant {assistant_name} \
                  ({company}), qui demande"
             ),
         ),
@@ -131,7 +131,7 @@ mod tests {
 
     fn mail_of(origin: Origin, count: usize, risks: &[&str]) -> Mail {
         author_mail(&AuthorMail {
-            product: "Mimorya",
+            assistant_name: "Mimorya",
             company: "Néo Maintenance",
             author: "Nadia Benali",
             email: "nadia.benali@neo-maintenance.example",

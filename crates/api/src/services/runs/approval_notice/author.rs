@@ -121,7 +121,7 @@ impl ApprovalNotifier {
             None => format!("{}/approvals", self.web_origin),
         };
         let mail = author_mail(&AuthorMail {
-            product: &self.product,
+            assistant_name: &self.assistant_name,
             company: &first.company,
             author: &first.author_name,
             email: &first.author_email,

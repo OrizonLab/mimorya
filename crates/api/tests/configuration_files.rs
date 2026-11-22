@@ -21,7 +21,7 @@ use stack::{BACKEND, environment, repository};
 
 /// Read by the configuration, fixed by `compose.production.yml` itself: the
 /// operator never sets them.
-const FIXED_BY_THE_STACK: [(&str, &str); 6] = [
+const FIXED_BY_THE_STACK: [(&str, &str); 7] = [
     ("MIMORYA_ENV", "production, for every process of the stack"),
     (
         "SESSION_SECURE_COOKIE",
@@ -31,6 +31,10 @@ const FIXED_BY_THE_STACK: [(&str, &str); 6] = [
     ("DATABASE_APP_URL", "built from MIMORYA_APP_DB_PASSWORD"),
     ("WEB_ORIGIN", "https:// and MIMORYA_DOMAIN"),
     ("TRUST_PROXY", "true for the api, behind Caddy"),
+    (
+        "MIMORYA_BRAND_DIR",
+        "/etc/mimorya/brand, where the stack mounts MIMORYA_BRAND_FOLDER",
+    ),
 ];
 
 /// Read by the configuration, held by the image: neither the operator nor

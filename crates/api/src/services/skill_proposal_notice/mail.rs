@@ -8,7 +8,7 @@
 use crate::mail::Mail;
 
 pub struct ProposalsMail<'a> {
-    pub product: &'a str,
+    pub assistant_name: &'a str,
     pub company: &'a str,
     pub administrator: &'a str,
     pub email: &'a str,
@@ -22,7 +22,7 @@ pub struct ProposalsMail<'a> {
 
 pub fn proposals_mail(notice: &ProposalsMail<'_>) -> Mail {
     let ProposalsMail {
-        product,
+        assistant_name,
         company,
         administrator,
         email,
@@ -36,7 +36,7 @@ pub fn proposals_mail(notice: &ProposalsMail<'_>) -> Mail {
         (
             "Une nouvelle proposition de compétence attend votre décision".to_string(),
             format!(
-                "L’assistant {product} ({company}) propose une compétence, dont le texte a été \
+                "L’assistant {assistant_name} ({company}) propose une compétence, dont le texte a été \
                  validé avant son envoi : {named}."
             ),
         )
@@ -44,7 +44,7 @@ pub fn proposals_mail(notice: &ProposalsMail<'_>) -> Mail {
         (
             format!("{count} nouvelles propositions de compétences attendent votre décision"),
             format!(
-                "L’assistant {product} ({company}) propose {count} compétences ou nouvelles \
+                "L’assistant {assistant_name} ({company}) propose {count} compétences ou nouvelles \
                  versions, dont chaque texte a été validé avant son envoi : {named}."
             ),
         )
@@ -71,7 +71,7 @@ mod tests {
     fn mail(skills: &[&str], count: usize) -> Mail {
         let skills: Vec<String> = skills.iter().map(|s| s.to_string()).collect();
         proposals_mail(&ProposalsMail {
-            product: "Mimorya",
+            assistant_name: "Mimorya",
             company: "Néo Maintenance",
             administrator: "Paul Renaud",
             email: "paul.renaud@neo-maintenance.example",
