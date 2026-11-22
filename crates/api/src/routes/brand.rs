@@ -67,7 +67,7 @@ fn served(image: Option<&BrandImage>) -> ApiResult<Response> {
     let headers = [
         (
             CONTENT_TYPE,
-            HeaderValue::from_static(image.kind.media_type()),
+            HeaderValue::from_static(image.kind.content_type()),
         ),
         (
             CONTENT_SECURITY_POLICY,

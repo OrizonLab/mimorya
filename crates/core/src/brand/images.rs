@@ -74,6 +74,15 @@ impl ImageKind {
         }
     }
 
+    /// What an image of this kind is served as: an SVG in UTF-8, the only
+    /// encoding its check reads, whatever it declares.
+    pub fn content_type(self) -> &'static str {
+        match self {
+            Self::Svg => "image/svg+xml; charset=utf-8",
+            other => other.media_type(),
+        }
+    }
+
     pub fn media_type(self) -> &'static str {
         match self {
             Self::Svg => "image/svg+xml",

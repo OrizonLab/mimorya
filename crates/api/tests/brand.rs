@@ -10,10 +10,14 @@ use std::fs;
 use std::path::PathBuf;
 
 use axum::http::StatusCode;
+use mimorya_connectors::testing::{FakeAuthorizationServer, OAuthQuirk, serve_oauth_mcp_http};
 use mimorya_core::demo::user;
 use serde_json::{Value, json};
 use support::llm::MASTER_KEY;
+use support::manager_approvals::{applying, route_to_managers};
+use support::mcp::{PRIVATE_DEPLOYMENT, add, mcp_body};
 use support::resets::ask_reset;
+use support::second_factor::{KEYED, challenge_of, enrolment_step, require};
 use support::{PASSWORD, TestApi, TestResponse, email};
 
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01\x08\x02\0\0\0";
@@ -92,9 +96,14 @@ async fn the_brand_set_is_served_and_its_images_draw_nothing_else() {
         json!({ "accent": "#6b2fa3", "accentFg": "#ffffff", "accentSoft": "#ede6f4" })
     );
     assert_eq!(brand["dark"], Value::Null);
-    for (image, kind, bytes) in [
-        ("logo", "image/svg+xml", SVG.as_bytes()),
-        ("favicon", "image/png", PNG),
+    for (image, kind, served_as, bytes) in [
+        (
+            "logo",
+            "image/svg+xml",
+            "image/svg+xml; charset=utf-8",
+            SVG.as_bytes(),
+        ),
+        ("favicon", "image/png", "image/png", PNG),
     ] {
         assert_eq!(brand[image]["mediaType"], kind);
         let version = brand[image]["version"].as_str().unwrap();
@@ -102,7 +111,7 @@ async fn the_brand_set_is_served_and_its_images_draw_nothing_else() {
         let served = anonymous.get(&format!("/brand/{image}?v={version}")).await;
         assert_eq!(served.status, StatusCode::OK);
         assert_eq!(&served.body[..], bytes);
-        assert_eq!(header(&served, "content-type"), kind);
+        assert_eq!(header(&served, "content-type"), served_as);
         assert_eq!(header(&served, "x-content-type-options"), "nosniff");
         assert_eq!(
             header(&served, "content-security-policy"),
@@ -160,4 +169,65 @@ async fn an_svg_that_runs_a_script_stops_the_start() {
         refused.contains("MIMORYA_BRAND_DIR : logo.svg : SVG refusé : élément <script> refusé"),
         "{refused}"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn each_name_goes_where_it_is_read() {
+    let env = [
+        &PRIVATE_DEPLOYMENT[..],
+        &KEYED[..],
+        &[
+            ("MIMORYA_PRODUCT_NAME", "Atelier Nova"),
+            ("MIMORYA_ASSISTANT_NAME", "Nova"),
+        ][..],
+    ]
+    .concat();
+    let api = TestApi::start_with_mailer_and(&env).await;
+    let paul = api.sign_in(user::PAUL).await;
+
+    // The client the platform registers at an authorization server: the
+    // product's.
+    let authority = FakeAuthorizationServer::start().await;
+    let server = serve_oauth_mcp_http(&authority, OAuthQuirk::None).await;
+    let id = add(&paul, mcp_body("Fichiers", "fichiers", &server.url, None)).await;
+    let oauth = format!("/admin/connectors/{id}/oauth");
+    let declared = paul.put(&oauth, json!({ "register": true })).await;
+    assert_eq!(declared.status, StatusCode::OK, "{}", declared.text());
+    let requests = authority.requests();
+    let asked = requests.iter().find(|r| r.endpoint == "register").unwrap();
+    assert_eq!(asked.params["client_name"], "Atelier Nova");
+
+    // The e-mail to a manager speaks of the assistant.
+    let nadia = api.sign_in(user::NADIA).await;
+    route_to_managers(&paul, &["write"]).await;
+    let (_, approval) = applying(&api, &nadia, ("INT-2049", "11:00"), "Inchangé.").await;
+    route_to_managers(&paul, &[]).await;
+    assert!(approval.is_some());
+    let sent = api.mail.sent();
+    let notice = sent
+        .iter()
+        .find(|mail| mail.to == email(user::MARC))
+        .unwrap();
+    assert!(
+        notice.text.contains("L’assistant Nova (Néo Maintenance"),
+        "{}",
+        notice.text
+    );
+
+    // The enrolment a sign-in requires names the product in the app.
+    assert_eq!(
+        require(&paul, "administrators").await.status,
+        StatusCode::OK
+    );
+    let signing_in = api.try_login(&email(user::PAUL), PASSWORD).await;
+    let challenge = challenge_of(&signing_in);
+    let enrolment = "/auth/second-factor/enrolment";
+    let started = enrolment_step(&api, &challenge, enrolment, json!({})).await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text());
+    let uri = started.json()["uri"].as_str().unwrap().to_string();
+    assert!(uri.starts_with("otpauth://totp/Atelier%20Nova:"), "{uri}");
+    assert!(uri.contains("&issuer=Atelier%20Nova&"), "{uri}");
+    // Left as found: the other tests sign in with a password alone.
+    assert_eq!(require(&paul, "optional").await.status, StatusCode::OK);
 }

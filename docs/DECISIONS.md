@@ -16794,7 +16794,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - de 1 à 40 caractères, sans caractère de contrôle (un retour à la ligne ajouterait un
       en-tête à un e-mail) ; sans deux-points pour le produit, qui séparent l'émetteur du
       compte dans une application d'authentification ;
-  - **les couleurs** : l'accent de chaque thème. La plateforme en tire le texte d'un bouton
+  - **les couleurs** : l'accent de chaque thème. Le fond pâle d'une sélection ne porte
+    que le texte de l'interface et l'accent : la zone de dépôt d'un document, dont les
+    libellés sont atténués, se marque au survol par sa bordure et le fond secondaire. La plateforme en tire le texte d'un bouton
     (celui du thème) et le fond pâle d'une sélection (l'accent à 12 % sur les cartes en
     clair, à 20 % en sombre). Un accent est refusé si son contraste est sous 4,5:1 (WCAG 2
     AA) avec l'un des fonds où l'interface le pose : la page, les cartes, les zones
@@ -16808,19 +16810,30 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     au-delà de son poids permis ;
   - **un SVG est refusé, pas nettoyé**, s'il contient :
     - un script, un gestionnaire d'événement (`on…`) ou une adresse `javascript:` ;
-    - un élément qui intègre un contenu (`foreignObject`, `iframe`, `object`…) ;
-    - une référence externe : `href` hors `#…` et d'une image matricielle intégrée,
-      `url(…)` hors `#…`, `@import` ;
-    - un échappement CSS, une déclaration DOCTYPE, une instruction de traitement, une
-      animation qui change une référence.
+    - un élément qui intègre un contenu (`foreignObject`, `iframe`…), ou un élément
+      hors de l'espace de noms de SVG : un `<img>` XHTML charge son `src` où qu'il soit.
+      Seuls ceux des éditeurs (Inkscape, Sodipodi, RDF, Creative Commons, Dublin Core),
+      inertes, sont acceptés ;
+    - un attribut qui charge (`src`, `srcset`, `action`, `formaction`, `poster`, `data`) ;
+    - une référence externe : `href` hors `#…` et d'une image matricielle intégrée ;
+      `url(…)` hors `#…`, `image(…)`, `image-set(…)`, `cross-fade(…)`, `src(…)`,
+      `@import` ou `@font-face`, dans une feuille de style comme dans un attribut ;
+    - un échappement CSS (`\`) dans une feuille de style ou un attribut, un élément dans
+      une feuille de style, une déclaration DOCTYPE, une instruction de traitement, une
+      animation qui change une référence ;
+    - un encodage déclaré autre qu'UTF-8, ou un caractère de contrôle autre que la
+      tabulation et les fins de ligne : lu dans un autre encodage, un document que le
+      contrôle prend pour un commentaire peut cacher un `<script>`.
 
-    Le document est lu analysé, entités résolues : ni une référence de caractère
-    (`&#106;avascript:`) ni un échappement CSS ne cachent un mot. Un nettoyage changerait
-    l'image ou laisserait passer ce qu'il n'a pas prévu ; l'exploitant corrige son fichier
-    une fois. En plus, les images sont servies avec
+    Le document est lu analysé, en UTF-8, entités résolues, et servi en
+    `image/svg+xml; charset=utf-8` : ni une référence de caractère (`&#106;avascript:`),
+    ni un échappement CSS, ni un autre encodage ne cachent un mot. Un nettoyage
+    changerait l'image ou laisserait passer ce qu'il n'a pas prévu ; l'exploitant corrige
+    son fichier une fois. En plus, les images sont servies avec
     `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:;
-sandbox` et `nosniff` : ouvertes seules, elles se dessinent et ne font rien d'autre.
-    C'est la seule politique qu'une route de l'API choisit à la place de la sienne ;
+sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessinent
+    et ne font rien d'autre. C'est la seule politique qu'une route de l'API choisit à la
+    place de la sienne ;
 
   - **un refus arrête le démarrage**, chaque problème nommé par sa variable ou son fichier,
     comme le reste de la configuration. Les noms et les couleurs sont vérifiés par chaque

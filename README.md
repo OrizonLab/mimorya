@@ -279,9 +279,12 @@ Sans réglage, tout reste « Mimorya ». L'API vérifie la marque à son démarr
 de démarrer, en disant pourquoi dans ses journaux (`docker compose … logs api`), si un
 accent n'a pas le contraste de WCAG AA (4,5:1) avec un fond de l'interface, si un fichier
 n'est pas le type que dit son nom ou pèse trop (512 Kio pour le logo, 128 Kio pour le
-favicon), ou si un SVG contient un script, un gestionnaire d'événement ou une référence
-externe. Après un changement, relancez l'API (`… up -d`) : l'interface la relit dans la
-minute. Pensez aussi au nom de l'expéditeur des e-mails, `MAIL_FROM`.
+favicon), ou si un SVG contient un script, un gestionnaire d'événement, un élément hors
+de l'espace de noms de SVG, une référence externe ou un encodage autre qu'UTF-8 (ADR-222
+pour la liste). Les fichiers doivent être lisibles par l'utilisateur du conteneur `api`
+(uid 10001) : `chmod a+r brand/*`. Après un changement, relancez l'API (`… up -d`) :
+l'interface la relit dans la minute. Pensez aussi au nom de l'expéditeur des e-mails,
+`MAIL_FROM`.
 
 ### Sauvegardes
 

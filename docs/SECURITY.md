@@ -1063,7 +1063,8 @@ default-src 'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`,
 no-store` (le flux d'événements garde `no-cache, no-transform`). Seules les images de la
     marque (ADR-222) choisissent une autre politique, plus étroite pour ce qu'elles
     peuvent faire : `default-src 'none'; style-src 'unsafe-inline'; img-src data:;
-sandbox`, gardées par les navigateurs tant que leur adresse, qui change avec elles ;
+sandbox; frame-ancestors 'none'`, gardées par les navigateurs tant que leur adresse,
+    qui change avec elles ;
   - **HSTS** : à poser par le reverse proxy qui termine TLS (fourni :
     `infra/caddy/Caddyfile`, ADR-032 et ADR-034), par exemple
     `Strict-Transport-Security: max-age=63072000; includeSubDomains` (ajouter
@@ -1154,9 +1155,12 @@ sandbox`, gardées par les navigateurs tant que leur adresse, qui change avec el
   (émetteur des applications d'authentification) ; un accent sous 4,5:1 de contraste
   avec un fond de l'interface ; un fichier dont le contenu n'est pas le type que dit son
   nom, trop lourd, inconnu du dossier ; un SVG qui contient un script, un gestionnaire
-  d'événement, un élément qui intègre un contenu, une référence externe (`href`,
-  `url(…)`, `@import`), un échappement CSS, une déclaration DOCTYPE ou une instruction
-  de traitement, lu entités résolues. Il est refusé, jamais nettoyé. Les accents
+  d'événement, un élément qui intègre un contenu ou hors de l'espace de noms de SVG
+  (ceux des éditeurs exceptés, inertes), un attribut qui charge (`src`…), une
+  référence externe (`href`, `url(…)`, `image-set(…)`, `@import`…), un échappement
+  CSS, un élément dans une feuille de style, une déclaration DOCTYPE, une instruction
+  de traitement, un encodage autre qu'UTF-8 ou un caractère de contrôle. Il est lu
+  analysé, entités résolues, servi en `charset=utf-8`, et refusé, jamais nettoyé. Les accents
   n'entrent dans la page que sous la forme `#rrggbb`, dans un style qui porte le nonce
   de la page.
 - Documents déposés (ADR-095) : lus dans un processus à part (`mimorya-extract`), jamais

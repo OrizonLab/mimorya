@@ -58,17 +58,15 @@ pub fn read_folder(folder: &Path) -> anyhow::Result<Vec<(ImageRole, BrandImage)>
 }
 
 /// The file's bytes, one more than `most` at most: never a huge file read
-/// whole to be refused.
+/// whole to be refused. What it is, read before it is opened: a named pipe
+/// would hold the start forever.
 fn read_within(path: &Path, most: u64) -> Result<Vec<u8>, String> {
     use std::io::Read;
-    let file = fs::File::open(path).map_err(|error| format!("illisible ({error})"))?;
-    if !file
-        .metadata()
-        .map_err(|error| error.to_string())?
-        .is_file()
-    {
+    let kind = fs::metadata(path).map_err(|error| format!("illisible ({error})"))?;
+    if !kind.is_file() {
         return Err("ce n’est pas un fichier".into());
     }
+    let file = fs::File::open(path).map_err(|error| format!("illisible ({error})"))?;
     let mut bytes = Vec::new();
     file.take(most + 1)
         .read_to_end(&mut bytes)

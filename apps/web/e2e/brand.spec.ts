@@ -61,7 +61,7 @@ test('the application shows the product, its assistant keeps its own name', asyn
 test('the brand’s images draw themselves and nothing else', async ({ request }) => {
   const brand = (await (await request.get('/api/brand')).json()) as BrandView;
   for (const [kind, type] of [
-    ['logo', 'image/svg+xml'],
+    ['logo', 'image/svg+xml; charset=utf-8'],
     ['favicon', 'image/png'],
   ] as const) {
     const image = await request.get(`/api/brand/${kind}?v=${brand[kind]?.version}`);
