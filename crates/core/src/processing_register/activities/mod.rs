@@ -63,8 +63,9 @@ const TYPED: &str = "Les collaborateurs peuvent y écrire des données sensibles
     appartenance syndicale…) : la plateforme ne les y cherche pas ; à encadrer par la charte \
     d’usage de l’entreprise.";
 
-/// The activities of the company, in the register's order: those of a
-/// connector or a gateway only when it has one enabled.
+/// The activities of the company, in the register's order: that of the
+/// connectors when one is enabled or keeps something (ADR-220), that of the
+/// gateways when one is enabled.
 pub(super) fn activities(facts: &RegisterFacts) -> Vec<Activity> {
     let mut all = vec![
         platform::accounts(facts),
@@ -72,7 +73,7 @@ pub(super) fn activities(facts: &RegisterFacts) -> Vec<Activity> {
         agent::memory(facts),
         agent::documents(facts),
     ];
-    if !facts.connectors.is_empty() {
+    if facts.connectors.iter().any(reach::processed) {
         all.push(reach::connectors(facts));
     }
     if !facts.gateways.is_empty() {

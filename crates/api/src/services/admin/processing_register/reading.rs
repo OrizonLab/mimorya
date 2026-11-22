@@ -9,13 +9,17 @@ use mimorya_agent::llm::{default_endpoint, official_endpoint, uses_listed_endpoi
 use mimorya_connectors::standard_mail::{MAIL_SERVER, MailServerConfig};
 use mimorya_core::account_links::{GOOGLE_WORKSPACE, MICROSOFT365};
 use mimorya_core::processing_register::{
-    ChosenBy, ConnectorFact, ConnectorKind, DecisionUses, ModelService, RetentionFact,
+    ChosenBy, ConnectorFact, ConnectorKind, DecisionUses, KeptData, ModelService, RetentionFact,
 };
 use mimorya_core::retention::RetentionKind;
+use mimorya_db::repositories::account_links::count_account_links;
+use mimorya_db::repositories::connector_person_authorizations::count_person_authorizations;
 use mimorya_db::repositories::connectors::ConnectorInstanceRow;
 use mimorya_db::repositories::embedding_settings::EmbeddingSettingsRow;
 use mimorya_db::repositories::llm_settings::LlmSettingsRow;
+use mimorya_db::repositories::mail_accounts::count_mail_accounts;
 use mimorya_db::repositories::retention_durations::StoredRetention;
+use sqlx::PgConnection;
 use url::Url;
 
 use crate::services::admin::retention::RetentionDuration;
@@ -104,8 +108,9 @@ pub(super) fn decision_uses<'a>(usages: impl Iterator<Item = (&'a str, &'a str)>
     uses
 }
 
-/// An enabled connector, and the hosts its tools reach as declared.
-pub(super) fn connector(row: &ConnectorInstanceRow) -> ConnectorFact {
+/// A connector, enabled or not, the hosts its tools reach as declared, and
+/// what it keeps of people, `kept` as counted.
+pub(super) fn connector(row: &ConnectorInstanceRow, kept: KeptData) -> ConnectorFact {
     let address = || {
         row.config
             .get("url")
@@ -134,7 +139,26 @@ pub(super) fn connector(row: &ConnectorInstanceRow) -> ConnectorFact {
         kind,
         name: row.name.clone(),
         hosts,
+        enabled: row.enabled,
+        kept,
     }
+}
+
+/// What a connector keeps of people, counted in the register's
+/// transaction: read for a disabled one, where nothing else says it is
+/// still there; an enabled one is in the register for what it reaches.
+pub(super) async fn kept_by(
+    conn: &mut PgConnection,
+    row: &ConnectorInstanceRow,
+) -> sqlx::Result<KeptData> {
+    if row.enabled {
+        return Ok(KeptData::default());
+    }
+    Ok(KeptData {
+        linked_accounts: count_account_links(conn, row.id).await?,
+        mail_accounts: count_mail_accounts(conn, row.id).await?,
+        person_authorizations: count_person_authorizations(conn, row.id).await?,
+    })
 }
 
 /// The duration of `kind` the purge applies, as the retention screen reads

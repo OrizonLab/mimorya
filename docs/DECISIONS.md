@@ -16594,6 +16594,76 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - `apps/web/e2e/processing-register.spec.ts` : le fichier du registre est daté du
       jour de Paris où le registre a été tiré, lu de la réponse de l'API.
 
+## ADR-220 — Ce que garde un connecteur désactivé, dans le registre (lot 71c)
+
+- **Statut** : accepté (2026-11-22) · complète ADR-217 et ADR-219.
+- **Contexte** : désactiver un connecteur ne retire rien de ce qu'il garde des personnes.
+  Restent stockés, scellés :
+  - les comptes que chacun a reliés à Microsoft 365 ou Google ;
+  - les comptes de messagerie et leurs mots de passe ;
+  - les autorisations OAuth d'un serveur MCP données par chacun.
+
+  Ils partent à leur retrait par la personne, à la désactivation de son compte ou à la
+  suppression du connecteur ; un compte de messagerie aussi au changement d'hôte d'un
+  serveur, une autorisation au changement de l'adresse ou de la déclaration du serveur ou
+  de qui l'autorise, et à un renouvellement refusé : le test d'un administrateur renouvelle
+  la sienne, même connecteur désactivé. Le
+  registre ne lisait que les connecteurs activés : une entreprise dont tous les
+  connecteurs étaient désactivés n'y trouvait plus le traitement « Connecteurs et comptes
+  reliés », alors que ces données restaient conservées.
+
+- **Décision** :
+  - **le registre lit tous les connecteurs** et compte, pour chaque connecteur désactivé,
+    dans sa propre transaction, ce qu'il garde des personnes : comptes reliés, comptes de
+    messagerie, autorisations données par chacun. Il compte, sans jamais dire qui. Le
+    jeton d'une API et l'autorisation de l'entreprise ne sont les données de personne :
+    le registre ne les compte pas ;
+  - **le traitement apparaît** quand un connecteur est activé, ou quand un connecteur
+    désactivé garde quelque chose d'une personne. Ce que garde un connecteur se lit dans
+    la base, jamais d'après son type : une API, le programme de l'exploitant
+    (sans OAuth) ou le connecteur de démonstration désactivés n'en ouvrent aucun ;
+  - **un connecteur désactivé n'a aucun destinataire** : aucun run ne l'utilise. Le
+    modèle des runs et le service de décision ne sont nommés pour ce traitement que si un
+    connecteur est activé. Un test de l'administrateur peut encore joindre son serveur,
+    et un retrait y révoquer un jeton : ce sont des actions de l'administration, pas un
+    traitement que le connecteur fait pour un run ;
+  - **une note dit ce qu'il garde, compté, chaque sorte jusqu'à ce qui la retire**,
+    comme les durées du même traitement :
+    - comptes reliés : leur retrait, la désactivation du compte de chacun ou la
+      suppression du connecteur ;
+    - comptes de messagerie : de même, ou le changement d'hôte d'un serveur ;
+    - autorisations données par chacun : de même, ou un renouvellement refusé au test
+      d'un administrateur, ou un changement de l'adresse ou de la déclaration du serveur ou
+      de qui l'autorise.
+- **Conséquences** :
+  - les passerelles et fournisseurs d'identité désactivés restent hors du registre, alors
+    qu'une passerelle désactivée garde les identités reliées : même question, lot
+    ultérieur ;
+  - suites de l'audit de la PR #291 :
+    - `crates/api/tests/audit_retention_route.rs` relit `firstPlace` et `purged` dans la
+      réponse de `POST /admin/audit/verifications` :
+      - aucune suppression : la chaîne commence à sa première place ;
+      - après la rétention : elle commence après les places supprimées ;
+      - début déplacé sans la clé : elle commence à sa première place, qui manque ;
+    - dans le parcours de la chaîne déplacée, la réponse remplacée compte l'entrée
+      `audit.purged` encore à sceller (`unsealed: 1`) ;
+    - le parcours du registre construit le jour attendu de ses parties ;
+  - tests :
+    - `crates/core/src/processing_register/tests/reach.rs` :
+      - désactivé et ne gardant rien d'une personne, aucun connecteur n'ouvre le
+        traitement, quel que soit son type ;
+      - ceux qui gardent quelque chose l'ouvrent, sans destinataire, avec leur note
+        comptée ;
+      - à côté d'un connecteur activé, seul celui-ci et ce qui le sert sont nommés ;
+    - `services/admin/processing_register/tests.rs` : chaque type de connecteur lu ;
+    - `crates/api/tests/processing_register_isolation.rs` : les réglages d'une entreprise
+      ne sont jamais dans le registre d'une autre ; des connecteurs désactivés gardant
+      chacun une sorte de données (un compte relié, un compte de messagerie, une
+      autorisation de chacun) sont notés pour elle, comptée ; une API désactivée qui ne
+      garde rien de personne n'y figure pas ; aucun n'a de destinataire ;
+    - les aides des tests du registre sont partagées dans le dossier `support` des tests
+      de l'API (`processing_register.rs`).
+
 ## ADR-221 — Configuration de production complète et sans dérive (bêta, étape 1)
 
 - **Statut** : accepté (2026-11-22).

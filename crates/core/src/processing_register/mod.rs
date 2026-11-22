@@ -19,8 +19,8 @@ mod tests;
 
 pub use activities::{Activity, ActivityKind};
 pub use facts::{
-    ChosenBy, ConnectorFact, ConnectorKind, DecisionUses, IdentityFact, MailRelay, ModelService,
-    RegisterFacts, RetentionFact,
+    ChosenBy, ConnectorFact, ConnectorKind, DecisionUses, IdentityFact, KeptData, MailRelay,
+    ModelService, RegisterFacts, RetentionFact,
 };
 pub use recipients::{Place, Recipient};
 

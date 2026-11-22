@@ -59,6 +59,7 @@ pub mod planning;
 pub mod policy_proposal_notices;
 pub mod policy_proposals;
 pub mod privileges;
+pub mod processing_register;
 pub mod queue;
 pub mod recovery;
 pub mod refusals;

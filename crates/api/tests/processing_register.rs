@@ -4,88 +4,22 @@
 //! embedding models at a listed endpoint, its gateway, its identity
 //! provider, SCIM and its SIEM), with the durations in effect, a shortening
 //! that waits and its second factor; TypeSafe named only while one of the
-//! usages set sends Jev something; never a key; another company's settings
-//! never in it, nor its in the other's.
+//! usages set sends Jev something; never a key. That another company's
+//! settings are never in it: `processing_register_isolation.rs`.
 
 mod support;
 
 use axum::http::StatusCode;
 use mimorya_connectors::testing::{FakeJev, JEV_KEY};
 use mimorya_core::demo::{tenant, user};
-use mimorya_db::repositories::connectors::{NewConnectorInstance, create_connector_instance};
 use mimorya_db::repositories::gateways::{NewGateway, create_gateway};
 use mimorya_db::repositories::identity_providers::{NewIdentityProvider, create_identity_provider};
 use serde_json::{Value, json};
-use support::accounts::{INVITED_PASSWORD, accept};
+use support::TestApi;
 use support::decisions::{USAGES, settings};
 use support::embeddings::ENDPOINT;
-use support::llm::{API_KEY, MASTER_KEY, OPERATOR_KEY, REVIEW_MODEL};
-use support::{Client, TestApi, companies};
-
-const REGISTER: &str = "/admin/processing-register";
-
-async fn start() -> TestApi {
-    TestApi::start_with(&[
-        ("MIMORYA_MASTER_KEY", MASTER_KEY),
-        ("MIMORYA_TENANT_LLM_ENDPOINTS", ENDPOINT),
-        ("LLM_PROVIDER", "anthropic"),
-        ("ANTHROPIC_API_KEY", OPERATOR_KEY),
-    ])
-    .await
-}
-
-async fn read(client: &Client<'_>) -> Value {
-    let read = client.get(REGISTER).await;
-    assert_eq!(read.status, StatusCode::OK, "{}", read.text());
-    for secret in [API_KEY, OPERATOR_KEY, JEV_KEY] {
-        assert!(!read.text().contains(secret));
-    }
-    read.json()
-}
-
-fn activity<'a>(register: &'a Value, key: &str) -> &'a Value {
-    register["activities"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|activity| activity["key"] == key)
-        .unwrap_or_else(|| panic!("no activity {key}"))
-}
-
-fn keys(register: &Value) -> Vec<String> {
-    register["activities"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|activity| activity["key"].as_str().unwrap().to_string())
-        .collect()
-}
-
-/// Each recipient of the activity `key`, as (name, place, chosen by).
-fn recipients(register: &Value, key: &str) -> Vec<(String, String, String)> {
-    activity(register, key)["recipients"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| {
-            let text = |field: &str| r[field].as_str().unwrap().to_string();
-            (text("name"), text("place"), text("chosenBy"))
-        })
-        .collect()
-}
-
-fn of(name: &str, place: &str, by: &str) -> (String, String, String) {
-    (name.into(), place.into(), by.into())
-}
-
-fn lines(value: &Value) -> Vec<String> {
-    value
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|line| line.as_str().unwrap().to_string())
-        .collect()
-}
+use support::llm::{API_KEY, REVIEW_MODEL};
+use support::processing_register::{activity, keys, lines, of, read, recipients, start};
 
 /// Paul's company declares, written as its administration would leave them,
 /// a Telegram bot and an OpenID Connect provider.
@@ -273,51 +207,6 @@ async fn the_register_names_where_the_company_s_data_go_now() {
         paul.put("/admin/second-factor", optional).await.status,
         StatusCode::OK
     );
-}
-
-#[tokio::test]
-#[ignore = "requires PostgreSQL"]
-async fn one_company_s_settings_are_never_in_another_s_register() {
-    let api = start().await;
-    let acme = companies::create(&api, "acme-registre", "jeanne@acme-registre.example").await;
-    let mut tx = api.app.services.db.begin(acme.tenant_id).await.unwrap();
-    let config = json!({ "prefix": "facturation", "url": "https://facturation.acme.example/api" });
-    create_connector_instance(
-        &mut tx,
-        NewConnectorInstance {
-            tenant_id: acme.tenant_id,
-            connector_type: "rest",
-            name: "Facturation Acme",
-            enabled: true,
-            config: &config,
-        },
-    )
-    .await
-    .unwrap();
-    tx.commit().await.unwrap();
-
-    let paul = api.sign_in(user::PAUL).await;
-    let neo = paul.get(REGISTER).await.text();
-    assert!(!neo.contains("acme") && !neo.contains("Acme"), "{neo}");
-
-    // Acme's administrator reads its own, and nothing of Néo's.
-    let accepted = accept(&api, &acme.invitation.link, INVITED_PASSWORD).await;
-    assert_eq!(accepted.status, StatusCode::OK, "{}", accepted.text());
-    let jeanne = api
-        .sign_in_with("jeanne@acme-registre.example", INVITED_PASSWORD)
-        .await;
-    let register = read(&jeanne).await;
-    assert_eq!(register["controller"], "Acme Industrie");
-    assert_eq!(
-        recipients(&register, "connectors"),
-        [of(
-            "API REST (facturation.acme.example)",
-            "declaredByCompany",
-            "company"
-        )]
-    );
-    assert!(lines(&activity(&register, "connectors")["notes"]).is_empty());
-    assert!(!register.to_string().contains("Néo"));
 }
 
 /// The activities TypeSafe is named in.
