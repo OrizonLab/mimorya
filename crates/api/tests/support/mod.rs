@@ -31,6 +31,7 @@ pub mod hooks;
 pub mod identity_provider;
 pub mod idle_conversations;
 pub mod impostor;
+pub mod installation;
 pub mod knowledge_shares;
 pub mod leases;
 pub mod lessons;

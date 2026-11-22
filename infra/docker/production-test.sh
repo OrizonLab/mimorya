@@ -4,7 +4,8 @@
 # API answer; one API process and the stack's workers (MIMORYA_WORKERS),
 # each in its role, then one worker more side by side (ADR-086, ADR-087);
 # the API, every worker and the web application do not run as root; the migrations apply again without
-# change; no demonstration company exists and the sign-in page lists no demo
+# change; the installation's check says the stack ready but for its domain
+# (ADR-223); no demonstration company exists and the sign-in page lists no demo
 # account; the operator creates a company (ADR-033), whose first
 # administrator opens the invitation link, chooses a password and gets a
 # secure session in a company that is not a demo; the operator supplies its
@@ -55,6 +56,23 @@ for index in $(seq 1 "$more"); do
 done
 unprivileged web
 "${compose[@]}" run --rm --no-deps migrate >/dev/null || fail "migrations not re-applied"
+
+# The installation's check (ADR-223), in the api service: the database, the
+# migrations, the key, the workers and the brand ready, the archive of the WAL
+# too when the stack has the backups' recipients; the relay and the model to
+# complete (the CI's stack has none); the domain, localhost, out of reach from
+# inside the stack, the one point to fix.
+if report=$("${compose[@]}" exec -T api mimorya-admin check-install 2>&1); then
+  fail "check-install passed although the CI's domain is localhost: $report"
+fi
+backups=$([[ -n ${MIMORYA_BACKUP_RECIPIENTS:-} ]] && echo 'OK      ' || echo 'À FAIRE ')
+for expected in 'OK       Base de données : ' 'OK       Migrations : à jour' \
+  'OK       Clé maître : ' "OK       Workers : $more worker" 'OK       Marque : « Mimorya »' \
+  "$backups Sauvegardes : " 'ÉCHEC    Domaine et certificat : '; do
+  grep -qF -- "$expected" <<<"$report" || fail "check-install did not say « $expected »: $report"
+done
+grep -qF 'Bilan : 1 point(s) à corriger avant d’ouvrir la plateforme' <<<"$report" ||
+  fail "check-install found more than the domain to fix: $report"
 
 demo=$("${compose[@]}" exec -T db psql -U mimorya -d mimorya -tAc \
   "select count(*) from tenants where settings->>'demo' = 'true'") ||

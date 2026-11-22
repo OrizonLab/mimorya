@@ -4,14 +4,16 @@
 //! reactivate a company (ADR-191), withdraw what a suspended one declared
 //! at other services (ADR-193) and delete it (ADR-192), verify the sealed
 //! audit log against the seals logged (ADR-178), supply a company's model
-//! (ADR-208). The link is printed for the operator to transmit, and nowhere
-//! else.
+//! (ADR-208), check what the installation has ready (ADR-223). The link is
+//! printed for the operator to transmit, and nowhere else.
 
 mod args;
+mod check;
 mod deletion;
 mod release;
 mod report;
 mod supply;
+mod usage;
 mod verify;
 
 use std::process::ExitCode;
@@ -110,6 +112,10 @@ async fn run(command: Command) -> anyhow::Result<()> {
             deletion::delete(&slug, confirm.as_deref()).await?;
         }
         Command::Supply(command) => supply::run(command).await?,
+        Command::CheckInstall {
+            mail_to,
+            call_model,
+        } => check::check_install(mail_to, call_model).await?,
         Command::VerifyAudit { anchors } => {
             let (db, config) = connect().await?;
             let verified = verify::verify_audit(&config, &db, &anchors).await;

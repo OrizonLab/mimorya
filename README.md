@@ -261,6 +261,24 @@ l'administrateur avec les images construites depuis le dépôt
 (`infra/docker/production-test.sh`, réservé à une pile jetable : il y laisse une
 entreprise de vérification).
 
+#### Vérifier l'installation
+
+Une fois la pile démarrée, une commande dit ce qui est prêt et ce qui manque (ADR-223) :
+
+```bash
+docker compose --env-file .env.production -f compose.production.yml exec api \
+  mimorya-admin check-install --mail-to vous@example.com
+```
+
+Elle passe en revue la base et ses migrations, la clé maître, le domaine et son
+certificat, le relais SMTP (avec `--mail-to`, un e-mail d'essai part à cette adresse),
+l'archive des WAL, les workers, la marque et le modèle de la plateforme. Chaque point est
+`OK`, `À FAIRE` (la plateforme sert, mais il manque quelque chose) ou `ÉCHEC` (à corriger
+avant d'ouvrir : elle ne peut pas servir, ou ne protège plus ses données), avec ce qu'il
+faut faire. La commande échoue tant qu'un point est en `ÉCHEC`. `--call-model` ajoute un
+vrai appel au modèle pour vérifier sa clé ; il est facturé, quelques jetons chez
+Anthropic.
+
 #### Marque de l'installation
 
 La pile porte la marque de l'installation sans reconstruire les images (ADR-222) :
