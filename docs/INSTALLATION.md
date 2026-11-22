@@ -284,11 +284,21 @@ base qui porte des migrations qu'elle ne connaît pas : revenir à la version pr
 c'est restaurer la base telle qu'elle était à l'instant noté au point 2, sur l'hôte même,
 votre identité apportée le temps de la restauration :
 
-1. Revenez au dépôt et à `MIMORYA_VERSION` de la version précédente
+1. La base tournant encore, faites-lui archiver le segment des WAL en cours, et attendez
+   qu'il le soit : sans lui, l'archive peut ne pas atteindre l'instant noté (un segment
+   n'est archivé qu'une fois plein, ou après cinq minutes), et la restauration échoue.
+
+   ```bash
+   segment=$(docker compose exec -T db psql -U mimorya -d mimorya -tAc 'select pg_walfile_name(pg_switch_wal())')
+   until [ "$(docker compose exec -T db psql -U mimorya -d mimorya -tAc \
+       "select last_archived_wal >= '$segment' from pg_stat_archiver")" = t ]; do sleep 5; done
+   ```
+
+2. Revenez au dépôt et à `MIMORYA_VERSION` de la version précédente
    (`git checkout v0.1.0-beta.1`).
-2. Mettez de côté le volume de la base, puis retirez-le : `docs/RECOVERY_PLAN.md`, § 4.3,
+3. Mettez de côté le volume de la base, puis retirez-le : `docs/RECOVERY_PLAN.md`, § 4.3,
    étapes 1 et 2.
-3. Restaurez la sauvegarde du point 2 jusqu'à l'instant noté, puis démarrez et vérifiez :
+4. Restaurez la sauvegarde du point 2 jusqu'à l'instant noté, puis démarrez et vérifiez :
 
    ```bash
    infra/backup/restore-base.sh backups/mimorya-….base.tar.gz.age identite.key '2026-12-01 09:30:00 UTC'
@@ -296,7 +306,9 @@ votre identité apportée le temps de la restauration :
    docker compose exec api mimorya-admin check-install
    ```
 
-4. Retirez l'identité du serveur.
+5. Retirez l'identité du serveur, puis suivez `docs/RECOVERY_PLAN.md`, § 5 « Après une
+   reprise » : une sauvegarde de base aussitôt, la ligne temporelle notée, l'archive
+   vérifiée.
 
 Ce qui a été fait entre l'instant noté et le retour en arrière est perdu : prévenez les
 entreprises avant de mettre à jour.
