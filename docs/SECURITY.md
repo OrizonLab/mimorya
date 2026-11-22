@@ -762,6 +762,11 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   méthode, chemin, statut, durée et identifiant de requête), et les structures qui
   portent une clé (`ProviderConfig`, options des fournisseurs) n'affichent jamais sa
   valeur en débogage. Le journal d'audit ne recopie jamais une entrée refusée.
+- Installation (ADR-224, `docs/INSTALLATION.md`) : l'identité qui ouvre les sauvegardes
+  est créée sur le poste de l'exploitant, jamais sur le serveur ; la clé maître et cette
+  identité sont copiées dans un gestionnaire de secrets ; seuls SSH, HTTP et HTTPS sont
+  ouverts. Un problème se remonte avec les journaux, sans `.env.production`, sans la clé
+  maître ni une sauvegarde (`docs/RECETTE_BETA.md`).
 - Clés LLM et clé maître : variables d'environnement / gestionnaire de secrets ; jamais
   committées (`.env` et `.env.production` ignorés, `.env.example` et
   `.env.production.example` sans valeur réelle). En production, `.env.production` est

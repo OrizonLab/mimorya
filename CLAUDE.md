@@ -3,6 +3,8 @@
 Plateforme de collaborateur IA d'entreprise (nom de code provisoire **Mimorya**).
 Lire d'abord : `docs/PRODUCT_VISION.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`,
 `docs/AGENT_ENGINE.md`, `docs/DATA_MODEL.md`, `docs/DECISIONS.md`, `docs/ROADMAP.md`.
+Installer une bêta : `docs/INSTALLATION.md`, puis les essais de `docs/RECETTE_BETA.md`
+(ADR-224) ; reprendre après un incident : `docs/RECOVERY_PLAN.md`.
 
 ## Langues
 

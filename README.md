@@ -10,17 +10,19 @@ l'expérience validée.
 
 ## Documentation
 
-| Document                                 | Contenu                                                        |
-| ---------------------------------------- | -------------------------------------------------------------- |
-| [Vision produit](docs/PRODUCT_VISION.md) | Objectifs, personas, principes, glossaire                      |
-| [Architecture](docs/ARCHITECTURE.md)     | Vue d'ensemble, pile, flux, analyse de Hermes Agent, risques   |
-| [Moteur agentique](docs/AGENT_ENGINE.md) | Boucle, PEP, validations, vérification, mémoire, apprentissage |
-| [Modèle de données](docs/DATA_MODEL.md)  | Entités, isolation, rétention                                  |
-| [Sécurité](docs/SECURITY.md)             | Modèle de menace, isolation, autorisations, RGPD               |
-| [Décisions](docs/DECISIONS.md)           | Journal des décisions d'architecture                           |
-| [Feuille de route](docs/ROADMAP.md)      | Phases, statuts, critères d'acceptation                        |
-| [Plan de reprise](docs/RECOVERY_PLAN.md) | Pertes et durées visées, préparation, procédures, exercices    |
-| [CLAUDE.md](CLAUDE.md)                   | Règles de développement                                        |
+| Document                                   | Contenu                                                           |
+| ------------------------------------------ | ----------------------------------------------------------------- |
+| [Vision produit](docs/PRODUCT_VISION.md)   | Objectifs, personas, principes, glossaire                         |
+| [Architecture](docs/ARCHITECTURE.md)       | Vue d'ensemble, pile, flux, analyse de Hermes Agent, risques      |
+| [Moteur agentique](docs/AGENT_ENGINE.md)   | Boucle, PEP, validations, vérification, mémoire, apprentissage    |
+| [Modèle de données](docs/DATA_MODEL.md)    | Entités, isolation, rétention                                     |
+| [Sécurité](docs/SECURITY.md)               | Modèle de menace, isolation, autorisations, RGPD                  |
+| [Décisions](docs/DECISIONS.md)             | Journal des décisions d'architecture                              |
+| [Feuille de route](docs/ROADMAP.md)        | Phases, statuts, critères d'acceptation                           |
+| [Plan de reprise](docs/RECOVERY_PLAN.md)   | Pertes et durées visées, préparation, procédures, exercices       |
+| [Installation](docs/INSTALLATION.md)       | Installer la bêta pas à pas sur un serveur neuf, la mettre à jour |
+| [Recette de la bêta](docs/RECETTE_BETA.md) | Essais à faire avant d'ouvrir, résultats attendus, problèmes      |
+| [CLAUDE.md](CLAUDE.md)                     | Règles de développement                                           |
 
 ## Démarrage local
 
@@ -194,6 +196,10 @@ conservée par un collecteur de journaux : le lien y resterait. En développemen
 `pnpm db:migrate`.
 
 ### Pile conteneurisée de production
+
+Pour une première installation sur un serveur neuf, suivez le guide pas à pas,
+`docs/INSTALLATION.md`, puis faites les essais de `docs/RECETTE_BETA.md` avant d'ouvrir la
+plateforme (ADR-224). Ce qui suit en est le détail.
 
 `compose.production.yml` (ADR-034) installe la même chose en conteneurs, sans données
 fictives : PostgreSQL (rôles créés avec vos mots de passe), migrations, API, worker
