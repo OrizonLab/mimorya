@@ -30,8 +30,9 @@ fn kept(connector: &ConnectorFact) -> Option<String> {
         (
             kept.person_authorizations,
             "autorisation(s) OAuth données par chacun, jetons scellés, jusqu’à leur retrait, \
-             la désactivation du compte de chacun, un changement de l’adresse ou de la \
-             déclaration du serveur ou de qui l’autorise, ou la suppression du connecteur",
+             la désactivation du compte de chacun, un renouvellement refusé (au test d’un \
+             administrateur), un changement de l’adresse ou de la déclaration du serveur ou de \
+             qui l’autorise, ou la suppression du connecteur",
         ),
     ]
     .into_iter()

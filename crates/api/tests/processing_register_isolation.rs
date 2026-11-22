@@ -172,4 +172,9 @@ async fn a_disabled_connector_is_noted_for_what_it_keeps_of_people() {
         "1 autorisation(s) OAuth données par chacun, jetons scellés",
     );
     assert!(!notes.iter().any(|note| note.contains("Paie Acme")));
+
+    // None of it counted in another company's register.
+    let paul = api.sign_in(user::PAUL).await;
+    let neo = paul.get(REGISTER).await.text();
+    assert!(!neo.contains("Acme"), "{neo}");
 }

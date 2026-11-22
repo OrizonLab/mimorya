@@ -16606,7 +16606,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
   Ils partent à leur retrait par la personne, à la désactivation de son compte ou à la
   suppression du connecteur ; un compte de messagerie aussi au changement d'hôte d'un
   serveur, une autorisation au changement de l'adresse ou de la déclaration du serveur ou
-  de qui l'autorise. Le
+  de qui l'autorise, et à un renouvellement refusé : le test d'un administrateur renouvelle
+  la sienne, même connecteur désactivé. Le
   registre ne lisait que les connecteurs activés : une entreprise dont tous les
   connecteurs étaient désactivés n'y trouvait plus le traitement « Connecteurs et comptes
   reliés », alors que ces données restaient conservées.
@@ -16631,8 +16632,9 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - comptes reliés : leur retrait, la désactivation du compte de chacun ou la
       suppression du connecteur ;
     - comptes de messagerie : de même, ou le changement d'hôte d'un serveur ;
-    - autorisations données par chacun : de même, ou un changement de l'adresse ou de la
-      déclaration du serveur ou de qui l'autorise.
+    - autorisations données par chacun : de même, ou un renouvellement refusé au test
+      d'un administrateur, ou un changement de l'adresse ou de la déclaration du serveur ou
+      de qui l'autorise.
 - **Conséquences** :
   - les passerelles et fournisseurs d'identité désactivés restent hors du registre, alors
     qu'une passerelle désactivée garde les identités reliées : même question, lot

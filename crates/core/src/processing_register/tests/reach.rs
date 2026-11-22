@@ -226,6 +226,8 @@ fn a_disabled_connector_is_noted_for_what_it_keeps_as_counted() {
     assert!(!notes[1].contains("déclaration"));
     assert!(notes[2].contains("2 autorisation(s) OAuth données par chacun, jetons scellés"));
     assert!(notes[2].contains("de l’adresse ou de la déclaration du serveur ou de qui l’autorise"));
+    // An administrator's test renews them, disabled as they are.
+    assert!(notes[2].contains("un renouvellement refusé (au test d’un administrateur)"));
 
     // With one enabled beside them, only it reaches out, served as before.
     facts
