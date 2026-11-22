@@ -16883,8 +16883,11 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
     comme une archive des WAL en échec), puis un bilan. Elle échoue s'il reste un point
     en `ÉCHEC` ;
   - **base de données** : joignable par un rôle soumis à l'isolation des entreprises.
-    L'adresse d'un superutilisateur ou d'un rôle `BYPASSRLS`, celle du propriétaire
-    donnée à la place de celle de l'application, est en `ÉCHEC` ;
+    Est en `ÉCHEC` un rôle qui la contourne : superutilisateur, `BYPASSRLS`, ou
+    propriétaire d'une table dont la sécurité par ligne ne s'impose pas à son
+    propriétaire, ou membre de ce propriétaire, que PostgreSQL en dispense de même.
+    L'adresse du propriétaire donnée à la place de celle de l'application l'est donc,
+    superutilisateur ou non ;
   - **migrations** : le journal comparé aux migrations que porte cette version, numéro
     et somme de contrôle. Il signale une migration à appliquer, échouée, changée depuis
     qu'elle a été appliquée, ou inconnue de cette version (image plus ancienne que la
@@ -16924,5 +16927,5 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
     installation prête, puis une qui ne peut pas servir, contre une vraie base),
     `crates/api/tests/installation_check_guards.rs` (un certificat d'une autorité non
     reconnue, puis reconnue ; l'adresse du propriétaire à la place de celle de
-    l'application), `crates/db/tests/definer_functions.rs` (la fonction, appelée par le
+    l'application ; un rôle sans privilège, membre du propriétaire des tables), `crates/db/tests/definer_functions.rs` (la fonction, appelée par le
     seul rôle applicatif), `infra/docker/production-test.sh`.

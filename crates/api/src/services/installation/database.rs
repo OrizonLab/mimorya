@@ -23,15 +23,16 @@ pub(super) async fn connect(config: &AppConfig) -> Result<Database, String> {
     let db = Database::connect(&config.database_app_url, options)
         .await
         .map_err(|error| format!("injoignable ({error})"))?;
-    match role_escapes_isolation(db.pool()).await {
-        Err(error) => Err(format!("ne répond pas ({error})")),
-        Ok(true) => Err(
-            "DATABASE_APP_URL se connecte avec un rôle qui contourne l’isolation des \
-             entreprises (superutilisateur ou BYPASSRLS) : la pile l’écrit avec mimorya_app"
-                .to_string(),
-        ),
-        Ok(false) => Ok(db),
-    }
+    let refused = match role_escapes_isolation(db.pool()).await {
+        Err(error) => format!("ne répond pas ({error})"),
+        Ok(true) => "DATABASE_APP_URL se connecte avec un rôle qui contourne l’isolation des \
+             entreprises (superutilisateur, BYPASSRLS, ou propriétaire des tables ou membre \
+             de leur propriétaire) : la pile l’écrit avec mimorya_app"
+            .to_string(),
+        Ok(false) => return Ok(db),
+    };
+    db.close().await;
+    Err(refused)
 }
 
 pub(super) fn reached() -> Finding {

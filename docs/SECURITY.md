@@ -1155,6 +1155,9 @@ sandbox; frame-ancestors 'none'`, gardées par les navigateurs tant que leur adr
   propriétaire. Elle nomme le relais SMTP par son hôte et son port, jamais ses
   identifiants, et n'affiche aucun secret. Elle n'appelle le modèle de la plateforme
   qu'avec `--call-model`, et n'envoie d'e-mail qu'avec `--mail-to`.
+  Elle met en `ÉCHEC` une `DATABASE_APP_URL` qui contourne l'isolation des entreprises :
+  superutilisateur, `BYPASSRLS`, propriétaire des tables ou membre de leur propriétaire
+  (aucune table ne force sa sécurité par ligne sur son propriétaire).
 - Marque de l'installation (ADR-222) : ses noms, ses accents et ses images sont lus au
   démarrage de l'API et le refusent s'ils ne conviennent pas : un nom avec un caractère
   de contrôle (il ajouterait un en-tête à un e-mail) ou, pour le produit, un deux-points

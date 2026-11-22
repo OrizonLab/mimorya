@@ -1,14 +1,17 @@
 //! What the installation check (ADR-223) must not take for ready: a
 //! certificate no browser trusts, and the database reached by a role that
-//! escapes the companies' isolation. Both are tried, and refused.
+//! escapes the companies' isolation (a superuser, or a member of the
+//! tables' owner without any privilege of its own). Each is tried, and
+//! refused.
 
 mod support;
 
 use mimorya_api::services::installation::{Probes, State, check};
 use mimorya_connectors::outbound::{NetworkPolicy, http_client};
 use mimorya_connectors::testing::{TestAuthority, serve_https};
+use mimorya_db::{Database, PoolOptions};
 use support::installation::{DIRECT, check_config, found, health};
-use support::owner_url;
+use support::{app_url, owner_url};
 
 fn probes(web: NetworkPolicy) -> Probes {
     Probes {
@@ -74,4 +77,54 @@ async fn the_owner_s_address_in_place_of_the_application_s_is_refused() {
     let base = found(&applications, "Base de données");
     assert_eq!(base.state, State::Ready);
     assert!(base.said.ends_with("soumis à l’isolation des entreprises"));
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL"]
+async fn a_member_of_the_tables_owner_escapes_isolation_without_any_privilege() {
+    // A role neither superuser nor BYPASSRLS, but a member of the role that
+    // owns the tables: PostgreSQL spares it their row-level security.
+    let owner = Database::connect(
+        owner_url(),
+        PoolOptions {
+            max_connections: 1,
+            application_name: "installation-check-test",
+        },
+    )
+    .await
+    .unwrap();
+    let role = format!("mimorya_check_member_{}", std::process::id());
+    let tables_owner: String = sqlx::query_scalar("select current_user::text")
+        .fetch_one(owner.pool())
+        .await
+        .unwrap();
+    for statement in [
+        format!("drop role if exists {role}"),
+        format!(
+            "create role {role} login password 'membre-du-proprietaire' \
+             nosuperuser nobypassrls in role \"{tables_owner}\""
+        ),
+    ] {
+        sqlx::query(&statement).execute(owner.pool()).await.unwrap();
+    }
+    let mut member = url::Url::parse(app_url()).unwrap();
+    member.set_username(&role).unwrap();
+    member.set_password(Some("membre-du-proprietaire")).unwrap();
+
+    let config = check_config(&[("DATABASE_APP_URL", member.as_str())]);
+    let report = check(&config, probes(DIRECT)).await;
+    let base = found(&report, "Base de données");
+    sqlx::query(&format!("drop role {role}"))
+        .execute(owner.pool())
+        .await
+        .unwrap();
+    owner.close().await;
+    assert_eq!(base.state, State::Failed);
+    assert!(
+        base.said
+            .contains("propriétaire des tables ou membre de leur propriétaire"),
+        "{}",
+        base.said
+    );
+    assert!(!base.said.contains("membre-du-proprietaire"));
 }

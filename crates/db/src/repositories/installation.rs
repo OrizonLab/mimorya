@@ -24,13 +24,22 @@ pub async fn applied_migrations(pool: &PgPool) -> sqlx::Result<Vec<AppliedMigrat
     .await
 }
 
-/// Whether the role the API connects with escapes the companies' isolation
-/// (a superuser, or a role that bypasses row-level security): the owner's
-/// address given in place of the application's.
+/// Whether the role the API connects with escapes the companies' isolation:
+/// a superuser, a role that bypasses row-level security, or the owner of a
+/// table whose security is not forced on its owner (or one of its members,
+/// who may act as it). The owner's address given in place of the
+/// application's is one, superuser or not.
 pub async fn role_escapes_isolation(pool: &PgPool) -> sqlx::Result<bool> {
-    sqlx::query_scalar("select rolsuper or rolbypassrls from pg_roles where rolname = current_user")
-        .fetch_one(pool)
-        .await
+    sqlx::query_scalar(
+        "select r.rolsuper or r.rolbypassrls or exists ( \
+             select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace \
+              where n.nspname = 'public' and c.relrowsecurity \
+                and not c.relforcerowsecurity \
+                and pg_has_role(current_user, c.relowner, 'MEMBER')) \
+           from pg_roles r where r.rolname = current_user",
+    )
+    .fetch_one(pool)
+    .await
 }
 
 /// The connections that listen as the stack's processes do: one per worker
