@@ -42,6 +42,7 @@ pub mod gateway_threads;
 pub mod gateways;
 pub mod identity_providers;
 pub mod inbound_hooks;
+pub mod installation;
 pub mod invitations;
 pub mod knowledge_shares;
 pub mod llm_settings;

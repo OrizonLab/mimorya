@@ -16865,3 +16865,55 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
       en-têtes, démarrage refusé ;
     - `apps/web/e2e/brand.spec.ts` : onglet, connexion, barre latérale, logo, favicon,
       accents clair et sombre, images servies ; `data-export.spec.ts` : nom du fichier.
+
+## ADR-223 — Vérification de l'installation (bêta, étape 3)
+
+- **Statut** : accepté (2026-11-22)
+- **Contexte** : avant d'ouvrir la plateforme à son équipe, l'exploitant doit savoir ce
+  qui est prêt et ce qui manque. Jusqu'ici, chaque point se vérifiait à la main et à
+  part : la base et ses migrations, la clé maître, le domaine et son certificat, le
+  relais d'e-mails, l'archive des WAL, les workers, la marque, la clé du modèle.
+- **Décision** :
+  - **une commande** : `mimorya-admin check-install [--mail-to <adresse>]
+[--call-model]`, lancée dans le service `api` (`docker compose … exec api …`). Elle
+    voit son environnement, son dossier de marque et son réseau. Elle dit chaque point
+    en français, `OK`, `À FAIRE` (la plateforme sert, mais il manque ce qu'une
+    installation devrait avoir, ou ce n'est pas vérifié) ou `ÉCHEC` (elle ne peut pas
+    servir), puis un bilan. Elle échoue s'il reste un point en `ÉCHEC` ;
+  - **base de données** : joignable par le rôle applicatif ;
+  - **migrations** : le journal comparé aux migrations que porte cette version, numéro
+    et somme de contrôle. Il signale une migration à appliquer, échouée, changée depuis
+    qu'elle a été appliquée, ou inconnue de cette version (image plus ancienne que la
+    base). Le journal reste au rôle propriétaire : le rôle applicatif ne le lit que par
+    `system_applied_migrations()`, qui ne rend que le numéro, la réussite et la somme ;
+  - **clé maître** : présente ;
+  - **domaine et certificat** : l'adresse de la plateforme (`WEB_ORIGIN`) jointe comme
+    n'importe qui la joint, sans mandataire, son certificat vérifié par les autorités
+    publiques (racines webpki). Un certificat non reconnu, comme celui de
+    `MIMORYA_TLS=internal`, est dit comme tel ; une adresse injoignable invite à
+    vérifier le DNS, les ports 80 et 443, et à essayer depuis un poste extérieur ;
+  - **relais SMTP** : configuré ou non, nommé par son hôte et son port, jamais ses
+    identifiants. Avec `--mail-to`, un e-mail d'essai part par le relais même de la
+    plateforme ; sans, le point reste à faire ;
+  - **sauvegardes** : l'archivage des WAL (ADR-206), actif seulement quand la pile a
+    les destinataires des sauvegardes, lu de `pg_stat_archiver` : nombre de segments,
+    dernier archivé, dernier échec. L'état des sauvegardes de base reste à
+    `infra/backup/archive-status.sh` (ADR-215) ;
+  - **workers** : les processus à l'écoute, comptés par les connexions qu'ils tiennent
+    (`mimorya-run-queue` pour chaque worker, `mimorya-run-events` pour chaque processus
+    api, ADR-085) ;
+  - **marque** : lue comme l'API la lit au démarrage (ADR-222), refus compris ;
+  - **modèle de la plateforme** : configuré ou non. Avec `--call-model` seulement, un
+    vrai appel, de quelques jetons facturés, prouve sa clé. La CI ne le fait jamais, et
+    les tests prennent un modèle scénarisé.
+- **Conséquences** :
+  - la commande dit un état à l'instant où elle tourne ; elle ne surveille rien ;
+  - derrière un NAT sans retour, le domaine peut être injoignable depuis le serveur et
+    joignable depuis l'extérieur : le message le dit ;
+  - la CI la lance dans la pile de production qu'elle construit. Elle doit tout dire
+    prêt, sauf le domaine (`localhost` sous l'autorité interne de Caddy) ;
+  - tests : `crates/api/src/services/installation/` (comparaison du journal, archive,
+    workers, adresse, relais, bilan), `crates/api/tests/installation_check.rs` (une
+    installation prête, puis une qui ne peut pas servir, contre une vraie base),
+    `crates/db/tests/definer_functions.rs` (la fonction, appelée par le seul rôle
+    applicatif), `infra/docker/production-test.sh`.

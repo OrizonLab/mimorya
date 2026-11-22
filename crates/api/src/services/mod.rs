@@ -16,6 +16,7 @@ pub mod embeddings;
 pub mod event_bus;
 pub mod gateways;
 pub mod inbound_hooks;
+pub mod installation;
 pub mod invalidations;
 pub mod invitations;
 pub mod llm;

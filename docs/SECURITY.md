@@ -1149,6 +1149,12 @@ sandbox; frame-ancestors 'none'`, gardées par les navigateurs tant que leur adr
   coupés encore par le filtre, quel que soit `LOG_LEVEL` (`crates/api/tests/logs.rs`) ;
   aucun enregistrement plus fin que le filtre n'est même formé (`crates/api/tests/logs_level.rs`) ; ceux de lettre ne sont
   pas compilés.
+- Vérification de l'installation (ADR-223) : `mimorya-admin check-install` lit le
+  journal des migrations par `system_applied_migrations()`, qui ne rend que le numéro, la
+  réussite et la somme de contrôle de chacune ; le journal lui-même reste au rôle
+  propriétaire. Elle nomme le relais SMTP par son hôte et son port, jamais ses
+  identifiants, et n'affiche aucun secret. Elle n'appelle le modèle de la plateforme
+  qu'avec `--call-model`, et n'envoie d'e-mail qu'avec `--mail-to`.
 - Marque de l'installation (ADR-222) : ses noms, ses accents et ses images sont lus au
   démarrage de l'API et le refusent s'ils ne conviennent pas : un nom avec un caractère
   de contrôle (il ajouterait un en-tête à un e-mail) ou, pour le produit, un deux-points

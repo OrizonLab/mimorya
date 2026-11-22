@@ -5,75 +5,7 @@ use mimorya_api::services::audit_chain::Anchor;
 use mimorya_api::services::provisioning::CompanyStatusChange;
 
 use super::supply::{self, SupplyCommand};
-
-pub const USAGE: &str = "\
-Usage : mimorya-admin <commande> [options]
-
-Commandes :
-  migrate          applique les migrations de la base (DATABASE_URL, rôle propriétaire),
-                   sans aucune donnée
-  create-company   crée une entreprise et son premier administrateur, invité par un lien
-                     --name <nom>  --slug <sigle>  --admin-email <adresse>  --admin-name <nom>
-  invite           nouveau lien d’invitation d’un compte qui n’a pas encore choisi
-                   son mot de passe
-                     --email <adresse>
-  suspend-company  suspend une entreprise : plus personne ne s’y connecte, ses sessions et
-                   ses jetons sont refusés, ses runs s’arrêtent à leur prochaine étape ;
-                   la commande ne supprime rien, mais les échéances des validations et la
-                   rétention courent toujours
-                     --slug <sigle>
-  reactivate-company
-                   réactive une entreprise suspendue, moins ce que ces échéances ont
-                   retiré entre-temps
-                     --slug <sigle>
-  release-company  retire chez leurs fournisseurs ce que la plateforme y a déclaré pour
-                   une entreprise suspendue : révoque les autorisations OAuth de ses
-                   serveurs MCP, retire ses bots Telegram et leur webhook, révoque
-                   chez Google les accords des comptes Google reliés par ses
-                   personnes (réactivée, elles les relient de nouveau) ; avant
-                   delete-company, dans le service api (MIMORYA_MASTER_KEY)
-                     --slug <sigle>
-  delete-company   supprime une entreprise suspendue et tout ce qu’elle garde, son journal
-                   d’audit compris, sans retour (DATABASE_URL, rôle propriétaire) ; sans
-                   --confirm, montre ce qu’elle garde et ne supprime rien
-                     --slug <sigle>  [--confirm <sigle>]
-  verify-audit     vérifie le journal d’audit scellé de chaque entreprise (MIMORYA_MASTER_KEY) ;
-                   échoue si une entrée scellée a été modifiée ou supprimée, ou si une
-                   chaîne ne porte plus un sceau relevé dans les journaux (« Audit log
-                   sealed », « Audit chain found ») : seul ce sceau montre des entrées
-                   retirées de la fin d’une chaîne, ou des sceaux posés à nouveau
-                     [--anchor <entreprise>:<place>:<sceau>]…   (autant que voulu ;
-                     l’entreprise par son identifiant, tel que journalisé, ou son sigle)
-  model-supply     formule de fourniture du modèle d’une entreprise (ADR-208) : formule,
-                   plafond, coefficient, consommation du mois sur la clé de l’exploitant
-                   (coût réel et montant refacturé), versements du crédit et solde,
-                   parts qui alertent les administrateurs
-                     --slug <sigle>
-  set-model-supply choisit la formule : client-key (la clé de l’entreprise), capped (la
-                   clé de l’exploitant dans un plafond mensuel, 100 USD sans --cap, sans
-                   plafond seulement avec --cap unlimited), prepaid (la clé de
-                   l’exploitant contre un crédit prépayé)
-                     --slug <sigle>  --formula <formule>  [--cap <USD>|unlimited]
-  set-markup       coefficient de refacturation des appels sur la clé de l’exploitant,
-                   de 0 à 100 % ; le coût réel n’en est jamais changé
-                     --slug <sigle>  --percent <taux>
-  add-credit       ajoute un versement au crédit prépayé, avec sa référence (numéro de
-                   facture) ; une ligne n’est jamais modifiée : une correction est un
-                   versement de plus, négatif s’il le faut
-                     --slug <sigle>  --amount <USD>  --reference <facture>
-  set-supply-alerts parts qui alertent les administrateurs de l’entreprise par e-mail
-                   (ADR-211) : du plafond atteintes (de 1 à 100 %, 80 et 95 par défaut),
-                   du dernier versement restantes (de 0 à 99 %, 20 et 5 par défaut) ;
-                   au plus cinq de chaque, « aucun » pour n’en garder aucune
-                     --slug <sigle>  [--cap <parts>]  [--credit <parts>]   (l’une au moins,
-                     par exemple --cap 80,95,100)
-  help             affiche cette aide
-
-create-company, invite, suspend-company, reactivate-company, release-company et
-verify-audit passent par DATABASE_APP_URL ; les liens mènent à WEB_ORIGIN.
-delete-company, model-supply, set-model-supply, set-markup, add-credit et
-set-supply-alerts passent par DATABASE_URL (rôle propriétaire) : chaque changement est
-tracé dans le journal d’audit de l’entreprise.";
+pub use super::usage::USAGE;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -99,6 +31,11 @@ pub enum Command {
     },
     /// How a company's model is supplied (ADR-208).
     Supply(SupplyCommand),
+    /// What the installation has ready and what it lacks (ADR-223).
+    CheckInstall {
+        mail_to: Option<String>,
+        call_model: bool,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -149,6 +86,10 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
                 .map(|anchor| Anchor::parse(anchor))
                 .collect::<Result<_, _>>()?,
         },
+        "check-install" => Command::CheckInstall {
+            mail_to: options.take_optional("--mail-to"),
+            call_model: options.take_flag("--call-model"),
+        },
         command if supply::COMMANDS.contains(&command) => {
             Command::Supply(supply::parse(command, &mut options)?)
         }
@@ -163,6 +104,9 @@ pub struct Options(Vec<(String, String)>);
 /// The only option given as many times as wanted.
 const REPEATED: &str = "--anchor";
 
+/// The options given alone, without a value.
+const FLAGS: [&str; 1] = ["--call-model"];
+
 impl Options {
     pub fn read(args: &[String]) -> Result<Self, String> {
         let mut pairs: Vec<(String, String)> = Vec::new();
@@ -170,6 +114,13 @@ impl Options {
         while let Some(name) = args.next() {
             if !name.starts_with("--") {
                 return Err(format!("Option attendue (--nom valeur), reçu : {name}"));
+            }
+            if FLAGS.contains(&name.as_str()) {
+                if pairs.iter().any(|(given, _)| given == name) {
+                    return Err(format!("Option donnée deux fois : {name}"));
+                }
+                pairs.push((name.clone(), String::new()));
+                continue;
             }
             let Some(value) = args.next() else {
                 return Err(format!("Valeur manquante pour {name}"));
@@ -204,6 +155,11 @@ impl Options {
         taken.into_iter().map(|(_, value)| value).collect()
     }
 
+    /// Whether the flag `name` was given.
+    pub fn take_flag(&mut self, name: &str) -> bool {
+        self.take_optional(name).is_some()
+    }
+
     /// Refuses the options the command does not know.
     pub fn finish(self) -> Result<(), String> {
         match self.0.first() {
@@ -231,6 +187,29 @@ mod tests {
         assert_eq!(parse_line(&[]), Ok(Command::Help));
         assert_eq!(parse_line(&["--help"]), Ok(Command::Help));
         assert_eq!(parse_line(&["migrate"]), Ok(Command::Migrate));
+        assert_eq!(
+            parse_line(&["check-install"]),
+            Ok(Command::CheckInstall {
+                mail_to: None,
+                call_model: false
+            })
+        );
+        assert_eq!(
+            parse_line(&[
+                "check-install",
+                "--call-model",
+                "--mail-to",
+                "ops@example.com"
+            ]),
+            Ok(Command::CheckInstall {
+                mail_to: Some("ops@example.com".into()),
+                call_model: true
+            })
+        );
+        assert_eq!(
+            parse_line(&["check-install", "--call-model", "--call-model"]),
+            Err("Option donnée deux fois : --call-model".into())
+        );
         assert_eq!(
             parse_line(&["verify-audit"]),
             Ok(Command::VerifyAudit {
