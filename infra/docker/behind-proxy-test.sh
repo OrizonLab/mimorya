@@ -96,12 +96,22 @@ reached() {
 }
 [[ $(reached http://mimorya-api:4000/health) == 0 ]] || fail "the API is not reached as mimorya-api"
 [[ $(reached http://mimorya-web:3000/login) == 0 ]] || fail "the web application is not reached as mimorya-web"
+# What Docker's resolver answers for $1 on the edge network, as the proxy
+# asks it; a name it does not hold goes to the host's resolver, which may
+# answer late, or never.
+answer() {
+  docker exec "$front" timeout 15 nslookup "$1" 2>&1 || true
+}
+api=$(docker compose ps --format '{{.Name}}' api)
+api_address=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$edge\").IPAddress}}" "$api")
+grep -qwF "$api_address" <<<"$(answer mimorya-api)" ||
+  fail "the resolver does not give mimorya-api's address ($api_address)"
 db=$(docker compose ps --format '{{.Name}}' db)
-for name in db "$db"; do
-  code=$(reached "http://$name:5432/")
-  [[ $code == 6 ]] || fail "the database is named $name on the edge network (curl: $code)"
-done
 address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$db")
+for name in db "$db"; do
+  said=$(answer "$name")
+  ! grep -qwF "$address" <<<"$said" || fail "the database is named $name on the edge network: $said"
+done
 code=$(reached "http://$address:5432/")
 [[ $code == 7 || $code == 28 ]] || fail "the database is reached at $address from the edge network (curl: $code)"
 
