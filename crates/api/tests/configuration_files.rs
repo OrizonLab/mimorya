@@ -4,20 +4,29 @@
 //! `compose.production.yml`, but the exceptions listed below, each with its
 //! reason; every variable of `.env.production.example` reaches the stack,
 //! and every one the stack reads is described there. The variables read are
-//! recorded as the configuration asks for them, not listed by hand.
+//! recorded as the configuration asks for them, not listed by hand. The
+//! stack itself, started from the example, is in `starts`.
+
+#[path = "configuration_files/stack.rs"]
+mod stack;
+#[path = "configuration_files/starts.rs"]
+mod starts;
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
-use std::fs;
-use std::path::Path;
 
 use mimorya_api::AppConfig;
 use regex::Regex;
+use stack::{BACKEND, environment, repository};
 
 /// Read by the configuration, fixed by `compose.production.yml` itself: the
 /// operator never sets them.
-const FIXED_BY_THE_STACK: [(&str, &str); 5] = [
+const FIXED_BY_THE_STACK: [(&str, &str); 6] = [
     ("MIMORYA_ENV", "production, for every process of the stack"),
+    (
+        "SESSION_SECURE_COOKIE",
+        "true: the stack is only served over HTTPS, by Caddy",
+    ),
     ("MIMORYA_ROLE", "api or worker, by the service"),
     ("DATABASE_APP_URL", "built from MIMORYA_APP_DB_PASSWORD"),
     ("WEB_ORIGIN", "https:// and MIMORYA_DOMAIN"),
@@ -26,13 +35,9 @@ const FIXED_BY_THE_STACK: [(&str, &str); 5] = [
 
 /// Read by the configuration, held by the image: neither the operator nor
 /// the stack sets them.
-const HELD_BY_THE_IMAGE: [(&str, &str); 5] = [
+const HELD_BY_THE_IMAGE: [(&str, &str); 4] = [
     ("HOST", "0.0.0.0, where Caddy reaches the api"),
     ("PORT", "4000, where Caddy reaches the api"),
-    (
-        "SESSION_SECURE_COOKIE",
-        "true in production: the stack is only served over HTTPS",
-    ),
     (
         "MIMORYA_EXTRACTOR",
         "mimorya-extract, beside the API in the image",
@@ -42,13 +47,6 @@ const HELD_BY_THE_IMAGE: [(&str, &str); 5] = [
         "a stdio server is a program the published images do not carry",
     ),
 ];
-
-fn repository(file: &str) -> String {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(file);
-    fs::read_to_string(&path).unwrap_or_else(|_| panic!("{} unreadable", path.display()))
-}
 
 /// The variables the configuration reads, recorded as it asks for them:
 /// with nothing set, then with every branch that reads more opened (a
@@ -82,13 +80,12 @@ fn described(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// The variables a compose file gives a container: `NAME: value`.
+/// The variables the stack gives the services that read the
+/// configuration, and those alone.
 fn given(compose: &str) -> BTreeSet<String> {
-    let line = Regex::new(r"^\s+([A-Z][A-Z0-9_]*):\s").unwrap();
-    compose
-        .lines()
-        .filter_map(|text| line.captures(text))
-        .map(|found| found[1].to_string())
+    BACKEND
+        .iter()
+        .flat_map(|service| environment(compose, service).into_keys())
         .collect()
 }
 

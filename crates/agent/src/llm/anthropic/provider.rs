@@ -51,9 +51,8 @@ impl AnthropicProvider {
             .unwrap_or_else(|| DEFAULT_ANTHROPIC_MODEL.into());
         let server_side_fallback =
             options.server_side_fallback.unwrap_or(true) && supports_server_fallback(&model);
-        let base_url = options
-            .base_url
-            .or_else(|| std::env::var("ANTHROPIC_BASE_URL").ok())
+        let base_url = given(options.base_url)
+            .or_else(|| given(std::env::var("ANTHROPIC_BASE_URL").ok()))
             .unwrap_or_else(|| DEFAULT_BASE_URL.into());
         Self {
             http: reqwest::Client::builder()
@@ -61,9 +60,8 @@ impl AnthropicProvider {
                 .read_timeout(Duration::from_secs(300))
                 .build()
                 .expect("HTTP client"),
-            api_key: options
-                .api_key
-                .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok()),
+            api_key: given(options.api_key)
+                .or_else(|| given(std::env::var("ANTHROPIC_API_KEY").ok())),
             base_url: base_url.trim_end_matches('/').to_string(),
             settings: RequestSettings {
                 model,
@@ -73,6 +71,13 @@ impl AnthropicProvider {
             },
         }
     }
+}
+
+/// A value as given, an empty one counting as none: a stack passes
+/// `ANTHROPIC_BASE_URL=` when its operator sets nothing (ADR-221), which
+/// must mean Anthropic's own address, not an empty one.
+fn given(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
 }
 
 #[async_trait]
@@ -118,5 +123,30 @@ impl LlmProvider for AnthropicProvider {
             }
         }
         message.finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_address_or_key_counts_as_none() {
+        assert_eq!(given(Some(String::new())), None);
+        assert_eq!(given(Some("  ".into())), None);
+        assert_eq!(given(None), None);
+        assert_eq!(
+            given(Some("https://gw.example".into())).as_deref(),
+            Some("https://gw.example")
+        );
+        // An empty address given falls back to Anthropic's own.
+        let provider = AnthropicProvider::new(AnthropicOptions {
+            base_url: Some(String::new()),
+            api_key: Some("cle".into()),
+            ..AnthropicOptions::default()
+        });
+        let expected = given(std::env::var("ANTHROPIC_BASE_URL").ok())
+            .unwrap_or_else(|| DEFAULT_BASE_URL.into());
+        assert_eq!(provider.base_url, expected.trim_end_matches('/'));
     }
 }

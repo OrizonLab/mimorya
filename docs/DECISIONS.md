@@ -16716,13 +16716,29 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     - dans `compose.production.yml`.
 
     Il accepte des exceptions listées, chacune avec sa raison :
-    - fixées par la pile : `MIMORYA_ENV`, `MIMORYA_ROLE`, `DATABASE_APP_URL`, `WEB_ORIGIN`,
+    - fixées par la pile : `MIMORYA_ENV`, `SESSION_SECURE_COOKIE` (écrite `true` : la pile
+      n'est servie qu'en HTTPS), `MIMORYA_ROLE`, `DATABASE_APP_URL`, `WEB_ORIGIN`,
       `TRUST_PROXY` ;
-    - tenues par l'image : `HOST`, `PORT`, `SESSION_SECURE_COOKIE`, `MIMORYA_EXTRACTOR`,
-      `MIMORYA_MCP_ALLOW_STDIO`.
+    - tenues par l'image : `HOST`, `PORT`, `MIMORYA_EXTRACTOR`, `MIMORYA_MCP_ALLOW_STDIO`.
 
     Il vérifie aussi que chaque variable de `.env.production.example` est lue par la
-    pile, et l'inverse, et qu'aucune exception n'est devenue sans objet.
+    pile, et l'inverse, et qu'aucune exception n'est devenue sans objet. Il ne compte
+    que ce que la pile donne aux services `api` et `worker` ;
+
+  - **la pile démarrée depuis l'exemple** : un second jeu de tests lit
+    `compose.production.yml` comme `docker compose` le lit (bloc partagé, puis
+    l'environnement propre du service, `${…}` remplis, une valeur vide valant une variable
+    absente). Il vérifie que :
+    - l'exemple, ses valeurs obligatoires remplies, donne à l'API et aux workers une
+      configuration acceptée ;
+    - sans clé maître, la pile refuse de démarrer et dit comment la générer ;
+    - le mandataire des modèles devient le `HTTPS_PROXY` du processus, jamais celui des
+      connecteurs ;
+    - chaque défaut écrit dans la pile est celui du code : la configuration est la même
+      avec ce défaut ou sans la variable ;
+  - **une adresse vide vaut l'adresse officielle** : la pile passe `ANTHROPIC_BASE_URL=`
+    quand l'exploitant n'en donne pas, et le fournisseur Anthropic prend alors
+    `https://api.anthropic.com`, jamais une adresse vide ; de même pour sa clé.
 - **Conséquences** :
   - une installation dont l'environnement n'a pas de clé maître ne démarre plus : à
     générer et garder hors du serveur avant la mise à jour ;
@@ -16730,4 +16746,8 @@ NULL`. Supprimer un run réécrivait donc des entrées que le journal chaîné s
     CI ; une variable lue seulement dans une branche que le test n'ouvre pas lui échappe,
     et la branche s'ajoute alors au test ;
   - tests : `crates/api/tests/configuration_files.rs`, dont l'échec a été vérifié en
-    retirant une variable de chacun des trois fichiers.
+    retirant une variable de chacun des trois fichiers, et
+    `crates/api/tests/configuration_files/starts.rs`, dont l'échec a été vérifié en
+    rendant la clé maître facultative, en remettant un expéditeur sans relais dans
+    l'exemple, en changeant un défaut et en branchant `HTTPS_PROXY` sur le mandataire des
+    connecteurs ; `llm::anthropic::provider` pour l'adresse vide.

@@ -46,6 +46,8 @@ name: mimorya-production
 # .env.production.example.
 x-backend-environment: &backend-environment
   MIMORYA_ENV: production
+  # Session cookies only over HTTPS: the stack is served by Caddy alone.
+  SESSION_SECURE_COOKIE: 'true'
   DATABASE_APP_URL: postgres://mimorya_app:${MIMORYA_APP_DB_PASSWORD}@db:5432/mimorya
   WEB_ORIGIN: https://${MIMORYA_DOMAIN:?choose the domain the stack is served on (MIMORYA_DOMAIN)}
   # Seals the companies' keys and tokens, keys the audit chain's seals and
@@ -132,7 +134,8 @@ services:
         condition: service_healthy
 
   # Serves the API; the runs it starts wait queued for a worker. One only:
-  # the rate limits are counted per process (SECURITY §4).
+  # the global rate limit is counted per process, the sign-in limits alone
+  # being shared through PostgreSQL (ADR-088, SECURITY §4).
   api:
     image: ghcr.io/orizonlab/mimorya-api:${MIMORYA_VERSION:-latest}
     restart: unless-stopped
