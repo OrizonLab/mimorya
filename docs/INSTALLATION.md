@@ -376,13 +376,25 @@ Ce qui change, dans l'ordre du guide :
 ### Nginx Proxy Manager
 
 1. **Le réseau.** Nginx Proxy Manager rejoint `mimorya-edge` **en plus** des réseaux où il
-   est déjà, comme celui de vos autres sites (souvent `nginx-proxy` ou `proxy`). La pile,
-   elle, ne rejoint pas ce réseau-là : vos autres conteneurs y joindraient l'API sans
-   passer par lui, et lui donneraient dans `X-Forwarded-For` l'adresse de leur choix. Dans
-   le `docker-compose.yml` de Nginx Proxy Manager, la liste `networks` de son service
-   garde tous ses réseaux et prend `mimorya-edge`, déclaré en bas, `external: true`. Un
-   service sans liste `networks` est sur `default`, même si ce réseau porte un autre nom
-   (`name: nginx-proxy` sous `default`) : la liste le nomme alors `default`.
+   est déjà, comme celui de vos autres sites (souvent `nginx-proxy` ou `proxy`). Sur
+   `mimorya-edge`, il est le seul conteneur avec l'interface et l'API, et la pile ne rejoint
+   pas le réseau de vos autres sites : un autre conteneur joindrait sinon l'API sans passer
+   par Nginx Proxy Manager, et donnerait à l'API, dans `X-Forwarded-For`, l'adresse de son
+   choix.
+
+   D'abord, dans son dossier, notez ses réseaux, sans les variables qui désignent la pile
+   de la plateforme :
+
+   ```bash
+   npm=$(env -u COMPOSE_FILE -u COMPOSE_ENV_FILES docker compose ps -q app) # son service
+   docker inspect -f '{{range $name, $network := .NetworkSettings.Networks}}{{$name}} {{end}}' "$npm"
+   ```
+
+   Dans son `docker-compose.yml`, la liste `networks` de son service garde tous ses
+   réseaux et prend `mimorya-edge`, déclaré en bas, `external: true`. Écrite en table (avec
+   des `aliases`, par exemple), elle prend `mimorya-edge: {}`. Un service sans liste
+   `networks` est sur `default`, même si ce réseau porte un autre nom (`name: nginx-proxy`
+   sous `default`) : la liste le nomme alors `default`.
 
    ```yaml
    services:
@@ -394,18 +406,15 @@ Ce qui change, dans l'ordre du guide :
        external: true
    ```
 
-   Puis, dans son dossier, sans les variables qui désignent la pile de la plateforme
-   (Nginx Proxy Manager est recréé : vos autres sites s'interrompent quelques secondes) :
+   Puis Nginx Proxy Manager est recréé (vos autres sites s'interrompent quelques secondes) :
 
    ```bash
    env -u COMPOSE_FILE -u COMPOSE_ENV_FILES docker compose up -d
-   npm=$(env -u COMPOSE_FILE -u COMPOSE_ENV_FILES docker compose ps -q app) # son service
-   docker inspect -f '{{range $name, $network := .NetworkSettings.Networks}}{{$name}} {{end}}' "$npm"
    ```
 
-   La dernière commande liste ses réseaux : ceux d'avant et `mimorya-edge`. Vos autres
-   sites répondent comme avant. Le réseau existe avant les deux piles : aucune ne dépend
-   du démarrage de l'autre.
+   Les deux commandes de tout à l'heure, relancées (le conteneur a changé), listent les
+   mêmes réseaux et `mimorya-edge`. Vos autres sites répondent comme avant. Le réseau
+   existe avant les deux piles : aucune ne dépend du démarrage de l'autre.
 
 2. **Le Proxy Host** (_Hosts_, _Proxy Hosts_, _Add Proxy Host_) :
    - _Details_ : _Domain Names_, le domaine de `MIMORYA_DOMAIN` ; _Scheme_ `http` ;
