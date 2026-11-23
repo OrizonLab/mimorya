@@ -5,7 +5,8 @@
 # off, the block of infra/proxy/api-location.conf in its « Advanced » tab.
 # Without a certificate: Let's Encrypt cannot reach the CI. Its address
 # ranges are not fetched (CloudFront, Cloudflare), nor is IPv6 listened on:
-# the runner's containers have none.
+# the runner's containers have none. Its two folders are volumes, as it
+# requires, removed with it (docker rm -v).
 proxy_manager_image=jc21/nginx-proxy-manager:2.16.0
 
 # Starts the Proxy Manager named $1 on the network $2, serving on the host's
@@ -15,13 +16,15 @@ proxy_manager_image=jc21/nginx-proxy-manager:2.16.0
 start_proxy_manager() {
   local name=$1 network=$2 port=$3 admin=$4 domain=$5
   local email=essai@exemple.invalid password=essai-$RANDOM$RANDOM token= host id meta
-  docker run -d --name "$name" --network "$network" \
+  docker run -d --name "$name" --network "$network" -v /data -v /etc/letsencrypt \
     -p "127.0.0.1:$port:80" -p "127.0.0.1:$admin:81" \
     -e DISABLE_IPV6=true -e IP_RANGES_FETCH_ENABLED=false \
     -e INITIAL_ADMIN_EMAIL="$email" -e INITIAL_ADMIN_PASSWORD="$password" \
     "$proxy_manager_image" >/dev/null || fail "Nginx Proxy Manager did not start"
   local api=http://127.0.0.1:$admin/api
   for _ in $(seq 1 90); do
+    [[ $(docker inspect -f '{{.State.Running}}' "$name") == true ]] ||
+      fail "Nginx Proxy Manager stopped as it started"
     token=$(curl -sf --max-time 5 "$api/tokens" -H 'content-type: application/json' \
       --data "{\"identity\":\"$email\",\"secret\":\"$password\"}" | jq -r '.token // empty') || true
     [[ -n $token ]] && break

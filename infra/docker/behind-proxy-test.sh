@@ -56,7 +56,7 @@ trap 'status=$?
         for front in "${fronts[@]}"; do docker logs --tail 30 "$front" >&2 || true; done
         docker exec "$manager" sh -c "tail -n 30 /data/logs/proxy-host-*_error.log" >&2 || true
       fi
-      docker rm -f "${fronts[@]}" "${clients[@]}" >/dev/null 2>&1 || true' EXIT
+      docker rm -fv "${fronts[@]}" "${clients[@]}" >/dev/null 2>&1 || true' EXIT
 docker run -d --name "$nginx_front" --network "$edge" -p "127.0.0.1:${port[$nginx_front]}:80" \
   -v "$PWD/infra/docker/edge-proxy.conf:/etc/nginx/conf.d/default.conf:ro" \
   -v "$PWD/infra/proxy/api-location.conf:/etc/nginx/mimorya/api-location.conf:ro" \
