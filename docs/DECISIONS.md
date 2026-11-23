@@ -17095,3 +17095,71 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
       fichiers de pile et de configuration que citent le guide et la recette existent ;
     - Nginx Proxy Manager lui-même et Traefik ne sont pas essayés : le test imite le
       bloc `server` que le premier écrit.
+
+## ADR-226 — L'adresse que voit le reverse proxy, et Nginx Proxy Manager essayé lui-même
+
+- **Statut** : accepté (2026-11-23)
+- **Contexte** : le bloc de l'API de l'ADR-225 ajoutait à `X-Forwarded-For`
+  `$proxy_add_x_forwarded_for`, c'est-à-dire `$remote_addr`. Or Nginx Proxy Manager 2.16
+  règle son nginx pour prendre l'en-tête `X-Real-IP` comme adresse du client dès que la
+  connexion vient d'une adresse privée (`set_real_ip_from` 10.0.0.0/8, 172.16.0.0/12 et
+  192.168.0.0/16, `real_ip_header X-Real-IP`) : `$remote_addr` est alors ce que le
+  client a écrit. Un poste du réseau local d'une installation privée, ou un client IPv6
+  que Docker relaie vers le conteneur depuis la passerelle de son réseau, choisissait
+  ainsi l'adresse que lit l'API et échappait à la limite des connexions par adresse
+  (ADR-088). Et pas seulement par `/api/` : `location /`, que Nginx Proxy Manager écrit
+  vers l'interface, transmet aussi `$remote_addr`, et l'interface relaie `/api/:path*` à
+  l'API sans tenir compte de la casse (`/API/auth/login`, que `location /api/` ne prend
+  pas), en gardant l'en-tête reçu. La CI ne l'avait pas vu : elle imitait Nginx Proxy
+  Manager par un nginx sans cette règle, et ne forgeait que `X-Forwarded-For`.
+- **Décision** :
+  - **le bloc retire au domaine entier la confiance de Nginx Proxy Manager** : sa première
+    ligne, hors de `location`, `set_real_ip_from unix:;`, remplace pour ce bloc `server`
+    les adresses privées héritées de `nginx.conf` (nginx remplace la liste plutôt que de
+    l'étendre) par la seule connexion par socket Unix, qu'aucun client TCP n'a :
+    `$remote_addr` est partout l'adresse de la connexion, et `location /` la transmet
+    aussi à l'interface, qui la relaie. Se mettre à l'abri dans `location /api/` seul ne
+    suffisait pas, à cause de ce relais ;
+  - **`/api/` transmet `$realip_remote_addr`**, l'adresse d'où vient la connexion, seule
+    dans `X-Forwarded-For`, même si le bloc était collé sans sa première ligne. L'API ne
+    lit que la dernière entrée de l'en-tête ; les précédentes ne servaient à rien ;
+  - **`resolver_timeout 5s`** : une API arrêtée, dont le nom part au résolveur de l'hôte,
+    répond 502 en cinq secondes au plus, non en trente ;
+  - **Nginx Proxy Manager 2.16.0 lui-même devant la pile en CI**
+    (`infra/docker/proxy-manager.sh`) : son administrateur créé à son démarrage, son
+    _Proxy Host_ déclaré par son API comme le guide fait remplir son formulaire
+    (`mimorya-web:3000`, _Block Common Exploits_ désactivé, le fichier du bloc dans
+    _Advanced_), son nginx devant avoir accepté la configuration (`nginx_online`). Sans
+    certificat : Let's Encrypt ne joint pas la CI. Sans IPv6 ni plages d'adresses des CDN,
+    que le conteneur de la CI n'a pas ou n'utilise pas ;
+  - **le test de la pile derrière un reverse proxy** passe par ses deux fronts, le nginx de
+    l'ADR-225 et Nginx Proxy Manager, avec les mêmes vérifications. Les connexions
+    viennent de conteneurs clients gardés jusqu'à la fin, deux par front, pour qu'aucune
+    adresse ne revienne à un autre ; un client limité le reste malgré un
+    `X-Forwarded-For` ou un `X-Real-IP` forgé, par `/api/auth/login` comme par
+    `/API/auth/login`, que l'interface relaie (un autre client y reçoit le refus de l'API,
+    401, preuve que le chemin la joint) ;
+  - **le guide** dit pourquoi le bloc transmet cette adresse sur tout le domaine, et qu'un
+    client IPv6 relayé par Docker vers un conteneur sans IPv6 arrive depuis la passerelle
+    du réseau : tous comptent comme un seul, et dix tentatives de l'un font refuser
+    celles des autres pendant la minute ; le réseau de Nginx Proxy Manager doit avoir
+    l'IPv6 pour que chacun garde son adresse.
+- **Conséquences** :
+  - un reverse proxy placé derrière un autre mandataire de confiance (CDN) ne transmet
+    plus l'adresse que ce mandataire lui donne : tous les visiteurs comptent comme le
+    mandataire, ce que le guide disait déjà de Cloudflare en mode proxy ;
+  - la première version de bêta, `v0.1.0-beta.1`, se pose sur le commit qui fusionne cette
+    décision : le guide d'une installation derrière Nginx Proxy Manager y donne ce bloc ;
+  - tests :
+    - `infra/docker/behind-proxy-test.sh`, à travers chacun des deux fronts : l'API sous
+      `/api`, la page de connexion et sa politique à nonce, un corps de 11 Mo, la limite
+      des connexions et les deux en-têtes forgés par les deux chemins, l'API recréée
+      suivie, le front redémarré pendant que l'API est arrêtée. Sans aucun changement du
+      bloc, le test (alors par `/api/` seul) passait à travers le nginx et échouait en CI
+      à travers Nginx Proxy Manager, sur le seul `X-Real-IP` forgé : le client limité y
+      était reçu (401) ;
+    - `crates/api/tests/configuration_files/behind_proxy.rs` : le bloc commence par
+      `set_real_ip_from unix:;`, hors de toute `location`, sa seule ligne
+      `X-Forwarded-For` transmet `$realip_remote_addr`, et le résolveur attend cinq
+      secondes au plus ;
+    - Traefik n'est pas essayé.

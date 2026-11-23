@@ -477,7 +477,7 @@ Repères à l'intérieur des crates :
   dans les journaux des processus, `audit-chain.sh`, ADR-180,
   vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base,
   pile de production derrière un nginx, `behind-proxy-test.sh` et `edge-proxy.conf`,
-  ADR-225),
+  ADR-225, et derrière Nginx Proxy Manager lui-même, `proxy-manager.sh`, ADR-226),
   `backup/` (sauvegarde de la base chiffrée par age pour des clés publiques, dump ou
   sauvegarde de base (`--base`, ADR-206), restauration dans une pile nouvelle, ADR-166, et
   à un instant précis, sauvegarde de base et WAL de l'archive rejoués, `restore-base.sh`,

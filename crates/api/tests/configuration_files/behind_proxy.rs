@@ -1,6 +1,7 @@
 //! The stack behind a reverse proxy already on the server (ADR-225): the
 //! block the guide gives Nginx Proxy Manager is the very file the CI stands
-//! in front of the stack, and the names the guide gives are the stack's.
+//! in front of the stack, it hands the API the address the connection comes
+//! from (ADR-226), and the names the guide gives are the stack's.
 
 use super::stack::repository;
 
@@ -39,6 +40,24 @@ fn the_guide_gives_the_api_block_the_ci_stands_in_front_of_the_stack() {
             .find(|line| line.starts_with("proxy_pass") && line.contains("mimorya-"));
         assert_eq!(literal, None, "a name written in proxy_pass");
     }
+    // The address the connection comes from, on every path of the host:
+    // Nginx Proxy Manager sets $remote_addr from the X-Real-IP a client
+    // writes whenever it connects from a private address, and the web
+    // application relays to the API what /api/ does not take (ADR-226). The
+    // server-wide line comes first, outside the location.
+    assert_eq!(
+        lines(&file)[..2],
+        ["set_real_ip_from unix:;", "location /api/ {"]
+    );
+    let forwarded: Vec<&str> = lines(&file)
+        .into_iter()
+        .filter(|line| line.contains("X-Forwarded-For"))
+        .collect();
+    assert_eq!(
+        forwarded,
+        ["proxy_set_header X-Forwarded-For $realip_remote_addr;"]
+    );
+    assert!(file.contains("resolver_timeout 5s;"));
 }
 
 #[test]

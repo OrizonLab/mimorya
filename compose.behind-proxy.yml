@@ -7,9 +7,9 @@
 #   docker network create mimorya-edge
 # then named after the production stack's file (docs/INSTALLATION.md):
 #   COMPOSE_FILE=compose.production.yml:compose.behind-proxy.yml
-# The proxy appends the client's address to X-Forwarded-For, which the API
-# reads (TRUST_PROXY), and serves /api/ without its prefix:
-# infra/proxy/api-location.conf.
+# The proxy hands the API, in X-Forwarded-For (TRUST_PROXY), the address the
+# connection comes from, never one a client's header gives it (ADR-226), and
+# serves /api/ without its prefix: infra/proxy/api-location.conf.
 
 services:
   proxy:

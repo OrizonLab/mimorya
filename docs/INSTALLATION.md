@@ -404,17 +404,26 @@ Ce qui change, dans l'ordre du guide :
      préfixe `/api`, que l'API n'attend pas, et résout `mimorya-api` à chaque requête :
      Nginx Proxy Manager démarre et recharge sa configuration même quand la pile est
      arrêtée, sans faire tomber vos autres sites, et suit l'API recréée par une mise à
-     jour.
+     jour. Il donne à l'API l'adresse d'où vient la connexion, sur tout le domaine :
+     Nginx Proxy Manager prend sinon pour celle du client l'en-tête `X-Real-IP`, que le
+     client écrit lui-même, dès qu'il se connecte depuis une adresse privée (un poste du
+     réseau local, un client IPv6 relayé par Docker), et il échapperait à la limite des
+     connexions. Sa première ligne, hors de `location`, retire cette confiance à ce
+     domaine : l'interface relaie aussi des requêtes à l'API (`/API/…`, que `location
+/api/` ne prend pas).
 
      ```nginx
+     set_real_ip_from unix:;
+
      location /api/ {
          resolver 127.0.0.11 valid=10s ipv6=off;
+         resolver_timeout 5s;
          set $mimorya_api mimorya-api:4000;
          rewrite ^/api(/.*)$ $1 break;
          proxy_pass http://$mimorya_api;
          proxy_http_version 1.1;
          proxy_set_header Host $host;
-         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+         proxy_set_header X-Forwarded-For $realip_remote_addr;
          proxy_set_header X-Forwarded-Proto $scheme;
          proxy_buffering off;
          proxy_read_timeout 300s;
@@ -437,15 +446,22 @@ Il convient s'il tourne dans un conteneur relié à `mimorya-edge` et :
 - sert le domaine en HTTPS, avec HSTS, et `/` à `mimorya-web:3000` ;
 - sert `/api/` à `mimorya-api:4000` sans son préfixe, sans mettre les réponses en tampon
   (suivi en direct des conversations), avec un corps de 20 Mo ;
-- ajoute l'adresse du client à `X-Forwarded-For` ;
+- ajoute à `X-Forwarded-For`, pour `/api/` comme pour `/`, l'adresse d'où vient la
+  connexion, jamais une adresse qu'un en-tête du client lui donne ;
 - résout les deux noms à chaque requête, et non à son démarrage.
 
 Pour nginx, `infra/proxy/api-location.conf` s'inclut dans son bloc `server`, dont
 `location /` résout `mimorya-web` de la même façon. La CI l'essaie ainsi devant la pile
-(`infra/docker/edge-proxy.conf`). Nginx Proxy Manager et Traefik ne sont pas essayés par
-la CI.
+(`infra/docker/edge-proxy.conf`), et essaie Nginx Proxy Manager 2.16.0 lui-même, ce bloc
+dans son Proxy Host (`infra/docker/proxy-manager.sh`). Traefik n'est pas essayé par la
+CI.
 
 L'API prend pour adresse du client la dernière de `X-Forwarded-For` : elle limite ainsi les
 tentatives de connexion de chacun. Un reverse proxy qui ne l'ajoute pas, ou un second
 mandataire devant lui (Cloudflare en mode proxy), ferait compter tous les visiteurs comme
-un seul.
+un seul. De même, quand Docker relaie l'IPv6 vers un conteneur qui n'en a pas, tous les
+clients IPv6 arrivent depuis la passerelle de son réseau (une adresse en `172.` dans les
+journaux de Nginx Proxy Manager) et comptent comme un seul : dix tentatives de connexion
+en une minute, de l'un d'eux, font refuser celles de tous les autres jusqu'à la fin de
+cette minute. Le réseau de Nginx Proxy Manager doit alors avoir l'IPv6 (voir la
+documentation de Docker sur IPv6) pour que chacun garde son adresse.
