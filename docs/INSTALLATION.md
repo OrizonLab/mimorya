@@ -375,24 +375,37 @@ Ce qui change, dans l'ordre du guide :
 
 ### Nginx Proxy Manager
 
-1. **Le réseau.** Dans le `docker-compose.yml` de Nginx Proxy Manager :
+1. **Le réseau.** Nginx Proxy Manager rejoint `mimorya-edge` **en plus** des réseaux où il
+   est déjà, comme celui de vos autres sites (souvent `nginx-proxy` ou `proxy`). La pile,
+   elle, ne rejoint pas ce réseau-là : vos autres conteneurs y joindraient l'API sans
+   passer par lui, et lui donneraient dans `X-Forwarded-For` l'adresse de leur choix. Dans
+   le `docker-compose.yml` de Nginx Proxy Manager, la liste `networks` de son service
+   garde tous ses réseaux et prend `mimorya-edge`, déclaré en bas, `external: true`. Un
+   service sans liste `networks` est sur `default`, même si ce réseau porte un autre nom
+   (`name: nginx-proxy` sous `default`) : la liste le nomme alors `default`.
 
    ```yaml
    services:
      app: # le service de Nginx Proxy Manager, tel qu'il s'appelle chez vous
-       networks: [default, mimorya-edge]
+       networks: [default, mimorya-edge] # ou [nginx-proxy, mimorya-edge], etc.
    networks:
+     # les réseaux déjà déclarés restent tels quels
      mimorya-edge:
        external: true
    ```
 
-   Puis, dans son dossier, sans les variables qui désignent la pile de la plateforme :
+   Puis, dans son dossier, sans les variables qui désignent la pile de la plateforme
+   (Nginx Proxy Manager est recréé : vos autres sites s'interrompent quelques secondes) :
 
    ```bash
    env -u COMPOSE_FILE -u COMPOSE_ENV_FILES docker compose up -d
+   npm=$(env -u COMPOSE_FILE -u COMPOSE_ENV_FILES docker compose ps -q app) # son service
+   docker inspect -f '{{range $name, $network := .NetworkSettings.Networks}}{{$name}} {{end}}' "$npm"
    ```
 
-   Le réseau existe avant les deux piles : aucune ne dépend du démarrage de l'autre.
+   La dernière commande liste ses réseaux : ceux d'avant et `mimorya-edge`. Vos autres
+   sites répondent comme avant. Le réseau existe avant les deux piles : aucune ne dépend
+   du démarrage de l'autre.
 
 2. **Le Proxy Host** (_Hosts_, _Proxy Hosts_, _Add Proxy Host_) :
    - _Details_ : _Domain Names_, le domaine de `MIMORYA_DOMAIN` ; _Scheme_ `http` ;
