@@ -426,13 +426,16 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   production, un reverse proxy de confiance (TLS) **ajoute** l'adresse du client à
   `X-Forwarded-For` ; avec `TRUST_PROXY=true`, l'API retient alors la dernière entrée
   de cet en-tête. Derrière un reverse proxy déjà installé sur le serveur (Nginx Proxy
-  Manager…, ADR-225), c'est lui qui l'ajoute (`infra/proxy/api-location.conf`) ; il ne
-  joint que l'interface et l'API, sur un réseau à part (`mimorya-edge`), jamais la base
-  ni les workers, et résout leurs noms à chaque requête : arrêtée, la pile ne l'empêche
-  pas de démarrer ni de servir les autres sites. La CI place un nginx devant la pile : un
-  client limité le reste malgré
-  un `X-Forwarded-For` forgé, un autre client ne l'est pas avec lui, et la base n'a sur ce
-  réseau ni nom ni adresse joignable (`infra/docker/behind-proxy-test.sh`).
+  Manager…, ADR-225), c'est lui qui l'ajoute (`infra/proxy/api-location.conf`) : l'adresse
+  d'où vient la connexion (`$realip_remote_addr`), jamais `$remote_addr`, que Nginx
+  Proxy Manager prend de l'en-tête `X-Real-IP` écrit par le client dès que celui-ci se
+  connecte depuis une adresse privée (ADR-226). Il ne joint que l'interface et l'API, sur
+  un réseau à part (`mimorya-edge`), jamais la base ni les workers, et résout leurs noms
+  à chaque requête : arrêtée, la pile ne l'empêche pas de démarrer ni de servir les
+  autres sites. La CI place devant la pile un nginx, puis Nginx Proxy Manager lui-même :
+  un client limité le reste malgré un `X-Forwarded-For` ou un `X-Real-IP` forgé, un
+  autre client ne l'est pas avec lui, et la base n'a sur ce réseau ni nom ni adresse
+  joignable (`infra/docker/behind-proxy-test.sh`).
 - **Fournisseur d'identité de l'entreprise** (SSO OpenID Connect, ADR-063) :
   Microsoft 365 (Entra ID, un annuaire), Google Workspace (domaines déclarés, `hd`) ou
   tout fournisseur OpenID Connect, déclarés par l'administration (`settings:manage`) avec
