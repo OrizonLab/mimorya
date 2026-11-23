@@ -32,7 +32,8 @@ pub(super) fn said(origin: &str, answer: Result<u16, reqwest_mcp::Error>) -> Fin
             State::ToComplete,
             format!(
                 "{origin} répond, mais sans HTTPS : en production, MIMORYA_DOMAIN et une \
-                 adresse e-mail dans MIMORYA_TLS donnent un certificat public"
+                 adresse e-mail dans MIMORYA_TLS donnent un certificat public (derrière un \
+                 reverse proxy déjà installé, c’est lui qui sert HTTPS)"
             ),
         ),
         Ok(status) => Finding::new(
@@ -56,7 +57,8 @@ fn unreached(origin: &str, error: &reqwest_mcp::Error) -> String {
     if cause.to_ascii_lowercase().contains("certificate") {
         return format!(
             "certificat de {origin} non reconnu ({cause}) : MIMORYA_TLS=internal ne sert qu’aux \
-             essais ; une adresse e-mail obtient un certificat public"
+             essais ; une adresse e-mail obtient un certificat public (derrière un reverse \
+             proxy déjà installé, c’est son certificat qui compte)"
         );
     }
     format!(

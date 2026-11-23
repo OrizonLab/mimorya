@@ -428,7 +428,9 @@ faire l'objet d'une décision dans [DECISIONS.md](DECISIONS.md).
   de cet en-tête. Derrière un reverse proxy déjà installé sur le serveur (Nginx Proxy
   Manager…, ADR-225), c'est lui qui l'ajoute (`infra/proxy/api-location.conf`) ; il ne
   joint que l'interface et l'API, sur un réseau à part (`mimorya-edge`), jamais la base
-  ni les workers. La CI place un nginx devant la pile : un client limité le reste malgré
+  ni les workers, et résout leurs noms à chaque requête : arrêtée, la pile ne l'empêche
+  pas de démarrer ni de servir les autres sites. La CI place un nginx devant la pile : un
+  client limité le reste malgré
   un `X-Forwarded-For` forgé, un autre client ne l'est pas avec lui, et la base n'a sur ce
   réseau ni nom ni adresse joignable (`infra/docker/behind-proxy-test.sh`).
 - **Fournisseur d'identité de l'entreprise** (SSO OpenID Connect, ADR-063) :

@@ -17043,18 +17043,29 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
       les deux piles : aucune ne dépend du démarrage de l'autre, et `docker compose down`
       ne le retire pas ;
     - `MIMORYA_TLS` reste exigé par la pile ; il vaut `internal`, dont personne ne se sert ;
+  - **le reverse proxy tourne dans un conteneur** relié à `mimorya-edge` : un nginx
+    installé sur l'hôte ne joindrait pas la pile, qui ne publie aucun port ;
   - **le bloc de l'API**, `infra/proxy/api-location.conf` : `/api/` vers
-    `mimorya-api:4000/`, préfixe retiré, adresse du client ajoutée à `X-Forwarded-For`,
+    `mimorya-api:4000`, préfixe retiré, adresse du client ajoutée à `X-Forwarded-For`,
     réponses sans tampon (suivi en direct), corps de 20 Mo (un document en pèse 10 au
-    plus). Il se colle tel quel dans l'onglet _Advanced_ de Nginx Proxy Manager, ou
-    s'inclut dans un bloc `server` de nginx ;
+    plus). Le nom est résolu **à chaque requête**, par le résolveur de Docker
+    (`resolver 127.0.0.11`, une variable dans `proxy_pass`), comme Nginx Proxy Manager le
+    fait de ses propres hôtes : un nom résolu au chargement ferait refuser à nginx de
+    démarrer ou de recharger tant que la pile est arrêtée (redémarrage du serveur, retour
+    en arrière, reprise), faisant tomber les autres sites qu'il sert, et lui ferait garder
+    l'ancienne adresse d'une API recréée. Il se colle tel quel dans l'onglet _Advanced_ de
+    Nginx Proxy Manager, ou s'inclut dans un bloc `server` de nginx ;
   - **le guide**, `docs/INSTALLATION.md`, annexe « Derrière un reverse proxy déjà
     installé » : ce qui change aux étapes 5, 6 et 7, puis Nginx Proxy Manager pas à pas
     (réseau, _Proxy Host_, _Advanced_, Let's Encrypt avec _Force SSL_, HTTP/2 et HSTS) et
-    ce qu'un autre reverse proxy doit faire. Le reverse proxy ne rejoint le réseau et ne
-    sert le domaine qu'après le premier démarrage : nginx refuse un nom qu'il ne trouve
-    pas. _Block Common Exploits_ reste désactivé : ses règles refusent des requêtes
-    légitimes (retours de connexion, SCIM, webhooks) ;
+    ce qu'un autre reverse proxy doit faire. Le compose de Nginx Proxy Manager se relance
+    sans `COMPOSE_FILE` ni `COMPOSE_ENV_FILES`, qui désignent la pile de la plateforme.
+    _Block Common Exploits_ reste désactivé : ses règles refusent des requêtes légitimes
+    (retours de connexion, SCIM, webhooks) ;
+  - **le plan de reprise** nomme ce fichier dans `COMPOSE_FILE`, et prévoit le réseau et
+    le reverse proxy sur l'hôte de secours ; la racine de Caddy ne s'y applique pas ;
+    `check-install` dit d'un certificat absent ou non reconnu que, derrière un reverse
+    proxy, c'est le sien qui compte ;
   - **la première version de bêta**, `v0.1.0-beta.1`, se pose sur le commit qui fusionne
     cette décision plutôt que sur celui du guide (ADR-224) : une installation derrière
     Nginx Proxy Manager trouve ce fichier et cette annexe dans le dépôt extrait à sa
@@ -17068,13 +17079,19 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
   - tests :
     - `infra/docker/behind-proxy-test.sh`, dernier test de la pile de production en CI :
       Caddy retiré, la pile redémarrée avec ce fichier sans port publié, un nginx devant
-      elle avec ce bloc. La page de connexion et l'API se joignent à travers lui, préfixe
-      retiré. Un client est limité après dix connexions, un `X-Forwarded-For` forgé ne le
-      libère pas, un autre client ne l'est pas avec lui. Le réseau ne porte que
-      l'interface, l'API et le reverse proxy, et la base n'y a ni nom ni adresse
-      joignable ;
+      elle avec ce bloc et ce que Nginx Proxy Manager écrit d'un hôte
+      (`infra/docker/edge-proxy.conf`). La page de connexion et l'API se joignent à
+      travers lui, préfixe retiré, et un corps de 11 Mo atteint l'API. Un client est
+      limité après dix connexions, un `X-Forwarded-For` forgé ne le libère pas, un autre
+      client ne l'est pas avec lui. Le réseau ne porte que l'interface, l'API et le
+      reverse proxy, et la base n'y a ni nom (demandé au résolveur de Docker, un témoin
+      trouvant l'API) ni adresse joignable. L'API recréée est suivie ; le reverse proxy
+      redémarré pendant que l'API est arrêtée démarre, sert l'interface, répond 502 sous
+      `/api/`, puis joint l'API revenue ;
     - `crates/api/tests/configuration_files/behind_proxy.rs` : le bloc du guide est ce
-      fichier, et les noms du guide sont ceux de la pile, dont l'échec a été vérifié en
-      retirant la barre finale de `proxy_pass` dans le guide ;
+      fichier, aucun `proxy_pass` n'écrit un nom de la pile, et les noms du guide sont
+      ceux de la pile, dont l'échec a été vérifié en changeant le `proxy_pass` du guide ;
     - `the_guide_and_the_acceptance_tests_name_commands_that_exist` vérifie aussi que les
-      fichiers de pile et de configuration que citent le guide et la recette existent.
+      fichiers de pile et de configuration que citent le guide et la recette existent ;
+    - Nginx Proxy Manager lui-même et Traefik ne sont pas essayés : le test imite le
+      bloc `server` que le premier écrit.

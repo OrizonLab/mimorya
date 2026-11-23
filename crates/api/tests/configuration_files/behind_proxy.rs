@@ -23,10 +23,22 @@ fn the_guide_gives_the_api_block_the_ci_stands_in_front_of_the_stack() {
         .expect("the guide gives the API's block");
     let file = repository("infra/proxy/api-location.conf");
     assert_eq!(lines(given), lines(&file), "docs/INSTALLATION.md");
-    assert!(file.contains("proxy_pass http://mimorya-api:4000/;"));
     let front = repository("infra/docker/edge-proxy.conf");
     assert!(front.contains("include /etc/nginx/mimorya/api-location.conf;"));
-    assert!(front.contains("proxy_pass http://mimorya-web:3000;"));
+    // The names are resolved at each request: an nginx that resolved them as
+    // it loads would refuse to start, taking its other sites down, while the
+    // stack is stopped.
+    for (conf, name) in [(&file, "mimorya-api:4000"), (&front, "mimorya-web")] {
+        assert!(conf.contains("resolver 127.0.0.11 valid=10s ipv6=off;"));
+        assert!(
+            conf.contains(&format!(" {name};")),
+            "{name} set in a variable"
+        );
+        let literal = lines(conf)
+            .into_iter()
+            .find(|line| line.starts_with("proxy_pass") && line.contains("mimorya-"));
+        assert_eq!(literal, None, "a name written in proxy_pass");
+    }
 }
 
 #[test]

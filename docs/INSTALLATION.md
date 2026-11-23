@@ -9,9 +9,10 @@ Les commandes se lancent sur le serveur **en `root`** (`sudo -i` depuis votre co
 d'administration), sauf celles que le guide dit de lancer sur votre poste. Le dépôt va dans
 `/srv/mimorya`, l'emplacement que suit le plan de reprise (`docs/RECOVERY_PLAN.md`).
 
-Un reverse proxy tient déjà les ports 80 et 443 du serveur (Nginx Proxy Manager, nginx,
-Traefik…) ? Lisez d'abord l'annexe, « Derrière un reverse proxy déjà installé » : elle
-change les étapes 5, 6 et 7, et c'est ce reverse proxy qui obtient le certificat.
+Un reverse proxy tient déjà les ports 80 et 443 du serveur, dans un conteneur (Nginx
+Proxy Manager, nginx, Traefik…) ? Lisez d'abord l'annexe, « Derrière un reverse proxy déjà
+installé » : elle change les étapes 5, 6 et 7, et c'est ce reverse proxy qui obtient le
+certificat.
 
 ## 1. Le serveur
 
@@ -343,7 +344,8 @@ nginx, Traefik…), c'est lui qui sert la plateforme et obtient son certificat ;
 démarre pas (ADR-225). Le fichier `compose.behind-proxy.yml` s'ajoute à la pile :
 l'interface et l'API rejoignent un réseau à part, `mimorya-edge`, sous les noms
 `mimorya-web` (port 3000) et `mimorya-api` (port 4000). La base et les workers n'y sont
-pas, et la pile ne publie aucun port.
+pas, et la pile ne publie aucun port : le reverse proxy tourne donc **dans un conteneur**
+relié à ce réseau. Un nginx installé sur l'hôte lui-même ne joindrait pas la pile.
 
 Ce qui change, dans l'ordre du guide :
 
@@ -363,14 +365,17 @@ Ce qui change, dans l'ordre du guide :
    docker compose config --services    # db, migrate, api, web, worker : pas de proxy
    ```
 
-4. **§ 7** : le démarrage ne change pas.
-5. **Après le § 7 seulement**, le reverse proxy rejoint `mimorya-edge`, puis sert le
-   domaine : nginx refuse un nom qu'il ne trouve pas encore.
+4. **§ 7** : le démarrage ne change pas, sinon que Caddy ne démarre pas : le certificat
+   viendra du reverse proxy.
+5. **Après le § 7**, le reverse proxy rejoint `mimorya-edge` et sert le domaine (plus tôt,
+   il répondrait 502). Au § 8, « Domaine et certificat » parle alors du certificat du
+   reverse proxy, pas de `MIMORYA_TLS`.
+6. **Le plan de reprise** (`docs/RECOVERY_PLAN.md`) nomme aussi ce fichier, ce réseau et
+   ce reverse proxy, sur l'hôte de secours comme ici.
 
 ### Nginx Proxy Manager
 
-1. **Le réseau.** Dans le `docker-compose.yml` de Nginx Proxy Manager, puis
-   `docker compose up -d` dans son dossier :
+1. **Le réseau.** Dans le `docker-compose.yml` de Nginx Proxy Manager :
 
    ```yaml
    services:
@@ -381,6 +386,12 @@ Ce qui change, dans l'ordre du guide :
        external: true
    ```
 
+   Puis, dans son dossier, sans les variables qui désignent la pile de la plateforme :
+
+   ```bash
+   env -u COMPOSE_FILE -u COMPOSE_ENV_FILES docker compose up -d
+   ```
+
    Le réseau existe avant les deux piles : aucune ne dépend du démarrage de l'autre.
 
 2. **Le Proxy Host** (_Hosts_, _Proxy Hosts_, _Add Proxy Host_) :
@@ -389,12 +400,18 @@ Ce qui change, dans l'ordre du guide :
      Exploits_ désactivé : ses règles refusent des requêtes légitimes (retours de
      connexion, SCIM, webhooks), et l'API fait ses propres contrôles. _Websockets Support_
      est inutile.
-   - _Advanced_ : le bloc de `infra/proxy/api-location.conf`, tel quel. La barre finale de
-     `proxy_pass` retire le préfixe `/api`, que l'API n'attend pas.
+   - _Advanced_ : le bloc de `infra/proxy/api-location.conf`, tel quel. Il retire le
+     préfixe `/api`, que l'API n'attend pas, et résout `mimorya-api` à chaque requête :
+     Nginx Proxy Manager démarre et recharge sa configuration même quand la pile est
+     arrêtée, sans faire tomber vos autres sites, et suit l'API recréée par une mise à
+     jour.
 
      ```nginx
      location /api/ {
-         proxy_pass http://mimorya-api:4000/;
+         resolver 127.0.0.11 valid=10s ipv6=off;
+         set $mimorya_api mimorya-api:4000;
+         rewrite ^/api(/.*)$ $1 break;
+         proxy_pass http://$mimorya_api;
          proxy_http_version 1.1;
          proxy_set_header Host $host;
          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -415,13 +432,18 @@ Ce qui change, dans l'ordre du guide :
 
 ### Un autre reverse proxy
 
-Il convient s'il est relié à `mimorya-edge` et :
+Il convient s'il tourne dans un conteneur relié à `mimorya-edge` et :
 
 - sert le domaine en HTTPS, avec HSTS, et `/` à `mimorya-web:3000` ;
 - sert `/api/` à `mimorya-api:4000` sans son préfixe, sans mettre les réponses en tampon
   (suivi en direct des conversations), avec un corps de 20 Mo ;
-- ajoute l'adresse du client à `X-Forwarded-For` (nginx : `infra/proxy/api-location.conf`
-  dans son bloc `server`).
+- ajoute l'adresse du client à `X-Forwarded-For` ;
+- résout les deux noms à chaque requête, et non à son démarrage.
+
+Pour nginx, `infra/proxy/api-location.conf` s'inclut dans son bloc `server`, dont
+`location /` résout `mimorya-web` de la même façon. La CI l'essaie ainsi devant la pile
+(`infra/docker/edge-proxy.conf`). Nginx Proxy Manager et Traefik ne sont pas essayés par
+la CI.
 
 L'API prend pour adresse du client la dernière de `X-Forwarded-For` : elle limite ainsi les
 tentatives de connexion de chacun. Un reverse proxy qui ne l'ajoute pas, ou un second

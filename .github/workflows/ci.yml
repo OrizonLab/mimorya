@@ -603,7 +603,8 @@ jobs:
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
           BACKUPS_IDENTITY: ${{ runner.temp }}/backups-identity.txt
         run: infra/docker/point-in-time-test.sh https://localhost
-      # The last of the stack's tests: it ages its archive (ADR-215).
+      # It ages the stack's archive (ADR-215): only the stack behind a proxy
+      # comes after it.
       - name: Conservation of the backups and the archive, and its state
         env:
           DISPOSABLE_STACK: 'yes'
