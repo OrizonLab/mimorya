@@ -40,9 +40,15 @@ fn the_guide_gives_the_api_block_the_ci_stands_in_front_of_the_stack() {
             .find(|line| line.starts_with("proxy_pass") && line.contains("mimorya-"));
         assert_eq!(literal, None, "a name written in proxy_pass");
     }
-    // The address the connection comes from: Nginx Proxy Manager sets
-    // $remote_addr from the X-Real-IP a client writes whenever it connects
-    // from a private address (ADR-226).
+    // The address the connection comes from, on every path of the host:
+    // Nginx Proxy Manager sets $remote_addr from the X-Real-IP a client
+    // writes whenever it connects from a private address, and the web
+    // application relays to the API what /api/ does not take (ADR-226). The
+    // server-wide line comes first, outside the location.
+    assert_eq!(
+        lines(&file)[..2],
+        ["set_real_ip_from unix:;", "location /api/ {"]
+    );
     let forwarded: Vec<&str> = lines(&file)
         .into_iter()
         .filter(|line| line.contains("X-Forwarded-For"))

@@ -9,7 +9,8 @@
 # sign-in page and the API under /api, its prefix removed, and a body of
 # 11 MB. The API limits sign-ins by the address the front sees: a client is
 # limited, neither a forged X-Forwarded-For nor a forged X-Real-IP frees it,
-# and another client is not limited with it. The edge network holds the web
+# by /api/ or by /API/, which the web application relays to the API, and
+# another client is not limited with it. The edge network holds the web
 # application, the API and the fronts only: the database is neither named
 # nor reached from it. The fronts resolve the names at each request: they
 # follow the API recreated, and they start while the API is stopped, then
@@ -115,35 +116,41 @@ for client in "${clients[@]}"; do
   docker run -d --name "$client" --network "$edge" --entrypoint sleep "$curl_image" 900 >/dev/null ||
     fail "the client $client did not start"
 done
-# A sign-in refused, from the client $1 through the front $2, with the
-# header $3 if given; prints the status.
+# A sign-in refused, from the client $1 through the front $2 at the path $3,
+# with the header $4 if given; prints the status.
 sign_in_status() {
   local headers=(-H "host: $domain" -H 'content-type: application/json' -H 'x-mimorya-request: 1')
-  [[ -n ${3:-} ]] && headers+=(-H "$3")
+  [[ -n ${4:-} ]] && headers+=(-H "$4")
   docker exec "$1" curl -s --max-time 10 -o /dev/null -w '%{http_code}' -X POST \
-    "http://$2/api/auth/login" "${headers[@]}" \
+    "http://$2$3" "${headers[@]}" \
     --data "{\"email\":\"essai-$RANDOM$RANDOM@exemple.invalid\",\"password\":\"pas-le-bon\"}" ||
     fail "no answer to a sign-in from $1 through $2"
 }
 # Through the front $1, the client $2 is limited and the client $3 is not.
 # Ten sign-ins a minute by default (LOGIN_RATE_LIMIT_PER_MINUTE), each with
 # its own e-mail address so that no account's own limit counts: at most one
-# window ends while they are sent. Then neither header a client may send
-# frees it: Nginx Proxy Manager takes X-Real-IP for the client's address
-# from any private address, its own included.
+# window ends while they are sent. Then no header a client may send frees
+# it, by /api/ or by /API/, which the front serves as « location / » and the
+# web application relays to the API: Nginx Proxy Manager takes X-Real-IP
+# for $remote_addr from any private address, its own included, unless the
+# block's server-wide line stops it.
 limits() {
-  local front=$1 limited=$2 other=$3 status= forged
+  local front=$1 limited=$2 other=$3 status= path forged
   for _ in $(seq 1 22); do
-    status=$(sign_in_status "$limited" "$front")
+    status=$(sign_in_status "$limited" "$front" /api/auth/login)
     [[ $status == 429 ]] && break
   done
   [[ $status == 429 ]] || fail "$limited was never limited through $front ($status)"
-  for forged in 'x-forwarded-for: 203.0.113.7' 'x-real-ip: 203.0.113.8'; do
-    status=$(sign_in_status "$limited" "$front" "$forged")
-    [[ $status == 429 ]] || fail "a forged ${forged%%:*} freed the limited client through $front ($status)"
+  for path in /api/auth/login /API/auth/login; do
+    # The path reaches the API, which refuses the other client's sign-in.
+    status=$(sign_in_status "$other" "$front" "$path")
+    [[ $status == 401 ]] || fail "another client was answered $status at $path through $front, not 401"
+    for forged in '' 'x-forwarded-for: 203.0.113.7' 'x-real-ip: 203.0.113.8'; do
+      status=$(sign_in_status "$limited" "$front" "$path" "$forged")
+      [[ $status == 429 ]] ||
+        fail "the limited client was answered $status at $path through $front${forged:+, with a forged ${forged%%:*}}"
+    done
   done
-  status=$(sign_in_status "$other" "$front")
-  [[ $status == 401 ]] || fail "another client was limited with the first through $front ($status)"
 }
 limits "$nginx_front" "${clients[0]}" "${clients[1]}"
 limits "$manager" "${clients[2]}" "${clients[3]}"

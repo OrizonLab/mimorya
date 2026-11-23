@@ -611,7 +611,8 @@ jobs:
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
         run: infra/docker/archive-retention-test.sh
       # After the stack's other tests: Caddy goes, the web application and
-      # the API restart on the edge network, behind an nginx (ADR-225).
+      # the API restart on the edge network, behind an nginx (ADR-225) and
+      # Nginx Proxy Manager itself (ADR-226).
       - name: The production stack behind a reverse proxy already on the server
         env:
           DISPOSABLE_STACK: 'yes'
