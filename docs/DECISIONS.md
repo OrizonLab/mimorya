@@ -17018,3 +17018,80 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
   segment en cours s'arrête au bout de cinq minutes. Si la base ne répond pas, ou si le
   segment n'est toujours pas archivé, le guide dit de ne pas aller plus loin, et renvoie à
   `archive-status.sh` et au plan de reprise, § 4.6.
+
+## ADR-225 — Derrière un reverse proxy déjà installé
+
+- **Statut** : accepté (2026-11-22)
+- **Contexte** : la pile de production sert la plateforme par Caddy, qui prend les ports
+  80 et 443 et obtient le certificat (ADR-034). Le serveur d'une bêta en a souvent déjà un
+  qui les tient : Nginx Proxy Manager, nginx ou Traefik, qui sert d'autres sites. On ne
+  peut pas le mettre devant Caddy : Caddy renverrait chaque requête vers HTTPS, en boucle.
+  L'API n'attend pas le préfixe `/api`, que Caddy retire ; elle prend pour adresse du
+  client la dernière de `X-Forwarded-For` (`TRUST_PROXY`) et limite ainsi les connexions
+  de chacun (ADR-088).
+- **Décision** :
+  - **un fichier de pile ajouté**, `compose.behind-proxy.yml`, nommé après
+    `compose.production.yml` dans `COMPOSE_FILE` :
+    - Caddy ne démarre pas (profil `caddy`, jamais activé) : le reverse proxy en place
+      sert le domaine et obtient le certificat ; la pile ne publie aucun port ;
+    - l'interface et l'API rejoignent un réseau à part, `mimorya-edge`, sous des noms
+      fixes, `mimorya-web` (3000) et `mimorya-api` (4000), quel que soit le nom des
+      conteneurs. La base et les workers n'y sont pas : le reverse proxy, qui sert
+      d'autres sites, ne les joint pas. Rejoindre le réseau de la pile les lui aurait
+      ouverts ;
+    - le réseau est externe, créé une fois (`docker network create mimorya-edge`) avant
+      les deux piles : aucune ne dépend du démarrage de l'autre, et `docker compose down`
+      ne le retire pas ;
+    - `MIMORYA_TLS` reste exigé par la pile ; il vaut `internal`, dont personne ne se sert ;
+  - **le reverse proxy tourne dans un conteneur** relié à `mimorya-edge` : un nginx
+    installé sur l'hôte ne joindrait pas la pile, qui ne publie aucun port ;
+  - **le bloc de l'API**, `infra/proxy/api-location.conf` : `/api/` vers
+    `mimorya-api:4000`, préfixe retiré, adresse du client ajoutée à `X-Forwarded-For`,
+    réponses sans tampon (suivi en direct), corps de 20 Mo (un document en pèse 10 au
+    plus). Le nom est résolu **à chaque requête**, par le résolveur de Docker
+    (`resolver 127.0.0.11`, une variable dans `proxy_pass`), comme Nginx Proxy Manager le
+    fait de ses propres hôtes : un nom résolu au chargement ferait refuser à nginx de
+    démarrer ou de recharger tant que la pile est arrêtée (redémarrage du serveur, retour
+    en arrière, reprise), faisant tomber les autres sites qu'il sert, et lui ferait garder
+    l'ancienne adresse d'une API recréée. Il se colle tel quel dans l'onglet _Advanced_ de
+    Nginx Proxy Manager, ou s'inclut dans un bloc `server` de nginx ;
+  - **le guide**, `docs/INSTALLATION.md`, annexe « Derrière un reverse proxy déjà
+    installé » : ce qui change aux étapes 5, 6 et 7, puis Nginx Proxy Manager pas à pas
+    (réseau, _Proxy Host_, _Advanced_, Let's Encrypt avec _Force SSL_, HTTP/2 et HSTS) et
+    ce qu'un autre reverse proxy doit faire. Le compose de Nginx Proxy Manager se relance
+    sans `COMPOSE_FILE` ni `COMPOSE_ENV_FILES`, qui désignent la pile de la plateforme.
+    _Block Common Exploits_ reste désactivé : ses règles refusent des requêtes légitimes
+    (retours de connexion, SCIM, webhooks) ;
+  - **le plan de reprise** nomme ce fichier dans `COMPOSE_FILE`, et prévoit le réseau et
+    le reverse proxy sur l'hôte de secours ; la racine de Caddy ne s'y applique pas ;
+    `check-install` dit d'un certificat absent ou non reconnu que, derrière un reverse
+    proxy, c'est le sien qui compte ;
+  - **la première version de bêta**, `v0.1.0-beta.1`, se pose sur le commit qui fusionne
+    cette décision plutôt que sur celui du guide (ADR-224) : une installation derrière
+    Nginx Proxy Manager trouve ce fichier et cette annexe dans le dépôt extrait à sa
+    version.
+- **Conséquences** :
+  - un reverse proxy qui n'ajoute pas l'adresse du client, ou un second mandataire devant
+    lui (Cloudflare en mode proxy), ferait compter tous les visiteurs comme un seul : le
+    guide le dit ;
+  - HSTS, que Caddy posait, est réglé dans le reverse proxy ; l'interface pose toujours
+    ses propres en-têtes et sa politique de contenu ;
+  - tests :
+    - `infra/docker/behind-proxy-test.sh`, dernier test de la pile de production en CI :
+      Caddy retiré, la pile redémarrée avec ce fichier sans port publié, un nginx devant
+      elle avec ce bloc et ce que Nginx Proxy Manager écrit d'un hôte
+      (`infra/docker/edge-proxy.conf`). La page de connexion et l'API se joignent à
+      travers lui, préfixe retiré, et un corps de 11 Mo atteint l'API. Un client est
+      limité après dix connexions, un `X-Forwarded-For` forgé ne le libère pas, un autre
+      client ne l'est pas avec lui. Le réseau ne porte que l'interface, l'API et le
+      reverse proxy, et la base n'y a ni nom (demandé au résolveur de Docker, un témoin
+      trouvant l'API) ni adresse joignable. L'API recréée est suivie ; le reverse proxy
+      redémarré pendant que l'API est arrêtée démarre, sert l'interface, répond 502 sous
+      `/api/`, puis joint l'API revenue ;
+    - `crates/api/tests/configuration_files/behind_proxy.rs` : le bloc du guide est ce
+      fichier, aucun `proxy_pass` n'écrit un nom de la pile, et les noms du guide sont
+      ceux de la pile, dont l'échec a été vérifié en changeant le `proxy_pass` du guide ;
+    - `the_guide_and_the_acceptance_tests_name_commands_that_exist` vérifie aussi que les
+      fichiers de pile et de configuration que citent le guide et la recette existent ;
+    - Nginx Proxy Manager lui-même et Traefik ne sont pas essayés : le test imite le
+      bloc `server` que le premier écrit.

@@ -5,8 +5,11 @@
 //! reason; every variable of `.env.production.example` reaches the stack,
 //! and every one the stack reads is described there. The variables read are
 //! recorded as the configuration asks for them, not listed by hand. The
-//! stack itself, started from the example, is in `starts`.
+//! stack itself, started from the example, is in `starts`; behind a reverse
+//! proxy already on the server, in `behind_proxy`.
 
+#[path = "configuration_files/behind_proxy.rs"]
+mod behind_proxy;
 #[path = "configuration_files/stack.rs"]
 mod stack;
 #[path = "configuration_files/starts.rs"]
@@ -216,7 +219,8 @@ fn the_installation_guide_names_every_variable_to_set() {
 fn the_guide_and_the_acceptance_tests_name_commands_that_exist() {
     let usage = repository("crates/api/src/bin/admin/usage.rs");
     let command = Regex::new(r"mimorya-admin ([a-z][a-z-]*)").unwrap();
-    let script = Regex::new(r"infra/backup/([a-z][a-z-]*\.sh)").unwrap();
+    // Scripts and configuration of the repository, and its compose files.
+    let file = Regex::new(r"(infra/[a-z][a-z/-]*\.(?:sh|conf)|compose\.[a-z.-]+\.yml)").unwrap();
     for document in ["docs/INSTALLATION.md", "docs/RECETTE_BETA.md"] {
         let text = repository(document);
         for found in command.captures_iter(&text) {
@@ -229,12 +233,12 @@ fn the_guide_and_the_acceptance_tests_name_commands_that_exist() {
                 &found[1]
             );
         }
-        for found in script.captures_iter(&text) {
-            let path = format!("infra/backup/{}", &found[1]);
+        for found in file.captures_iter(&text) {
+            let path = &found[1];
             assert!(
                 Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../..")
-                    .join(&path)
+                    .join(path)
                     .is_file(),
                 "{document}: {path} does not exist"
             );

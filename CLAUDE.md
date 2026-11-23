@@ -475,14 +475,17 @@ Repères à l'intérieur des crates :
   sauvegarde et restauration de la pile de production `backup-test.sh`, ADR-166, son
   journal d'audit vérifié avant et après par l'exploitant et l'entreprise, ancres lues
   dans les journaux des processus, `audit-chain.sh`, ADR-180,
-  vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base),
+  vérifications partagées `checks.sh`, dont les rôles des processus lus dans la base,
+  pile de production derrière un nginx, `behind-proxy-test.sh` et `edge-proxy.conf`,
+  ADR-225),
   `backup/` (sauvegarde de la base chiffrée par age pour des clés publiques, dump ou
   sauvegarde de base (`--base`, ADR-206), restauration dans une pile nouvelle, ADR-166, et
   à un instant précis, sauvegarde de base et WAL de l'archive rejoués, `restore-base.sh`,
   ADR-214, conservation des sauvegardes et de l'archive bornée en jours, `prune.sh`, et
   état de l'archivage pour la surveillance, `archive-status.sh`, ADR-215 ; ce que
   l'exploitant en fait selon l'incident : `docs/RECOVERY_PLAN.md`, ADR-216), `caddy/`
-  (reverse proxy : TLS, HSTS), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
+  (reverse proxy : TLS, HSTS), `proxy/` (bloc nginx de l'API derrière un reverse proxy
+  déjà installé, `api-location.conf`, ADR-225), `postgres/` (rôles et extensions ; production : `entrypoint-production.sh` vérifie les
   mots de passe et les destinataires de l'archive des WAL, que son dossier accepte les
   liens physiques (ADR-215), et l'active, `archive-wal.sh`
   chiffre chaque WAL archivé, un dossier par système de base, ADR-206, `restore-wal.sh`
@@ -493,7 +496,8 @@ Repères à l'intérieur des crates :
   (base de développement, sur 127.0.0.1), `compose.production.yml` (pile de production,
   ADR-034, chaque variable lue par l'API transmise avec son défaut, décrite pour l'exploitant
   dans `.env.production.example` comme pour le développement dans `.env.example`, ce que
-  vérifie `crates/api/tests/configuration_files.rs`, exceptions justifiées, ADR-221) et `compose.demo.yml` (pile de démonstration,
+  vérifie `crates/api/tests/configuration_files.rs`, exceptions justifiées, ADR-221 ;
+  derrière un reverse proxy déjà installé, `compose.behind-proxy.yml`, ADR-225) et `compose.demo.yml` (pile de démonstration,
   ADR-032), chacune avec un service `api` et un service `worker` de la même image
   (ADR-087), qui téléchargent les images publiées (`.github/workflows/images.yml`,
   ADR-051) ; `compose.*.build.yml` les construisent depuis le dépôt (CI) ; `ci/` (CI en

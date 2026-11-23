@@ -204,7 +204,11 @@ plateforme (ADR-224). Ce qui suit en est le détail.
 `compose.production.yml` (ADR-034) installe la même chose en conteneurs, sans données
 fictives : PostgreSQL (rôles créés avec vos mots de passe), migrations, API, worker
 (ADR-087), interface et Caddy (HTTPS, HSTS), dans son propre projet (`mimorya-production`, à part de la base de
-développement). Seul Caddy publie des ports. Les identifiants se choisissent dans un
+développement). Seul Caddy publie des ports. Si un reverse proxy, dans un conteneur, tient
+déjà les ports 80 et 443 du serveur (Nginx Proxy Manager, nginx, Traefik), ajoutez `compose.behind-proxy.yml`
+(ADR-225) : Caddy ne démarre pas, l'interface et l'API rejoignent le réseau `mimorya-edge`
+sous les noms `mimorya-web` et `mimorya-api`, et `infra/proxy/api-location.conf` sert
+`/api/` (`docs/INSTALLATION.md`, annexe). Les identifiants se choisissent dans un
 fichier d'environnement gardé hors du dépôt, lisible par vous seul.
 `.env.production.example` décrit chaque variable en trois parties (obligatoires,
 recommandées, facultatives) : son rôle, son défaut, comment la produire et ce qui se passe

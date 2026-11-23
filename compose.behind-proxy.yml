@@ -1,0 +1,31 @@
+# The production stack behind a reverse proxy already on the server
+# (ADR-225): Nginx Proxy Manager, nginx or Traefik keeps the ports 80 and
+# 443 and the certificate, and Caddy does not start. That proxy reaches the
+# web application and the API on a network of their own, mimorya-edge, under
+# fixed names (mimorya-web:3000, mimorya-api:4000): never the database nor
+# the workers. The network is created once, before either stack starts:
+#   docker network create mimorya-edge
+# then named after the production stack's file (docs/INSTALLATION.md):
+#   COMPOSE_FILE=compose.production.yml:compose.behind-proxy.yml
+# The proxy appends the client's address to X-Forwarded-For, which the API
+# reads (TRUST_PROXY), and serves /api/ without its prefix:
+# infra/proxy/api-location.conf.
+
+services:
+  proxy:
+    profiles: [caddy]
+  web:
+    networks:
+      default: {}
+      edge:
+        aliases: [mimorya-web]
+  api:
+    networks:
+      default: {}
+      edge:
+        aliases: [mimorya-api]
+
+networks:
+  edge:
+    name: mimorya-edge
+    external: true

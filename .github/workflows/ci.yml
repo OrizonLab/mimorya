@@ -475,6 +475,10 @@ jobs:
               jq '[.services | to_entries[] | select(.key != "proxy" and (.value.ports // []) != [])] | length')
             test "$published" = 0 || { echo "$file publishes ports besides the proxy" >&2; exit 1; }
           done
+          # Behind a reverse proxy already on the server, none (ADR-225).
+          published=$(MIMORYA_TLS=internal docker compose -f compose.production.yml -f compose.behind-proxy.yml \
+            config --format json | jq '[.services[] | .ports // [] | length] | add')
+          test "$published" = 0 || { echo "the stack publishes ports behind a proxy" >&2; exit 1; }
       - name: Start the demonstration stack
         run: docker compose -f compose.demo.yml -f compose.demo.build.yml up -d
       - name: Smoke test of the demonstration stack
@@ -599,12 +603,20 @@ jobs:
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
           BACKUPS_IDENTITY: ${{ runner.temp }}/backups-identity.txt
         run: infra/docker/point-in-time-test.sh https://localhost
-      # The last of the stack's tests: it ages its archive (ADR-215).
+      # It ages the stack's archive (ADR-215): only the stack behind a proxy
+      # comes after it.
       - name: Conservation of the backups and the archive, and its state
         env:
           DISPOSABLE_STACK: 'yes'
           COMPOSE_FILE: compose.production.yml:compose.production.build.yml
         run: infra/docker/archive-retention-test.sh
+      # After the stack's other tests: Caddy goes, the web application and
+      # the API restart on the edge network, behind an nginx (ADR-225).
+      - name: The production stack behind a reverse proxy already on the server
+        env:
+          DISPOSABLE_STACK: 'yes'
+          COMPOSE_FILE: compose.production.yml:compose.production.build.yml
+        run: infra/docker/behind-proxy-test.sh
       - name: Logs of the production stack
         if: always()
         run: docker compose -f compose.production.yml -f compose.production.build.yml logs --no-color | tail -n 200

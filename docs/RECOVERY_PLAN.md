@@ -21,6 +21,13 @@ Sans les deux premières, `docker compose` lirait `docker-compose.yml`, la base 
 développement ; sans la troisième, `backup.sh` n'aurait aucun destinataire. Si vous avez
 déplacé l'archive (`MIMORYA_WAL_ARCHIVE`), remplacez ses chemins partout ci-dessous.
 
+Derrière un reverse proxy déjà installé (ADR-225, `docs/INSTALLATION.md`, annexe),
+`COMPOSE_FILE` nomme aussi `compose.behind-proxy.yml`, ici comme dans `/root/.bashrc` :
+`COMPOSE_FILE=compose.production.yml:compose.behind-proxy.yml`. Sans lui, la pile reprise
+sortirait l'interface et l'API du réseau `mimorya-edge`, et Caddy tenterait de prendre les
+ports du reverse proxy. Le certificat est alors celui du reverse proxy : la racine de Caddy
+(§ 3, § 4) ne s'applique pas.
+
 ## 1. Ce qui est protégé, et où
 
 Tout ce que la plateforme garde (entreprises, comptes, conversations, mémoires,
@@ -121,6 +128,10 @@ rejeu. `restore-base.sh` arrête une récupération qui dure plus de
 
 - [ ] Docker, `age`, `rsync`, le dépôt extrait à la version de l'installation,
       `.env.production` et la clé maître à portée.
+- [ ] Derrière un reverse proxy déjà installé (ADR-225) : le réseau
+      (`docker network create mimorya-edge`), un reverse proxy dans un conteneur relié à
+      lui et configuré comme celui de la production, et `COMPOSE_FILE` qui nomme
+      `compose.behind-proxy.yml`.
 - [ ] Le rôle de l'hôte, que vérifient les commandes qui jettent une pile restaurée, à
       retirer s'il devient la production (§ 5) : `touch /etc/mimorya-secours`.
 - [ ] Les dossiers de la copie et des instantanés, à `root` seul (un fichier exécutable

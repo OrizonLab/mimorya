@@ -182,8 +182,9 @@ impl Reader<'_> {
             return None;
         }
         // Written out, Anthropic's official address when none is set: no
-        // provider reads the environment (ADR-221), and whether the
-        // platform's model is at that address decides its advisor (ADR-207).
+        // provider reads a key or an address from the environment (ADR-221),
+        // and whether the platform's model is at that address decides its
+        // advisor (ADR-207).
         let read = |key: &'static str| self.value(key).map(|url| (key, url));
         let endpoint = read("LLM_BASE_URL").or_else(|| {
             (kind == "anthropic")
