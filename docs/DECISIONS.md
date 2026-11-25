@@ -17163,3 +17163,9 @@ sandbox; frame-ancestors 'none'` et `nosniff` : ouvertes seules, elles se dessin
       `X-Forwarded-For` transmet `$realip_remote_addr`, et le résolveur attend cinq
       secondes au plus ;
     - Traefik n'est pas essayé.
+- **Complément (version posée)** : `v0.1.0-beta.1` est posée le 2026-11-25 sur `9ca63533`
+  (#300), le commit qui suit cette décision, et non sur celui qui la fusionne. Il ne change
+  que l'annexe Nginx Proxy Manager du guide, qui garde Nginx Proxy Manager sur ses propres
+  réseaux en plus de `mimorya-edge` ; le bloc et le reste du guide y sont tels que cette
+  décision les fixe. Le travail « Release » du run 45596205699 a nommé `0.1.0-beta.1` les
+  quatre images `sha-9ca63533848d`, sans les reconstruire.
